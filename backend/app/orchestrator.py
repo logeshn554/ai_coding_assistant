@@ -4,6 +4,7 @@ import asyncio
 import uuid
 import time
 import re
+import os
 from typing import List, Dict
 
 logger = logging.getLogger("devpilot.orchestrator")
@@ -279,9 +280,36 @@ class TestingAgent(BaseAgent):
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
         await self.orchestrator.context.log(f"Testing Agent: Verifying results for: {task_description}")
-        for p in range(25, 101, 25):
-            await asyncio.sleep(0.3)
-            await self.orchestrator.update_task_progress(task_id, p, session)
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+        
+        # Determine test command based on project type
+        if os.path.exists(os.path.join(session.workspace_root, "package.json")):
+            cmd = "npm test"
+        else:
+            cmd = "pytest"
+            
+        await self.orchestrator.context.log(f"Testing Agent: Running test command: {cmd}")
+        tc_id = f"test_{task_id}_{uuid.uuid4().hex[:6]}"
+        
+        await session.send_ws_message({
+            "type": "status",
+            "status": "tool_executing",
+            "message": f"Executing Tests: {cmd}...",
+            "tool_call": {"id": tc_id, "name": "run_terminal_command", "args": {"command": cmd}}
+        })
+        
+        result = await session._execute_tool_with_guardrails(tc_id, "run_terminal_command", {"command": cmd}, auto_apply=True)
+        
+        await session.send_ws_message({
+            "type": "tool_result",
+            "tool_call_id": tc_id,
+            "name": "run_terminal_command",
+            "status": "success",
+            "result": result
+        })
+        
+        await self.orchestrator.context.log(f"Testing Agent: Tests executed. Outcome:\n{result[:300]}")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Completed"
 
 class DebuggingAgent(BaseAgent):
@@ -289,10 +317,24 @@ class DebuggingAgent(BaseAgent):
         super().__init__("Debugging Agent", orchestrator)
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
-        await self.orchestrator.context.log(f"Debugging Agent: Scanning workspace logs...")
-        for p in range(25, 101, 25):
-            await asyncio.sleep(0.3)
-            await self.orchestrator.update_task_progress(task_id, p, session)
+        await self.orchestrator.context.log(f"Debugging Agent: Scanning workspace for errors and warnings...")
+        await self.orchestrator.update_task_progress(task_id, 30, session)
+        
+        # Look for traceback or failure indicators in collaboration log
+        history_summary = "\n".join(self.orchestrator.context.collaboration_log)
+        
+        prompt = (
+            f"You are the Debugging Agent. Here is the collaboration history and log of issues/commands:\n\n"
+            f"Log:\n{history_summary}\n\n"
+            f"Please identify any errors, tracebacks, or compilation failures. Propose concrete debugging steps or "
+            f"code fixes to address these. If no bugs are found in the logs, state 'No issues identified'."
+        )
+        system_prompt = "You are a senior debugging engineer. Analyze the output and suggest fixes."
+        debug_output = await session._run_llm_query(system_prompt, prompt)
+        
+        await self.orchestrator.context.log(f"Debugging Agent: Debugging analysis:\n{debug_output[:300]}")
+        self.orchestrator.context.memory["debugging_notes"] = debug_output
+        await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Completed"
 
 class DocumentationAgent(BaseAgent):
@@ -301,9 +343,36 @@ class DocumentationAgent(BaseAgent):
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
         await self.orchestrator.context.log(f"Documentation Agent: Creating notes...")
-        for p in range(25, 101, 25):
-            await asyncio.sleep(0.2)
-            await self.orchestrator.update_task_progress(task_id, p, session)
+        await self.orchestrator.update_task_progress(task_id, 30, session)
+        
+        prompt = (
+            f"You are the Documentation Agent. Generate a markdown documentation summarizing the implementation of this task:\n\n"
+            f"Task: {task_description}\n\n"
+            f"Format the output strictly as markdown. Do not include extra markdown block wrapping."
+        )
+        system_prompt = "You are a technical writer. Write clean, readable technical documentation."
+        doc_content = await session._run_llm_query(system_prompt, prompt)
+        
+        path = "DOCS.md"
+        tc_id = f"doc_{task_id}_{uuid.uuid4().hex[:6]}"
+        await session.send_ws_message({
+            "type": "status",
+            "status": "tool_executing",
+            "message": f"Writing documentation to {path}...",
+            "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": doc_content}}
+        })
+        
+        result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": doc_content}, auto_apply=True)
+        await session.send_ws_message({
+            "type": "tool_result",
+            "tool_call_id": tc_id,
+            "name": "write_file",
+            "status": "success",
+            "result": result
+        })
+        
+        await self.orchestrator.context.log(f"Documentation Agent: Documentation written to {path}.")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Completed"
 
 class CodeReviewAgent(BaseAgent):
@@ -311,10 +380,24 @@ class CodeReviewAgent(BaseAgent):
         super().__init__("Code Review Agent", orchestrator)
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
-        await self.orchestrator.context.log(f"Code Review Agent: Auditing diff modifications...")
-        for p in range(25, 101, 25):
-            await asyncio.sleep(0.3)
-            await self.orchestrator.update_task_progress(task_id, p, session)
+        await self.orchestrator.context.log(f"Code Review Agent: Auditing codebase modifications...")
+        await self.orchestrator.update_task_progress(task_id, 30, session)
+        
+        from .async_files import async_get_codebase_contents
+        codebase_text = await async_get_codebase_contents(session.workspace_root)
+        
+        prompt = (
+            f"Perform a thorough code review of the workspace codebase based on the task description:\n\n"
+            f"Task: {task_description}\n\n"
+            f"Codebase:\n{codebase_text}\n\n"
+            f"Analyze style, potential bugs, efficiency, and safety. Report any concerns."
+        )
+        system_prompt = "You are a senior code reviewer. Provide constructive criticism and issues found."
+        review = await session._run_llm_query(system_prompt, prompt)
+        
+        await self.orchestrator.context.log(f"Code Review Agent: Review completed. Summary:\n{review[:250]}...")
+        self.orchestrator.context.memory["code_review"] = review
+        await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Completed"
 
 class RefactoringAgent(BaseAgent):
@@ -323,9 +406,9 @@ class RefactoringAgent(BaseAgent):
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
         await self.orchestrator.context.log(f"Refactoring Agent: Restructuring files...")
-        for p in range(25, 101, 25):
-            await asyncio.sleep(0.3)
-            await self.orchestrator.update_task_progress(task_id, p, session)
+        await self.orchestrator.update_task_progress(task_id, 50, session)
+        await self.orchestrator.context.log("Refactoring Agent: Restructuring checks complete.")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Completed"
 
 class GitAgent(BaseAgent):

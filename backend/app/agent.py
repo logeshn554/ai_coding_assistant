@@ -7,16 +7,14 @@ from typing import List, Dict, Any
 from .adapters.base import AVAILABLE_TOOLS
 from .adapters.anthropic import AnthropicAdapter
 from .adapters.openai import OpenAIAdapter
-from .files import (
-    safe_path,
-    list_workspace_dir,
-    read_workspace_file,
-    write_workspace_file,
-    delete_workspace_item,
-    search_workspace_codebase,
-    get_codebase_contents
+from .files import safe_path
+from .async_files import (
+    async_read_workspace_file,
+    async_write_workspace_file,
+    async_list_workspace_dir,
+    async_search_workspace_codebase,
+    async_get_codebase_contents
 )
-from .async_files import async_write_workspace_file
 
 from .orchestrator import AgentOrchestrator
 
@@ -47,20 +45,9 @@ class AgentSession:
         logger.info(f"Audit Log: {json.dumps(log_entry)}")
 
     def _get_adapter(self, is_agent: bool = False):
-        fmt = self.profile.get("api_format", "openai")
-        key = self.profile.get("api_key", "")
-        url = self.profile.get("base_url", "")
-        model = self.profile.get("model_name", "")
-        
-        if is_agent:
-            from .config import ConfigManager
-            custom_agent_model = ConfigManager().get_agent_model_name()
-            if custom_agent_model:
-                model = custom_agent_model
-        
-        if fmt == "anthropic":
-            return AnthropicAdapter(key, url, model)
-        return OpenAIAdapter(key, url, model)
+        from .adapters.router import ModelRouter
+        router = ModelRouter()
+        return router.get_adapter(self.profile, is_agent=is_agent)
 
     def _get_tools_for_mode(self, mode: str) -> list:
         read_only_tools = {"list_directory", "read_file", "search_codebase"}
@@ -251,7 +238,7 @@ class AgentSession:
                 # Resolve path
                 abs_path = safe_path(self.workspace_root, path)
                 if os.path.exists(abs_path) and os.path.isfile(abs_path):
-                    original_content = read_workspace_file(self.workspace_root, path)
+                    original_content = await async_read_workspace_file(self.workspace_root, path)
             except Exception as e:
                 return f"Path verification failed: {str(e)}"
                 
@@ -370,20 +357,20 @@ class AgentSession:
         # C. Read-only tools (no approval required)
         elif name == "list_directory":
             path = args.get("path", "")
-            items = list_workspace_dir(self.workspace_root, path)
+            items = await async_list_workspace_dir(self.workspace_root, path)
             return json.dumps(items, indent=2)
             
         elif name == "read_file":
             path = args.get("path", "")
-            return read_workspace_file(self.workspace_root, path)
+            return await async_read_workspace_file(self.workspace_root, path)
             
         elif name == "search_codebase":
             query = args.get("query", "")
-            results = search_workspace_codebase(self.workspace_root, query)
+            results = await async_search_workspace_codebase(self.workspace_root, query)
             return json.dumps(results, indent=2)
             
         elif name == "scan_for_bugs":
-            codebase_text = get_codebase_contents(self.workspace_root)
+            codebase_text = await async_get_codebase_contents(self.workspace_root)
             if not codebase_text:
                 return "The workspace directory is empty or contains no readable source code files."
                 

@@ -806,43 +806,51 @@ def save_chat_history(req: ChatHistoryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+def sync_get_workspace_stats(root_path: str):
+    total_files = 0
+    total_lines = 0
+    languages = {}
+    
+    # Scan files
+    for root, dirs, files in os.walk(root_path):
+        if any(d in root for d in {".git", "node_modules", "venv", "__pycache__", ".devpilot", "dist", "build"}):
+            continue
+        for f in files:
+            ext = os.path.splitext(f)[1].lower()
+            if ext in {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}:
+                continue
+            abs_path = os.path.join(root, f)
+            total_files += 1
+            try:
+                with open(abs_path, "r", encoding="utf-8", errors="ignore") as file_obj:
+                    lines = file_obj.readlines()
+                    total_lines += len(lines)
+            except Exception:
+                pass
+            
+            # Group by extension/language name
+            lang_name = "Unknown"
+            if ext == ".py": lang_name = "Python"
+            elif ext in {".ts", ".tsx"}: lang_name = "TypeScript"
+            elif ext in {".js", ".jsx"}: lang_name = "JavaScript"
+            elif ext == ".json": lang_name = "JSON"
+            elif ext == ".css": lang_name = "CSS"
+            elif ext == ".html": lang_name = "HTML"
+            elif ext == ".md": lang_name = "Markdown"
+            
+            languages[lang_name] = languages.get(lang_name, 0) + 1
+            
+    return total_files, total_lines, languages
+
 @app.get("/api/workspace/stats")
 async def get_workspace_stats():
     if not workspace_state.root:
         return {"total_files": 0, "total_lines": 0, "languages": {}, "git_commits": 0}
     try:
-        total_files = 0
-        total_lines = 0
-        languages = {}
-        
-        # Scan files
-        for root, dirs, files in os.walk(workspace_state.root):
-            if any(d in root for d in {".git", "node_modules", "venv", "__pycache__", ".devpilot", "dist", "build"}):
-                continue
-            for f in files:
-                ext = os.path.splitext(f)[1].lower()
-                if ext in {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}:
-                    continue
-                abs_path = os.path.join(root, f)
-                total_files += 1
-                try:
-                    with open(abs_path, "r", encoding="utf-8", errors="ignore") as file_obj:
-                        lines = file_obj.readlines()
-                        total_lines += len(lines)
-                except Exception:
-                    pass
-                
-                # Group by extension/language name
-                lang_name = "Unknown"
-                if ext == ".py": lang_name = "Python"
-                elif ext in {".ts", ".tsx"}: lang_name = "TypeScript"
-                elif ext in {".js", ".jsx"}: lang_name = "JavaScript"
-                elif ext == ".json": lang_name = "JSON"
-                elif ext == ".css": lang_name = "CSS"
-                elif ext == ".html": lang_name = "HTML"
-                elif ext == ".md": lang_name = "Markdown"
-                
-                languages[lang_name] = languages.get(lang_name, 0) + 1
+        loop = asyncio.get_running_loop()
+        total_files, total_lines, languages = await loop.run_in_executor(
+            None, sync_get_workspace_stats, workspace_state.root
+        )
 
         # Git commit count
         git_commits = 0

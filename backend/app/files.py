@@ -334,18 +334,6 @@ def get_codebase_contents(workspace_root: str) -> str:
                 
     return "".join(output_lines)
 
-import asyncio
 
-async def async_read_workspace_file(workspace_root: str, relative_path: str) -> str:
-    return await asyncio.to_thread(read_workspace_file, workspace_root, relative_path)
-
-async def async_write_workspace_file(workspace_root: str, relative_path: str, content: str) -> None:
-    return await asyncio.to_thread(write_workspace_file, workspace_root, relative_path, content)
-
-async def async_search_workspace_codebase(workspace_root: str, query: str) -> list:
-    return await asyncio.to_thread(search_workspace_codebase, workspace_root, query)
-
-async def async_get_codebase_contents(workspace_root: str) -> str:
-    return await asyncio.to_thread(get_codebase_contents, workspace_root)
 
 

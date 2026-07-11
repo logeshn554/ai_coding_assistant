@@ -1,6 +1,12 @@
 import asyncio
 from typing import List
-from .files import read_workspace_file, write_workspace_file, list_workspace_dir
+from .files import (
+    read_workspace_file,
+    write_workspace_file,
+    list_workspace_dir,
+    search_workspace_codebase,
+    get_codebase_contents
+)
 
 async def async_read_workspace_file(workspace_root: str, relative_path: str) -> str:
     """
@@ -38,3 +44,27 @@ async def async_list_workspace_dir(workspace_root: str, relative_path: str = "")
         workspace_root,
         relative_path
     )
+
+async def async_search_workspace_codebase(workspace_root: str, query: str) -> List[dict]:
+    """
+    Asynchronously searches the workspace codebase.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        search_workspace_codebase,
+        workspace_root,
+        query
+    )
+
+async def async_get_codebase_contents(workspace_root: str) -> str:
+    """
+    Asynchronously gets codebase contents.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        None,
+        get_codebase_contents,
+        workspace_root
+    )
+
