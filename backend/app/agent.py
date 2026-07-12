@@ -474,15 +474,14 @@ class AgentSession:
     async def _run_llm_query(self, system_prompt: str, user_content: str) -> str:
         """
         Queries the LLM non-disruptively by accumulating stream_chat chunks.
+        Uses ModelRouter to support automatic local model fallbacks on connection/API failure.
         """
-        adapter = self._get_adapter(is_agent=True)
+        from .adapters.router import ModelRouter
         messages = [{"role": "user", "content": user_content}]
-        response_text = ""
         try:
-            async for chunk in adapter.stream_chat(messages, [], system_prompt):
-                if chunk["type"] == "text":
-                    response_text += chunk["content"]
+            router = ModelRouter()
+            response_text = await router.completion(self.profile, messages, system_prompt, is_agent=True)
+            return response_text
         except Exception as e:
-            logger.error(f"Error querying background LLM: {str(e)}")
-            response_text = f"Error performing background analysis: {str(e)}"
-        return response_text
+            logger.error(f"Error querying background LLM (including fallbacks): {str(e)}")
+            raise e

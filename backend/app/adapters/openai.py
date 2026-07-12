@@ -112,8 +112,8 @@ class OpenAIAdapter(ModelAdapter):
             yield {"type": "done", "stop_reason": stop_reason}
 
         except Exception as e:
-            yield {"type": "text", "content": f"\n[OpenAI API Error: {str(e)}]\n"}
-            yield {"type": "done", "stop_reason": "stop"}
+            logger.error(f"OpenAI API Error: {str(e)}")
+            raise e
 
     def _to_openai_messages(self, internal_messages: List[Dict[str, Any]], system_prompt: str) -> List[Dict[str, Any]]:
         """

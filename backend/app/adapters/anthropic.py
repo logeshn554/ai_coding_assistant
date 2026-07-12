@@ -104,8 +104,8 @@ class AnthropicAdapter(ModelAdapter):
             yield {"type": "done", "stop_reason": "stop"}
             
         except Exception as e:
-            yield {"type": "text", "content": f"\n[Anthropic API Error: {str(e)}]\n"}
-            yield {"type": "done", "stop_reason": "stop"}
+            logger.error(f"Anthropic API Error: {str(e)}")
+            raise e
 
     def _to_anthropic_messages(self, internal_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
