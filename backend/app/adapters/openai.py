@@ -1,5 +1,9 @@
 import json
+import logging
 from typing import AsyncGenerator, List, Dict, Any
+
+logger = logging.getLogger("devpilot.adapters.openai")
+
 try:
     from openai import AsyncOpenAI
 except ImportError:

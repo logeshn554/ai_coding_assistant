@@ -95,3 +95,23 @@
 .glow-emerald {
   box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.3);
 }
+
+/* 8. prefers-reduced-motion overrides for animated elements */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-delay: -1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    background-attachment: initial !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+  }
+  .animate-pulse-subtle,
+  .animate-ping,
+  .animate-bounce,
+  .animate-pulse {
+    animation: none !important;
+  }
+}
+

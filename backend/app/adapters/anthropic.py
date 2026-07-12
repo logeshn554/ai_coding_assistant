@@ -1,5 +1,9 @@
 import json
+import logging
 from typing import AsyncGenerator, List, Dict, Any
+
+logger = logging.getLogger("devpilot.adapters.anthropic")
+
 try:
     from anthropic import AsyncAnthropic
 except ImportError:
