@@ -1,29 +1,20 @@
 import os
 import json
+import logging
+import subprocess
 from pathlib import Path
-from cryptography.fernet import Fernet
+import keyring
+
+logger = logging.getLogger("devpilot.config")
 
 CONFIG_DIR = Path.home() / ".devpilot"
 CONFIG_FILE = CONFIG_DIR / "config.json"
-KEY_FILE = CONFIG_DIR / ".key"
 
 class ConfigManager:
     def __init__(self):
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        self.fernet = self._get_or_create_fernet()
         self._init_config()
         self._ensure_google_profile()
-
-    def _get_or_create_fernet(self) -> Fernet:
-        """
-        Loads the encryption key from KEY_FILE or creates a new one.
-        """
-        if KEY_FILE.exists():
-            key = KEY_FILE.read_bytes()
-        else:
-            key = Fernet.generate_key()
-            KEY_FILE.write_bytes(key)
-        return Fernet(key)
 
     def _init_config(self):
         """
@@ -37,15 +28,13 @@ class ConfigManager:
                     {
                         "id": "default-anthropic",
                         "name": "Anthropic Claude 3.5 Sonnet",
-                        "api_key": "",
                         "base_url": "https://api.anthropic.com/v1",
-                        "model_name": "claude-3-5-sonnet-20241022",
+                        "model_name": "claude-sonnet-4-6",
                         "api_format": "anthropic"
                     },
                     {
                         "id": "default-openai",
                         "name": "OpenAI GPT-4o",
-                        "api_key": "",
                         "base_url": "https://api.openai.com/v1",
                         "model_name": "gpt-4o",
                         "api_format": "openai"
@@ -53,7 +42,6 @@ class ConfigManager:
                     {
                         "id": "default-google",
                         "name": "Google Gemini 1.5 Flash",
-                        "api_key": "",
                         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
                         "model_name": "gemini-1.5-flash",
                         "api_format": "google"
@@ -61,7 +49,6 @@ class ConfigManager:
                     {
                         "id": "default-ollama",
                         "name": "Ollama (Local Llama 3)",
-                        "api_key": "ollama",
                         "base_url": "http://localhost:11434/v1",
                         "model_name": "llama3",
                         "api_format": "openai"
@@ -69,6 +56,15 @@ class ConfigManager:
                 ]
             }
             self._save_raw_config(default_config)
+            
+            # Save default passwords in keyring
+            try:
+                keyring.set_password("devpilot", "default-anthropic", "")
+                keyring.set_password("devpilot", "default-openai", "")
+                keyring.set_password("devpilot", "default-google", "")
+                keyring.set_password("devpilot", "default-ollama", "ollama")
+            except Exception as e:
+                logger.error(f"Failed to set initial keyring passwords: {e}")
 
     def _ensure_google_profile(self):
         try:
@@ -79,7 +75,6 @@ class ConfigManager:
                 google_profile = {
                     "id": "default-google",
                     "name": "Google Gemini 1.5 Flash",
-                    "api_key": "",
                     "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
                     "model_name": "gemini-1.5-flash",
                     "api_format": "google"
@@ -87,9 +82,12 @@ class ConfigManager:
                 profiles.append(google_profile)
                 config["profiles"] = profiles
                 self._save_raw_config(config)
+                try:
+                    keyring.set_password("devpilot", "default-google", "")
+                except Exception as e:
+                    logger.error(f"Failed to set google profile password in keyring: {e}")
         except Exception:
             pass
-
 
     def _read_raw_config(self) -> dict:
         try:
@@ -107,19 +105,6 @@ class ConfigManager:
         except Exception as e:
             raise IOError(f"Failed to save configuration: {str(e)}")
 
-    def _encrypt(self, text: str) -> str:
-        if not text:
-            return ""
-        return self.fernet.encrypt(text.encode("utf-8")).decode("utf-8")
-
-    def _decrypt(self, cipher_text: str) -> str:
-        if not cipher_text:
-            return ""
-        try:
-            return self.fernet.decrypt(cipher_text.encode("utf-8")).decode("utf-8")
-        except Exception:
-            return "" # Failed to decrypt (e.g. invalid key or format)
-
     def list_profiles(self, mask_keys: bool = True) -> dict:
         """
         Retrieves all connection profiles, optionally masking keys.
@@ -127,7 +112,10 @@ class ConfigManager:
         config = self._read_raw_config()
         profiles = []
         for p in config.get("profiles", []):
-            decrypted_key = self._decrypt(p.get("api_key", ""))
+            try:
+                decrypted_key = keyring.get_password("devpilot", p["id"]) or ""
+            except Exception:
+                decrypted_key = ""
             
             # Mask key for frontend representation
             key_val = decrypted_key
@@ -160,10 +148,14 @@ class ConfigManager:
         config = self._read_raw_config()
         for p in config.get("profiles", []):
             if p["id"] == profile_id:
+                try:
+                    api_key = keyring.get_password("devpilot", profile_id) or ""
+                except Exception:
+                    api_key = ""
                 return {
                     "id": p["id"],
                     "name": p["name"],
-                    "api_key": self._decrypt(p.get("api_key", "")),
+                    "api_key": api_key,
                     "base_url": p["base_url"],
                     "model_name": p["model_name"],
                     "api_format": p["api_format"]
@@ -213,7 +205,6 @@ class ConfigManager:
             existing_profile = {
                 "id": p_id,
                 "name": profile_data["name"],
-                "api_key": "",
                 "base_url": profile_data["base_url"],
                 "model_name": profile_data["model_name"],
                 "api_format": profile_data["api_format"]
@@ -231,9 +222,10 @@ class ConfigManager:
         is_masked = "..." in new_key or "*" in new_key
         
         if not is_masked:
-            # Overwrite with encrypted new key
-            existing_profile["api_key"] = self._encrypt(new_key)
-        # If it is masked, keep the old key already in the config file
+            try:
+                keyring.set_password("devpilot", p_id, new_key)
+            except Exception as e:
+                logger.error(f"Failed to set keyring password for {p_id}: {e}")
 
         self._save_raw_config(config)
         return self.get_profile(p_id)
@@ -253,6 +245,11 @@ class ConfigManager:
         if config.get("active_profile_id") == profile_id:
             config["active_profile_id"] = new_profiles[0]["id"] if new_profiles else ""
             
+        try:
+            keyring.delete_password("devpilot", profile_id)
+        except Exception:
+            pass
+
         self._save_raw_config(config)
 
     def get_last_workspace(self) -> str:
@@ -321,5 +318,11 @@ class ConfigManager:
         config["agent_models"] = agent_models
         self._save_raw_config(config)
 
-
-
+    def generate_bug_report(self) -> str:
+        """Scans the full workspace using the `scan_for_bugs` tool and returns a concise report."""
+        try:
+            from .tools.scan_for_bugs import generate_bug_report_sync
+            return generate_bug_report_sync()
+        except Exception as e:
+            logger.error(f"Bug scanning failed: {e}")
+            return f"Bug scanning failed: {e}"

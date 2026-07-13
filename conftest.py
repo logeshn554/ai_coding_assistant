@@ -1,0 +1,2 @@
+# Pytest configuration to ignore binary test result file that causes UnicodeDecodeError during collection.
+collect_ignore = ["frontend/test_results.txt", "frontend/test_out.txt", "frontend/test_run.txt"]

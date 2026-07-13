@@ -1,4 +1,5 @@
 from typing import AsyncGenerator, List, Dict, Any
+import os
 
 class ModelAdapter:
     def __init__(self, api_key: str, base_url: str, model_name: str):
@@ -19,6 +20,7 @@ class ModelAdapter:
         - Done chunk: {"type": "done", "stop_reason": "tool_use" | "stop"}
         """
         raise NotImplementedError("Subclasses must implement stream_chat")
+
 
 # Standardized tool definitions exposed to LLMs
 AVAILABLE_TOOLS = [
@@ -115,14 +117,6 @@ AVAILABLE_TOOLS = [
                 }
             },
             "required": ["query"]
-        }
-    },
-    {
-        "name": "scan_for_bugs",
-        "description": "Scans the entire workspace folder, reads all code files, and uses a background LLM process to analyze them and generate a summary of identified bugs and code quality issues. Use this to find bugs across the codebase.",
-        "input_schema": {
-            "type": "object",
-            "properties": {}
         }
     }
 ]

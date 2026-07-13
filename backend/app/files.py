@@ -4,9 +4,12 @@ import re
 import hashlib
 import time
 import glob
+import subprocess
 from .config import ConfigManager
 
 config_manager = ConfigManager()
+
+from pathlib import Path
 
 def safe_path(workspace_root: str, relative_path: str) -> str:
     """
@@ -15,22 +18,27 @@ def safe_path(workspace_root: str, relative_path: str) -> str:
     if not relative_path:
         relative_path = "."
     
-    # Normalize paths
-    abs_root = os.path.realpath(workspace_root)
-    # Join and normalize target
-    abs_target = os.path.realpath(os.path.join(abs_root, relative_path))
+    root_path = Path(workspace_root).resolve()
+    target_path = Path(workspace_root).joinpath(relative_path).resolve()
     
-    # Check if the target is within the root
     is_inside = False
-    if os.name == "nt":
-        is_inside = abs_target.lower().startswith(abs_root.lower())
-    else:
-        is_inside = abs_target.startswith(abs_root)
+    try:
+        if target_path.is_relative_to(root_path):
+            is_inside = True
+    except ValueError:
+        pass
         
+    if not is_inside:
+        # Fallback case-insensitive check for Windows
+        if os.name == "nt":
+            is_inside = str(target_path).lower().startswith(str(root_path).lower())
+        else:
+            is_inside = str(target_path).startswith(str(root_path))
+            
     if not is_inside:
         raise PermissionError(f"Access denied: path '{relative_path}' is outside the workspace root.")
     
-    return abs_target
+    return str(target_path)
 
 def list_workspace_dir(workspace_root: str, relative_path: str = "") -> list:
     """
@@ -75,7 +83,7 @@ class FileCacheManager:
     def __init__(self):
         self.cache = {} # abs_path -> {"content": str, "mtime": float}
 
-    def get(self, abs_path: str) -> str:
+    def get(self, abs_path: str) -> str | None:
         if not os.path.exists(abs_path):
             return None
         try:
@@ -334,6 +342,12 @@ def get_codebase_contents(workspace_root: str) -> str:
                 
     return "".join(output_lines)
 
-
-
-
+def scan_workspace_for_bugs(workspace_root: str) -> str:
+    """
+    Executes the 'scan_for_bugs' tool on the given workspace and returns a concise bug report.
+    """
+    try:
+        from .tools.scan_for_bugs import generate_bug_report_sync
+        return generate_bug_report_sync()
+    except Exception as e:
+        return f"Bug scan failed: {e}"

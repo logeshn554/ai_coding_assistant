@@ -14,11 +14,21 @@ class TerminalManager:
         Starts the persistent shell process (PowerShell on Windows, bash/sh on Unix)
         and begins reading its output.
         """
-        if sys.platform == "win32":
-            shell_cmd = ["powershell.exe", "-NoLogo", "-NoProfile"]
-        else:
-            shell_cmd = ["bash", "-i"]
+        from .shell_adapter import ShellAdapter
+        shell_cmd = ShellAdapter.get_shell_executable(interactive=True)
         
+        kwargs = {}
+        if sys.platform != "win32":
+            import pwd
+            def drop_privileges():
+                try:
+                    nobody = pwd.getpwnam('nobody')
+                    os.setgid(nobody.pw_gid)
+                    os.setuid(nobody.pw_uid)
+                except Exception:
+                    pass
+            kwargs["preexec_fn"] = drop_privileges
+
         try:
             cwd_dir = self.workspace_root if self.workspace_root and os.path.isdir(self.workspace_root) else os.path.expanduser("~")
             self.process = await asyncio.create_subprocess_exec(
@@ -27,8 +37,14 @@ class TerminalManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT, # pipe stderr to stdout to keep it in order
                 cwd=cwd_dir,
-                env=os.environ.copy()
+                env=os.environ.copy(),
+                **kwargs
             )
+            from .processes import confine_subprocess
+            try:
+                confine_subprocess(self.process.pid)
+            except Exception:
+                pass
             # Start background reader task
             self.read_task = asyncio.create_task(self._read_output_loop())
             
@@ -40,13 +56,27 @@ class TerminalManager:
     async def write(self, data: str):
         """
         Writes data (keystrokes, commands) to the shell's stdin.
+        Also echoes printable input and handles backspace/newline visuals for the client.
         """
         if self.process and self.process.stdin:
             try:
-                # xterm.js sends \r for enter, convert to \r\n for PowerShell if needed
-                # However, powershell typically handles standard inputs correctly.
+                # Write raw input to shell process stdin
                 self.process.stdin.write(data.encode("utf-8"))
                 await self.process.stdin.drain()
+
+                # Echo matching visuals to xterm.js client
+                for char in data:
+                    if char in ("\x08", "\x7f"):
+                        # Visual backspace on client: back cursor, space over, back cursor
+                        await self.send_callback("\b \b")
+                    elif char == "\r":
+                        await self.send_callback("\r\n")
+                    elif char == "\n":
+                        pass
+                    elif char == "\t":
+                        await self.send_callback("\t")
+                    elif ord(char) >= 32:
+                        await self.send_callback(char)
             except Exception as e:
                 await self.send_callback(f"\r\nTerminal input error: {str(e)}\r\n")
 
@@ -94,3 +124,4 @@ class TerminalManager:
                 except Exception:
                     pass
             self.process = None
+

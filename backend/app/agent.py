@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import uuid
 from typing import List, Dict, Any
 from .adapters.base import AVAILABLE_TOOLS
 from .adapters.anthropic import AnthropicAdapter
@@ -64,6 +65,15 @@ class AgentSession:
             "When referencing files, always use paths relative to the workspace root.\n"
             "Always follow best practices, write clean, well-documented code.\n"
         )
+        
+        from .workspace_index import WorkspaceIndex
+        try:
+            ws_indexer = WorkspaceIndex(self.workspace_root)
+            context = ws_indexer.get_prompt_context(max_tokens=2000)
+            if context:
+                base_prompt += context + "\n"
+        except Exception as e:
+            logger.error(f"Failed to load workspace context: {e}")
         
         if mode == "Ask":
             return base_prompt + (
@@ -207,7 +217,6 @@ class AgentSession:
                 if response_text:
                     assistant_msg["content"] = response_text
                 if tool_calls_to_run:
-                    # Save tool calls in internal representation format
                     assistant_msg["tool_calls"] = [
                         {
                             "id": tc["id"],
@@ -264,9 +273,8 @@ class AgentSession:
                 # Append tool outputs to history
                 self.conversation_history.extend(tool_results)
                 
-                # Check if there is another turn needed
-                # (only if model chose tool_use stop_reason, which we track implicitly by whether it called tools)
-                # If the user rejected tools, the model will see "Action cancelled by the user" in the tool result and continue or stop.
+                # Continue loop if more turns are needed
+                # (implicitly handled by presence of tool calls)
                 
             if turn >= self.max_turns:
                 await self.send_ws_message({
@@ -436,27 +444,6 @@ class AgentSession:
             results = await async_search_workspace_codebase(self.workspace_root, query)
             return json.dumps(results, indent=2)
             
-        elif name == "scan_for_bugs":
-            codebase_text = await async_get_codebase_contents(self.workspace_root)
-            if not codebase_text:
-                return "The workspace directory is empty or contains no readable source code files."
-                
-            prompt = (
-                "Here is the complete codebase of the project:\n\n"
-                f"{codebase_text}\n\n"
-                "Please perform a deep scan of this codebase. Identify any:\n"
-                "1. Syntax errors or compiler/runtime crashes.\n"
-                "2. Missing imports, circular dependencies, or undefined variables.\n"
-                "3. Logical bugs, race conditions, edge-case failures, or incorrect function parameters.\n"
-                "4. Style inconsistencies, code smells, or security concerns.\n\n"
-                "Provide a structured, concise summary of the identified bugs and issues. "
-                "List each bug with its file path and description of what needs to be fixed. "
-                "If no bugs are found, reply with 'No issues identified.'"
-            )
-            system_prompt = "You are a senior codebase auditor. Analyze the provided code files and list all bugs."
-            bugs_summary = await self._run_llm_query(system_prompt, prompt)
-            self.log_audit(name, args, "success", f"Scanned codebase; found {len(bugs_summary)} characters of bug summary")
-            return bugs_summary
             
         else:
             raise NotImplementedError(f"Tool '{name}' is not supported.")
@@ -467,9 +454,25 @@ class AgentSession:
         """
         import sys
         import time
+        
+        # Working directory lock check
+        if "cd .." in command or "cd/" in command or re.search(r'\bcd\b.*\.\.', command):
+            return "Failed to execute command: Access denied: changing directory outside the workspace root is locked."
+
+        from .shell_adapter import ShellAdapter
+        shell_executable = ShellAdapter.get_shell_executable(interactive=False)
+
         kwargs = {}
         if sys.platform != "win32":
-            kwargs["executable"] = "/bin/bash"
+            import pwd
+            def drop_privileges():
+                try:
+                    nobody = pwd.getpwnam('nobody')
+                    os.setgid(nobody.pw_gid)
+                    os.setuid(nobody.pw_uid)
+                except Exception:
+                    pass
+            kwargs["preexec_fn"] = drop_privileges
             
         start_time = time.time()
         
@@ -481,7 +484,8 @@ class AgentSession:
         })
         
         try:
-            process = await asyncio.create_subprocess_shell(
+            process = await asyncio.create_subprocess_exec(
+                *shell_executable,
                 command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
@@ -489,9 +493,24 @@ class AgentSession:
                 **kwargs
             )
             
+            from .processes import confine_subprocess
+            try:
+                confine_subprocess(process.pid)
+            except Exception:
+                pass
+
             output_chunks = []
             while True:
-                line_bytes = await process.stdout.readline()
+                elapsed = time.time() - start_time
+                remaining = 30.0 - elapsed
+                if remaining <= 0:
+                    raise asyncio.TimeoutError()
+
+                try:
+                    line_bytes = await asyncio.wait_for(process.stdout.readline(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    raise
+
                 if not line_bytes:
                     break
                 line = line_bytes.decode("utf-8", errors="replace")
@@ -516,6 +535,23 @@ class AgentSession:
             
             output = "".join(output_chunks)
             return output if output.strip() else "[Command executed with no output]"
+        except asyncio.TimeoutError:
+            elapsed_time = round(time.time() - start_time, 2)
+            try:
+                if sys.platform == "win32":
+                    import subprocess
+                    subprocess.call(f"taskkill /F /T /PID {process.pid}", shell=True)
+                else:
+                    process.kill()
+            except Exception:
+                pass
+            await self.send_ws_message({
+                "type": "terminal_status",
+                "status": "failed",
+                "exit_code": -1,
+                "elapsed": elapsed_time
+            })
+            return "Failed to execute command: Command timed out after 30 seconds."
         except Exception as e:
             elapsed_time = round(time.time() - start_time, 2)
             await self.send_ws_message({
@@ -681,7 +717,6 @@ class AgentSession:
             is_approved, risk, reason = self.permission_manager.check_permission(command)
             
         if not is_approved:
-            import uuid
             tc_id = f"run_{uuid.uuid4().hex[:6]}"
             event = asyncio.Event()
             self.pending_confirmations[tc_id] = {
@@ -903,7 +938,6 @@ class AgentSession:
                 is_approved, risk, reason = self.permission_manager.check_permission(fix_command)
                 
             if not is_approved:
-                import uuid
                 tc_id = f"fix_{uuid.uuid4().hex[:6]}"
                 event = asyncio.Event()
                 self.pending_confirmations[tc_id] = {
@@ -985,4 +1019,4 @@ class AgentSession:
                 await self.send_ws_message({
                     "type": "text_delta",
                     "content": "❌ Application failed to start after automatic recovery attempt. Please inspect logs.\n"
-                })
+                })

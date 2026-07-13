@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Trash2, ShieldCheck, Check, AlertCircle, RefreshCw } from 'lucide-react';
+import { X, Plus, Trash2, ShieldCheck, Check, AlertCircle, RefreshCw, Bug } from 'lucide-react';
 
 const AGENTS_LIST = [
   'Orchestrator Agent',
@@ -15,6 +15,15 @@ const AGENTS_LIST = [
   'Refactoring Agent',
   'Git Agent'
 ];
+
+const PRESETS = [
+  { name: 'Anthropic Claude 3.5 Sonnet', base_url: 'https://api.anthropic.com/v1', model_name: 'claude-sonnet-4-6', api_format: 'anthropic' as const },
+  { name: 'OpenAI GPT-4o', base_url: 'https://api.openai.com/v1', model_name: 'gpt-4o', api_format: 'openai' as const },
+  { name: 'Google Gemini 1.5 Flash', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai/', model_name: 'gemini-1.5-flash', api_format: 'google' as const },
+  { name: 'Ollama (Local Llama 3)', base_url: 'http://localhost:11434/v1', model_name: 'llama3', api_format: 'openai' as const }
+];
+
+
 
 interface AgentModelRowProps {
   label: string;
@@ -99,6 +108,10 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   const [agentModelName, setAgentModelName] = useState<string>('');
   const [agentModels, setAgentModels] = useState<Record<string, string>>({});
 
+  // New state for bug scanning
+  const [bugReport, setBugReport] = useState<string>('');
+  const [scanning, setScanning] = useState<boolean>(false);
+
   const loadPreferences = async () => {
     try {
       const res = await fetch('/api/config/settings');
@@ -115,9 +128,9 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   };
 
   const savePreferences = async (
-    newExclusions: string[], 
-    newBackup: boolean, 
-    newAgentModel?: string, 
+    newExclusions: string[],
+    newBackup: boolean,
+    newAgentModel?: string,
     newAgentModels?: Record<string, string>
   ) => {
     try {
@@ -159,7 +172,6 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
       if (data.success && data.models && data.models.length > 0) {
         setModelOptions(data.models);
         setHasFetchedModels(true);
-        // Automatically switch the selected model if the current one is not valid/saved
         if (!selectedProfile.model_name || !data.models.includes(selectedProfile.model_name)) {
           setSelectedProfile(prev => prev ? { ...prev, model_name: data.models[0] } : null);
         }
@@ -207,15 +219,12 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     }
   }, [isOpen, activeSettingsTab]);
 
-  // Load profiles
   const loadProfiles = async () => {
     try {
       const res = await fetch('/api/profiles');
       const data = await res.json();
       setProfiles(data.profiles);
       setActiveId(data.active_profile_id);
-      
-      // Auto-select active profile if none selected
       if (data.active_profile_id && !selectedProfile) {
         const active = data.profiles.find((p: Profile) => p.id === data.active_profile_id);
         if (active) setSelectedProfile(active);
@@ -234,7 +243,6 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
 
   const getSelectableModels = () => {
     const list = [...modelOptions];
-    // Only unshift the current model if we haven't successfully fetched the list of models from the server
     if (!hasFetchedModels && selectedProfile?.model_name && !list.includes(selectedProfile.model_name)) {
       list.unshift(selectedProfile.model_name);
     }
@@ -346,6 +354,25 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
       });
     } finally {
       setTesting(false);
+    }
+  };
+
+  // New handler for scanning bugs
+  const handleScanBugs = async () => {
+    setScanning(true);
+    setBugReport('');
+    try {
+      const res = await fetch('/api/scan-bugs', { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.report) {
+        setBugReport(data.report);
+      } else {
+        setBugReport('Failed to generate bug report: ' + (data.message || 'Unknown error'));
+      }
+    } catch (e) {
+      setBugReport('Error scanning for bugs: ' + String(e));
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -463,6 +490,36 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     {selectedProfile.id ? 'Edit Profile' : 'Configure New Profile'}
                   </h3>
 
+                  {/* Model Preset select */}
+                  <div className="flex flex-col gap-1.5 col-span-2">
+                    <label className="text-xs font-semibold text-gray-400">Model Preset</label>
+                    <select
+                      onChange={(e) => {
+                        const idx = parseInt(e.target.value);
+                        if (idx >= 0 && idx < PRESETS.length) {
+                          const preset = PRESETS[idx];
+                          setSelectedProfile({
+                            ...selectedProfile,
+                            name: preset.name,
+                            api_format: preset.api_format,
+                            base_url: preset.base_url,
+                            model_name: preset.model_name,
+                            api_key: ''
+                          });
+                          setHasFetchedModels(true);
+                          setModelOptions([preset.model_name]);
+                        }
+                      }}
+                      defaultValue=""
+                      className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500"
+                    >
+                      <option value="" disabled>Select a preset...</option>
+                      {PRESETS.map((p, idx) => (
+                        <option key={idx} value={idx.toString()}>{p.name} Preset</option>
+                      ))}
+                    </select>
+                  </div>
+
                   {/* Profile Name & API Format */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
@@ -544,62 +601,62 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     </div>
                   </div>
 
-                  {/* Model Selection area (conditional) */}
-                  <div className="mt-4 pt-4 border-t border-white/5">
-                    {hasFetchedModels && getSelectableModels().length > 0 ? (
-                      <div className="flex flex-col gap-1.5">
-                        <label className="text-xs font-semibold text-gray-400 flex justify-between items-center">
-                          <span>Model Name</span>
-                          <button
-                            type="button"
-                            onClick={fetchModels}
-                            disabled={isFetchingModels}
-                            className="text-[10px] text-violet-400 hover:text-violet-350 disabled:opacity-50 flex items-center gap-1"
-                          >
-                            <RefreshCw className={`w-3 h-3 ${isFetchingModels ? 'animate-spin' : ''}`} />
-                            Refetch Models List
-                          </button>
-                        </label>
-                        <select
-                          value={selectedProfile.model_name}
-                          onChange={(e) => setSelectedProfile({ ...selectedProfile, model_name: e.target.value })}
-                          className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
-                        >
-                          {getSelectableModels().map((model) => (
-                            <option key={model} value={model}>
-                              {model}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : (
-                      <div className="bg-violet-950/20 border border-violet-500/10 rounded-lg p-4 flex flex-col items-center text-center gap-3">
-                        <AlertCircle className="w-6 h-6 text-violet-400" />
-                        <div>
-                          <h4 className="text-xs font-semibold text-white">Models list not loaded yet</h4>
-                          <p className="text-[11px] text-gray-400 mt-0.5">
-                            Enter the Base URL and API Key above, then fetch to load the models list.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={fetchModels}
-                          disabled={isFetchingModels}
-                          className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-xs text-white font-medium rounded-lg transition-colors flex items-center gap-1.5"
-                        >
-                          {isFetchingModels ? (
-                            <>
-                              <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Fetching Models...
-                            </>
-                          ) : (
-                            <>
-                              <RefreshCw className="w-3.5 h-3.5" /> Fetch & List Models
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                   {/* Model Selection area */}
+                   <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-3">
+                     <div className="flex flex-col gap-1.5">
+                       <div className="text-xs font-semibold text-gray-400 flex justify-between items-center">
+                         <span>Model Name</span>
+                         <div className="flex gap-2.5">
+                           {hasFetchedModels ? (
+                             <button
+                               type="button"
+                               onClick={() => {
+                                 setHasFetchedModels(false);
+                                 setModelOptions([]);
+                               }}
+                               className="text-[10px] text-violet-400 hover:text-violet-350 cursor-pointer"
+                             >
+                               Edit Manually
+                             </button>
+                           ) : (
+                             <button
+                               type="button"
+                               onClick={fetchModels}
+                               disabled={isFetchingModels}
+                               className="text-[10px] text-violet-400 hover:text-violet-350 disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                             >
+                               <RefreshCw className={`w-3 h-3 ${isFetchingModels ? 'animate-spin' : ''}`} />
+                               {isFetchingModels ? 'Fetching Models...' : 'Fetch & List Models'}
+                             </button>
+                           )}
+                         </div>
+                       </div>
+                       
+                       {hasFetchedModels && getSelectableModels().length > 0 ? (
+                         <select
+                           value={selectedProfile.model_name}
+                           onChange={(e) => setSelectedProfile({ ...selectedProfile, model_name: e.target.value })}
+                           className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
+                         >
+                           {getSelectableModels().map((model) => (
+                             <option key={model} value={model}>
+                               {model}
+                             </option>
+                           ))}
+                         </select>
+                       ) : (
+                         <div className="flex gap-2">
+                           <input
+                             type="text"
+                             value={selectedProfile.model_name}
+                             onChange={(e) => setSelectedProfile({ ...selectedProfile, model_name: e.target.value })}
+                             className="flex-1 px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
+                             placeholder="Type model name (e.g. gpt-4o, llama3-8b-8192)..."
+                           />
+                         </div>
+                       )}
+                     </div>
+                   </div>
 
                   {/* Test Connection Results */}
                   {testResult && (
@@ -785,7 +842,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
               </select>
             </div>
 
-            {/* Per-Agent Model Selection */}
+            {/* Per-Agent Model Configurations */}
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-400 block">
                 Per-Agent Model Configurations
@@ -832,6 +889,37 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                 </span>
               </div>
             </div>
+
+            {/* Bug Scan Section */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-400 flex items-center gap-1">
+                <Bug className="w-4 h-4 text-red-400" />
+                Workspace Bug Scan
+              </label>
+              <div className="flex gap-2 items-center">
+                <button
+                  onClick={handleScanBugs}
+                  disabled={scanning}
+                  className="px-3 py-1 rounded bg-red-600 hover:bg-red-500 text-white text-xs disabled:opacity-50 flex items-center gap-1"
+                >
+                  {scanning ? (
+                    <>
+                      <RefreshCw className="w-3 h-3 animate-spin" /> Scanning...
+                    </>
+                  ) : (
+                    <>
+                      <Bug className="w-3 h-3" /> Scan for Bugs
+                    </>
+                  )}
+                </button>
+              </div>
+              {bugReport && (
+                <pre className="mt-2 p-3 bg-[#171922] border border-white/5 rounded-lg text-xs text-white whitespace-pre-wrap overflow-x-auto max-h-40">
+                  {bugReport}
+                </pre>
+              )}
+            </div>
+
           </div>
         )}
       </div>

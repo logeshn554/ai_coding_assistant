@@ -1,6 +1,7 @@
 import logging
 from .openai import OpenAIAdapter
 from .anthropic import AnthropicAdapter
+from ..tools.scan_for_bugs import generate_bug_report_async
 
 logger = logging.getLogger("devpilot.router")
 
@@ -101,3 +102,16 @@ class ModelRouter:
             else:
                 raise e
         return response_text
+
+    async def generate_bug_report(self, profile: dict = None) -> str:
+        """
+        Scans the entire workspace for bugs using the `scan_for_bugs` tool and returns a concise report.
+        """
+        try:
+            logger.info("ModelRouter: Initiating workspace bug scan...")
+            report = await generate_bug_report_async()
+            logger.info("ModelRouter: Bug scan completed successfully.")
+            return report.strip()
+        except Exception as e:
+            logger.error(f"ModelRouter: Bug scan failed: {str(e)}")
+            raise e

@@ -5,9 +5,28 @@ import sys
 import logging
 import subprocess
 import uuid
-from typing import Dict, List, Optional
+import ctypes
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger("devpilot.processes")
+
+_job_objects = []
+
+def confine_subprocess(pid: int):
+    if sys.platform == "win32":
+        try:
+            kernel32 = ctypes.windll.kernel32
+            job = kernel32.CreateJobObjectW(None, None)
+            if job:
+                PROCESS_SET_QUOTA = 0x0100
+                PROCESS_TERMINATE = 0x0001
+                proc_handle = kernel32.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, pid)
+                if proc_handle:
+                    if kernel32.AssignProcessToJobObject(job, proc_handle):
+                        _job_objects.append(job)
+                    kernel32.CloseHandle(proc_handle)
+        except Exception:
+            pass
 
 class ActiveProcess:
     def __init__(self, command: str, cwd: str, name: str = None):
@@ -34,6 +53,15 @@ class ActiveProcess:
         kwargs = {}
         if sys.platform != "win32":
             kwargs["executable"] = "/bin/bash"
+            import pwd
+            def drop_privileges():
+                try:
+                    nobody = pwd.getpwnam('nobody')
+                    os.setgid(nobody.pw_gid)
+                    os.setuid(nobody.pw_uid)
+                except Exception:
+                    pass
+            kwargs["preexec_fn"] = drop_privileges
 
         try:
             self.process = await asyncio.create_subprocess_shell(
@@ -45,6 +73,10 @@ class ActiveProcess:
                 **kwargs
             )
             self.pid = self.process.pid
+            try:
+                confine_subprocess(self.pid)
+            except Exception:
+                pass
             self.read_task = asyncio.create_task(self._read_output())
         except Exception as e:
             self.status = "failed"
@@ -190,7 +222,7 @@ class ProcessManager:
 # Global instance of process manager
 global_process_manager = ProcessManager()
 
-def get_process_using_port(port: int) -> tuple[Optional[int], Optional[str]]:
+def get_process_using_port(port: int) -> Tuple[Optional[int], Optional[str]]:
     """
     Returns (pid, process_name) of the process listening on the specified port.
     """
@@ -234,3 +266,4 @@ def kill_process_by_pid(pid: int) -> bool:
     except Exception as e:
         logger.error(f"Failed to kill process {pid}: {str(e)}")
         return False
+

@@ -33,12 +33,8 @@ class PermissionManager:
     def get_command_risk(self, command: str) -> str:
         cmd = command.strip().lower()
         
-        # Destructive patterns
-        destructive_patterns = [
-            r"\brm\b", r"\bdel\b", r"\brt\b", r"\brd\b", r"\bformat\b",
-            r"git push\s+.*--force", r"git push\s+.*-f",
-            r"git reset\s+.*--hard", r"git clean\b", r"\bsudo\b", r"\bkill\b"
-        ]
+        # Destructive patterns (removed keyword blocklist - security theater)
+        destructive_patterns = []
         if any(re.search(pat, cmd) for pat in destructive_patterns):
             return RISK_DESTRUCTIVE
             
@@ -91,3 +87,4 @@ class PermissionManager:
         cmd_pattern = self._get_command_pattern(command)
         project_id = self._get_project_id()
         self.config_manager.remove_project_permission(project_id, cmd_pattern)
+

@@ -3,22 +3,16 @@ import {
   Send,
   Settings,
   Sparkles,
-  User,
   Terminal,
   Check,
   X,
-  FileDiff,
-  Play,
   Plus,
   Mic,
   ChevronDown,
   FileCode,
   Braces,
-  FileText,
-  ChevronRight,
   MessageSquare,
-  ListTodo,
-  AlertTriangle
+  FileText
 } from 'lucide-react';
 
 export interface ChatMessage {
@@ -83,6 +77,11 @@ interface ChatPanelProps {
   onDeleteSession?: (sessionId: string) => void;
   onNewSession?: () => void;
   onRenameSession?: (sessionId: string, newTitle: string) => void;
+
+  // Git & File Selection
+  gitChangesList?: any[];
+  onGitAction?: (action: any, files?: any) => any;
+  onSelectFile?: (filePath: any) => any;
 }
 
 export default function ChatPanel({
@@ -97,8 +96,6 @@ export default function ChatPanel({
   onConfirmPermission,
   activeAgent = null,
   activeTask = null,
-  collaborationLog = [],
-  subtasks = [],
   contextTokens = '0',
   contextPercentage = 0,
   activeProcesses = [],
@@ -349,64 +346,78 @@ export default function ChatPanel({
     );
   };
 
-  const chatMessagesCount = messages.filter(m => m.role === 'user' || m.role === 'assistant').length;
-  const toolMessagesCount = messages.filter(m => m.role === 'tool' || m.isConfirmPending).length;
-  const pendingCount = messages.filter(m => m.isConfirmPending).length;
   const lastMessage = messages[messages.length - 1];
   const showTypingIndicator = isGenerating && (!lastMessage || lastMessage.role === 'user');
 
   return (
-    <div className="h-full flex flex-col bg-[#0c0d12] text-gray-200 border-l border-white/5 font-sans relative overflow-hidden">
+    <div className="h-full flex flex-col bg-[#181818] text-[#cccccc] font-sans relative overflow-hidden">
 
-      {/* Header Row */}
-      <div className="p-3 border-b border-white/5 bg-[#0e1015] shrink-0">
-        {/* Profile, History and Settings top row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-violet-400 animate-pulse-subtle" />
-            <span className="text-xs font-bold text-white tracking-wide">DevPilot Core Assistant</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setShowHistoryDropdown(!showHistoryDropdown)}
-              type="button"
-              className="p-1.5 rounded hover:bg-white/5 text-gray-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer"
-              title="Chat History"
-            >
-              <MessageSquare className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onNewSession}
-              type="button"
-              className="p-1.5 rounded hover:bg-white/5 text-gray-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer"
-              title="New Conversation"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onOpenSettings}
-              type="button"
-              className="p-1.5 rounded hover:bg-white/5 text-gray-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer"
-              title="Settings"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-          </div>
+      {/* Header Row - Compact */}
+      <div className="p-2 border-b border-[#2d2d2d] bg-[#131313] flex items-center justify-between shrink-0 select-none">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-violet-400 animate-pulse-subtle shrink-0" />
+          <span className="text-xs font-semibold text-white tracking-wide">DevPilot Chat</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" title="Agent Ready" />
+        </div>
+        <div className="flex items-center gap-0.5 text-gray-400">
+          <button
+            onClick={() => setShowHistoryDropdown(!showHistoryDropdown)}
+            type="button"
+            className="p-1 hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
+            title="Chat History"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onNewSession}
+            type="button"
+            className="p-1 hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
+            title="New Conversation"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={onOpenSettings}
+            type="button"
+            className="p-1 hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
+            title="Settings"
+          >
+            <Settings className="w-3.5 h-3.5" />
+          </button>
         </div>
 
         {/* Chat History Dropdown */}
         {showHistoryDropdown && (
-          <div className="absolute right-3 top-14 w-72 max-h-[360px] bg-[#161822] border border-white/10 rounded-xl shadow-2xl z-50 p-3 flex flex-col gap-2 font-sans">
-            <div className="flex items-center justify-between border-b border-white/5 pb-2">
+          <div className="absolute right-2 top-10 w-72 max-h-[360px] bg-[#181818] border border-[#2d2d2d] shadow-2xl z-50 p-2.5 flex flex-col gap-2 font-sans rounded-none">
+            <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1.5">
               <span className="text-xs font-bold text-white">Chat History</span>
-              <button
-                onClick={() => setShowHistoryDropdown(false)}
-                className="text-gray-450 hover:text-white p-1 rounded"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={async () => {
+                    if (confirm("Are you sure you want to clear all chat sessions? This cannot be undone.")) {
+                      try {
+                        const res = await fetch('/api/chat/sessions', { method: 'DELETE' });
+                        if (res.ok) {
+                          window.location.reload();
+                        }
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }
+                  }}
+                  className="text-[9px] bg-red-500/10 hover:bg-red-500/20 text-red-405 border border-red-500/20 px-1.5 py-0.2 rounded-none cursor-pointer transition-colors"
+                >
+                  Clear All
+                </button>
+                <button
+                  onClick={() => setShowHistoryDropdown(false)}
+                  className="text-gray-400 hover:text-white p-0.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto space-y-1.5 max-h-56 pr-1">
+            <div className="flex-1 overflow-y-auto space-y-1 max-h-56 pr-1">
               {sessions && sessions.length > 0 ? (
                 sessions.map((s) => {
                   const isActive = s.id === activeSessionId;
@@ -414,13 +425,13 @@ export default function ChatPanel({
                   return (
                     <div
                       key={s.id}
-                      className={`group flex items-center justify-between p-2 rounded-lg transition-all text-xs border ${isActive
+                      className={`group flex items-center justify-between p-1.5 transition-all text-xs border ${isActive
                           ? 'bg-violet-500/10 border-violet-500/30 text-white font-medium'
                           : 'bg-black/10 border-transparent text-gray-400 hover:bg-white/5 hover:text-gray-200'
-                        }`}
+                        } rounded-none`}
                     >
                       {isRenaming ? (
-                        <div className="flex items-center gap-1.5 w-full">
+                        <div className="flex items-center gap-1 w-full">
                           <input
                             type="text"
                             value={renameText}
@@ -431,7 +442,7 @@ export default function ChatPanel({
                                 setRenamingSessionId(null);
                               }
                             }}
-                            className="bg-black/60 border border-white/15 rounded px-2 py-0.5 text-xs text-white focus:outline-none w-full font-sans"
+                            className="bg-[#1e1e1e] border border-[#2d2d2d] px-1.5 py-0.5 text-xs text-white focus:outline-none w-full rounded-none"
                             autoFocus
                           />
                           <button
@@ -441,7 +452,7 @@ export default function ChatPanel({
                                 setRenamingSessionId(null);
                               }
                             }}
-                            className="p-1 text-emerald-400 hover:bg-white/5 rounded"
+                            className="p-0.5 text-emerald-400 hover:bg-white/5 rounded-none"
                           >
                             <Check className="w-3.5 h-3.5" />
                           </button>
@@ -460,20 +471,20 @@ export default function ChatPanel({
                       )}
 
                       {!isRenaming && (
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={() => {
                               setRenamingSessionId(s.id);
                               setRenameText(s.title);
                             }}
-                            className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white"
+                            className="p-0.5 hover:bg-white/5 text-gray-500 hover:text-white rounded-none"
                             title="Rename"
                           >
                             <FileText className="w-3 h-3" />
                           </button>
                           <button
                             onClick={() => onDeleteSession?.(s.id)}
-                            className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-red-400"
+                            className="p-0.5 hover:bg-white/5 text-gray-500 hover:text-red-400 rounded-none"
                             title="Delete"
                           >
                             <X className="w-3 h-3" />
@@ -484,7 +495,7 @@ export default function ChatPanel({
                   );
                 })
               ) : (
-                <div className="text-[10px] text-gray-650 text-center py-4">
+                <div className="text-[10px] text-gray-600 text-center py-4">
                   No saved conversations
                 </div>
               )}
@@ -495,7 +506,7 @@ export default function ChatPanel({
                 onNewSession?.();
                 setShowHistoryDropdown(false);
               }}
-              className="mt-2 w-full py-2 bg-violet-650 hover:bg-violet-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              className="mt-1 w-full py-1.5 bg-[#8b5cf6] hover:bg-[#7c4dff] text-white rounded-none text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" /> New Conversation
             </button>
@@ -503,676 +514,452 @@ export default function ChatPanel({
         )}
       </div>
 
-      {/* 2. Agent Status Card */}
-      <div className="px-3 pt-2 shrink-0">
-        <div className="p-3 bg-[#151720] border border-white/5 rounded-xl shadow-md">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500"></span>
-              </span>
-              <span className="text-[11px] font-bold text-gray-200">
-                Active Agent: {activeAgent || 'DevPilot Core'}
-              </span>
+      {/* Agent Status Compact Bar */}
+      <div className="px-2 py-1.5 bg-[#141414] border-b border-[#2d2d2d] flex items-center justify-between text-[10px] select-none font-mono text-gray-400 shrink-0">
+        <span className="truncate max-w-[200px]" title={activeTask || 'Ready'}>
+          Active Task: <span className="text-[#cccccc]">{activeTask ? `"${activeTask}"` : 'Listening for instructions'}</span>
+        </span>
+        {activeAgent && (
+          <span className="text-[9px] bg-violet-500/10 text-violet-400 border border-violet-500/20 px-1 rounded-sm uppercase shrink-0 font-bold leading-normal">
+            {activeAgent}
+          </span>
+        )}
+      </div>
+
+      {/* Message & Log Feed Container - Unified Inline Stream */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 bg-[#1e1e1e] scrollbar-thin select-text">
+        {messages.length === 0 ? (
+          <div className="h-full flex flex-col justify-center items-center p-6 space-y-4 text-center">
+            <div className="p-3 bg-[#8b5cf6]/10 border border-[#8b5cf6]/20 text-violet-400 shrink-0">
+              <Sparkles className="w-5 h-5 text-violet-400" />
             </div>
-            {subtasks && subtasks.length > 0 && (
-              <span className="text-[9px] text-gray-400 bg-white/5 px-1.5 py-0.5 rounded font-mono font-medium">
-                Workers: {subtasks.filter((s: any) => s.status === 'running').length}
-              </span>
-            )}
-          </div>
+            <h2 className="text-xs font-bold text-white tracking-wide uppercase">AI Assistant Ready</h2>
+            <p className="text-[10px] text-gray-500 max-w-[220px] leading-relaxed font-sans">
+              Enter your instruction below to analyze the codebase, scan for issues, write unit tests, or apply code changes.
+            </p>
 
-          <p className="text-[10px] text-gray-450 italic mt-1 font-sans">
-            Current task: "{activeTask || 'Listening for inputs and user prompts'}"
-          </p>
-
-          <hr className="border-white/5 my-2" />
-
-          {/* Collapsible collaboration logs */}
-          <details className="group">
-            <summary className="flex items-center gap-1 cursor-pointer select-none text-[10px] font-semibold text-gray-400 hover:text-gray-200 transition-colors focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none rounded py-0.5 list-none [&::-webkit-details-marker]:hidden">
-              <ChevronRight className="w-3.5 h-3.5 text-gray-500 transition-transform duration-200 group-open:rotate-90 motion-reduce:transition-none" />
-              <span>Agent Collaboration Logs ({collaborationLog.length})</span>
-            </summary>
-
-            <div className="mt-2 max-h-24 overflow-y-auto font-mono text-[9px] text-gray-400 space-y-1 bg-black/35 rounded-lg p-2.5 border border-white/5">
-              {collaborationLog.length === 0 ? (
-                <div className="text-gray-500 italic">No logs recorded yet.</div>
-              ) : (
-                collaborationLog.map((logStr, i) => (
-                  <div key={i} className="border-l border-violet-500/30 pl-2 py-0.5 leading-normal break-all">
-                    {logStr}
-                  </div>
-                ))
-              )}
-            </div>
-          </details>
-
-          {/* Subtasks pipeline render if available */}
-          {subtasks && subtasks.length > 0 && (
-            <div className="mt-2 pt-2 border-t border-white/5 space-y-1.5 max-h-24 overflow-y-auto pr-1">
-              {subtasks.map((task: any) => (
-                <div key={task.id} className="p-1.5 bg-black/20 rounded-lg border border-white/5 space-y-1">
-                  <div className="flex items-center justify-between text-[9px]">
-                    <span className="font-semibold text-gray-300 truncate max-w-[180px]">
-                      #{task.id} - {task.agent}
-                    </span>
-                    <span className={`px-1 rounded text-[8px] font-bold uppercase ${task.status === 'completed'
-                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/10'
-                        : task.status === 'running'
-                          ? 'bg-violet-500/20 text-violet-400 border border-violet-500/10 animate-pulse'
-                          : 'bg-gray-500/10 text-gray-400 border border-white/5'
-                      }`}>
-                      {task.status === 'completed' ? 'Done' : task.status === 'running' ? 'Running' : 'Waiting'}
-                    </span>
-                  </div>
-                  <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-305 ${task.status === 'completed'
-                          ? 'bg-emerald-500'
-                          : 'bg-violet-500'
-                        }`}
-                      style={{ width: `${task.progress || 0}%` }}
-                    />
-                  </div>
-                </div>
+            <div className="grid grid-cols-2 gap-1.5 w-full pt-4">
+              {[
+                { label: "Refactor current file", prompt: "Explain how we can refactor this file to make it cleaner." },
+                { label: "Find errors & bugs", prompt: "Inspect the current file for potential errors or bugs." },
+                { label: "Write unit tests", prompt: "Draft unit tests for the functions defined in this file." },
+                { label: "Explain codebase", prompt: "Summarize the layout and relationships in this codebase." }
+              ].map((act, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setInput(act.prompt)}
+                  className="p-1.5 text-left bg-[#181818] border border-[#2d2d2d] hover:border-[#8b5cf6]/40 rounded-none text-[10px] text-gray-400 hover:text-white transition-all truncate cursor-pointer font-sans"
+                >
+                  💡 {act.label}
+                </button>
               ))}
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* 3. Visual separator & Tab Switch for Logs / Chat sections */}
-      <div className="px-3 pt-2 shrink-0">
-        <div className="flex bg-[#12141c] rounded-xl p-1 border border-white/5 justify-between items-center text-xs">
-          <div className="flex bg-black/20 rounded-lg p-0.5 border border-white/5 flex-1">
-            <button
-              type="button"
-              onClick={() => setActiveFeedTab('chat')}
-              className={`flex-1 py-1 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none ${activeFeedTab === 'chat'
-                  ? 'bg-white/10 text-white font-bold'
-                  : 'text-gray-400 hover:text-gray-200'
-                }`}
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>Chat</span>
-              {chatMessagesCount > 0 && (
-                <span className="bg-violet-500/20 text-violet-300 px-1.5 rounded-full text-[9px] font-bold">
-                  {chatMessagesCount}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveFeedTab('logs')}
-              className={`flex-1 py-1 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer relative focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none ${activeFeedTab === 'logs'
-                  ? 'bg-white/10 text-white font-bold'
-                  : 'text-gray-400 hover:text-gray-200'
-                }`}
-            >
-              <ListTodo className="w-3.5 h-3.5" />
-              <span>Tool Logs</span>
-              {toolMessagesCount > 0 && (
-                <span className="bg-white/15 text-gray-300 px-1.5 rounded-full text-[9px] font-bold font-mono">
-                  {toolMessagesCount}
-                </span>
-              )}
-              {pendingCount > 0 && (
-                <span className="absolute top-1.5 right-2.5 flex h-1.5 w-1.5">
-                  <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500"></span>
-                </span>
-              )}
-            </button>
           </div>
-        </div>
-      </div>
+        ) : (
+          <div className="space-y-3 select-text">
+            {messages.map((msg) => {
+              const isUser = msg.role === 'user';
 
-      {/* Alert banner if in Chat tab and actions are pending in Tool Logs */}
-      {activeFeedTab === 'chat' && pendingCount > 0 && (
-        <div className="mx-3 mt-2 p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-between text-[11px] text-yellow-300 motion-safe:animate-pulse-subtle shrink-0">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-yellow-400" />
-            <span>{pendingCount} tool command{pendingCount > 1 ? 's' : ''} pending approval.</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActiveFeedTab('logs')}
-            className="px-2 py-0.5 rounded bg-yellow-500/20 hover:bg-yellow-500/30 text-white font-bold transition-all text-[10px] focus-visible:ring-2 focus-visible:ring-yellow-500 focus-visible:outline-none"
-          >
-            Open Logs
-          </button>
-        </div>
-      )}
-
-      {/* Message Feed / Log Feed Container */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 bg-[#07080b]/30">
-
-        {/* Chat Feed Mode */}
-        {activeFeedTab === 'chat' && (
-          messages.length === 0 ? (
-            <div className="h-full flex flex-col justify-center items-center p-6 space-y-4 text-center">
-              <div className="p-3 bg-violet-600/10 border border-violet-500/20 rounded-2xl glow-purple animate-pulse-subtle">
-                <Sparkles className="w-6 h-6 text-violet-400" />
-              </div>
-              <h2 className="text-sm font-bold text-white tracking-tight">Welcome to DevPilot</h2>
-              <p className="text-[10px] text-gray-550 max-w-[220px]">
-                Your next-generation multi-agent coding engine. Ask a question or request a task code edit below.
-              </p>
-
-              <div className="grid grid-cols-2 gap-1.5 w-full pt-2">
-                {[
-                  { label: "Refactor current file", prompt: "Explain how we can refactor this file to make it cleaner." },
-                  { label: "Find errors & bugs", prompt: "Inspect the current file for potential errors or bugs." },
-                  { label: "Write unit tests", prompt: "Draft unit tests for the functions defined in this file." },
-                  { label: "Explain codebase", prompt: "Summarize the layout and relationships in this codebase." }
-                ].map((act, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setInput(act.prompt)}
-                    className="p-2 text-left bg-white/2 border border-white/5 rounded-lg text-[9px] text-gray-450 hover:text-white hover:bg-[#151720] hover:border-white/10 transition-all truncate cursor-pointer focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none"
-                  >
-                    💡 {act.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {messages
-                .filter(msg => msg.role === 'user' || msg.role === 'assistant')
-                .map((msg) => {
-                  const isUser = msg.role === 'user';
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`group flex gap-2.5 max-w-[95%] items-start relative ${isUser ? 'ml-auto flex-row-reverse' : ''
-                        }`}
-                    >
-                      {/* Avatar */}
-                      <div className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold shadow-md border ${isUser
-                          ? 'bg-violet-650 text-white border-violet-500/30'
-                          : 'bg-zinc-800 text-violet-400 border-white/5'
-                        }`}>
-                        {isUser ? <User className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
-                      </div>
-
-                      {/* Message Bubble & Details */}
-                      <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[calc(100%-2.5rem)]`}>
-                        <div className={`p-3 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap select-text shadow-sm ${isUser
-                            ? 'bg-violet-950/45 border border-violet-500/25 text-white rounded-tr-none'
-                            : 'bg-[#151720] border border-white/5 text-gray-250 rounded-tl-none'
-                          }`}>
-                          {renderMessageContent(msg.content?.trim() || (msg.isConfirmPending ? "Executing operations and pending authorization..." : mode === 'Agent' ? "Processing task operations..." : "Thinking..."))}
-                        </div>
-
-                        {/* Direct log reviewer link for assistant bubble if it's pending */}
-                        {!isUser && msg.isConfirmPending && (
-                          <div className="mt-1.5 w-full bg-violet-500/5 border border-violet-500/10 rounded-lg p-2 text-[10px] text-violet-300 flex items-center justify-between">
-                            <span className="flex items-center gap-1.5 font-sans">
-                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                              <span>Authorizations pending in Tool Logs.</span>
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setActiveFeedTab('logs')}
-                              className="px-2 py-0.5 rounded bg-violet-500/20 hover:bg-violet-500/30 text-white font-bold transition-all focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none"
-                            >
-                              Review Now
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Timestamp showing on hover */}
-                        <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-[9px] text-gray-500 mt-1 select-none font-mono">
-                          {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+              // 1. RENDER USER MESSAGE
+              if (isUser) {
+                return (
+                  <div key={msg.id} className="flex gap-2 max-w-[95%] items-start ml-auto flex-row-reverse select-text">
+                    <div className="w-5 h-5 rounded-sm bg-[#8b5cf6] text-white shrink-0 flex items-center justify-center text-[9px] font-bold select-none">
+                      U
+                    </div>
+                    <div className="flex flex-col items-end max-w-[calc(100%-1.5rem)]">
+                      <div className="p-2 bg-[#2a2a2b] border border-[#2d2d2d] text-xs text-white rounded-none leading-relaxed whitespace-pre-wrap select-text">
+                        {renderMessageContent(msg.content?.trim() || '')}
                       </div>
                     </div>
-                  );
-                })
+                  </div>
+                );
               }
 
-              {/* Loader/Typing indicator if assistant is streaming/generating */}
-              {showTypingIndicator && (
-                <div className="flex gap-2.5 max-w-[95%] items-start">
-                  <div className="w-7 h-7 rounded-full shrink-0 bg-zinc-800 text-violet-400 flex items-center justify-center border border-white/5">
-                    <Sparkles className="w-3.5 h-3.5 animate-pulse-subtle" />
-                  </div>
-                  <div className="flex flex-col items-start max-w-[calc(100%-2.5rem)]">
-                    <div className="p-3 bg-[#151720] border border-white/5 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-1.5 py-2.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce motion-reduce:animate-none" style={{ animationDelay: '0ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce motion-reduce:animate-none" style={{ animationDelay: '150ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce motion-reduce:animate-none" style={{ animationDelay: '300ms' }} />
-                      <span className="text-[10px] text-gray-500 font-mono ml-2 select-none">
-                        {statusMessage || 'Thinking...'}
-                      </span>
+              // 2. RENDER COMPLETED TOOL RESULTS INLINE
+              if (msg.role === 'tool') {
+                const isSuccess = msg.status === 'success';
+                return (
+                  <div key={msg.id} className="flex gap-2 max-w-[95%] items-start select-text">
+                    <div className="w-5 h-5 rounded-sm bg-[#131313] border border-[#2d2d2d] text-gray-500 shrink-0 flex items-center justify-center text-[8px] font-bold font-mono select-none">
+                      TL
                     </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-        )}
-
-        {/* 3. Tool Execution Log Feed Mode */}
-        {activeFeedTab === 'logs' && (
-          toolMessagesCount === 0 ? (
-            <div className="h-full flex flex-col justify-center items-center p-6 space-y-3 text-center">
-              <div className="p-3.5 bg-white/5 border border-white/5 rounded-2xl text-gray-400">
-                <Terminal className="w-6 h-6" />
-              </div>
-              <h2 className="text-sm font-bold text-white tracking-tight">No Tool Calls Yet</h2>
-              <p className="text-[10px] text-gray-550 max-w-[200px]">
-                When the agent makes directory listings, file edits, or runs terminal commands, they will be logged here.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3 font-mono">
-              {messages.map((msg) => {
-                // RENDER: Completed Tool Cards
-                if (msg.role === 'tool') {
-                  const isSuccess = msg.status === 'success';
-                  return (
-                    <div key={msg.id} className="border border-white/5 bg-[#141620] rounded-xl p-3 space-y-2 text-xs shadow-sm">
-                      {/* Tool Card Header */}
-                      <div className="flex items-center justify-between border-b border-white/5 pb-2 font-mono">
-                        <span className="text-[11px] font-bold text-gray-300">
-                          TOOL: {msg.name || 'unknown_tool'}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase ${isSuccess
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                          }`}>
+                    <div className="flex-1 max-w-[calc(100%-1.5rem)] border border-[#2d2d2d] bg-[#141414] p-2 space-y-1.5 text-[10px] font-mono select-text">
+                      <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1">
+                        <span className="font-semibold text-gray-300 truncate">Tool: {msg.name || 'unknown'}</span>
+                        <span className={`px-1.5 py-0.2 rounded-none text-[8px] font-bold ${
+                          isSuccess ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                        }`}>
                           {isSuccess ? 'SUCCESS' : 'FAILED'}
                         </span>
                       </div>
-
-                      {/* Tool Card Body */}
-                      <pre className="text-[10px] leading-normal text-gray-400 max-h-40 overflow-y-auto whitespace-pre-wrap select-text bg-black/25 p-2 rounded-lg border border-white/5 scrollbar-thin">
-                        {msg.content}
-                      </pre>
-                    </div>
-                  );
-                }
-
-                // RENDER: Pending Authorizations / Commands in Logs
-                if (msg.isConfirmPending) {
-                  // Case A: Smart Permission dialog
-                  if (msg.isPermissionRequest) {
-                    return (
-                      <div key={msg.id} className="border border-violet-500/25 bg-[#161a25] rounded-xl p-3 space-y-3 shadow-md font-sans">
-                        {/* Header */}
-                        <div className="flex items-center justify-between border-b border-white/5 pb-2 font-mono">
-                          <span className="text-[11px] font-bold text-violet-300 flex items-center gap-1">
-                            <Terminal className="w-3.5 h-3.5 text-violet-400" /> TOOL: run_command
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase border animate-pulse motion-reduce:animate-none ${msg.permissionRisk === 'destructive'
-                              ? 'bg-red-500/15 text-red-400 border-red-500/20'
-                              : msg.permissionRisk === 'safe'
-                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
-                                : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/20'
-                            }`}>
-                            {msg.permissionRisk || 'medium'} Risk
-                          </span>
-                        </div>
-
-                        {/* Body content */}
-                        <div className="space-y-2 text-[10px] text-gray-300 leading-normal">
-                          {msg.permissionExplanation && (
-                            <div className="bg-black/20 p-2.5 rounded-lg border border-white/5">
-                              <span className="text-[9px] uppercase font-bold text-gray-500 block mb-1">Reason & Intent</span>
-                              {msg.permissionExplanation}
-                            </div>
-                          )}
-
-                          {msg.permissionReason && (
-                            <div className="text-[9px] border border-violet-500/10 p-2 rounded bg-violet-500/5 italic text-violet-300">
-                              💡 Risk Profile: {msg.permissionReason}
-                            </div>
-                          )}
-
-                          {/* Editable command field */}
-                          <div className="space-y-1 font-mono">
-                            <span className="text-[9px] text-gray-500 block uppercase font-bold">Exact Command (Editable):</span>
-                            <input
-                              type="text"
-                              value={editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || '')}
-                              onFocus={() => {
-                                if (editingCommandId !== msg.id) {
-                                  setEditingCommandId(msg.id);
-                                  setEditedCommandText(msg.permissionCommand || '');
-                                }
-                              }}
-                              onChange={(e) => setEditedCommandText(e.target.value)}
-                              className="w-full bg-black/40 font-mono text-[10px] border border-white/10 hover:border-violet-500/30 focus:border-violet-500/60 rounded p-2 text-white focus:outline-none transition-colors focus-visible:ring-2 focus-visible:ring-violet-500"
-                            />
-                          </div>
-
-                          {/* Actions */}
-                          <div className="grid grid-cols-2 gap-1.5 text-[9px] pt-1">
-                            <button
-                              type="button"
-                              onClick={() => msg.tool_call_id && onConfirmPermission && onConfirmPermission(msg.tool_call_id, true, 'once', editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || ''))}
-                              className="py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-bold transition-all cursor-pointer text-center focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none"
-                            >
-                              Allow Once
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => msg.tool_call_id && onConfirmPermission && onConfirmPermission(msg.tool_call_id, true, 'session', editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || ''))}
-                              className="py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/25 text-violet-400 font-bold transition-all cursor-pointer text-center focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none"
-                            >
-                              Allow Session
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => msg.tool_call_id && onConfirmPermission && onConfirmPermission(msg.tool_call_id, true, 'project', editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || ''))}
-                              className="py-1.5 rounded-lg bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/25 text-violet-400 font-bold transition-all cursor-pointer text-center focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none"
-                            >
-                              Allow Project
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => msg.tool_call_id && onConfirmPermission && onConfirmPermission(msg.tool_call_id, false, 'once', '')}
-                              className="py-1.5 rounded-lg bg-red-650/10 hover:bg-red-650/20 border border-red-500/20 text-red-405 font-bold transition-all cursor-pointer text-center focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none"
-                            >
-                              Deny
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  if (msg.isPortConflictRequest) {
-                    return (
-                      <div key={msg.id} className="border border-red-500/25 bg-[#1b1517] rounded-xl p-3 space-y-3 shadow-md font-sans">
-                        {/* Header */}
-                        <div className="flex items-center justify-between border-b border-white/5 pb-2 font-mono">
-                          <span className="text-[11px] font-bold text-red-400 flex items-center gap-1">
-                            <AlertTriangle className="w-3.5 h-3.5 text-red-400" /> PORT CONFLICT
-                          </span>
-                          <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase bg-red-500/10 border border-red-500/20 text-red-400 font-mono">
-                            Action Required
-                          </span>
-                        </div>
-
-                        {/* Body content */}
-                        <div className="space-y-2 text-[10px] text-gray-300 leading-normal">
-                          <div className="bg-black/20 p-2.5 rounded-lg border border-white/5 font-sans leading-relaxed">
-                            Port <span className="text-red-400 font-bold font-mono">{msg.portConflictPort}</span> is already in use by process <span className="text-red-400 font-bold font-mono">{msg.portConflictProcessName}</span> (PID: {msg.portConflictPid}).
-                          </div>
-
-                          {/* Actions */}
-                          <div className="flex flex-col gap-1.5 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => msg.tool_call_id && onConfirmPortConflict && onConfirmPortConflict(msg.tool_call_id, 'stop')}
-                              className="w-full py-1.5 rounded-lg bg-red-650 hover:bg-red-600 text-white font-bold transition-all cursor-pointer text-center text-[10px] focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
-                            >
-                              Stop Existing Process (PID: {msg.portConflictPid})
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => msg.tool_call_id && onConfirmPortConflict && onConfirmPortConflict(msg.tool_call_id, 'next_port')}
-                              className="w-full py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-bold transition-all cursor-pointer text-center text-[10px] focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none"
-                            >
-                              Use Next Available Port
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => msg.tool_call_id && onConfirmPortConflict && onConfirmPortConflict(msg.tool_call_id, 'cancel')}
-                              className="w-full py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-450 hover:text-white font-semibold transition-all cursor-pointer text-center text-[10px] focus-visible:ring-2 focus-visible:ring-white/10 focus-visible:outline-none"
-                            >
-                              Cancel Launch
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // Case B: Proposed file edits (diff hunk validation)
-                  if (msg.confirmDiff) {
-                    return (
-                      <div key={msg.id} className="border border-violet-500/25 bg-[#161a25] rounded-xl p-3 space-y-3 shadow-md font-sans">
-                        {/* Header */}
-                        <div className="flex items-center justify-between border-b border-white/5 pb-2 font-mono">
-                          <span className="text-[11px] font-bold text-violet-300 flex items-center gap-1">
-                            <FileDiff className="w-3.5 h-3.5 text-violet-450" /> TOOL: edit_file
-                          </span>
-                          <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase bg-yellow-500/10 border border-yellow-500/20 text-yellow-450 animate-pulse motion-reduce:animate-none font-mono">
-                            PENDING APPROVAL
-                          </span>
-                        </div>
-
-                        {/* Diff Metadata */}
-                        <div className="text-[10px] text-gray-300 space-y-1.5">
-                          <div className="flex items-center justify-between bg-black/20 p-2 rounded-lg border border-white/5">
-                            <span className="font-semibold truncate max-w-[190px]">Path: {msg.confirmDiff.path}</span>
-                            <span className="text-[9px] text-gray-500 uppercase font-mono">Diff</span>
-                          </div>
-
-                          {/* Arguments text snippet */}
-                          <div className="bg-black/25 p-2 rounded text-[9px] border border-white/5 max-h-20 overflow-y-auto font-mono text-gray-400">
-                            <strong>Arguments:</strong>
-                            <pre className="mt-1 whitespace-pre-wrap">{formatArgs(msg.confirmArgs)}</pre>
-                          </div>
-                        </div>
-
-                        {/* Diff Hunks */}
-                        {msg.confirmDiff.hunks && msg.confirmDiff.hunks.length > 0 && (
-                          <div className="space-y-2">
-                            <span className="text-[9px] uppercase font-bold text-gray-500 block">File Diff Hunks:</span>
-                            {msg.confirmDiff.hunks.map((hunk: any, idx: number) => renderDiffHunk(msg.id, hunk, idx))}
-                          </div>
-                        )}
-
-                        {/* Parent Controls */}
-                        <div className="flex gap-2 text-[9px] pt-1 font-sans">
-                          <button
-                            onClick={() => msg.tool_call_id && onConfirmTool(msg.tool_call_id, false)}
-                            className="flex-1 py-1.5 rounded-lg border border-red-500/20 bg-red-655/10 hover:bg-red-655/20 text-red-400 font-bold flex items-center justify-center gap-1 transition-all focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none cursor-pointer"
-                          >
-                            <X className="w-3.5 h-3.5" /> Reject All
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (msg.tool_call_id) {
-                                const decisions = hunkDecisions[msg.id] || {};
-                                if (msg.confirmDiff?.hunks) {
-                                  msg.confirmDiff.hunks.forEach((h: any) => {
-                                    if (decisions[h.id] === undefined) {
-                                      decisions[h.id] = true;
-                                    }
-                                  });
-                                }
-                                onConfirmTool(msg.tool_call_id, true, decisions);
-                              }
-                            }}
-                            className="flex-1 py-1.5 rounded-lg bg-violet-650 hover:bg-violet-600 text-white font-bold flex items-center justify-center gap-1 transition-all focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer"
-                          >
-                            <Check className="w-3.5 h-3.5" /> Accept All Edits
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // Case C: Dangerous command block
-                  return (
-                    <div key={msg.id} className="border border-red-500/25 bg-[#251515] rounded-xl p-3 space-y-3 shadow-md font-sans">
-                      {/* Header */}
-                      <div className="flex items-center justify-between border-b border-white/5 pb-2 font-mono">
-                        <span className="text-[11px] font-bold text-red-400 flex items-center gap-1">
-                          <Terminal className="w-3.5 h-3.5" /> TOOL: run_command
-                        </span>
-                        <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase bg-red-500/20 border border-red-500/30 text-red-400 animate-pulse motion-reduce:animate-none font-mono">
-                          WARNING
-                        </span>
-                      </div>
-
-                      {/* Body */}
-                      <div className="space-y-2 text-[10px] text-gray-300">
-                        <p className="text-[10px] leading-relaxed font-semibold text-red-400">
-                          This command is flagged as potentially destructive. Please review:
-                        </p>
-                        <pre className="font-mono text-[9px] bg-black/40 p-2.5 rounded-lg border border-white/5 text-gray-400 overflow-x-auto select-all">
-                          {msg.confirmArgs?.command}
+                      <details className="group">
+                        <summary className="cursor-pointer text-[9px] text-gray-500 hover:text-gray-300 select-none py-0.5 font-sans">
+                          View tool logs & output
+                        </summary>
+                        <pre className="mt-1 p-2 bg-[#1e1e1e] text-[9px] text-gray-400 max-h-36 overflow-y-auto whitespace-pre-wrap select-text border border-[#2d2d2d] scrollbar-thin">
+                          {msg.content}
                         </pre>
-                      </div>
+                      </details>
+                    </div>
+                  </div>
+                );
+              }
 
-                      {/* Actions */}
-                      <div className="flex gap-2 text-[9px] pt-1">
-                        <button
-                          onClick={() => msg.tool_call_id && onConfirmTool(msg.tool_call_id, false)}
-                          className="flex-1 py-1.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-gray-300 font-bold flex items-center justify-center gap-1 transition-all focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" /> Cancel Execution
-                        </button>
-                        <button
-                          onClick={() => msg.tool_call_id && onConfirmTool(msg.tool_call_id, true)}
-                          className="flex-1 py-1.5 rounded-lg bg-red-650 hover:bg-red-600 text-white font-bold flex items-center justify-center gap-1 transition-all focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none cursor-pointer"
-                        >
-                          <Play className="w-3.5 h-3.5" /> Run Command
-                        </button>
+              // 3. RENDER PENDING CONFIRMATIONS / DIALOGS INLINE
+              if (msg.isConfirmPending || (msg.role === 'assistant' && msg.isConfirmPending)) {
+                return (
+                  <div key={msg.id} className="flex gap-2 max-w-[95%] items-start select-text">
+                    <div className="w-5 h-5 rounded-sm bg-[#8b5cf6]/20 border border-[#8b5cf6]/40 text-violet-400 shrink-0 flex items-center justify-center text-[9px] font-bold select-none">
+                      ?
+                    </div>
+                    <div className="flex-1 max-w-[calc(100%-1.5rem)] select-text">
+                      
+                      {/* Sub-Case: Smart command permission requests */}
+                      {msg.isPermissionRequest && (
+                        <div className="border border-violet-500/25 bg-[#1b1c24] p-3 space-y-2.5 font-sans text-xs">
+                          <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1.5 font-mono select-none">
+                            <span className="text-[10px] font-bold text-violet-300">Tool Permission: run_command</span>
+                            <span className={`px-1 text-[8px] font-bold uppercase border animate-pulse ${msg.permissionRisk === 'destructive'
+                              ? 'bg-red-500/15 text-red-400 border-red-500/20'
+                              : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/20'
+                            }`}>
+                              {msg.permissionRisk || 'medium'} Risk
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-gray-300 space-y-2 leading-relaxed">
+                            {msg.permissionExplanation && (
+                              <div className="bg-[#131313] p-2 border border-[#2d2d2d] text-gray-400 font-mono text-[9px]">
+                                {msg.permissionExplanation}
+                              </div>
+                            )}
+                            <div className="space-y-1 font-mono">
+                              <span className="text-[9px] text-gray-500 block uppercase font-bold select-none">Exact Command (Editable):</span>
+                              <input
+                                type="text"
+                                value={editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || '')}
+                                onFocus={() => {
+                                  if (editingCommandId !== msg.id) {
+                                    setEditingCommandId(msg.id);
+                                    setEditedCommandText(msg.permissionCommand || '');
+                                  }
+                                }}
+                                onChange={(e) => setEditedCommandText(e.target.value)}
+                                className="w-full bg-[#131313] font-mono text-[10px] border border-[#2d2d2d] rounded-none p-1.5 text-white focus:outline-none focus:border-[#8b5cf6]"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-1 text-[9px] pt-1 select-none font-sans">
+                              <button
+                                type="button"
+                                onClick={() => msg.tool_call_id && onConfirmPermission?.(msg.tool_call_id, true, 'once', editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || ''))}
+                                className="py-1.5 bg-[#8b5cf6] hover:bg-[#7c4dff] text-white font-bold cursor-pointer text-center rounded-none"
+                              >
+                                Allow Once
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => msg.tool_call_id && onConfirmPermission?.(msg.tool_call_id, true, 'session', editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || ''))}
+                                className="py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 font-semibold cursor-pointer text-center border border-[#2d2d2d] rounded-none"
+                              >
+                                Allow Session
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => msg.tool_call_id && onConfirmPermission?.(msg.tool_call_id, true, 'project', editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || ''))}
+                                className="py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 font-semibold cursor-pointer text-center border border-[#2d2d2d] rounded-none"
+                              >
+                                Allow Project
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => msg.tool_call_id && onConfirmPermission?.(msg.tool_call_id, false, 'once', '')}
+                                className="py-1.5 bg-red-650/15 border border-red-500/20 text-red-400 font-bold cursor-pointer text-center rounded-none"
+                              >
+                                Deny
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sub-Case: Port conflicts */}
+                      {msg.isPortConflictRequest && (
+                        <div className="border border-red-500/25 bg-[#241a1c] p-3 space-y-2.5 font-sans text-xs">
+                          <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1.5 font-mono select-none">
+                            <span className="text-[10px] font-bold text-red-400">Port Conflict Resolution</span>
+                          </div>
+                          <div className="text-[10px] text-gray-300 space-y-2">
+                            <p>Port <span className="font-bold text-red-450">{msg.portConflictPort}</span> is in use by <span className="font-bold text-red-450">{msg.portConflictProcessName}</span> (PID: {msg.portConflictPid}).</p>
+                            <div className="flex flex-col gap-1 pt-1 select-none font-sans">
+                              <button
+                                type="button"
+                                onClick={() => msg.tool_call_id && onConfirmPortConflict?.(msg.tool_call_id, 'stop')}
+                                className="w-full py-1.5 bg-red-650 hover:bg-red-600 text-white font-bold cursor-pointer rounded-none"
+                              >
+                                Stop Process (PID: {msg.portConflictPid})
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => msg.tool_call_id && onConfirmPortConflict?.(msg.tool_call_id, 'next_port')}
+                                className="w-full py-1.5 bg-[#8b5cf6] hover:bg-[#7c4dff] text-white font-bold cursor-pointer rounded-none"
+                              >
+                                Use Next Available Port
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => msg.tool_call_id && onConfirmPortConflict?.(msg.tool_call_id, 'cancel')}
+                                className="w-full py-1.5 bg-white/5 hover:bg-white/10 text-gray-400 cursor-pointer rounded-none border border-[#2d2d2d]"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sub-Case: File edits / Proposed Diff Hunks */}
+                      {msg.confirmDiff && (
+                        <div className="border border-violet-500/25 bg-[#1b1c24] p-3 space-y-2.5 font-sans text-xs">
+                          <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1.5 font-mono select-none">
+                            <span className="text-[10px] font-bold text-violet-300">File Edit: edit_file</span>
+                            <span className="px-1 text-[8px] font-bold uppercase bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 animate-pulse">
+                              PENDING APPROVAL
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-gray-300 space-y-1.5">
+                            <div className="bg-[#131313] p-1.5 border border-[#2d2d2d] font-mono text-[9px] truncate" title={msg.confirmDiff.path}>
+                              Path: {msg.confirmDiff.path.split('/').pop()} <span className="text-gray-500">({msg.confirmDiff.path})</span>
+                            </div>
+                            {msg.confirmDiff.hunks && msg.confirmDiff.hunks.length > 0 && (
+                              <div className="space-y-1.5">
+                                {msg.confirmDiff.hunks.map((hunk: any, idx: number) => renderDiffHunk(msg.id, hunk, idx))}
+                              </div>
+                            )}
+                            <div className="flex gap-2 pt-1 font-sans select-none">
+                              <button
+                                type="button"
+                                onClick={() => msg.tool_call_id && onConfirmTool(msg.tool_call_id, false)}
+                                className="flex-1 py-1.5 bg-red-650/15 border border-red-500/20 text-red-400 font-bold rounded-none cursor-pointer"
+                              >
+                                Reject All
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (msg.tool_call_id) {
+                                    const decisions = hunkDecisions[msg.id] || {};
+                                    if (msg.confirmDiff?.hunks) {
+                                      msg.confirmDiff.hunks.forEach((h: any) => {
+                                        if (decisions[h.id] === undefined) {
+                                          decisions[h.id] = true;
+                                        }
+                                      });
+                                    }
+                                    onConfirmTool(msg.tool_call_id, true, decisions);
+                                  }
+                                }}
+                                className="flex-1 py-1.5 bg-[#8b5cf6] hover:bg-[#7c4dff] text-white font-bold rounded-none cursor-pointer"
+                              >
+                                Accept All
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sub-Case: Other/Dangerous confirmations */}
+                      {!msg.isPermissionRequest && !msg.isPortConflictRequest && !msg.confirmDiff && (
+                        <div className="border border-red-500/25 bg-[#241a1a] p-3 space-y-2.5 font-sans text-xs">
+                          <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1.5 font-mono select-none">
+                            <span className="text-[10px] font-bold text-red-400">Dangerous command execution</span>
+                          </div>
+                          <div className="text-[10px] text-gray-300 space-y-2 font-mono">
+                            <pre className="bg-[#131313] p-2 border border-[#2d2d2d] whitespace-pre-wrap select-all text-[9px] text-gray-400 scrollbar-thin">
+                              {formatArgs(msg.confirmArgs)}
+                            </pre>
+                            <div className="flex gap-1.5 pt-1 font-sans select-none">
+                              <button
+                                type="button"
+                                onClick={() => msg.tool_call_id && onConfirmTool(msg.tool_call_id, false)}
+                                className="flex-1 py-1.5 bg-white/5 border border-[#2d2d2d] text-gray-300 hover:text-white font-bold cursor-pointer rounded-none"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => msg.tool_call_id && onConfirmTool(msg.tool_call_id, true)}
+                                className="flex-1 py-1.5 bg-red-650 hover:bg-red-600 text-white font-bold cursor-pointer rounded-none"
+                              >
+                                Run Command
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+                  </div>
+                );
+              }
+
+              // 4. RENDER STANDARD ASSISTANT RESPONSE
+              if (msg.role === 'assistant' && msg.content) {
+                return (
+                  <div key={msg.id} className="flex gap-2 max-w-[95%] items-start select-text">
+                    <div className="w-5 h-5 rounded-sm bg-[#1e1e1e] border border-[#2d2d2d] text-violet-400 shrink-0 flex items-center justify-center text-[9px] font-bold select-none">
+                      AI
+                    </div>
+                    <div className="flex flex-col items-start max-w-[calc(100%-1.5rem)] select-text">
+                      <div className="p-2 bg-[#141414] border border-[#2d2d2d] text-xs text-gray-300 rounded-none leading-relaxed whitespace-pre-wrap select-text">
+                        {renderMessageContent(msg.content.trim())}
                       </div>
                     </div>
-                  );
-                }
+                  </div>
+                );
+              }
 
-                return null;
-              })}
-            </div>
-          )
-        )}
-        {/* Global stream loader status (removed thinking banner as requested) */}
-        <div ref={chatEndRef} />
-      </div>
-      {/* 5. Input Bar (fixed to bottom) */}
-      <form onSubmit={handleSubmit} className="p-3 border-t border-white/5 bg-[#0e1015] shrink-0">
-        {/* Context / Token Usage Indicator progress bar */}
-        {contextPercentage !== undefined && contextPercentage > 0 && (
-          <div className="flex flex-col gap-1 px-1 pb-2 font-mono text-[9px] select-none">
-            <div className="flex items-center justify-between text-gray-500">
-              <div className="flex items-center gap-1.5">
-                <span>Prompt</span>
-                <span className={`transition-colors duration-300 font-bold ${
-                  contextPercentage < 70 ? 'text-emerald-500/80' : contextPercentage < 90 ? 'text-amber-500/80' : 'text-rose-500/80'
-                }`}>
-                  {(() => {
-                    const totalBlocks = 20;
-                    const filledBlocks = Math.round((contextPercentage / 100) * totalBlocks);
-                    const emptyBlocks = totalBlocks - filledBlocks;
-                    return '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
-                  })()}
-                </span>
-              </div>
-              <span className="font-semibold text-gray-400">
-                {contextTokens} / 128k
-              </span>
-            </div>
-            {contextPercentage >= 90 && (
-              <div className="text-rose-400/90 text-[8px] mt-0.5 flex items-center gap-1 leading-none">
-                <span>⚠ Context almost full. Older messages may be summarized.</span>
-              </div>
-            )}
+              return null;
+            })}
           </div>
         )}
 
-        <div className="bg-[#151720] border border-white/5 rounded-xl p-3 flex flex-col gap-2 shadow-2xl focus-within:border-violet-500/35 transition-colors">
-          {/* Text Area */}
+        {/* Streaming Loader / Thinking indicator inside message feed */}
+        {showTypingIndicator && (
+          <div className="flex gap-2 max-w-[95%] items-start select-none">
+            <div className="w-5 h-5 rounded-sm bg-[#1e1e1e] border border-[#2d2d2d] text-violet-400 shrink-0 flex items-center justify-center text-[9px] font-bold">
+              AI
+            </div>
+            <div className="flex flex-col items-start max-w-[calc(100%-1.5rem)]">
+              <div className="p-2 bg-[#141414] border border-[#2d2d2d] rounded-none flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="text-[10px] text-gray-500 font-mono ml-1.5">
+                  {statusMessage || 'Thinking...'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div ref={chatEndRef} />
+      </div>
+
+      {/* Input Bar (fixed to bottom) */}
+      <form onSubmit={handleSubmit} className="p-2.5 border-t border-[#2d2d2d] bg-[#131313] shrink-0 font-sans">
+        
+        {/* Token Usage Status Bar - Compact */}
+        {contextPercentage !== undefined && contextPercentage > 0 && (
+          <div className="flex items-center justify-between font-mono text-[9px] select-none text-gray-500 pb-2 px-0.5">
+            <div className="flex items-center gap-1.5">
+              <span>Context:</span>
+              <span className={`font-bold ${
+                contextPercentage < 70 ? 'text-emerald-500' : contextPercentage < 90 ? 'text-amber-500' : 'text-rose-500'
+              }`}>
+                {(() => {
+                  const totalBlocks = 12;
+                  const filledBlocks = Math.round((contextPercentage / 100) * totalBlocks);
+                  const emptyBlocks = totalBlocks - filledBlocks;
+                  return '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
+                })()}
+              </span>
+            </div>
+            <span className="text-gray-400">
+              {contextTokens} / 128k
+            </span>
+          </div>
+        )}
+
+        {/* Input Text Box Container */}
+        <div className="bg-[#1e1e1e] border border-[#2d2d2d] rounded-none p-2 flex flex-col gap-1.5 focus-within:border-[#8b5cf6]/50">
+          
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask anything, @ to mention, / for actions"
-            className="w-full max-h-32 min-h-[48px] bg-transparent text-xs text-gray-200 focus:outline-none resize-none scrollbar-none py-1 placeholder:text-gray-500 font-sans focus-visible:ring-2 focus-visible:ring-violet-500 rounded p-1"
+            className="w-full max-h-24 min-h-[36px] bg-transparent text-xs text-gray-200 focus:outline-none resize-none scrollbar-none font-sans placeholder:text-gray-600 rounded-none p-0.5"
           />
 
-          {/* Bottom Toolbar Row */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 border-t border-white/5 gap-2">
-            {/* Left Side */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Attach File Button */}
+          {/* Action Row */}
+          <div className="flex sm:items-center justify-between pt-1.5 border-t border-[#2d2d2d] select-none gap-2">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
-                className="p-1.5 hover:bg-white/5 hover:text-gray-255 text-gray-550 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer"
+                className="p-1 hover:bg-white/5 text-gray-500 hover:text-white rounded-none cursor-pointer"
                 title="Attach file context"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
               </button>
 
-              {/* Connection profile / Model provider selector dropdown */}
               <button
                 type="button"
                 onClick={onOpenSettings}
-                className="flex items-center gap-1.5 hover:bg-white/5 hover:text-violet-300 text-violet-400 font-medium px-2.5 py-1 rounded-full bg-violet-500/5 border border-violet-500/10 transition-colors text-[10px] focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer"
-                title="Model profiles selector"
+                className="flex items-center gap-1 hover:bg-white/5 hover:text-violet-300 text-violet-400 font-medium px-2 py-0.5 bg-violet-500/5 border border-violet-500/10 rounded-none text-[9px] cursor-pointer"
+                title="Active Profile"
               >
                 <span>{activeProfileName}</span>
-                <ChevronDown className="w-3 h-3 text-violet-400 shrink-0" />
+                <ChevronDown className="w-2.5 h-2.5 text-violet-400 shrink-0" />
               </button>
             </div>
 
-            {/* Right Side */}
-            <div className="flex items-center gap-2 justify-between sm:justify-end flex-wrap">
-              {/* Mode Selector */}
+            <div className="flex items-center gap-1">
+              {/* Agent Mode Selector */}
               <select
                 value={mode}
-                onChange={(e) => setMode(e.target.value as 'Auto' | 'Ask' | 'Plan' | 'Agent')}
-                className="px-2.5 py-1 bg-[#12141c] border border-violet-500/40 rounded-md text-[10px] font-semibold text-white focus:outline-none focus:border-violet-500 cursor-pointer"
+                onChange={(e) => setMode(e.target.value as any)}
+                className="px-1.5 py-0.5 bg-[#181818] border border-[#2d2d2d] rounded-none text-[9px] font-semibold text-white focus:outline-none focus:border-[#8b5cf6] cursor-pointer"
               >
-                <option value="Auto" className="bg-[#12141c] text-white">Auto</option>
-                <option value="Ask" className="bg-[#12141c] text-white">Ask</option>
-                <option value="Plan" className="bg-[#12141c] text-white">Plan</option>
-                <option value="Agent" className="bg-[#12141c] text-white">Agent</option>
+                <option value="Auto">Auto</option>
+                <option value="Ask">Ask</option>
+                <option value="Plan">Plan</option>
+                <option value="Agent">Agent</option>
               </select>
 
-              {/* Microphone icon */}
+              {/* Dictation */}
               <button
                 type="button"
-                className="p-1.5 hover:bg-white/5 hover:text-gray-255 text-gray-550 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer"
-                title="Voice input dictation"
+                className="p-1 hover:bg-white/5 text-gray-500 hover:text-white rounded-none cursor-pointer"
+                title="Voice input"
               >
-                <Mic className="w-4 h-4" />
+                <Mic className="w-3.5 h-3.5" />
               </button>
 
-              {/* Send / Stop Button */}
+              {/* Stop or Submit button */}
               {isGenerating ? (
                 <button
                   type="button"
                   onClick={onCancelGeneration}
-                  className="p-1.5 rounded-lg bg-red-650 hover:bg-red-600 text-white border border-red-500/20 transition-all focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none cursor-pointer"
+                  className="p-1 bg-red-650 hover:bg-red-600 text-white rounded-none cursor-pointer border border-red-500/20"
                   title="Stop generating"
                 >
-                  <span className="w-3.5 h-3.5 flex items-center justify-center font-bold font-mono">■</span>
+                  <span className="w-3 h-3 flex items-center justify-center font-bold text-[8px]">■</span>
                 </button>
               ) : isProcessRunning ? (
                 <button
                   type="button"
-                  onClick={() => onStopProcess && onStopProcess()}
-                  className="p-1.5 rounded-lg bg-red-650 hover:bg-red-600 text-white border border-red-500/20 transition-all focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none cursor-pointer"
+                  onClick={() => onStopProcess?.()}
+                  className="p-1 bg-red-650 hover:bg-red-600 text-white rounded-none cursor-pointer border border-red-500/20"
                   title="Stop running process"
                 >
-                  <span className="w-3.5 h-3.5 flex items-center justify-center font-bold font-mono">■</span>
+                  <span className="w-3 h-3 flex items-center justify-center font-bold text-[8px]">■</span>
                 </button>
               ) : (
                 <button
                   type="submit"
                   disabled={!input.trim()}
-                  className="p-1.5 rounded-lg bg-[#8B5CF6] hover:bg-[#7c4dff] disabled:bg-transparent text-white disabled:text-gray-650 border border-violet-500/20 disabled:border-transparent transition-all focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer disabled:cursor-not-allowed"
+                  className="p-1 bg-[#8B5CF6] hover:bg-[#7c4dff] disabled:bg-transparent text-white disabled:text-gray-600 border border-violet-500/20 disabled:border-transparent rounded-none cursor-pointer disabled:cursor-not-allowed"
                   title="Send message"
                 >
-                  <Send className="w-3.5 h-3.5" />
+                  <Send className="w-3 h-3" />
                 </button>
               )}
             </div>
           </div>
+
         </div>
+
       </form>
 
     </div>

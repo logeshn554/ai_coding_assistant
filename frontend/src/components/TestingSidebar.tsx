@@ -17,10 +17,6 @@ export default function TestingSidebar() {
     }
   };
 
-  useEffect(() => {
-    discoverTests();
-  }, []);
-
   const handleRunAll = async () => {
     setRunning(true);
     setRunLogs(null);
@@ -67,17 +63,23 @@ export default function TestingSidebar() {
     }
   };
 
+
+
+  useEffect(() => {
+    discoverTests();
+  }, []);
+
   return (
-    <div className="h-full flex flex-col bg-[#0e1014] text-gray-300 font-sans select-none">
+    <div className="h-full flex flex-col bg-[#181818] text-[#cccccc] font-sans select-none">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/5 bg-[#111318] flex items-center justify-between shrink-0">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+      <div className="px-3 py-1.5 border-b border-[#2d2d2d] bg-[#181818] flex items-center justify-between shrink-0">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
           <Beaker className="w-3.5 h-3.5 text-violet-400" />
           Test Explorer
         </span>
         <button
           onClick={discoverTests}
-          className="text-[10px] text-violet-400 hover:text-violet-300"
+          className="text-[10px] text-violet-400 hover:text-violet-300 cursor-pointer"
           title="Refresh tests list"
         >
           Discover
@@ -85,11 +87,11 @@ export default function TestingSidebar() {
       </div>
 
       {/* Action buttons */}
-      <div className="p-3 border-b border-white/5 bg-[#0e1014] shrink-0">
+      <div className="p-2 border-b border-[#2d2d2d] bg-[#131313] shrink-0 flex flex-col gap-2">
         <button
           onClick={handleRunAll}
           disabled={running || tests.length === 0}
-          className="w-full py-1.5 bg-violet-650 hover:bg-violet-600 disabled:opacity-40 text-white rounded text-[10px] font-semibold flex items-center justify-center gap-1 transition-all"
+          className="w-full py-1 bg-[#8b5cf6] hover:bg-[#7c4dff] disabled:opacity-40 text-white rounded-none text-[10px] font-semibold flex items-center justify-center gap-1 cursor-pointer border border-violet-500/20"
         >
           {running ? (
             <>
@@ -104,30 +106,30 @@ export default function TestingSidebar() {
       </div>
 
       {/* Tests feed list */}
-      <div className="flex-1 overflow-y-auto p-2.5 space-y-4">
+      <div className="flex-1 overflow-y-auto p-2.5 space-y-3">
         {tests.length === 0 ? (
-          <div className="py-8 text-center text-xs text-gray-650 italic">
+          <div className="py-8 text-center text-xs text-gray-500 italic">
             No test files discovered in this workspace.
           </div>
         ) : (
           <div className="space-y-2">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+            <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">
               Discovered Suites
             </div>
             <div className="space-y-1">
               {tests.map((testFile) => {
                 const status = outcomes[testFile];
                 return (
-                  <div key={testFile} className="flex items-center justify-between p-2 bg-black/15 hover:bg-white/5 rounded border border-white/5 transition-all">
+                  <div key={testFile} className="flex items-center justify-between p-1 bg-[#1e1e1e] hover:bg-white/5 border border-[#2d2d2d] rounded-none">
                     <div className="flex items-center gap-2 min-w-0">
                       {status === 'passed' ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-450 shrink-0" />
                       ) : status === 'failed' ? (
                         <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
                       ) : (
-                        <AlertCircle className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                        <AlertCircle className="w-3.5 h-3.5 text-gray-550 shrink-0" />
                       )}
-                      <span className="text-[10px] text-gray-250 truncate font-mono" title={testFile}>
+                      <span className="text-[10px] text-gray-300 truncate font-mono" title={testFile}>
                         {testFile.split('/').pop()}
                       </span>
                     </div>
@@ -135,7 +137,7 @@ export default function TestingSidebar() {
                     <button
                       onClick={() => handleRunSingle(testFile)}
                       disabled={running}
-                      className="p-1 rounded hover:bg-white/5 text-gray-400 hover:text-white"
+                      className="p-1 hover:bg-white/5 text-gray-400 hover:text-white cursor-pointer rounded-none"
                       title="Run single test suite"
                     >
                       <Play className="w-3 h-3" />
@@ -149,15 +151,16 @@ export default function TestingSidebar() {
 
         {/* Logs */}
         {runLogs && (
-          <div className="space-y-2 pt-2 border-t border-white/5 select-text">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider select-none">
+          <div className="space-y-2 pt-2 border-t border-[#2d2d2d] select-text">
+            <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider select-none">
               Test Execution Output
             </div>
-            <pre className="p-2 bg-black/30 border border-white/5 rounded font-mono text-[9px] text-gray-500 whitespace-pre-wrap max-h-48 overflow-y-auto pr-1">
+            <pre className="p-2 bg-[#131313] border border-[#2d2d2d] rounded-none font-mono text-[9px] text-gray-400 whitespace-pre-wrap max-h-48 overflow-y-auto pr-1 scrollbar-thin">
               {runLogs}
             </pre>
           </div>
         )}
+
       </div>
     </div>
   );

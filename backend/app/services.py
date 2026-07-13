@@ -2,6 +2,7 @@ import os
 import logging
 from .async_files import read_workspace_file
 
+
 logger = logging.getLogger("devpilot.services")
 
 class WorkspaceManager:
@@ -31,6 +32,7 @@ class WorkspaceManager:
         if not abs_path.startswith(self._root):
             raise PermissionError(f"Access denied: path '{relative_path}' escapes workspace boundaries.")
         return abs_path
+
 
 
 class ContextManager:
@@ -75,3 +77,4 @@ class ContextManager:
                 logger.error(f"ContextManager: Failed to read context file {file_path}: {str(e)}")
 
         return "\n".join(formatted), total_tokens, warning
+

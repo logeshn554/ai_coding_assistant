@@ -1,5 +1,7 @@
 import json
 import logging
+import asyncio
+import os
 from typing import AsyncGenerator, List, Dict, Any
 
 logger = logging.getLogger("devpilot.adapters.openai")
@@ -13,6 +15,14 @@ except ImportError:
             raise ImportError("OpenAI SDK is not installed. Install 'openai' package to use this adapter.")
         async def chat(self, *args, **kwargs):
             raise NotImplementedError("OpenAI SDK not available.")
+
+# Attempt to import the scan_for_bugs tool; if unavailable, define a placeholder.
+try:
+    from ..tools import scan_for_bugs_sync as scan_for_bugs  # Adjust relative import as needed
+except Exception:
+    def scan_for_bugs(root_path: str) -> Dict[str, Any]:
+        """Placeholder implementation if the real tool is not available."""
+        return {"error": "scan_for_bugs tool not found"}
 
 from .base import ModelAdapter
 
@@ -201,3 +211,29 @@ class OpenAIAdapter(ModelAdapter):
                 openai_msgs.append(item)
                 
         return openai_msgs
+
+    async def generate_bug_report(self) -> str:
+        """
+        Scans the entire workspace for bugs using the `scan_for_bugs` tool and returns a concise report.
+        The report is serialized as JSON and truncated to a reasonable length if necessary.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            # Assume `scan_for_bugs` is a synchronous function that returns a dict-like structure.
+            bug_data = await loop.run_in_executor(None, scan_for_bugs, os.getcwd())
+        except Exception as e:
+            logger.error(f"Failed to execute scan_for_bugs: {e}")
+            raise
+
+        try:
+            report = json.dumps(bug_data, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Failed to serialize bug data to JSON: {e}")
+            raise
+
+        # Truncate overly long reports to keep the output concise
+        max_length = 2000  # characters
+        if len(report) > max_length:
+            report = report[: max_length - 3] + "..."
+
+        return report

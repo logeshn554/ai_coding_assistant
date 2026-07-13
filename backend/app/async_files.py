@@ -8,6 +8,7 @@ from .files import (
     get_codebase_contents
 )
 
+
 async def async_read_workspace_file(workspace_root: str, relative_path: str) -> str:
     """
     Asynchronously reads file contents from the workspace.
@@ -19,6 +20,7 @@ async def async_read_workspace_file(workspace_root: str, relative_path: str) -> 
         workspace_root,
         relative_path
     )
+
 
 async def async_write_workspace_file(workspace_root: str, relative_path: str, content: str) -> None:
     """
@@ -33,6 +35,7 @@ async def async_write_workspace_file(workspace_root: str, relative_path: str, co
         content
     )
 
+
 async def async_list_workspace_dir(workspace_root: str, relative_path: str = "") -> List[dict]:
     """
     Asynchronously lists workspace folder contents.
@@ -44,6 +47,7 @@ async def async_list_workspace_dir(workspace_root: str, relative_path: str = "")
         workspace_root,
         relative_path
     )
+
 
 async def async_search_workspace_codebase(workspace_root: str, query: str) -> List[dict]:
     """
@@ -57,6 +61,7 @@ async def async_search_workspace_codebase(workspace_root: str, query: str) -> Li
         query
     )
 
+
 async def async_get_codebase_contents(workspace_root: str) -> str:
     """
     Asynchronously gets codebase contents.
@@ -66,5 +71,4 @@ async def async_get_codebase_contents(workspace_root: str) -> str:
         None,
         get_codebase_contents,
         workspace_root
-    )
-
+    )

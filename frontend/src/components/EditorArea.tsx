@@ -22,6 +22,8 @@ interface EditorAreaProps {
   } | null;
   onRefreshWorkspace: () => void;
   refreshTrigger: number;
+  onOpenFolder?: () => void;
+  workspacePath?: string;
 }
 
 export default function EditorArea({
@@ -31,7 +33,9 @@ export default function EditorArea({
   onFileSelect,
   proposedDiff,
   onRefreshWorkspace,
-  refreshTrigger
+  refreshTrigger,
+  onOpenFolder,
+  workspacePath
 }: EditorAreaProps) {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
@@ -39,6 +43,7 @@ export default function EditorArea({
   const editorRef = useRef<any>(null);
   const [backups, setBackups] = useState<{ timestamp: number; filename: string }[]>([]);
   const [showBackupsDropdown, setShowBackupsDropdown] = useState(false);
+
 
   const fetchBackups = async () => {
     if (!activeTab) return;
@@ -98,7 +103,6 @@ export default function EditorArea({
   // Synchronize openFiles list with tabs state
   useEffect(() => {
     const syncTabs = async () => {
-      // Add tabs for any path in openFiles that isn't in tabs yet
       const existingPaths = tabs.map(t => t.path);
       const newTabs = [...tabs];
 
@@ -127,7 +131,6 @@ export default function EditorArea({
         }
       }
 
-      // Remove tabs that are no longer in openFiles
       const filteredTabs = newTabs.filter(t => openFiles.includes(t.path));
       if (filteredTabs.length !== tabs.length || changed) {
         setTabs(filteredTabs);
@@ -165,7 +168,7 @@ export default function EditorArea({
   useEffect(() => {
     const reloadTabs = async () => {
       const updatedTabs = await Promise.all(tabs.map(async (tab) => {
-        if (tab.isDirty) return tab; // Skip dirty tabs to prevent losing unsaved user work
+        if (tab.isDirty) return tab;
         try {
           const res = await fetch(`/api/files/content?path=${encodeURIComponent(tab.path)}`);
           const data = await res.json();
@@ -200,7 +203,6 @@ export default function EditorArea({
         })
       });
       if (res.ok) {
-        // Update tabs state
         setTabs(prev => prev.map(t => {
           if (t.path === activeTab.path) {
             return { ...t, isDirty: false, savedContent: t.content };
@@ -244,36 +246,38 @@ export default function EditorArea({
     }
   };
 
+
+
   // Determine if there is a proposed diff for the active tab
   const showDiff = proposedDiff && activeTab && proposedDiff.path === activeTab.path;
 
   return (
-    <div className="h-full flex flex-col bg-[#111318] text-gray-300 overflow-hidden">
+    <div className="h-full flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden">
       
       {/* Tabs bar */}
-      <div className="flex bg-[#0e1014] border-b border-white/5 overflow-x-auto min-h-[35px] max-h-[35px] select-none scrollbar-none">
+      <div className="flex bg-[#181818] border-b border-[#2d2d2d] overflow-x-auto min-h-[35px] max-h-[35px] select-none scrollbar-none shrink-0">
         {tabs.map(tab => {
           const isActive = activeTab?.path === tab.path;
           return (
             <div
               key={tab.path}
               onClick={() => onFileSelect(tab.path)}
-              className={`group flex items-center gap-2 px-4 h-full border-r border-white/5 cursor-pointer text-xs transition-colors shrink-0 ${
+              className={`group flex items-center gap-1.5 px-3 h-full border-r border-[#2d2d2d] cursor-pointer text-xs shrink-0 ${
                 isActive 
-                  ? 'bg-[#111318] text-white font-medium border-t-2 border-t-violet-500' 
-                  : 'bg-[#0b0c10] text-gray-400 hover:bg-[#0f1116] hover:text-gray-200'
+                  ? 'bg-[#1e1e1e] text-white font-medium border-t-2 border-t-[#8b5cf6]' 
+                  : 'bg-[#181818] text-gray-400 hover:bg-[#1f1f1f] hover:text-[#cccccc]'
               }`}
             >
-              <span>{tab.name}</span>
+              <span className="font-sans">{tab.name}</span>
               {tab.isDirty && (
-                <span className="w-1.5 h-1.5 rounded-full bg-violet-400 shrink-0" title="Unsaved changes" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#8b5cf6] shrink-0 font-sans" title="Unsaved changes" />
               )}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   onFileClose(tab.path);
                 }}
-                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-white/10 text-gray-500 hover:text-white"
+                className="opacity-0 group-hover:opacity-100 p-0.5 rounded-none hover:bg-white/5 text-gray-500 hover:text-white cursor-pointer font-sans"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -354,6 +358,7 @@ export default function EditorArea({
                     <Save className="w-3.5 h-3.5" /> Save
                   </button>
                 )}
+
               </div>
             </div>
 
@@ -388,24 +393,166 @@ export default function EditorArea({
                     lineNumbers: "on",
                     scrollBeyondLastLine: false,
                     automaticLayout: true,
+                    stickyScroll: { enabled: true },
                   }}
-                  onMount={(editor) => {
+                  onMount={(editor, monaco) => {
                     editorRef.current = editor;
+                    
+                    // Listen to cursor position changes
+                    editor.onDidChangeCursorPosition((e) => {
+                      const position = e.position;
+                      window.dispatchEvent(new CustomEvent('editor-cursor-change', {
+                        detail: { line: position.lineNumber, column: position.column }
+                      }));
+                    });
+
+                    // Listen to markers (diagnostics) changes
+                    const updateDiagnostics = () => {
+                      const model = editor.getModel();
+                      if (model) {
+                        const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+                        const errors = markers.filter((m: any) => m.severity === monaco.MarkerSeverity.Error).length;
+                        const warnings = markers.filter((m: any) => m.severity === monaco.MarkerSeverity.Warning).length;
+                        window.dispatchEvent(new CustomEvent('editor-diagnostics', {
+                          detail: { errors, warnings }
+                        }));
+                      }
+                    };
+
+                    // Initial diagnostics check
+                    updateDiagnostics();
+
+                    // Register listeners for markers change
+                    const markersListener = monaco.editor.onDidChangeMarkers((uris: any[]) => {
+                      const model = editor.getModel();
+                      if (model && uris.some((uri: any) => uri.toString() === model.uri.toString())) {
+                        updateDiagnostics();
+                      }
+                    });
+
+                    // Store disposal cleanups on the editor object if needed, or handle on unmount
+                    (editor as any)._markersListener = markersListener;
                   }}
                 />
               )}
             </div>
-
           </div>
         ) : (
-          <div className="h-full flex flex-col items-center justify-center text-center text-gray-500">
-            <FileCode className="w-16 h-16 text-gray-700 mb-3 animate-pulse-subtle" />
-            <h1 className="text-xl font-bold text-white mb-1">DevPilot Editor</h1>
-            <p className="text-xs max-w-xs text-gray-600">
-              Double-click a file in the explorer sidebar to open it, or type a request in the AI Panel to begin.
-            </p>
+          <div className="h-full bg-[var(--dp-bg-primary)] p-8 flex flex-col justify-center items-center select-none overflow-y-auto font-sans">
+            <div className="max-w-4xl w-full mx-auto space-y-8 my-auto">
+              
+              {/* Centered Hero */}
+              <div className="flex flex-col items-center text-center max-w-2xl mx-auto pt-4 pb-2">
+                <div className="relative mb-5 flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#8B5CF6] to-[#3B82F6] shadow-lg shadow-[#8B5CF6]/30">
+                  {/* Glowing, pulsed background */}
+                  <span className="text-white text-2xl font-black tracking-tighter">DP</span>
+                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-[#8B5CF6] to-[#3B82F6] blur-md opacity-45 -z-10 animate-pulse-subtle" />
+                </div>
+                <h1 className="text-3xl font-extrabold text-white tracking-tight leading-none">
+                  DevPilot
+                </h1>
+                <p className="text-xs text-gray-400 mt-2 font-medium tracking-wider uppercase">
+                  Multi-Agent Software Engineering Environment
+                </p>
+              </div>
+
+              {/* Grid Layout of Two Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                {/* Card 1: Start */}
+                <div className="p-5 bg-[var(--dp-bg-tertiary)] border border-[var(--dp-border)] rounded-[10px] shadow-md hover:border-[#8b5cf6]/40 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[180px]">
+                  <div>
+                    <h2 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Start</h2>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={onOpenFolder}
+                        className="w-full text-left px-3 py-2 bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] hover:border-[#8b5cf6]/30 hover:bg-[var(--dp-bg-hover)] text-xs text-gray-300 hover:text-white rounded-md cursor-pointer transition-all flex items-center gap-2.5 font-medium"
+                      >
+                        <span className="w-3.5 h-3.5 text-violet-400 shrink-0">📁</span>
+                        <span>Open Folder...</span>
+                      </button>
+                      
+                      <button
+                        onClick={() => {
+                          const event = new KeyboardEvent('keydown', { ctrlKey: true, shiftKey: true, key: 'P' });
+                          window.dispatchEvent(event);
+                        }}
+                        className="w-full text-left px-3 py-2 bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] hover:border-[#8b5cf6]/30 hover:bg-[var(--dp-bg-hover)] text-xs text-gray-300 hover:text-white rounded-md cursor-pointer transition-all flex items-center gap-2.5 font-medium"
+                      >
+                        <span className="w-3.5 h-3.5 text-violet-400 shrink-0">⌨️</span>
+                        <span>Command Palette</span>
+                      </button>
+
+                      <button
+                        onClick={async () => {
+                          if (!workspacePath) {
+                            alert("Please open a workspace first.");
+                            return;
+                          }
+                          const filename = prompt("Enter new file path (relative to workspace, e.g. test.py):");
+                          if (!filename || !filename.trim()) return;
+                          try {
+                            const res = await fetch("/api/files/create", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ path: filename.trim(), is_dir: false })
+                            });
+                            if (res.ok) {
+                              onFileSelect?.(filename.trim());
+                            } else {
+                              const data = await res.json();
+                              alert("Failed to create file: " + (data.detail || "Unknown error"));
+                            }
+                          } catch (e) {
+                            console.error(e);
+                            alert("Error creating file.");
+                          }
+                        }}
+                        className="w-full text-left px-3 py-2 bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] hover:border-[#8b5cf6]/30 hover:bg-[var(--dp-bg-hover)] text-xs text-gray-300 hover:text-white rounded-md cursor-pointer transition-all flex items-center gap-2.5 font-medium"
+                      >
+                        <span className="w-3.5 h-3.5 text-violet-400 shrink-0">➕</span>
+                        <span>New File...</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card 2: Recent Workspace */}
+                <div className="p-5 bg-[var(--dp-bg-tertiary)] border border-[var(--dp-border)] rounded-[10px] shadow-md hover:border-[#8b5cf6]/40 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[180px]">
+                  <div>
+                    <h2 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Recent Workspace</h2>
+                    <div className="p-3 bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] rounded-md text-xs text-gray-400 space-y-2">
+                      {workspacePath ? (
+                        <div>
+                          <div className="text-white font-semibold truncate font-mono">{workspacePath.split('/').pop() || workspacePath.split('\\').pop()}</div>
+                          <div className="text-[9px] text-gray-500 font-mono truncate select-all mt-1">{workspacePath}</div>
+                        </div>
+                      ) : (
+                        <div className="italic text-gray-600">No folder loaded. Open a workspace folder to begin coding.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Bottom Tip of the Day Banner */}
+              <div className="p-4 bg-gradient-to-r from-[#8B5CF6]/10 to-[#3B82F6]/5 border border-[#8B5CF6]/15 rounded-[10px] flex items-start gap-3 mt-6">
+                <div className="p-1 bg-[#8B5CF6]/10 border border-[#8B5CF6]/20 text-[#8B5CF6] rounded shrink-0 text-sm">
+                  💡
+                </div>
+                <div>
+                  <h4 className="text-[10px] font-bold text-white uppercase tracking-wider">Tip of the Day</h4>
+                  <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
+                    Use <code className="text-violet-300 font-mono font-bold bg-violet-950/40 px-1 py-0.2 rounded">@filename</code> in the AI Chat panel to attach specific files to the agent context. Try switching to <code className="text-violet-300 font-mono font-bold bg-violet-950/40 px-1 py-0.2 rounded">Agent</code> mode for autonomous multi-file edits.
+                  </p>
+                </div>
+              </div>
+
+            </div>
           </div>
         )}
+
       </div>
 
     </div>

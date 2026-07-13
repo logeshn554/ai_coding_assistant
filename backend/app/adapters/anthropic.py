@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 from typing import AsyncGenerator, List, Dict, Any
 
 logger = logging.getLogger("devpilot.adapters.anthropic")
@@ -14,6 +15,15 @@ except ImportError:
         async def messages(self, *args, **kwargs):
             raise NotImplementedError("Anthropic SDK not available.")
 
+# Attempt to import the scan_for_bugs tool if it exists.
+# The tool may be synchronous or asynchronous.
+_scan_for_bugs_func = None
+try:
+    from ..tools.scan_for_bugs import scan_for_bugs as _scan_for_bugs_func  # type: ignore
+except Exception as import_err:
+    logger.debug(f"scan_for_bugs tool not available: {import_err}")
+    _scan_for_bugs_func = None
+
 from .base import ModelAdapter
 
 class AnthropicAdapter(ModelAdapter):
@@ -23,12 +33,40 @@ class AnthropicAdapter(ModelAdapter):
         tools: List[Dict[str, Any]], 
         system_prompt: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Streams chat completions from Anthropic, handling tool calls.
+        Additionally, if the `scan_for_bugs` tool is available, it is invoked
+        automatically before the LLM generates a response, and its concise
+        bug report is injected as an assistant message at the start of the
+        conversation.
+        """
+        # Auto‑invoke the scan_for_bugs tool if it was supplied.
+        if any(tool.get("name") == "scan_for_bugs" for tool in tools) and _scan_for_bugs_func:
+            try:
+                # Support both async and sync implementations.
+                result = _scan_for_bugs_func()
+                if hasattr(result, "__await__"):
+                    bug_report = await result  # type: ignore
+                else:
+                    bug_report = result
+                bug_report = str(bug_report).strip()
+                # Prepend the bug report as an assistant message so the LLM
+                # can reference it during the turn.
+                report_message = {
+                    "role": "assistant",
+                    "content": f"Workspace Bug Report:\n{bug_report}"
+                }
+                # Do not mutate the original list passed by the caller.
+                messages = [report_message] + list(messages)
+            except Exception as e:
+                logger.error(f"Failed to run scan_for_bugs tool: {e}")
+
         # Initialize the Anthropic client
         # If base_url is the default anthropic URL, we use standard. If custom (e.g. proxy), it handles it.
         # Anthropic SDK requires base_url to be None if using defaults, or custom.
         base_url = self.base_url
         if not base_url or "api.anthropic.com" in base_url:
-            base_url = None # Let SDK use its default URL
+            base_url = None  # Let SDK use its default URL
             
         client = AsyncAnthropic(api_key=self.api_key, base_url=base_url)
 
@@ -54,7 +92,7 @@ class AnthropicAdapter(ModelAdapter):
                 stream=True
             )
 
-            current_tool_calls = {}  # Index -> tool_call data
+            current_tool_calls: Dict[int, Dict[str, Any]] = {}  # Index -> tool_call data
 
             async for chunk in stream:
                 if chunk.type == "content_block_start":
@@ -79,12 +117,9 @@ class AnthropicAdapter(ModelAdapter):
                     if idx in current_tool_calls:
                         tc = current_tool_calls[idx]
                         try:
-                            # Attempt to parse accumulated arguments
                             parsed_input = json.loads(tc["input_accumulator"])
                         except Exception:
-                            # If parsing fails, fall back to empty or try to clean up
                             try:
-                                # Sometimes LLMs yield unescaped control chars, try to clean
                                 cleaned = tc["input_accumulator"].strip()
                                 parsed_input = json.loads(cleaned)
                             except Exception:
@@ -118,18 +153,16 @@ class AnthropicAdapter(ModelAdapter):
         - Tool results are 'tool_result' blocks in a 'user' message.
         - Tool uses are 'tool_use' blocks in an 'assistant' message.
         """
-        anthropic_msgs = []
-        current_user_blocks = []
+        anthropic_msgs: List[Dict[str, Any]] = []
+        current_user_blocks: List[Dict[str, Any]] = []
 
         for msg in internal_messages:
             role = msg["role"]
             
             if role == "system":
-                # System instructions are passed separately
                 continue
                 
             if role == "tool":
-                # Tool result
                 current_user_blocks.append({
                     "type": "tool_result",
                     "tool_use_id": msg["tool_call_id"],
@@ -137,7 +170,6 @@ class AnthropicAdapter(ModelAdapter):
                 })
                 
             elif role == "user":
-                # Flush accumulated tool results first if we hit a user message
                 if current_user_blocks:
                     anthropic_msgs.append({"role": "user", "content": current_user_blocks})
                     current_user_blocks = []
@@ -145,17 +177,14 @@ class AnthropicAdapter(ModelAdapter):
                 anthropic_msgs.append({"role": "user", "content": msg["content"]})
                 
             elif role == "assistant":
-                # Flush accumulated tool results first if we hit an assistant message
                 if current_user_blocks:
                     anthropic_msgs.append({"role": "user", "content": current_user_blocks})
                     current_user_blocks = []
                 
-                content_blocks = []
-                # Include text content if present
+                content_blocks: List[Dict[str, Any]] = []
                 if msg.get("content"):
                     content_blocks.append({"type": "text", "text": msg["content"]})
                 
-                # Include any tool calls
                 if msg.get("tool_calls"):
                     for tc in msg["tool_calls"]:
                         content_blocks.append({
@@ -165,11 +194,9 @@ class AnthropicAdapter(ModelAdapter):
                             "input": tc["input"]
                         })
                 
-                # A assistant message must contain at least one content block
                 if content_blocks:
                     anthropic_msgs.append({"role": "assistant", "content": content_blocks})
 
-        # Final flush for any remaining tool results
         if current_user_blocks:
             anthropic_msgs.append({"role": "user", "content": current_user_blocks})
 

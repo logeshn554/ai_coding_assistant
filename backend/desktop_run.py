@@ -4,6 +4,8 @@ import threading
 import time
 import socket
 import webview
+import subprocess
+import json
 
 # Add the backend folder to python path so it can import app.main
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -25,6 +27,7 @@ class DesktopAPI:
             # Return normalized path with forward slashes for cross-platform compatibility in the frontend
             return os.path.abspath(result[0]).replace("\\", "/")
         return None
+
 
 
 def get_free_port():

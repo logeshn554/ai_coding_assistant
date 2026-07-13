@@ -1,0 +1,484 @@
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
+import { useWorkspace } from '../workspace/WorkspaceContext';
+import { useEditor } from '../editor/EditorContext';
+import { useTerminal } from '../terminal/TerminalContext';
+import { useGit } from '../git/GitContext';
+import { useToast } from '../toast/ToastContext';
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content?: string | any;
+  name?: string;
+  tool_call_id?: string;
+  status?: 'success' | 'error';
+  isConfirmPending?: boolean;
+  isPermissionRequest?: boolean;
+  permissionCommand?: string;
+  permissionRisk?: string;
+  permissionReason?: string;
+  permissionExplanation?: string;
+  isPortConflictRequest?: boolean;
+  portConflictPort?: number;
+  portConflictPid?: number;
+  portConflictProcessName?: string;
+  confirmArgs?: any;
+  confirmDiff?: any;
+}
+
+interface AIContextType {
+  messages: ChatMessage[];
+  isGenerating: boolean;
+  statusMessage: string | null;
+  activeAgent: string | null;
+  activeTask: string | null;
+  collaborationLog: string[];
+  subtasks: any[];
+  sessions: any[];
+  activeSessionId: string;
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  handleSendMessage: (text: string, mode: 'Ask' | 'Plan' | 'Agent/Write', autoApply: boolean) => void;
+  handleConfirmTool: (toolCallId: string, approved: boolean, scope: string, hunkDecisions?: any) => void;
+  handleConfirmPermission: (toolCallId: string, approved: boolean, scope: string, command?: string) => void;
+  handleConfirmPortConflict: (toolCallId: string, action: 'stop' | 'next_port' | 'cancel') => void;
+  handleCancelGeneration: () => void;
+  handleKillProcess: (procId: string) => void;
+  handleSelectSession: (sessionId: string) => Promise<void>;
+  handleNewSession: () => Promise<void>;
+  handleDeleteSession: (sessionId: string) => Promise<void>;
+  handleRenameSession: (sessionId: string, newTitle: string) => Promise<void>;
+}
+
+const AIContext = createContext<AIContextType | undefined>(undefined);
+
+export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [activeAgent, setActiveAgent] = useState<string | null>(null);
+  const [activeTask, setActiveTask] = useState<string | null>(null);
+  const [collaborationLog, setCollaborationLog] = useState<string[]>([]);
+  const [subtasks, setSubtasks] = useState<any[]>([]);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState('default-session');
+
+  const { workspacePath, triggerRefresh } = useWorkspace();
+  const { setProposedDiff, handleSelectFile } = useEditor();
+  const {
+    setActiveTerminalCommand,
+    setActiveTerminalStatus,
+    setActiveTerminalExitCode,
+    setActiveTerminalElapsed,
+    setActiveProcesses
+  } = useTerminal();
+  const { updateStatusBarInfo } = useGit();
+  const { showToast } = useToast();
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const lastAssistantMsgIdRef = useRef<string | null>(null);
+
+  const fetchSessions = async () => {
+    try {
+      const res = await fetch('/api/chat/sessions');
+      if (res.ok) {
+        const data = await res.json();
+        setSessions(data.sessions || []);
+        setActiveSessionId(data.active_session_id || 'default-session');
+      }
+    } catch (e) {
+      console.error('Failed to fetch sessions:', e);
+    }
+  };
+
+  const fetchChatHistory = async () => {
+    try {
+      const res = await fetch('/api/chat/history');
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(data.messages || []);
+      }
+      await fetchSessions();
+    } catch (e) {
+      console.error('Failed to load chat history:', e);
+    }
+  };
+
+  const handleSelectSession = async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/chat/sessions/${sessionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setActiveSessionId(sessionId);
+        setMessages(data.session?.messages || []);
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'change_profile' }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to select session:', e);
+    }
+  };
+
+  const handleNewSession = async () => {
+    try {
+      const res = await fetch('/api/chat/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'New Chat' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setActiveSessionId(data.session.id);
+          setMessages([]);
+          await fetchSessions();
+        }
+      }
+    } catch (e) {
+      console.error('Failed to create new session:', e);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/chat/sessions/${sessionId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        await fetchSessions();
+        const res2 = await fetch('/api/chat/sessions');
+        if (res2.ok) {
+          const data = await res2.json();
+          const newActiveId = data.active_session_id;
+          setActiveSessionId(newActiveId);
+          const sessionDetailsRes = await fetch(`/api/chat/sessions/${newActiveId}`);
+          if (sessionDetailsRes.ok) {
+            const detailsData = await sessionDetailsRes.json();
+            setMessages(detailsData.session?.messages || []);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to delete session:', e);
+    }
+  };
+
+  const handleRenameSession = async (sessionId: string, title: string) => {
+    try {
+      const res = await fetch(`/api/chat/sessions/${sessionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title })
+      });
+      if (res.ok) {
+        await fetchSessions();
+      }
+    } catch (e) {
+      console.error('Failed to rename session:', e);
+    }
+  };
+
+  const connectChatSocket = () => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/chat`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      switch (data.type) {
+        case 'text_delta':
+          const currentAssistantId = lastAssistantMsgIdRef.current;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === currentAssistantId ? { ...msg, content: (msg.content || '') + data.content } : msg
+            )
+          );
+          break;
+        case 'status':
+          setStatusMessage(data.message);
+          break;
+        case 'tool_result':
+          const isSuccess = data.status === 'success';
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `tool_${data.tool_call_id}_${Date.now()}`,
+              role: 'tool',
+              name: data.name,
+              tool_call_id: data.tool_call_id,
+              content: data.result,
+              status: isSuccess ? 'success' : 'error'
+            }
+          ]);
+          triggerRefresh();
+          updateStatusBarInfo();
+          break;
+        case 'confirm_request':
+          setStatusMessage(null);
+          if (data.diff) {
+            setProposedDiff({
+              path: data.diff.path,
+              original: data.diff.original,
+              proposed: data.diff.proposed
+            });
+            handleSelectFile(data.diff.path);
+          }
+          const currentConfirmId = lastAssistantMsgIdRef.current;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === currentConfirmId
+                ? {
+                    ...msg,
+                    isConfirmPending: true,
+                    tool_call_id: data.tool_call_id,
+                    confirmArgs: data.args,
+                    confirmDiff: data.diff
+                      ? {
+                          path: data.diff.path,
+                          original: data.diff.original,
+                          proposed: data.diff.proposed,
+                          hunks: data.diff.hunks
+                        }
+                      : undefined
+                  }
+                : msg
+            )
+          );
+          break;
+        case 'session_done':
+          setIsGenerating(false);
+          setStatusMessage(null);
+          lastAssistantMsgIdRef.current = null;
+          updateStatusBarInfo();
+          break;
+        case 'agent_state':
+          setActiveAgent(data.active_agent);
+          setActiveTask(data.active_task);
+          setCollaborationLog(data.collaboration_log);
+          setSubtasks(data.subtasks || []);
+          break;
+        case 'permission_request':
+          setIsGenerating(false);
+          setStatusMessage(null);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `perm_${data.tool_call_id}_${Date.now()}`,
+              role: 'assistant',
+              content: `Permission requested: \`${data.command}\``,
+              tool_call_id: data.tool_call_id,
+              isConfirmPending: true,
+              isPermissionRequest: true,
+              permissionCommand: data.command,
+              permissionRisk: data.risk,
+              permissionReason: data.reason,
+              permissionExplanation: data.explanation,
+              confirmArgs: data.args
+            }
+          ]);
+          break;
+        case 'terminal_status':
+          setActiveTerminalCommand(data.command);
+          setActiveTerminalStatus(data.status);
+          setActiveTerminalExitCode(data.exit_code);
+          setActiveTerminalElapsed(data.elapsed);
+          break;
+        case 'processes_update':
+          setActiveProcesses(data.processes || []);
+          break;
+        case 'port_conflict_request':
+          setIsGenerating(false);
+          setStatusMessage(null);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `port_conflict_${data.tool_call_id}_${Date.now()}`,
+              role: 'assistant',
+              content: `⚠️ Port conflict: Port ${data.port} is already in use by process \`${data.process_name}\` (PID: ${data.pid}).`,
+              tool_call_id: data.tool_call_id,
+              isConfirmPending: true,
+              isPortConflictRequest: true,
+              portConflictPort: data.port,
+              portConflictPid: data.pid,
+              portConflictProcessName: data.process_name
+            }
+          ]);
+          break;
+        default:
+          break;
+      }
+    };
+
+    ws.onclose = () => {
+      logger.info("Chat socket closed. Reconnecting...");
+      setTimeout(connectChatSocket, 3000);
+    };
+  };
+
+  const handleSendMessage = (text: string, mode: 'Ask' | 'Plan' | 'Agent/Write', autoApply: boolean) => {
+    if (!text.trim() || isGenerating) return;
+
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      showToast('Chat connection is not ready. Reconnecting...', 'error');
+      return;
+    }
+
+    const userMsgId = `user_${Date.now()}`;
+    const assistantMsgId = `assistant_${Date.now()}`;
+
+    setMessages((prev) => [
+      ...prev,
+      { id: userMsgId, role: 'user', content: text, timestamp: Math.floor(Date.now() / 1000) },
+      { id: assistantMsgId, role: 'assistant', content: '', timestamp: Math.floor(Date.now() / 1000) }
+    ]);
+
+    lastAssistantMsgIdRef.current = assistantMsgId;
+    setIsGenerating(true);
+    setStatusMessage('Analyzing workspace...');
+
+    wsRef.current.send(
+      JSON.stringify({
+        type: 'user_message',
+        text,
+        mode,
+        auto_apply: autoApply
+      })
+    );
+  };
+
+  const handleConfirmTool = (toolCallId: string, approved: boolean, scope: string, hunkDecisions?: any) => {
+    setProposedDiff(null);
+    setMessages((prev) =>
+      prev.map((msg) => (msg.tool_call_id === toolCallId ? { ...msg, isConfirmPending: false } : msg))
+    );
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'confirm_response',
+          tool_call_id: toolCallId,
+          approved,
+          scope,
+          hunk_decisions: hunkDecisions
+        })
+      );
+    }
+  };
+
+  const handleConfirmPermission = (
+    toolCallId: string,
+    approved: boolean,
+    scope: string,
+    command?: string
+  ) => {
+    setMessages((prev) =>
+      prev.map((msg) => (msg.tool_call_id === toolCallId ? { ...msg, isConfirmPending: false } : msg))
+    );
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'confirm_response',
+          tool_call_id: toolCallId,
+          approved,
+          scope,
+          command
+        })
+      );
+    }
+  };
+
+  const handleConfirmPortConflict = (toolCallId: string, action: 'stop' | 'next_port' | 'cancel') => {
+    setMessages((prev) =>
+      prev.map((msg) => (msg.tool_call_id === toolCallId ? { ...msg, isConfirmPending: false } : msg))
+    );
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'confirm_response',
+          tool_call_id: toolCallId,
+          approved: action !== 'cancel',
+          scope: 'once',
+          command: action // We piggyback action name as confirmation parameters
+        })
+      );
+    }
+  };
+
+  const handleCancelGeneration = () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'cancel_generation' }));
+    }
+    setIsGenerating(false);
+    setStatusMessage(null);
+    lastAssistantMsgIdRef.current = null;
+  };
+
+  const handleKillProcess = (procId: string) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'stop_process', process_id: procId }));
+    }
+  };
+
+  // Connect websocket and load history on startup
+  useEffect(() => {
+    connectChatSocket();
+    fetchChatHistory();
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  // Hot reload workspace profiles
+  useEffect(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'change_profile' }));
+    }
+  }, [workspacePath]);
+
+  return (
+    <AIContext.Provider
+      value={{
+        messages,
+        isGenerating,
+        statusMessage,
+        activeAgent,
+        activeTask,
+        collaborationLog,
+        subtasks,
+        sessions,
+        activeSessionId,
+        setMessages,
+        handleSendMessage,
+        handleConfirmTool,
+        handleConfirmPermission,
+        handleConfirmPortConflict,
+        handleCancelGeneration,
+        handleKillProcess,
+        handleSelectSession,
+        handleNewSession,
+        handleDeleteSession,
+        handleRenameSession
+      }}
+    >
+      {children}
+    </AIContext.Provider>
+  );
+};
+
+export const useAI = () => {
+  const context = useContext(AIContext);
+  if (!context) {
+    throw new Error('useAI must be used within an AIProvider');
+  }
+  return context;
+};
+
+// Global logger helper
+const logger = {
+  info: (msg: string) => console.log(`[AIContext] INFO: ${msg}`),
+  error: (msg: string) => console.error(`[AIContext] ERROR: ${msg}`)
+};

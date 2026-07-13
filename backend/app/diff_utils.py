@@ -83,3 +83,14 @@ def apply_hunks(original_content: str, hunks: list, decisions: dict) -> str:
             lines[old_idx : old_idx + old_len] = new_lines
             
     return "\n".join(lines)
+
+def generate_bug_report() -> str:
+    """
+    Scans the entire workspace for bugs using the `scan_for_bugs` tool
+    and returns a concise bug report.
+    """
+    try:
+        from .tools.scan_for_bugs import generate_bug_report_sync
+        return generate_bug_report_sync()
+    except Exception as e:
+        return f"Bug scan failed: {e}"

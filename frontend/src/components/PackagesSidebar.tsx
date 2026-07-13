@@ -83,37 +83,36 @@ export default function PackagesSidebar() {
     }
   };
 
+
+
   const filteredDependencies = dependencies.filter(dep =>
     dep.name.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div className="h-full flex flex-col bg-[#0e1014] text-gray-300 font-sans select-none">
+    <div className="h-full flex flex-col bg-[#181818] text-[#cccccc] font-sans select-none">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/5 bg-[#111318] flex items-center justify-between shrink-0">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+      <div className="px-3 py-1.5 border-b border-[#2d2d2d] bg-[#181818] flex items-center justify-between shrink-0">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
           <Box className="w-3.5 h-3.5 text-violet-400" />
           Project Dependencies
-        </span>
-        <span className="text-[8px] uppercase font-bold bg-violet-500/25 text-violet-455 border border-violet-500/20 px-1.5 py-0.2 rounded-full shrink-0">
-          {manager}
         </span>
       </div>
 
       {/* Package installer input */}
-      <form onSubmit={handleInstall} className="p-3 border-b border-white/5 bg-[#0e1014] shrink-0 space-y-2">
-        <div className="flex gap-2">
+      <form onSubmit={handleInstall} className="p-2.5 border-b border-[#2d2d2d] bg-[#181818] shrink-0 space-y-2">
+        <div className="flex gap-1.5">
           <input
             type="text"
             value={newPkg}
             onChange={(e) => setNewPkg(e.target.value)}
             placeholder={manager === 'npm' ? "lodash, express..." : "requests, pandas..."}
-            className="flex-1 bg-[#171922] border border-white/5 hover:border-white/10 rounded px-2.5 py-1 text-[10px] text-white focus:outline-none focus:border-violet-500 transition-all"
+            className="flex-1 bg-[#131313] border border-[#2d2d2d] rounded-none px-2 py-1 text-[10px] text-white focus:outline-none focus:border-[#8b5cf6]/50 placeholder:text-gray-650 font-sans"
           />
           <button
             type="submit"
             disabled={loading || !newPkg.trim()}
-            className="py-1 px-3 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white rounded text-[10px] font-semibold flex items-center gap-1 transition-all"
+            className="py-1 px-3 bg-[#8b5cf6] hover:bg-[#7c4dff] disabled:opacity-40 text-white rounded-none text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
           >
             {loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />} Add
           </button>
@@ -121,39 +120,39 @@ export default function PackagesSidebar() {
       </form>
 
       {/* Filter search bar */}
-      <div className="px-3 py-2 border-b border-white/5 bg-[#0e1014] shrink-0">
-        <div className="relative flex items-center bg-black/25 border border-white/5 hover:border-white/10 rounded px-2 py-0.5 gap-1.5">
+      <div className="px-2.5 py-1.5 border-b border-[#2d2d2d] bg-[#131313] shrink-0">
+        <div className="relative flex items-center bg-[#1e1e1e] border border-[#2d2d2d] hover:border-[#8b5cf6]/40 rounded-none px-2 py-0.5 gap-1.5">
           <Search className="w-3 h-3 text-gray-500" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filter dependencies..."
-            className="w-full bg-transparent text-[9px] text-white focus:outline-none"
+            className="w-full bg-transparent text-[9px] text-white focus:outline-none placeholder:text-gray-650"
           />
         </div>
       </div>
 
       {/* List */}
       <div className="flex-1 overflow-y-auto p-2.5 space-y-3">
-        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+        <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">
           Installed Packages ({filteredDependencies.length})
         </div>
         <div className="space-y-1">
           {filteredDependencies.map((dep) => (
-            <div key={dep.name} className="flex justify-between items-center p-2 bg-black/15 border border-white/5 rounded transition-all hover:bg-white/5">
+            <div key={dep.name} className="flex justify-between items-center p-1.5 bg-[#1e1e1e] border border-[#2d2d2d] rounded-none hover:bg-white/5">
               <div className="flex flex-col min-w-0">
-                <span className="text-[10px] font-medium text-gray-300 truncate" title={dep.name}>{dep.name}</span>
+                <span className="text-[10px] font-medium text-gray-300 truncate font-mono" title={dep.name}>{dep.name}</span>
                 <span className="text-[8px] text-gray-550 capitalize">{dep.type} dependency</span>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[9px] text-gray-450 font-mono font-bold bg-white/5 px-1.5 py-0.2 rounded border border-white/5">
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-[9px] text-[#8b5cf6] font-mono font-bold bg-[#131313] px-1.5 py-0.2 border border-[#2d2d2d] rounded-none">
                   {dep.version}
                 </span>
                 <button
                   onClick={() => handleUninstall(dep.name)}
                   disabled={loading}
-                  className="p-1 rounded hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors"
+                  className="p-1 hover:bg-red-500/10 text-gray-500 hover:text-red-400 cursor-pointer rounded-none"
                   title={`Uninstall ${dep.name}`}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -162,7 +161,7 @@ export default function PackagesSidebar() {
             </div>
           ))}
           {filteredDependencies.length === 0 && (
-            <div className="py-8 text-center text-xs text-gray-650 italic">
+            <div className="py-8 text-center text-xs text-gray-550 italic">
               No packages found
             </div>
           )}
@@ -170,15 +169,16 @@ export default function PackagesSidebar() {
 
         {/* Output console log */}
         {installOutput && (
-          <div className="space-y-1.5 pt-2 border-t border-white/5 select-text">
-            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider select-none">
+          <div className="space-y-1 pt-2 border-t border-[#2d2d2d] select-text">
+            <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider select-none">
               Console Output
             </div>
-            <pre className="p-2 bg-black/30 border border-white/5 rounded font-mono text-[8px] text-gray-550 whitespace-pre-wrap max-h-32 overflow-y-auto pr-1">
+            <pre className="p-2 bg-[#131313] border border-[#2d2d2d] rounded-none font-mono text-[8px] text-gray-400 whitespace-pre-wrap max-h-32 overflow-y-auto pr-1 scrollbar-thin">
               {installOutput}
             </pre>
           </div>
         )}
+
       </div>
     </div>
   );
