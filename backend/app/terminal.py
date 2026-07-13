@@ -14,14 +14,15 @@ class TerminalManager:
         Starts the persistent shell process (PowerShell on Windows, bash/sh on Unix)
         and begins reading its output.
         """
-        shell = "powershell.exe" if sys.platform == "win32" else "bash"
+        if sys.platform == "win32":
+            shell_cmd = ["powershell.exe", "-NoLogo", "-NoProfile"]
+        else:
+            shell_cmd = ["bash", "-i"]
         
-        # On Windows, powershell.exe might run in non-interactive mode if it sees stdin redirected.
-        # We run it with -NoLogo and pipe stdin, stdout, stderr.
         try:
             cwd_dir = self.workspace_root if self.workspace_root and os.path.isdir(self.workspace_root) else os.path.expanduser("~")
             self.process = await asyncio.create_subprocess_exec(
-                shell,
+                *shell_cmd,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT, # pipe stderr to stdout to keep it in order

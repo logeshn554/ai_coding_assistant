@@ -14,7 +14,6 @@ import {
   ChevronDown,
   FileCode,
   Braces,
-  Search,
   FileText,
   ChevronRight,
   MessageSquare,
@@ -38,18 +37,24 @@ export interface ChatMessage {
     proposed: string;
     hunks?: any[];
   };
-  
+
   // Permission Request Fields
   isPermissionRequest?: boolean;
   permissionCommand?: string;
   permissionRisk?: string;
   permissionReason?: string;
   permissionExplanation?: string;
+
+  // Port Conflict Request Fields
+  isPortConflictRequest?: boolean;
+  portConflictPort?: number;
+  portConflictPid?: number;
+  portConflictProcessName?: string;
 }
 
 interface ChatPanelProps {
   messages: ChatMessage[];
-  onSendMessage: (text: string, mode: 'Ask' | 'Plan' | 'Agent', autoApply: boolean) => void;
+  onSendMessage: (text: string, mode: 'Auto' | 'Ask' | 'Plan' | 'Agent', autoApply: boolean) => void;
   onConfirmTool: (toolCallId: string, approved: boolean, hunkDecisions?: Record<string, boolean>) => void;
   onConfirmPermission?: (toolCallId: string, approved: boolean, scope: 'once' | 'session' | 'project', command: string) => void;
   isGenerating: boolean;
@@ -57,7 +62,7 @@ interface ChatPanelProps {
   activeProfileName: string;
   onOpenSettings: () => void;
   onCancelGeneration: () => void;
-  
+
   // Collaboration States
   activeAgent?: string | null;
   activeTask?: string | null;
@@ -65,6 +70,19 @@ interface ChatPanelProps {
   subtasks?: any[];
   contextTokens?: string;
   contextPercentage?: number;
+
+  // Background running processes
+  activeProcesses?: any[];
+  onConfirmPortConflict?: (toolCallId: string, action: 'stop' | 'next_port' | 'cancel') => void;
+  onStopProcess?: (processId?: string) => void;
+
+  // Sessions / Chat History
+  sessions?: any[];
+  activeSessionId?: string;
+  onSelectSession?: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
+  onNewSession?: () => void;
+  onRenameSession?: (sessionId: string, newTitle: string) => void;
 }
 
 export default function ChatPanel({
@@ -82,15 +100,28 @@ export default function ChatPanel({
   collaborationLog = [],
   subtasks = [],
   contextTokens = '0',
-  contextPercentage = 0
+  contextPercentage = 0,
+  activeProcesses = [],
+  onConfirmPortConflict,
+  onStopProcess,
+  sessions = [],
+  activeSessionId,
+  onSelectSession,
+  onDeleteSession,
+  onNewSession,
+  onRenameSession
 }: ChatPanelProps) {
   const [editingCommandId, setEditingCommandId] = useState<string | null>(null);
   const [editedCommandText, setEditedCommandText] = useState<string>('');
   const [input, setInput] = useState('');
-  const [mode, setMode] = useState<'Ask' | 'Plan' | 'Agent'>('Agent');
-  const [autoApply, setAutoApply] = useState(false);
+  const [mode, setMode] = useState<'Auto' | 'Ask' | 'Plan' | 'Agent'>('Auto');
+  const autoApply = false;
   const [hunkDecisions, setHunkDecisions] = useState<Record<string, Record<string, boolean>>>({});
+  const isProcessRunning = activeProcesses.some(p => p.status === 'running' || p.status === 'starting');
   const [activeFeedTab, setActiveFeedTab] = useState<'chat' | 'logs'>('chat');
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Auto switch to logs feed if there is a pending confirmation that just arrived
@@ -153,7 +184,7 @@ export default function ChatPanel({
   const renderStyledLink = (text: string, url: string, key: any) => {
     const isFile = url.startsWith('file://') || url.includes('/file:/');
     const fileMeta = getFileIcon(text);
-    
+
     if (isFile) {
       return (
         <a
@@ -169,7 +200,7 @@ export default function ChatPanel({
         </a>
       );
     }
-    
+
     return (
       <a
         key={key}
@@ -197,12 +228,12 @@ export default function ChatPanel({
           const boldText = part.slice(2, -2);
           return <strong key={partIdx} className="font-bold text-white">{boldText}</strong>;
         }
-        
+
         if (part.startsWith('`') && part.endsWith('`')) {
           const codeText = part.slice(1, -1);
           return renderStyledCode(codeText, partIdx);
         }
-        
+
         if (part.startsWith('[') && part.includes('](')) {
           const linkMatch = part.match(/\[(.*?)\]\((.*?)\)/);
           if (linkMatch) {
@@ -210,7 +241,7 @@ export default function ChatPanel({
             return renderStyledLink(text, url, partIdx);
           }
         }
-        
+
         return part;
       });
 
@@ -250,7 +281,7 @@ export default function ChatPanel({
       return String(args);
     }
   };
-  
+
   const renderDiffHunk = (msgId: string, hunk: any, idx: number) => {
     const isAccepted = hunkDecisions[msgId]?.[hunk.id] ?? true;
 
@@ -270,11 +301,10 @@ export default function ChatPanel({
                   }
                 }));
               }}
-              className={`px-2 py-0.5 rounded transition-all font-bold cursor-pointer focus-visible:ring-1 focus-visible:ring-red-500 focus-visible:outline-none ${
-                !isAccepted 
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/40 font-bold' 
+              className={`px-2 py-0.5 rounded transition-all font-bold cursor-pointer focus-visible:ring-1 focus-visible:ring-red-500 focus-visible:outline-none ${!isAccepted
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/40 font-bold'
                   : 'bg-white/5 text-gray-500 hover:text-gray-300'
-              }`}
+                }`}
             >
               Reject
             </button>
@@ -289,11 +319,10 @@ export default function ChatPanel({
                   }
                 }));
               }}
-              className={`px-2 py-0.5 rounded transition-all font-bold cursor-pointer focus-visible:ring-1 focus-visible:ring-emerald-500 focus-visible:outline-none ${
-                isAccepted 
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold' 
+              className={`px-2 py-0.5 rounded transition-all font-bold cursor-pointer focus-visible:ring-1 focus-visible:ring-emerald-500 focus-visible:outline-none ${isAccepted
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold'
                   : 'bg-white/5 text-gray-500 hover:text-gray-300'
-              }`}
+                }`}
             >
               Accept
             </button>
@@ -307,8 +336,8 @@ export default function ChatPanel({
             const lineClass = isAdded
               ? 'bg-emerald-500/10 text-emerald-400 px-1 rounded-sm w-full block'
               : isRemoved
-              ? 'bg-red-500/10 text-red-400 line-through px-1 rounded-sm w-full block'
-              : 'text-gray-400 w-full block';
+                ? 'bg-red-500/10 text-red-400 line-through px-1 rounded-sm w-full block'
+                : 'text-gray-400 w-full block';
             return (
               <span key={i} className={lineClass}>
                 {l}
@@ -328,19 +357,36 @@ export default function ChatPanel({
 
   return (
     <div className="h-full flex flex-col bg-[#0c0d12] text-gray-200 border-l border-white/5 font-sans relative overflow-hidden">
-      
-      {/* Header / Mode Selector Row */}
-      <div className="p-3 border-b border-white/5 bg-[#0e1015] shrink-0 flex flex-col gap-3">
-        {/* Profile and Settings top row */}
+
+      {/* Header Row */}
+      <div className="p-3 border-b border-white/5 bg-[#0e1015] shrink-0">
+        {/* Profile, History and Settings top row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-violet-400 animate-pulse-subtle" />
             <span className="text-xs font-bold text-white tracking-wide">DevPilot Core Assistant</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowHistoryDropdown(!showHistoryDropdown)}
+              type="button"
+              className="p-1.5 rounded hover:bg-white/5 text-gray-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer"
+              title="Chat History"
+            >
+              <MessageSquare className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onNewSession}
+              type="button"
+              className="p-1.5 rounded hover:bg-white/5 text-gray-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer"
+              title="New Conversation"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
             <button
               onClick={onOpenSettings}
-              className="p-1.5 rounded hover:bg-white/5 text-gray-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none"
+              type="button"
+              className="p-1.5 rounded hover:bg-white/5 text-gray-400 hover:text-white transition-colors focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer"
               title="Settings"
             >
               <Settings className="w-4 h-4" />
@@ -348,43 +394,113 @@ export default function ChatPanel({
           </div>
         </div>
 
-        {/* 1. Mode Selector (top bar) */}
-        <div className="flex gap-2 items-center">
-          <div className="flex bg-[#12141c]/90 rounded-xl p-1 border border-white/5 flex-1">
-            {(['Ask', 'Plan', 'Agent'] as const).map((m) => {
-              const Icon = m === 'Ask' ? Search : m === 'Plan' ? FileText : ChevronRight;
-              const isActive = mode === m;
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMode(m)}
-                  className={`flex-1 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none ${
-                    isActive
-                      ? 'bg-[#8B5CF6] text-white shadow-md font-bold'
-                      : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  <span>{m}</span>
-                </button>
-              );
-            })}
-          </div>
+        {/* Chat History Dropdown */}
+        {showHistoryDropdown && (
+          <div className="absolute right-3 top-14 w-72 max-h-[360px] bg-[#161822] border border-white/10 rounded-xl shadow-2xl z-50 p-3 flex flex-col gap-2 font-sans">
+            <div className="flex items-center justify-between border-b border-white/5 pb-2">
+              <span className="text-xs font-bold text-white">Chat History</span>
+              <button
+                onClick={() => setShowHistoryDropdown(false)}
+                className="text-gray-450 hover:text-white p-1 rounded"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-1.5 max-h-56 pr-1">
+              {sessions && sessions.length > 0 ? (
+                sessions.map((s) => {
+                  const isActive = s.id === activeSessionId;
+                  const isRenaming = renamingSessionId === s.id;
+                  return (
+                    <div
+                      key={s.id}
+                      className={`group flex items-center justify-between p-2 rounded-lg transition-all text-xs border ${isActive
+                          ? 'bg-violet-500/10 border-violet-500/30 text-white font-medium'
+                          : 'bg-black/10 border-transparent text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                        }`}
+                    >
+                      {isRenaming ? (
+                        <div className="flex items-center gap-1.5 w-full">
+                          <input
+                            type="text"
+                            value={renameText}
+                            onChange={(e) => setRenameText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && renameText.trim()) {
+                                onRenameSession?.(s.id, renameText.trim());
+                                setRenamingSessionId(null);
+                              }
+                            }}
+                            className="bg-black/60 border border-white/15 rounded px-2 py-0.5 text-xs text-white focus:outline-none w-full font-sans"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => {
+                              if (renameText.trim()) {
+                                onRenameSession?.(s.id, renameText.trim());
+                                setRenamingSessionId(null);
+                              }
+                            }}
+                            className="p-1 text-emerald-400 hover:bg-white/5 rounded"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            onSelectSession?.(s.id);
+                            setShowHistoryDropdown(false);
+                          }}
+                          className="flex-1 text-left truncate font-medium pr-2 block focus:outline-none cursor-pointer"
+                          title={s.title}
+                        >
+                          {s.title}
+                        </button>
+                      )}
 
-          {/* Auto apply toggle (only visible in Agent mode) */}
-          {mode === 'Agent' && (
-            <label className="flex items-center gap-2 cursor-pointer text-[10px] text-gray-400 hover:text-gray-250 font-medium shrink-0 select-none border border-white/5 rounded-xl px-2.5 py-1.5 bg-[#12141c]/50 transition-colors focus-within:ring-2 focus-within:ring-violet-500">
-              <input
-                type="checkbox"
-                checked={autoApply}
-                onChange={(e) => setAutoApply(e.target.checked)}
-                className="accent-violet-500 rounded bg-black/40 border-white/10 w-3 h-3 cursor-pointer focus-visible:outline-none"
-              />
-              <span>Auto-Apply</span>
-            </label>
-          )}
-        </div>
+                      {!isRenaming && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => {
+                              setRenamingSessionId(s.id);
+                              setRenameText(s.title);
+                            }}
+                            className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white"
+                            title="Rename"
+                          >
+                            <FileText className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => onDeleteSession?.(s.id)}
+                            className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-red-400"
+                            title="Delete"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-[10px] text-gray-650 text-center py-4">
+                  No saved conversations
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => {
+                onNewSession?.();
+                setShowHistoryDropdown(false);
+              }}
+              className="mt-2 w-full py-2 bg-violet-650 hover:bg-violet-600 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" /> New Conversation
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 2. Agent Status Card */}
@@ -406,7 +522,7 @@ export default function ChatPanel({
               </span>
             )}
           </div>
-          
+
           <p className="text-[10px] text-gray-450 italic mt-1 font-sans">
             Current task: "{activeTask || 'Listening for inputs and user prompts'}"
           </p>
@@ -419,7 +535,7 @@ export default function ChatPanel({
               <ChevronRight className="w-3.5 h-3.5 text-gray-500 transition-transform duration-200 group-open:rotate-90 motion-reduce:transition-none" />
               <span>Agent Collaboration Logs ({collaborationLog.length})</span>
             </summary>
-            
+
             <div className="mt-2 max-h-24 overflow-y-auto font-mono text-[9px] text-gray-400 space-y-1 bg-black/35 rounded-lg p-2.5 border border-white/5">
               {collaborationLog.length === 0 ? (
                 <div className="text-gray-500 italic">No logs recorded yet.</div>
@@ -442,23 +558,21 @@ export default function ChatPanel({
                     <span className="font-semibold text-gray-300 truncate max-w-[180px]">
                       #{task.id} - {task.agent}
                     </span>
-                    <span className={`px-1 rounded text-[8px] font-bold uppercase ${
-                      task.status === 'completed'
+                    <span className={`px-1 rounded text-[8px] font-bold uppercase ${task.status === 'completed'
                         ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/10'
                         : task.status === 'running'
-                        ? 'bg-violet-500/20 text-violet-400 border border-violet-500/10 animate-pulse'
-                        : 'bg-gray-500/10 text-gray-400 border border-white/5'
-                    }`}>
+                          ? 'bg-violet-500/20 text-violet-400 border border-violet-500/10 animate-pulse'
+                          : 'bg-gray-500/10 text-gray-400 border border-white/5'
+                      }`}>
                       {task.status === 'completed' ? 'Done' : task.status === 'running' ? 'Running' : 'Waiting'}
                     </span>
                   </div>
                   <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-305 ${
-                        task.status === 'completed' 
-                          ? 'bg-emerald-500' 
+                      className={`h-full rounded-full transition-all duration-305 ${task.status === 'completed'
+                          ? 'bg-emerald-500'
                           : 'bg-violet-500'
-                      }`}
+                        }`}
                       style={{ width: `${task.progress || 0}%` }}
                     />
                   </div>
@@ -476,11 +590,10 @@ export default function ChatPanel({
             <button
               type="button"
               onClick={() => setActiveFeedTab('chat')}
-              className={`flex-1 py-1 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none ${
-                activeFeedTab === 'chat'
+              className={`flex-1 py-1 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none ${activeFeedTab === 'chat'
                   ? 'bg-white/10 text-white font-bold'
                   : 'text-gray-400 hover:text-gray-200'
-              }`}
+                }`}
             >
               <MessageSquare className="w-3.5 h-3.5" />
               <span>Chat</span>
@@ -493,11 +606,10 @@ export default function ChatPanel({
             <button
               type="button"
               onClick={() => setActiveFeedTab('logs')}
-              className={`flex-1 py-1 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer relative focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none ${
-                activeFeedTab === 'logs'
+              className={`flex-1 py-1 rounded-md font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer relative focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none ${activeFeedTab === 'logs'
                   ? 'bg-white/10 text-white font-bold'
                   : 'text-gray-400 hover:text-gray-200'
-              }`}
+                }`}
             >
               <ListTodo className="w-3.5 h-3.5" />
               <span>Tool Logs</span>
@@ -536,7 +648,7 @@ export default function ChatPanel({
 
       {/* Message Feed / Log Feed Container */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 bg-[#07080b]/30">
-        
+
         {/* Chat Feed Mode */}
         {activeFeedTab === 'chat' && (
           messages.length === 0 ? (
@@ -548,7 +660,7 @@ export default function ChatPanel({
               <p className="text-[10px] text-gray-550 max-w-[220px]">
                 Your next-generation multi-agent coding engine. Ask a question or request a task code edit below.
               </p>
-              
+
               <div className="grid grid-cols-2 gap-1.5 w-full pt-2">
                 {[
                   { label: "Refactor current file", prompt: "Explain how we can refactor this file to make it cleaner." },
@@ -576,27 +688,24 @@ export default function ChatPanel({
                   return (
                     <div
                       key={msg.id}
-                      className={`group flex gap-2.5 max-w-[95%] items-start relative ${
-                        isUser ? 'ml-auto flex-row-reverse' : ''
-                      }`}
+                      className={`group flex gap-2.5 max-w-[95%] items-start relative ${isUser ? 'ml-auto flex-row-reverse' : ''
+                        }`}
                     >
                       {/* Avatar */}
-                      <div className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold shadow-md border ${
-                        isUser 
-                          ? 'bg-violet-650 text-white border-violet-500/30' 
+                      <div className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold shadow-md border ${isUser
+                          ? 'bg-violet-650 text-white border-violet-500/30'
                           : 'bg-zinc-800 text-violet-400 border-white/5'
-                      }`}>
+                        }`}>
                         {isUser ? <User className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
                       </div>
 
                       {/* Message Bubble & Details */}
                       <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[calc(100%-2.5rem)]`}>
-                        <div className={`p-3 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap select-text shadow-sm ${
-                          isUser
+                        <div className={`p-3 rounded-2xl text-xs leading-relaxed whitespace-pre-wrap select-text shadow-sm ${isUser
                             ? 'bg-violet-950/45 border border-violet-500/25 text-white rounded-tr-none'
                             : 'bg-[#151720] border border-white/5 text-gray-250 rounded-tl-none'
-                        }`}>
-                          {renderMessageContent(msg.content?.trim() || (msg.isConfirmPending ? "Executing operations and pending authorization..." : "Processing task operations..."))}
+                          }`}>
+                          {renderMessageContent(msg.content?.trim() || (msg.isConfirmPending ? "Executing operations and pending authorization..." : mode === 'Agent' ? "Processing task operations..." : "Thinking..."))}
                         </div>
 
                         {/* Direct log reviewer link for assistant bubble if it's pending */}
@@ -673,15 +782,14 @@ export default function ChatPanel({
                         <span className="text-[11px] font-bold text-gray-300">
                           TOOL: {msg.name || 'unknown_tool'}
                         </span>
-                        <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase ${
-                          isSuccess
+                        <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase ${isSuccess
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                             : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                        }`}>
+                          }`}>
                           {isSuccess ? 'SUCCESS' : 'FAILED'}
                         </span>
                       </div>
-                      
+
                       {/* Tool Card Body */}
                       <pre className="text-[10px] leading-normal text-gray-400 max-h-40 overflow-y-auto whitespace-pre-wrap select-text bg-black/25 p-2 rounded-lg border border-white/5 scrollbar-thin">
                         {msg.content}
@@ -701,13 +809,12 @@ export default function ChatPanel({
                           <span className="text-[11px] font-bold text-violet-300 flex items-center gap-1">
                             <Terminal className="w-3.5 h-3.5 text-violet-400" /> TOOL: run_command
                           </span>
-                          <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase border animate-pulse motion-reduce:animate-none ${
-                            msg.permissionRisk === 'destructive' 
-                              ? 'bg-red-500/15 text-red-400 border-red-500/20' 
+                          <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase border animate-pulse motion-reduce:animate-none ${msg.permissionRisk === 'destructive'
+                              ? 'bg-red-500/15 text-red-400 border-red-500/20'
                               : msg.permissionRisk === 'safe'
-                              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
-                              : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/20'
-                          }`}>
+                                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20'
+                                : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/20'
+                            }`}>
                             {msg.permissionRisk || 'medium'} Risk
                           </span>
                         </div>
@@ -780,6 +887,54 @@ export default function ChatPanel({
                     );
                   }
 
+                  if (msg.isPortConflictRequest) {
+                    return (
+                      <div key={msg.id} className="border border-red-500/25 bg-[#1b1517] rounded-xl p-3 space-y-3 shadow-md font-sans">
+                        {/* Header */}
+                        <div className="flex items-center justify-between border-b border-white/5 pb-2 font-mono">
+                          <span className="text-[11px] font-bold text-red-400 flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5 text-red-400" /> PORT CONFLICT
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase bg-red-500/10 border border-red-500/20 text-red-400 font-mono">
+                            Action Required
+                          </span>
+                        </div>
+
+                        {/* Body content */}
+                        <div className="space-y-2 text-[10px] text-gray-300 leading-normal">
+                          <div className="bg-black/20 p-2.5 rounded-lg border border-white/5 font-sans leading-relaxed">
+                            Port <span className="text-red-400 font-bold font-mono">{msg.portConflictPort}</span> is already in use by process <span className="text-red-400 font-bold font-mono">{msg.portConflictProcessName}</span> (PID: {msg.portConflictPid}).
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex flex-col gap-1.5 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => msg.tool_call_id && onConfirmPortConflict && onConfirmPortConflict(msg.tool_call_id, 'stop')}
+                              className="w-full py-1.5 rounded-lg bg-red-650 hover:bg-red-600 text-white font-bold transition-all cursor-pointer text-center text-[10px] focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
+                            >
+                              Stop Existing Process (PID: {msg.portConflictPid})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => msg.tool_call_id && onConfirmPortConflict && onConfirmPortConflict(msg.tool_call_id, 'next_port')}
+                              className="w-full py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-bold transition-all cursor-pointer text-center text-[10px] focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none"
+                            >
+                              Use Next Available Port
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => msg.tool_call_id && onConfirmPortConflict && onConfirmPortConflict(msg.tool_call_id, 'cancel')}
+                              className="w-full py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-450 hover:text-white font-semibold transition-all cursor-pointer text-center text-[10px] focus-visible:ring-2 focus-visible:ring-white/10 focus-visible:outline-none"
+                            >
+                              Cancel Launch
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   // Case B: Proposed file edits (diff hunk validation)
                   if (msg.confirmDiff) {
                     return (
@@ -800,7 +955,7 @@ export default function ChatPanel({
                             <span className="font-semibold truncate max-w-[190px]">Path: {msg.confirmDiff.path}</span>
                             <span className="text-[9px] text-gray-500 uppercase font-mono">Diff</span>
                           </div>
-                          
+
                           {/* Arguments text snippet */}
                           <div className="bg-black/25 p-2 rounded text-[9px] border border-white/5 max-h-20 overflow-y-auto font-mono text-gray-400">
                             <strong>Arguments:</strong>
@@ -894,30 +1049,40 @@ export default function ChatPanel({
             </div>
           )
         )}
-
-        {/* Global stream loader status and Stop button */}
-        {isGenerating && (
-          <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#151720] border border-white/5 text-xs text-gray-300 w-full motion-safe:animate-pulse-subtle select-none">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-400 motion-safe:animate-ping shrink-0" />
-              <span className="text-[10px] text-gray-400 truncate font-mono">
-                {statusMessage || 'Analyzing workspace components...'}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={onCancelGeneration}
-              className="px-2.5 py-1 bg-red-600/15 hover:bg-red-600/30 border border-red-500/20 hover:border-red-500/40 text-[9px] text-red-400 rounded-md transition-all font-semibold cursor-pointer shrink-0 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none"
-            >
-              Stop
-            </button>
-          </div>
-        )}
+        {/* Global stream loader status (removed thinking banner as requested) */}
         <div ref={chatEndRef} />
       </div>
-
       {/* 5. Input Bar (fixed to bottom) */}
       <form onSubmit={handleSubmit} className="p-3 border-t border-white/5 bg-[#0e1015] shrink-0">
+        {/* Context / Token Usage Indicator progress bar */}
+        {contextPercentage !== undefined && contextPercentage > 0 && (
+          <div className="flex flex-col gap-1 px-1 pb-2 font-mono text-[9px] select-none">
+            <div className="flex items-center justify-between text-gray-500">
+              <div className="flex items-center gap-1.5">
+                <span>Prompt</span>
+                <span className={`transition-colors duration-300 font-bold ${
+                  contextPercentage < 70 ? 'text-emerald-500/80' : contextPercentage < 90 ? 'text-amber-500/80' : 'text-rose-500/80'
+                }`}>
+                  {(() => {
+                    const totalBlocks = 20;
+                    const filledBlocks = Math.round((contextPercentage / 100) * totalBlocks);
+                    const emptyBlocks = totalBlocks - filledBlocks;
+                    return '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
+                  })()}
+                </span>
+              </div>
+              <span className="font-semibold text-gray-400">
+                {contextTokens} / 128k
+              </span>
+            </div>
+            {contextPercentage >= 90 && (
+              <div className="text-rose-400/90 text-[8px] mt-0.5 flex items-center gap-1 leading-none">
+                <span>⚠ Context almost full. Older messages may be summarized.</span>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="bg-[#151720] border border-white/5 rounded-xl p-3 flex flex-col gap-2 shadow-2xl focus-within:border-violet-500/35 transition-colors">
           {/* Text Area */}
           <textarea
@@ -929,9 +1094,9 @@ export default function ChatPanel({
           />
 
           {/* Bottom Toolbar Row */}
-          <div className="flex items-center justify-between pt-2 border-t border-white/5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 border-t border-white/5 gap-2">
             {/* Left Side */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {/* Attach File Button */}
               <button
                 type="button"
@@ -940,7 +1105,7 @@ export default function ChatPanel({
               >
                 <Plus className="w-4 h-4" />
               </button>
-              
+
               {/* Connection profile / Model provider selector dropdown */}
               <button
                 type="button"
@@ -954,17 +1119,19 @@ export default function ChatPanel({
             </div>
 
             {/* Right Side */}
-            <div className="flex items-center gap-2.5 text-gray-500">
-              {/* Token Usage Indicator */}
-              <span className="text-[10px] text-gray-500 font-mono select-none" title="Token Usage">
-                {contextTokens} ({contextPercentage}%)
-              </span>
-              
-              {/* Keybinding hint */}
-              <span className="text-[9px] text-gray-650 hidden sm:inline select-none font-sans">
-                ctrl+p commands
-              </span>
-              
+            <div className="flex items-center gap-2 justify-between sm:justify-end flex-wrap">
+              {/* Mode Selector */}
+              <select
+                value={mode}
+                onChange={(e) => setMode(e.target.value as 'Auto' | 'Ask' | 'Plan' | 'Agent')}
+                className="px-2.5 py-1 bg-[#12141c] border border-violet-500/40 rounded-md text-[10px] font-semibold text-white focus:outline-none focus:border-violet-500 cursor-pointer"
+              >
+                <option value="Auto" className="bg-[#12141c] text-white">Auto</option>
+                <option value="Ask" className="bg-[#12141c] text-white">Ask</option>
+                <option value="Plan" className="bg-[#12141c] text-white">Plan</option>
+                <option value="Agent" className="bg-[#12141c] text-white">Agent</option>
+              </select>
+
               {/* Microphone icon */}
               <button
                 type="button"
@@ -974,15 +1141,35 @@ export default function ChatPanel({
                 <Mic className="w-4 h-4" />
               </button>
 
-              {/* Send Button */}
-              <button
-                type="submit"
-                disabled={!input.trim() || isGenerating}
-                className="p-1.5 rounded-lg bg-[#8B5CF6] hover:bg-[#7c4dff] disabled:bg-transparent text-white disabled:text-gray-650 border border-violet-500/20 disabled:border-transparent transition-all focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer disabled:cursor-not-allowed"
-                title="Send message"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
+              {/* Send / Stop Button */}
+              {isGenerating ? (
+                <button
+                  type="button"
+                  onClick={onCancelGeneration}
+                  className="p-1.5 rounded-lg bg-red-650 hover:bg-red-600 text-white border border-red-500/20 transition-all focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none cursor-pointer"
+                  title="Stop generating"
+                >
+                  <span className="w-3.5 h-3.5 flex items-center justify-center font-bold font-mono">■</span>
+                </button>
+              ) : isProcessRunning ? (
+                <button
+                  type="button"
+                  onClick={() => onStopProcess && onStopProcess()}
+                  className="p-1.5 rounded-lg bg-red-650 hover:bg-red-600 text-white border border-red-500/20 transition-all focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none cursor-pointer"
+                  title="Stop running process"
+                >
+                  <span className="w-3.5 h-3.5 flex items-center justify-center font-bold font-mono">■</span>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  className="p-1.5 rounded-lg bg-[#8B5CF6] hover:bg-[#7c4dff] disabled:bg-transparent text-white disabled:text-gray-650 border border-violet-500/20 disabled:border-transparent transition-all focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none cursor-pointer disabled:cursor-not-allowed"
+                  title="Send message"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -1,13 +1,78 @@
 import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, ShieldCheck, Check, AlertCircle, RefreshCw } from 'lucide-react';
 
+const AGENTS_LIST = [
+  'Orchestrator Agent',
+  'Planner Agent',
+  'Requirement Analysis Agent',
+  'Coding Agent',
+  'File System Agent',
+  'Terminal Agent',
+  'Testing Agent',
+  'Debugging Agent',
+  'Documentation Agent',
+  'Code Review Agent',
+  'Refactoring Agent',
+  'Git Agent'
+];
+
+interface AgentModelRowProps {
+  label: string;
+  value: string;
+  selectableModels: string[];
+  onChange: (val: string) => void;
+}
+
+function AgentModelRow({ label, value, selectableModels, onChange }: AgentModelRowProps) {
+  const isDefault = value === '';
+  const isCustom = value !== '' && !selectableModels.includes(value);
+  const selectValue = isDefault ? '' : (isCustom ? 'custom' : value);
+
+  return (
+    <div className="flex flex-col gap-1.5 p-3 bg-white/[0.02] border border-white/5 rounded-lg">
+      <div className="flex justify-between items-center">
+        <span className="text-[11px] font-semibold text-gray-300">{label}</span>
+      </div>
+      <div className="flex gap-2">
+        <select
+          value={selectValue}
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val === 'custom') {
+              onChange('gpt-4o');
+            } else {
+              onChange(val);
+            }
+          }}
+          className="flex-1 px-2.5 py-1 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-violet-500"
+        >
+          <option value="">Default (Use Profile)</option>
+          {selectableModels.map(m => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+          <option value="custom">Custom (Type Model)...</option>
+        </select>
+        {(isCustom || selectValue === 'custom') && (
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className="flex-1 px-2.5 py-1 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-violet-500 font-mono"
+            placeholder="Type model name..."
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface Profile {
   id?: string;
   name: string;
   api_key: string;
   base_url: string;
   model_name: string;
-  api_format: 'openai' | 'anthropic';
+  api_format: 'openai' | 'anthropic' | 'google';
 }
 
 interface SettingsModalProps {
@@ -27,10 +92,12 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
 
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [hasFetchedModels, setHasFetchedModels] = useState(false);
 
   const [excludeList, setExcludeList] = useState<string[]>([]);
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(true);
   const [agentModelName, setAgentModelName] = useState<string>('');
+  const [agentModels, setAgentModels] = useState<Record<string, string>>({});
 
   const loadPreferences = async () => {
     try {
@@ -40,13 +107,19 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         setExcludeList(data.exclude_list || []);
         setAutoBackupEnabled(data.auto_backup_enabled ?? true);
         setAgentModelName(data.agent_model_name || '');
+        setAgentModels(data.agent_models || {});
       }
     } catch (e) {
       console.error('Error loading preferences:', e);
     }
   };
 
-  const savePreferences = async (newExclusions: string[], newBackup: boolean, newAgentModel?: string) => {
+  const savePreferences = async (
+    newExclusions: string[], 
+    newBackup: boolean, 
+    newAgentModel?: string, 
+    newAgentModels?: Record<string, string>
+  ) => {
     try {
       await fetch('/api/config/settings', {
         method: 'POST',
@@ -54,7 +127,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         body: JSON.stringify({
           exclude_list: newExclusions,
           auto_backup_enabled: newBackup,
-          agent_model_name: newAgentModel !== undefined ? newAgentModel : agentModelName
+          agent_model_name: newAgentModel !== undefined ? newAgentModel : agentModelName,
+          agent_models: newAgentModels !== undefined ? newAgentModels : agentModels
         })
       });
       onProfileChanged();
@@ -64,7 +138,11 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   };
 
   const fetchModels = async () => {
-    if (!selectedProfile || !selectedProfile.api_key) return;
+    if (!selectedProfile) return;
+    if (!selectedProfile.api_key && !selectedProfile.id) {
+      alert('Please enter an API Key first.');
+      return;
+    }
     setIsFetchingModels(true);
     try {
       const res = await fetch('/api/models/fetch', {
@@ -80,40 +158,23 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
       const data = await res.json();
       if (data.success && data.models && data.models.length > 0) {
         setModelOptions(data.models);
-      } else {
-        if (selectedProfile.api_format === 'openai') {
-          setModelOptions(['gpt-4o', 'gpt-4o-mini', 'o1-mini', 'o1-preview', 'llama3.1', 'deepseek-chat', 'deepseek-coder']);
-        } else {
-          setModelOptions(['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229']);
+        setHasFetchedModels(true);
+        // Automatically switch the selected model if the current one is not valid/saved
+        if (!selectedProfile.model_name || !data.models.includes(selectedProfile.model_name)) {
+          setSelectedProfile(prev => prev ? { ...prev, model_name: data.models[0] } : null);
         }
+      } else {
+        setHasFetchedModels(false);
+        alert('Failed to fetch models. Please check if your API Key and Base URL are correct.');
       }
     } catch (e) {
       console.error(e);
+      setHasFetchedModels(false);
+      alert('Error fetching models: ' + e);
     } finally {
       setIsFetchingModels(false);
     }
   };
-
-  useEffect(() => {
-    if (!selectedProfile) {
-      setModelOptions([]);
-      return;
-    }
-    
-    if (selectedProfile.api_format === 'openai') {
-      setModelOptions(['gpt-4o', 'gpt-4o-mini', 'o1-mini', 'o1-preview', 'llama3.1', 'deepseek-chat', 'deepseek-coder']);
-    } else {
-      setModelOptions(['claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229']);
-    }
-
-    if (!selectedProfile.api_key) return;
-
-    const delayDebounce = setTimeout(() => {
-      fetchModels();
-    }, 800);
-    
-    return () => clearTimeout(delayDebounce);
-  }, [selectedProfile?.id, selectedProfile?.api_key, selectedProfile?.base_url, selectedProfile?.api_format]);
 
   const loadPermissions = async () => {
     try {
@@ -173,7 +234,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
 
   const getSelectableModels = () => {
     const list = [...modelOptions];
-    if (selectedProfile?.model_name && !list.includes(selectedProfile.model_name)) {
+    // Only unshift the current model if we haven't successfully fetched the list of models from the server
+    if (!hasFetchedModels && selectedProfile?.model_name && !list.includes(selectedProfile.model_name)) {
       list.unshift(selectedProfile.model_name);
     }
     return list;
@@ -184,6 +246,13 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   const handleSelectProfile = (profile: Profile) => {
     setSelectedProfile(profile);
     setTestResult(null);
+    if (profile.model_name) {
+      setHasFetchedModels(true);
+      setModelOptions([profile.model_name]);
+    } else {
+      setHasFetchedModels(false);
+      setModelOptions([]);
+    }
   };
 
   const handleCreateNewProfile = () => {
@@ -191,11 +260,13 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
       name: 'New Custom Profile',
       api_key: '',
       base_url: 'https://api.openai.com/v1',
-      model_name: 'gpt-4o',
+      model_name: '',
       api_format: 'openai'
     };
     setSelectedProfile(newProfile);
     setTestResult(null);
+    setHasFetchedModels(false);
+    setModelOptions([]);
   };
 
   const handleSwitchActive = async (id: string) => {
@@ -392,76 +463,142 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     {selectedProfile.id ? 'Edit Profile' : 'Configure New Profile'}
                   </h3>
 
-                  {/* Profile Name */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Profile Name</label>
-                    <input
-                      type="text"
-                      value={selectedProfile.name}
-                      onChange={(e) => setSelectedProfile({ ...selectedProfile, name: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
-                      placeholder="e.g. My Anthropic Profile"
-                    />
-                  </div>
-
-                  {/* API Format & Model Name */}
+                  {/* Profile Name & API Format */}
                   <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-gray-400">Profile Name</label>
+                      <input
+                        type="text"
+                        value={selectedProfile.name}
+                        onChange={(e) => setSelectedProfile({ ...selectedProfile, name: e.target.value })}
+                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                        placeholder="e.g. My Anthropic Profile"
+                      />
+                    </div>
+
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-semibold text-gray-400">API Format</label>
                       <select
                         value={selectedProfile.api_format}
-                        onChange={(e) => setSelectedProfile({ ...selectedProfile, api_format: e.target.value as 'openai' | 'anthropic' })}
+                        onChange={(e) => {
+                          const fmt = e.target.value as 'openai' | 'anthropic' | 'google';
+                          let defaultUrl = selectedProfile.base_url;
+                          if (fmt === 'google') {
+                            defaultUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/';
+                          } else if (fmt === 'anthropic') {
+                            defaultUrl = 'https://api.anthropic.com/v1';
+                          } else {
+                            defaultUrl = 'https://api.openai.com/v1';
+                          }
+                          setSelectedProfile({
+                            ...selectedProfile,
+                            api_format: fmt,
+                            base_url: defaultUrl,
+                            model_name: ''
+                          });
+                          setHasFetchedModels(false);
+                          setModelOptions([]);
+                        }}
                         className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500"
                       >
                         <option value="openai">OpenAI Compatible</option>
                         <option value="anthropic">Anthropic Messages</option>
+                        <option value="google">Google Gemini</option>
                       </select>
                     </div>
-                    
+                  </div>
+
+                  {/* Base URL & API Key */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-gray-400">Base URL</label>
+                      <input
+                        type="text"
+                        value={selectedProfile.base_url}
+                        onChange={(e) => {
+                          setSelectedProfile({ ...selectedProfile, base_url: e.target.value });
+                          setHasFetchedModels(false);
+                          setModelOptions([]);
+                        }}
+                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                        placeholder="e.g. https://api.openai.com/v1"
+                      />
+                    </div>
+
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-semibold text-gray-400 flex justify-between">
-                        <span>Model Name</span>
-                        {isFetchingModels && <span className="text-[9px] text-violet-400 animate-pulse">Checking API...</span>}
+                        <span>API Key (encrypted)</span>
+                        {selectedProfile.id && <span className="text-[10px] text-gray-500">Leave unchanged</span>}
                       </label>
-                      <select
-                        value={selectedProfile.model_name}
-                        onChange={(e) => setSelectedProfile({ ...selectedProfile, model_name: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
-                      >
-                        {getSelectableModels().map((model) => (
-                          <option key={model} value={model}>
-                            {model}
-                          </option>
-                        ))}
-                      </select>
+                      <input
+                        type="password"
+                        value={selectedProfile.api_key}
+                        onChange={(e) => {
+                          setSelectedProfile({ ...selectedProfile, api_key: e.target.value });
+                          setHasFetchedModels(false);
+                          setModelOptions([]);
+                        }}
+                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                        placeholder={selectedProfile.id ? "••••••••••••••••" : "Paste your API key here"}
+                      />
                     </div>
                   </div>
 
-                  {/* Base URL */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Base URL</label>
-                    <input
-                      type="text"
-                      value={selectedProfile.base_url}
-                      onChange={(e) => setSelectedProfile({ ...selectedProfile, base_url: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
-                      placeholder="e.g. https://api.openai.com/v1"
-                    />
-                  </div>
-
-                  {/* API Key */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-400 flex justify-between">
-                      <span>API Key (encrypted on disk)</span>
-                      {selectedProfile.id && <span className="text-[10px] text-gray-500">Leave unchanged to keep current key</span>}
-                    </label>
-                    <input
-                      type="password"
-                      value={selectedProfile.api_key}
-                      onChange={(e) => setSelectedProfile({ ...selectedProfile, api_key: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
-                      placeholder={selectedProfile.id ? "••••••••••••••••" : "Paste your API key here"}
-                    />
+                  {/* Model Selection area (conditional) */}
+                  <div className="mt-4 pt-4 border-t border-white/5">
+                    {hasFetchedModels && getSelectableModels().length > 0 ? (
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-gray-400 flex justify-between items-center">
+                          <span>Model Name</span>
+                          <button
+                            type="button"
+                            onClick={fetchModels}
+                            disabled={isFetchingModels}
+                            className="text-[10px] text-violet-400 hover:text-violet-350 disabled:opacity-50 flex items-center gap-1"
+                          >
+                            <RefreshCw className={`w-3 h-3 ${isFetchingModels ? 'animate-spin' : ''}`} />
+                            Refetch Models List
+                          </button>
+                        </label>
+                        <select
+                          value={selectedProfile.model_name}
+                          onChange={(e) => setSelectedProfile({ ...selectedProfile, model_name: e.target.value })}
+                          className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
+                        >
+                          {getSelectableModels().map((model) => (
+                            <option key={model} value={model}>
+                              {model}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="bg-violet-950/20 border border-violet-500/10 rounded-lg p-4 flex flex-col items-center text-center gap-3">
+                        <AlertCircle className="w-6 h-6 text-violet-400" />
+                        <div>
+                          <h4 className="text-xs font-semibold text-white">Models list not loaded yet</h4>
+                          <p className="text-[11px] text-gray-400 mt-0.5">
+                            Enter the Base URL and API Key above, then fetch to load the models list.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={fetchModels}
+                          disabled={isFetchingModels}
+                          className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-xs text-white font-medium rounded-lg transition-colors flex items-center gap-1.5"
+                        >
+                          {isFetchingModels ? (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Fetching Models...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="w-3.5 h-3.5" /> Fetch & List Models
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Test Connection Results */}
@@ -625,10 +762,10 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             {/* Agent Model Selection */}
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-400 block">
-                Agent Model Selection
+                Global Agent Model Selection
               </label>
               <span className="text-[10px] text-gray-500 block">
-                Choose which model the step-by-step Multi-Agent Router uses for all tasks:
+                Choose which model the step-by-step Multi-Agent Router uses by default for all tasks:
               </span>
               <select
                 value={agentModelName}
@@ -646,6 +783,31 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Per-Agent Model Selection */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-400 block">
+                Per-Agent Model Configurations
+              </label>
+              <span className="text-[10px] text-gray-500 block mb-2">
+                Configure specific models for individual agents. When set to 'Default', the agent uses the global Agent Model Selection or the Active Profile Model.
+              </span>
+              <div className="grid grid-cols-2 gap-3 max-h-[220px] overflow-y-auto pr-1 border border-white/5 rounded-lg p-3 bg-black/20">
+                {AGENTS_LIST.map((agent) => (
+                  <AgentModelRow
+                    key={agent}
+                    label={agent}
+                    value={agentModels[agent] || ''}
+                    selectableModels={getSelectableModels()}
+                    onChange={(val) => {
+                      const updated = { ...agentModels, [agent]: val };
+                      setAgentModels(updated);
+                      savePreferences(excludeList, autoBackupEnabled, agentModelName, updated);
+                    }}
+                  />
+                ))}
+              </div>
             </div>
 
             {/* Auto Backups */}

@@ -3,6 +3,7 @@ import shutil
 import json
 import asyncio
 import logging
+import time
 from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +20,7 @@ from .files import (
 )
 from .terminal import TerminalManager
 from .agent import AgentSession
+from .processes import global_process_manager
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
@@ -114,6 +116,7 @@ class SettingsUpdateRequest(BaseModel):
     exclude_list: list
     auto_backup_enabled: bool
     agent_model_name: Optional[str] = ""
+    agent_models: Optional[dict] = None
 
 class FileRenameRequest(BaseModel):
     old_path: str
@@ -129,6 +132,15 @@ class ExtensionActionRequest(BaseModel):
     version: Optional[str] = None
 
 class ChatHistoryRequest(BaseModel):
+    messages: list
+
+class ChatSessionCreateRequest(BaseModel):
+    title: str
+
+class ChatSessionRenameRequest(BaseModel):
+    title: str
+
+class ChatSessionSaveRequest(BaseModel):
     messages: list
 
 # --- REST Endpoints ---
@@ -205,19 +217,43 @@ def fetch_available_models(req: ModelsFetchRequest):
 
     try:
         url = req.base_url.strip()
-        if not url.endswith("/models"):
-            url = url.rstrip("/") + "/models"
-            
+        
         if req.api_format == "openai":
+            if not url.endswith("/models"):
+                url = url.rstrip("/") + "/models"
             headers = {
                 "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
+        elif req.api_format == "google":
+            if "openai" in url.lower():
+                if not url.endswith("/models"):
+                    url = url.rstrip("/") + "/models"
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+            else:
+                if not url or "generativelanguage.googleapis.com" in url:
+                    url = "https://generativelanguage.googleapis.com/v1beta/models"
+                else:
+                    if not url.endswith("/models"):
+                        url = url.rstrip("/") + "/models"
+                headers = {
+                    "x-goog-api-key": api_key,
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
         else:  # anthropic
+            if not url.endswith("/models"):
+                url = url.rstrip("/") + "/models"
             headers = {
                 "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
 
         request = urllib.request.Request(url, headers=headers, method="GET")
@@ -228,7 +264,14 @@ def fetch_available_models(req: ModelsFetchRequest):
                 if "data" in data and isinstance(data["data"], list):
                     models = [m.get("id") for m in data["data"] if m.get("id")]
                 elif "models" in data and isinstance(data["models"], list):
-                    models = [m.get("id") for m in data["models"] if m.get("id")]
+                    for m in data["models"]:
+                        if m.get("name"):
+                            name = m.get("name")
+                            if name.startswith("models/"):
+                                name = name.replace("models/", "", 1)
+                            models.append(name)
+                        elif m.get("id"):
+                            models.append(m.get("id"))
                 elif isinstance(data, list):
                     models = data
                 
@@ -304,7 +347,8 @@ def get_settings():
     return {
         "exclude_list": config_manager.get_exclude_list(),
         "auto_backup_enabled": config_manager.get_auto_backup_enabled(),
-        "agent_model_name": config_manager.get_agent_model_name()
+        "agent_model_name": config_manager.get_agent_model_name(),
+        "agent_models": config_manager.get_agent_models()
     }
 
 @app.post("/api/config/settings")
@@ -313,6 +357,8 @@ def save_settings(req: SettingsUpdateRequest):
         config_manager.set_exclude_list(req.exclude_list)
         config_manager.set_auto_backup_enabled(req.auto_backup_enabled)
         config_manager.set_agent_model_name(req.agent_model_name)
+        if req.agent_models is not None:
+            config_manager.set_agent_models(req.agent_models)
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -341,6 +387,40 @@ async def test_connection(profile: ProfileSaveRequest):
                 max_tokens=1,
                 messages=[{"role": "user", "content": "ping"}],
             )
+        elif fmt == "google":
+            if "openai" in url.lower():
+                from openai import AsyncOpenAI
+                base_url = url if url else "https://generativelanguage.googleapis.com/v1beta/openai/"
+                client = AsyncOpenAI(api_key=key, base_url=base_url)
+                await client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": "ping"}],
+                    max_tokens=1,
+                )
+            else:
+                # Use native Google Gemini API via urllib
+                model_path = model if model.startswith("models/") else f"models/{model}"
+                test_url = f"{url.rstrip('/')}/{model_path}:generateContent" if url else f"https://generativelanguage.googleapis.com/v1beta/{model_path}:generateContent"
+                test_url += f"?key={key}"
+                
+                import urllib.request
+                import json
+                
+                payload = json.dumps({
+                    "contents": [{"parts": [{"text": "ping"}]}],
+                    "generationConfig": {"maxOutputTokens": 1}
+                }).encode("utf-8")
+                
+                req_obj = urllib.request.Request(
+                    test_url,
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json"
+                    },
+                    method="POST"
+                )
+                with urllib.request.urlopen(req_obj, timeout=5) as resp:
+                    resp.read()
         else:
             from openai import AsyncOpenAI
             base_url = url if url else None
@@ -593,39 +673,12 @@ async def uninstall_package(req: PackageUninstallRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- Debug Process Runner State & Endpoints ---
-class DebugProcessState:
-    def __init__(self):
-        self.process = None
-        self.logs = []
-        self.log_lock = asyncio.Lock()
-
-    async def add_log(self, text: str):
-        async with self.log_lock:
-            self.logs.append(text)
-            if len(self.logs) > 1000:
-                self.logs = self.logs[-1000:]
-
-debug_state = DebugProcessState()
-
-async def read_stream(stream, callback):
-    try:
-        while True:
-            line = await stream.readline()
-            if not line:
-                break
-            await callback(line.decode("utf-8", errors="replace").strip())
-    except Exception:
-        pass
-
 @app.post("/api/debug/start")
 async def start_debug_session():
     if not workspace_state.root:
         raise HTTPException(status_code=400, detail="No workspace open.")
-    if debug_state.process and debug_state.process.returncode is None:
+    if len(global_process_manager.get_running_processes()) > 0:
         return {"success": True, "message": "Debugger already running."}
-
-    debug_state.logs = []
-    await debug_state.add_log("Starting Debug Session...")
 
     # Detect start command
     cmd = "npm run dev"
@@ -638,29 +691,18 @@ async def start_debug_session():
             cmd = "python -m http.server 8000"
 
     try:
-        debug_state.process = await asyncio.create_subprocess_shell(
-            cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=workspace_state.root
-        )
-        
-        asyncio.create_task(read_stream(debug_state.process.stdout, debug_state.add_log))
-        asyncio.create_task(read_stream(debug_state.process.stderr, debug_state.add_log))
-        
-        await debug_state.add_log(f"Spawned debug process: {cmd}")
+        proc = await global_process_manager.start_process(cmd, workspace_state.root, "Debug Session")
         return {"success": True, "command": cmd}
     except Exception as e:
-        await debug_state.add_log(f"Failed to spawn debug process: {str(e)}")
         return {"success": False, "error": str(e)}
 
 @app.post("/api/debug/stop")
 async def stop_debug_session():
-    if debug_state.process and debug_state.process.returncode is None:
+    running_procs = global_process_manager.get_running_processes()
+    if running_procs:
         try:
-            debug_state.process.terminate()
-            await debug_state.process.wait()
-            await debug_state.add_log("Debug process terminated.")
+            for p in running_procs:
+                await global_process_manager.stop_process(p.id)
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -668,12 +710,15 @@ async def stop_debug_session():
 
 @app.get("/api/debug/status")
 def get_debug_status():
-    running = debug_state.process is not None and debug_state.process.returncode is None
+    running = len(global_process_manager.get_running_processes()) > 0
     return {"running": running}
 
 @app.get("/api/debug/logs")
 def get_debug_logs():
-    return {"logs": debug_state.logs}
+    procs = global_process_manager.get_all_processes()
+    logs = procs[-1].logs if procs else []
+    stripped_logs = [line.rstrip("\r\n") for line in logs]
+    return {"logs": stripped_logs}
 
 # --- Extensions persistence endpoints ---
 EXTENSIONS_FILE_PATH = os.path.expanduser("~/.devpilot/extensions.json")
@@ -783,28 +828,149 @@ async def run_cmd_async(cmd: str, cwd: str) -> str:
     stdout, stderr = await proc.communicate()
     return (stdout.decode("utf-8", errors="replace") + "\n" + stderr.decode("utf-8", errors="replace")).strip()
 
-CHAT_HISTORY_FILE_PATH = os.path.expanduser("~/.devpilot/chat_history.json")
+CHAT_SESSIONS_FILE_PATH = os.path.expanduser("~/.devpilot/chat_sessions.json")
+
+def read_sessions() -> dict:
+    os.makedirs(os.path.dirname(CHAT_SESSIONS_FILE_PATH), exist_ok=True)
+    if os.path.exists(CHAT_SESSIONS_FILE_PATH):
+        try:
+            with open(CHAT_SESSIONS_FILE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    # Initialize default structure
+    default_session_id = "default-session"
+    default_data = {
+        "active_session_id": default_session_id,
+        "sessions": {
+            default_session_id: {
+                "id": default_session_id,
+                "title": "Default Conversation",
+                "created_at": int(time.time()),
+                "updated_at": int(time.time()),
+                "messages": []
+            }
+        }
+    }
+    write_sessions(default_data)
+    return default_data
+
+def write_sessions(data: dict):
+    os.makedirs(os.path.dirname(CHAT_SESSIONS_FILE_PATH), exist_ok=True)
+    with open(CHAT_SESSIONS_FILE_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
 
 @app.get("/api/chat/history")
 def get_chat_history():
-    os.makedirs(os.path.dirname(CHAT_HISTORY_FILE_PATH), exist_ok=True)
-    if os.path.exists(CHAT_HISTORY_FILE_PATH):
-        try:
-            with open(CHAT_HISTORY_FILE_PATH, "r", encoding="utf-8") as f:
-                return {"messages": json.load(f)}
-        except Exception:
-            pass
-    return {"messages": []}
+    data = read_sessions()
+    active_id = data.get("active_session_id", "default-session")
+    session = data.get("sessions", {}).get(active_id, {})
+    return {"messages": session.get("messages", [])}
 
 @app.post("/api/chat/history")
 def save_chat_history(req: ChatHistoryRequest):
-    os.makedirs(os.path.dirname(CHAT_HISTORY_FILE_PATH), exist_ok=True)
     try:
-        with open(CHAT_HISTORY_FILE_PATH, "w", encoding="utf-8") as f:
-            json.dump(req.messages, f, indent=2)
+        data = read_sessions()
+        active_id = data.get("active_session_id", "default-session")
+        if active_id not in data.get("sessions", {}):
+            data.setdefault("sessions", {})[active_id] = {
+                "id": active_id,
+                "title": "Default Conversation",
+                "created_at": int(time.time()),
+                "updated_at": int(time.time()),
+                "messages": []
+            }
+        data["sessions"][active_id]["messages"] = req.messages
+        data["sessions"][active_id]["updated_at"] = int(time.time())
+        write_sessions(data)
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/chat/sessions")
+def get_chat_sessions():
+    data = read_sessions()
+    sessions_list = []
+    for s_id, s in data.get("sessions", {}).items():
+        sessions_list.append({
+            "id": s.get("id"),
+            "title": s.get("title", "Conversation"),
+            "created_at": s.get("created_at"),
+            "updated_at": s.get("updated_at")
+        })
+    sessions_list.sort(key=lambda x: x["updated_at"], reverse=True)
+    return {
+        "sessions": sessions_list,
+        "active_session_id": data.get("active_session_id", "default-session")
+    }
+
+@app.post("/api/chat/sessions")
+def create_chat_session(req: ChatSessionCreateRequest):
+    import uuid
+    new_id = f"session_{uuid.uuid4().hex[:8]}"
+    data = read_sessions()
+    new_session = {
+        "id": new_id,
+        "title": req.title.strip() or "New Chat",
+        "created_at": int(time.time()),
+        "updated_at": int(time.time()),
+        "messages": []
+    }
+    data.setdefault("sessions", {})[new_id] = new_session
+    data["active_session_id"] = new_id
+    write_sessions(data)
+    return {"success": True, "session": new_session}
+
+@app.get("/api/chat/sessions/{session_id}")
+def get_chat_session_details(session_id: str):
+    data = read_sessions()
+    session = data.get("sessions", {}).get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    data["active_session_id"] = session_id
+    write_sessions(data)
+    return {"session": session}
+
+@app.put("/api/chat/sessions/{session_id}")
+def rename_chat_session(session_id: str, req: ChatSessionRenameRequest):
+    data = read_sessions()
+    session = data.get("sessions", {}).get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    session["title"] = req.title.strip()
+    session["updated_at"] = int(time.time())
+    write_sessions(data)
+    return {"success": True, "session": session}
+
+@app.delete("/api/chat/sessions/{session_id}")
+def delete_chat_session(session_id: str):
+    data = read_sessions()
+    sessions = data.get("sessions", {})
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    
+    del sessions[session_id]
+    
+    if data.get("active_session_id") == session_id:
+        if sessions:
+            remaining = list(sessions.values())
+            remaining.sort(key=lambda x: x.get("updated_at", 0), reverse=True)
+            data["active_session_id"] = remaining[0]["id"]
+        else:
+            default_session_id = "default-session"
+            data["active_session_id"] = default_session_id
+            data["sessions"] = {
+                default_session_id: {
+                    "id": default_session_id,
+                    "title": "Default Conversation",
+                    "created_at": int(time.time()),
+                    "updated_at": int(time.time()),
+                    "messages": []
+                }
+            }
+            
+    write_sessions(data)
+    return {"success": True}
 
 def sync_get_workspace_stats(root_path: str):
     total_files = 0
@@ -949,6 +1115,18 @@ async def websocket_chat(websocket: WebSocket):
                 if session.active_task and not session.active_task.done():
                     session.active_task.cancel()
                     logger.info("Agent session task cancelled by user request.")
+                for p in global_process_manager.get_running_processes():
+                    await p.stop()
+                await session.broadcast_processes_state()
+                
+            elif msg_type == "stop_process":
+                proc_id = msg.get("process_id")
+                if proc_id:
+                    await global_process_manager.stop_process(proc_id)
+                else:
+                    for p in global_process_manager.get_running_processes():
+                        await p.stop()
+                await session.broadcast_processes_state()
                 
     except WebSocketDisconnect:
         logger.info("Chat WebSocket disconnected")

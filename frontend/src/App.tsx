@@ -52,9 +52,16 @@ export default function App() {
   const [activeTerminalStatus, setActiveTerminalStatus] = useState<'running' | 'completed' | 'failed' | null>(null);
   const [activeTerminalExitCode, setActiveTerminalExitCode] = useState<number | null>(null);
   const [activeTerminalElapsed, setActiveTerminalElapsed] = useState<number | null>(null);
+  
+  // Active processes from background Run Agent
+  const [activeProcesses, setActiveProcesses] = useState<any[]>([]);
 
   // Settings modal state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Chat Sessions/History state
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>('default-session');
 
   // Status Bar and Command Palette states
   const [statusBarBranch, setStatusBarBranch] = useState('Not a Git Repo');
@@ -124,17 +131,107 @@ export default function App() {
     return () => window.removeEventListener('keydown', handlePaletteKey);
   }, []);
 
+  const fetchSessions = async () => {
+    try {
+      const res = await fetch('/api/chat/sessions');
+      if (res.ok) {
+        const data = await res.json();
+        setSessions(data.sessions || []);
+        setActiveSessionId(data.active_session_id || 'default-session');
+      }
+    } catch (e) {
+      console.error('Failed to fetch sessions:', e);
+    }
+  };
+
   const fetchChatHistory = async () => {
     try {
       const res = await fetch('/api/chat/history');
       if (res.ok) {
         const data = await res.json();
-        if (data.messages && data.messages.length > 0) {
-          setMessages(data.messages);
+        setMessages(data.messages || []);
+      }
+      fetchSessions();
+    } catch (e) {
+      console.error('Failed to load chat history:', e);
+    }
+  };
+
+  const handleSelectSession = async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/chat/sessions/${sessionId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setActiveSessionId(sessionId);
+        setMessages(data.session?.messages || []);
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'change_profile' }));
         }
       }
     } catch (e) {
-      console.error('Failed to load chat history:', e);
+      console.error('Failed to select session:', e);
+    }
+  };
+
+  const handleNewSession = async () => {
+    try {
+      const res = await fetch('/api/chat/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'New Chat' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setActiveSessionId(data.session.id);
+          setMessages([]);
+          fetchSessions();
+        }
+      }
+    } catch (e) {
+      console.error('Failed to create new session:', e);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/chat/sessions/${sessionId}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        // If we deleted the active session, the backend will assign a new active session
+        // So let's fetch it and load its messages
+        const sessionsRes = await fetch('/api/chat/sessions');
+        if (sessionsRes.ok) {
+          const sessionsData = await sessionsRes.json();
+          const newActiveId = sessionsData.active_session_id;
+          setActiveSessionId(newActiveId);
+          // Fetch messages for the new active session
+          const sessionDetailsRes = await fetch(`/api/chat/sessions/${newActiveId}`);
+          if (sessionDetailsRes.ok) {
+            const detailsData = await sessionDetailsRes.json();
+            setMessages(detailsData.session?.messages || []);
+          }
+        }
+        fetchSessions();
+      }
+    } catch (e) {
+      console.error('Failed to delete session:', e);
+    }
+  };
+
+  const handleRenameSession = async (sessionId: string, title: string) => {
+    try {
+      const res = await fetch(`/api/chat/sessions/${sessionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title })
+      });
+      if (res.ok) {
+        fetchSessions();
+      }
+    } catch (e) {
+      console.error('Failed to rename session:', e);
     }
   };
 
@@ -198,10 +295,10 @@ export default function App() {
 
       switch (data.type) {
         case 'text_delta':
+          const currentAssistantId = lastAssistantMsgIdRef.current;
           setMessages((prev) => {
-            const lastId = lastAssistantMsgIdRef.current;
             return prev.map((msg) => {
-              if (msg.id === lastId) {
+              if (msg.id === currentAssistantId) {
                 return { ...msg, content: (msg.content || '') + data.content };
               }
               return msg;
@@ -240,10 +337,10 @@ export default function App() {
             handleSelectFile(data.diff.path);
           }
 
+          const currentConfirmId = lastAssistantMsgIdRef.current;
           setMessages((prev) => {
-            const lastId = lastAssistantMsgIdRef.current;
             return prev.map((msg) => {
-              if (msg.id === lastId) {
+              if (msg.id === currentConfirmId) {
                 return {
                   ...msg,
                   isConfirmPending: true,
@@ -302,6 +399,29 @@ export default function App() {
           setActiveTerminalExitCode(data.exit_code);
           setActiveTerminalElapsed(data.elapsed);
           break;
+
+        case 'processes_update':
+          setActiveProcesses(data.processes || []);
+          break;
+
+        case 'port_conflict_request':
+          setIsGenerating(false);
+          setStatusMessage(null);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `port_conflict_${data.tool_call_id}_${Date.now()}`,
+              role: 'assistant',
+              content: `⚠️ Port conflict: Port ${data.port} is already in use by process \`${data.process_name}\` (PID: ${data.pid}).`,
+              tool_call_id: data.tool_call_id,
+              isConfirmPending: true,
+              isPortConflictRequest: true,
+              portConflictPort: data.port,
+              portConflictPid: data.pid,
+              portConflictProcessName: data.process_name
+            }
+          ]);
+          break;
       }
     };
 
@@ -324,7 +444,7 @@ export default function App() {
     }
   };
 
-  const handleSendMessage = (text: string, mode: 'Ask' | 'Plan' | 'Agent', autoApply: boolean) => {
+  const handleSendMessage = (text: string, mode: 'Auto' | 'Ask' | 'Plan' | 'Agent', autoApply: boolean) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       alert('Connection lost. Please try again in a few seconds.');
       return;
@@ -412,6 +532,33 @@ export default function App() {
     setIsGenerating(approved);
     if (approved) {
       setStatusMessage('Executing command...');
+    } else {
+      setStatusMessage(null);
+    }
+  };
+
+  const handleConfirmPortConflict = (toolCallId: string, action: 'stop' | 'next_port' | 'cancel') => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    wsRef.current.send(JSON.stringify({
+      type: 'confirm_response',
+      tool_call_id: toolCallId,
+      approved: action !== 'cancel',
+      scope: action
+    }));
+
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.tool_call_id === toolCallId) {
+          return { ...msg, isConfirmPending: false };
+        }
+        return msg;
+      })
+    );
+
+    setIsGenerating(action !== 'cancel');
+    if (action !== 'cancel') {
+      setStatusMessage('Resolving port conflict...');
     } else {
       setStatusMessage(null);
     }
@@ -759,6 +906,17 @@ export default function App() {
                 subtasks={subtasks}
                 contextTokens={formattedTokens}
                 contextPercentage={percentage}
+                activeProcesses={activeProcesses}
+                onConfirmPortConflict={handleConfirmPortConflict}
+                onStopProcess={(procId?: string) => {
+                  wsRef.current?.send(JSON.stringify({ type: 'stop_process', process_id: procId }));
+                }}
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                onSelectSession={handleSelectSession}
+                onDeleteSession={handleDeleteSession}
+                onNewSession={handleNewSession}
+                onRenameSession={handleRenameSession}
               />
             );
           })()}

@@ -12,6 +12,7 @@ class ConfigManager:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         self.fernet = self._get_or_create_fernet()
         self._init_config()
+        self._ensure_google_profile()
 
     def _get_or_create_fernet(self) -> Fernet:
         """
@@ -50,6 +51,14 @@ class ConfigManager:
                         "api_format": "openai"
                     },
                     {
+                        "id": "default-google",
+                        "name": "Google Gemini 1.5 Flash",
+                        "api_key": "",
+                        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+                        "model_name": "gemini-1.5-flash",
+                        "api_format": "google"
+                    },
+                    {
                         "id": "default-ollama",
                         "name": "Ollama (Local Llama 3)",
                         "api_key": "ollama",
@@ -60,6 +69,26 @@ class ConfigManager:
                 ]
             }
             self._save_raw_config(default_config)
+
+    def _ensure_google_profile(self):
+        try:
+            config = self._read_raw_config()
+            profiles = config.get("profiles", [])
+            has_google = any(p.get("id") == "default-google" or "google" in p.get("api_format", "").lower() for p in profiles)
+            if not has_google:
+                google_profile = {
+                    "id": "default-google",
+                    "name": "Google Gemini 1.5 Flash",
+                    "api_key": "",
+                    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+                    "model_name": "gemini-1.5-flash",
+                    "api_format": "google"
+                }
+                profiles.append(google_profile)
+                config["profiles"] = profiles
+                self._save_raw_config(config)
+        except Exception:
+            pass
 
 
     def _read_raw_config(self) -> dict:
@@ -282,5 +311,15 @@ class ConfigManager:
         config = self._read_raw_config()
         config["agent_model_name"] = name
         self._save_raw_config(config)
+
+    def get_agent_models(self) -> dict:
+        config = self._read_raw_config()
+        return config.get("agent_models", {})
+
+    def set_agent_models(self, agent_models: dict):
+        config = self._read_raw_config()
+        config["agent_models"] = agent_models
+        self._save_raw_config(config)
+
 
 

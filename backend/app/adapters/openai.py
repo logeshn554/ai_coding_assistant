@@ -75,7 +75,8 @@ class OpenAIAdapter(ModelAdapter):
                             tool_calls_accum[idx] = {
                                 "id": "",
                                 "name": "",
-                                "arguments": ""
+                                "arguments": "",
+                                "thought_signature": None
                             }
                         
                         # Populate ID
@@ -88,6 +89,24 @@ class OpenAIAdapter(ModelAdapter):
                                 tool_calls_accum[idx]["name"] = func.name
                             if getattr(func, "arguments", None) is not None:
                                 tool_calls_accum[idx]["arguments"] += func.arguments
+                                
+                        # Extract thought signature if present (Gemini)
+                        try:
+                            def get_nested_val(obj, *keys):
+                                for key in keys:
+                                    if obj is None:
+                                        return None
+                                    if isinstance(obj, dict):
+                                        obj = obj.get(key)
+                                    else:
+                                        obj = getattr(obj, key, None)
+                                return obj
+                            
+                            sig = get_nested_val(tc_chunk, "extra_content", "google", "thought_signature")
+                            if sig:
+                                tool_calls_accum[idx]["thought_signature"] = sig
+                        except Exception as e:
+                            logger.debug(f"Failed to extract thought_signature: {e}")
 
             # Yield completed tool calls after streaming terminates
             for idx, tc in tool_calls_accum.items():
@@ -108,7 +127,8 @@ class OpenAIAdapter(ModelAdapter):
                     "type": "tool_call",
                     "id": tc_id,
                     "name": tc_name,
-                    "input": parsed_input
+                    "input": parsed_input,
+                    "thought_signature": tc.get("thought_signature")
                 }
 
             # Return done with stop reason
@@ -161,14 +181,21 @@ class OpenAIAdapter(ModelAdapter):
                 if tool_calls:
                     tcs = []
                     for tc in tool_calls:
-                        tcs.append({
+                        tc_item = {
                             "id": tc["id"],
                             "type": "function",
                             "function": {
                                 "name": tc["name"],
                                 "arguments": json.dumps(tc["input"])
                             }
-                        })
+                        }
+                        if tc.get("thought_signature"):
+                            tc_item["extra_content"] = {
+                                "google": {
+                                    "thought_signature": tc["thought_signature"]
+                                }
+                            }
+                        tcs.append(tc_item)
                     item["tool_calls"] = tcs
                     
                 openai_msgs.append(item)

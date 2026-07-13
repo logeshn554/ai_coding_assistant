@@ -66,7 +66,7 @@ class PlannerAgent(BaseAgent):
             "Refactoring Agent, Git Agent."
         )
         system_prompt = "You are a master software architect planner. Output ONLY valid JSON."
-        response = await session._run_llm_query(system_prompt, prompt)
+        response = await session._run_llm_query(system_prompt, prompt, agent_name=self.name)
         try:
             clean_res = response.strip()
             if clean_res.startswith("```json"):
@@ -96,15 +96,39 @@ class RequirementAnalysisAgent(BaseAgent):
         await self.orchestrator.context.log(f"Requirement Analysis Agent: Analyzing: {task_description}")
         await self.orchestrator.update_task_progress(task_id, 30, session)
         
+        # Get actual codebase file paths to help LLM identify target files
+        try:
+            from .files import config_manager
+            exclude_dirs = set(config_manager.get_exclude_list())
+            exclude_extensions = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll", ".pyc", ".bak", ".map"}
+            
+            workspace_files = []
+            for root, dirs, files in os.walk(session.workspace_root):
+                # Prune excluded directories in-place
+                dirs[:] = [d for d in dirs if d not in exclude_dirs]
+                for file in files:
+                    ext = os.path.splitext(file)[1].lower()
+                    if ext in exclude_extensions:
+                        continue
+                    abs_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(abs_path, session.workspace_root).replace("\\", "/")
+                    workspace_files.append(rel_path)
+            
+            codebase_details = "Actual files in the workspace:\n" + "\n".join(workspace_files)
+        except Exception as e:
+            codebase_details = "Could not list workspace files."
+            logger.error(f"Error listing workspace files: {e}")
+            
         # Analyze request to get target files
         prompt = (
             f"Analyze the following task and name the files in the codebase (relative paths) that will need to be read or modified:\n\n"
             f"Task: {task_description}\n\n"
             f"Codebase details:\n"
-            f"Format response as a JSON list of file paths, e.g. ['src/index.js', 'backend/config.py']."
+            f"{codebase_details}\n\n"
+            f"Format response as a JSON list of file paths, e.g. ['backend/config.py']."
         )
         system_prompt = "You are a master requirement analysis engineer. Output ONLY valid JSON array of strings."
-        response = await session._run_llm_query(system_prompt, prompt)
+        response = await session._run_llm_query(system_prompt, prompt, agent_name=self.name)
         await self.orchestrator.update_task_progress(task_id, 70, session)
         
         try:
@@ -189,7 +213,7 @@ class CodingAgent(BaseAgent):
             system_prompt = "You are a master software engineer. Output ONLY the raw, complete code. No formatting."
             
             # Run query
-            new_code = await session._run_llm_query(system_prompt, prompt)
+            new_code = await session._run_llm_query(system_prompt, prompt, agent_name=self.name)
             
             # Clean up markdown block wrapping if present
             clean_code = new_code.strip()
@@ -243,7 +267,7 @@ class TerminalAgent(BaseAgent):
             f"Respond with ONLY the command string. If no command is needed, output 'NONE'."
         )
         system_prompt = "You are a master system terminal executor. Output ONLY the raw command string."
-        cmd = await session._run_llm_query(system_prompt, prompt)
+        cmd = await session._run_llm_query(system_prompt, prompt, agent_name=self.name)
         
         cmd = cmd.strip().strip("`").strip()
         if cmd and cmd.upper() != "NONE":
@@ -330,7 +354,7 @@ class DebuggingAgent(BaseAgent):
             f"code fixes to address these. If no bugs are found in the logs, state 'No issues identified'."
         )
         system_prompt = "You are a senior debugging engineer. Analyze the output and suggest fixes."
-        debug_output = await session._run_llm_query(system_prompt, prompt)
+        debug_output = await session._run_llm_query(system_prompt, prompt, agent_name=self.name)
         
         await self.orchestrator.context.log(f"Debugging Agent: Debugging analysis:\n{debug_output[:300]}")
         self.orchestrator.context.memory["debugging_notes"] = debug_output
@@ -351,7 +375,7 @@ class DocumentationAgent(BaseAgent):
             f"Format the output strictly as markdown. Do not include extra markdown block wrapping."
         )
         system_prompt = "You are a technical writer. Write clean, readable technical documentation."
-        doc_content = await session._run_llm_query(system_prompt, prompt)
+        doc_content = await session._run_llm_query(system_prompt, prompt, agent_name=self.name)
         
         path = "DOCS.md"
         tc_id = f"doc_{task_id}_{uuid.uuid4().hex[:6]}"
@@ -393,7 +417,7 @@ class CodeReviewAgent(BaseAgent):
             f"Analyze style, potential bugs, efficiency, and safety. Report any concerns."
         )
         system_prompt = "You are a senior code reviewer. Provide constructive criticism and issues found."
-        review = await session._run_llm_query(system_prompt, prompt)
+        review = await session._run_llm_query(system_prompt, prompt, agent_name=self.name)
         
         await self.orchestrator.context.log(f"Code Review Agent: Review completed. Summary:\n{review[:250]}...")
         self.orchestrator.context.memory["code_review"] = review
@@ -515,6 +539,34 @@ class TaskScheduler:
             "collaboration_log": self.orchestrator.context.collaboration_log
         })
 
+def extract_json(text: str) -> dict:
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+        
+    if text.startswith("```"):
+        lines = text.split("\n")
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+        try:
+            return json.loads(text)
+        except Exception:
+            pass
+            
+    match = re.search(r"(\{.*\})", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except Exception:
+            pass
+            
+    raise ValueError(f"Could not parse response as JSON: {text}")
+
 class AgentOrchestrator:
     def __init__(self):
         self.context = SharedContext()
@@ -600,7 +652,7 @@ Available Agents:
                 "collaboration_log": self.context.collaboration_log
             })
             
-            response = await session._run_llm_query(system_prompt, prompt)
+            response = await session._run_llm_query(system_prompt, prompt, agent_name="Orchestrator Agent")
             
             selected_agent_name = "Orchestrator"
             agent_description = "Task complete"
@@ -675,4 +727,32 @@ Available Agents:
             "collaboration_log": self.context.collaboration_log
         })
         
+        # Generate and stream final response summary
+        final_history_summary = "\n".join(self.context.collaboration_log)
+        summary_prompt = (
+            f"You are the Orchestrator Agent. The user's query/task description was: '{task_description}'.\n"
+            f"Here is the log of what the specialized agents accomplished:\n"
+            f"{final_history_summary}\n\n"
+            f"Please write a friendly, concise summary response to the user explaining what was done and the final outcome. "
+            f"If it was just a simple conversational message (like 'hi' or 'hello'), respond to it directly and politely, without listing logs. "
+            f"Keep your response concise."
+        )
+        system_prompt = "You are the head Orchestrator assistant. Summarize the task outcome clearly."
+        try:
+            response_text = await session._run_llm_query(system_prompt, summary_prompt, agent_name="Orchestrator Agent")
+            # Append response to session conversation history so context is preserved
+            session.conversation_history.append({"role": "assistant", "content": response_text})
+            await session.send_ws_message({
+                "type": "text_delta",
+                "content": response_text
+            })
+        except Exception as e:
+            logger.error(f"Failed to generate final orchestrator summary: {str(e)}")
+            fallback_text = "Dynamic routing session completed successfully."
+            session.conversation_history.append({"role": "assistant", "content": fallback_text})
+            await session.send_ws_message({
+                "type": "text_delta",
+                "content": fallback_text
+            })
+            
         return "Dynamic routing session completed."

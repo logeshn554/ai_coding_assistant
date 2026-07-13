@@ -17,6 +17,7 @@ from .async_files import (
 )
 
 from .orchestrator import AgentOrchestrator
+from .processes import global_process_manager, get_process_using_port, kill_process_by_pid
 
 logger = logging.getLogger("devpilot.agent")
 
@@ -98,10 +99,64 @@ class AgentSession:
             await self.send_ws_message({"type": "session_done"})
             return
             
+        # Check for Run Agent activation
+        run_keywords = ["run", "start", "launch", "execute", "serve", "build and run", 
+                        "preview", "open application", "start server", "run project"]
+        is_run_command = False
+        text_lower = text.lower()
+        for kw in run_keywords:
+            if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
+                is_run_command = True
+                break
+
+        if is_run_command:
+            self.is_running = True
+            try:
+                self.conversation_history.append({"role": "user", "content": text})
+                await self.run_agent_flow(text)
+            except Exception as e:
+                logger.exception(f"Run Agent execution failed: {str(e)}")
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": f"\n\n[Run Agent Error: {str(e)}]\n"
+                })
+            finally:
+                self.is_running = False
+                await self.send_ws_message({"type": "session_done"})
+                await self.broadcast_processes_state()
+            return
+
         self.is_running = True
         try:
             # Append user request to history
             self.conversation_history.append({"role": "user", "content": text})
+            
+            # Auto-route mode selection if set to 'Auto' using the LLM
+            if mode == "Auto":
+                system_prompt = (
+                    "You are a routing system for an AI coding assistant.\n"
+                    "Analyze the user's prompt and determine which mode matches their request:\n"
+                    "1. 'Ask': For conceptual questions, explanations of code, or discussions that do not require planning, writing files, or running commands.\n"
+                    "2. 'Plan': Specifically for planning, outlines, or step-by-step todo lists for complex tasks, without implementing them.\n"
+                    "3. 'Agent': For actions, creating/editing files, debugging, running terminal commands, or multi-agent work.\n"
+                    "Response format: Return ONLY the single word 'Ask', 'Plan', or 'Agent'. Do not include markdown or punctuation."
+                )
+                try:
+                    response = await self._run_llm_query(system_prompt, text, agent_name="Orchestrator Agent")
+                    classified = response.strip().strip("'\"").strip()
+                    if classified in ["Ask", "Plan", "Agent"]:
+                        mode = classified
+                    else:
+                        if "ask" in classified.lower():
+                            mode = "Ask"
+                        elif "plan" in classified.lower():
+                            mode = "Plan"
+                        else:
+                            mode = "Agent"
+                except Exception as e:
+                    logger.error(f"Failed to auto-classify query using LLM: {str(e)}")
+                    mode = "Agent"
+                logger.info(f"Auto-routed query '{text}' using LLM to mode: '{mode}'")
         
             # Trigger multi-agent collaboration flow
             if mode == "Agent":
@@ -154,7 +209,12 @@ class AgentSession:
                 if tool_calls_to_run:
                     # Save tool calls in internal representation format
                     assistant_msg["tool_calls"] = [
-                        {"id": tc["id"], "name": tc["name"], "input": tc["input"]}
+                        {
+                            "id": tc["id"],
+                            "name": tc["name"],
+                            "input": tc["input"],
+                            "thought_signature": tc.get("thought_signature")
+                        }
                         for tc in tool_calls_to_run
                     ]
                 
@@ -213,11 +273,18 @@ class AgentSession:
                     "type": "text_delta",
                     "content": "\n\n[Warning: Agent reached the maximum limit of 25 turns.]"
                 })
-                
             await self.send_ws_message({"type": "session_done"})
+                
         except asyncio.CancelledError:
             await self.send_ws_message({"type": "session_done"})
             raise
+        except Exception as e:
+            logger.exception(f"Error in handle_user_message agent loop: {str(e)}")
+            await self.send_ws_message({
+                "type": "text_delta",
+                "content": f"\n\n[Error: {str(e)}]\n"
+            })
+            await self.send_ws_message({"type": "session_done"})
         finally:
             self.is_running = False
 
@@ -464,6 +531,10 @@ class AgentSession:
         Called when the user clicks Accept or Reject in the frontend.
         """
         if tool_call_id in self.pending_confirmations:
+            if "action" in self.pending_confirmations[tool_call_id]:
+                self.pending_confirmations[tool_call_id]["action"] = scope
+                self.pending_confirmations[tool_call_id]["event"].set()
+                return
             self.pending_confirmations[tool_call_id]["approved"] = approved
             self.pending_confirmations[tool_call_id]["scope"] = scope
             self.pending_confirmations[tool_call_id]["hunk_decisions"] = hunk_decisions
@@ -471,7 +542,7 @@ class AgentSession:
                 self.pending_confirmations[tool_call_id]["command"] = edited_command
             self.pending_confirmations[tool_call_id]["event"].set()
 
-    async def _run_llm_query(self, system_prompt: str, user_content: str) -> str:
+    async def _run_llm_query(self, system_prompt: str, user_content: str, agent_name: str = None) -> str:
         """
         Queries the LLM non-disruptively by accumulating stream_chat chunks.
         Uses ModelRouter to support automatic local model fallbacks on connection/API failure.
@@ -480,8 +551,438 @@ class AgentSession:
         messages = [{"role": "user", "content": user_content}]
         try:
             router = ModelRouter()
-            response_text = await router.completion(self.profile, messages, system_prompt, is_agent=True)
+            response_text = await router.completion(self.profile, messages, system_prompt, is_agent=True, task_type=agent_name)
             return response_text
         except Exception as e:
             logger.error(f"Error querying background LLM (including fallbacks): {str(e)}")
             raise e
+
+    async def broadcast_processes_state(self):
+        from .processes import global_process_manager
+        procs = global_process_manager.get_all_processes()
+        serialized = []
+        for p in procs:
+            serialized.append({
+                "id": p.id,
+                "name": p.name,
+                "command": p.command,
+                "status": p.status,
+                "port": p.port,
+                "localhost_url": p.localhost_url,
+                "network_url": p.network_url,
+                "pid": p.pid
+            })
+        await self.send_ws_message({
+            "type": "processes_update",
+            "processes": serialized
+        })
+
+    async def monitor_and_stream_events(self, proc):
+        await self.broadcast_processes_state()
+        last_index = 0
+        reported_events = set()
+        while proc.status in ("starting", "running"):
+            if last_index < len(proc.logs):
+                new_lines = proc.logs[last_index:]
+                last_index = len(proc.logs)
+                for line in new_lines:
+                    await self.send_ws_message({
+                        "type": "terminal_stream",
+                        "content": line
+                    })
+                    line_lower = line.lower()
+                    event_msg = None
+                    if "hmr update" in line_lower or "hot update" in line_lower:
+                        event_msg = "✓ Hot Reload completed"
+                    elif "compiled successfully" in line_lower:
+                        event_msg = "✓ Build completed successfully"
+                    elif "database connected" in line_lower or "db connected" in line_lower or "connected to database" in line_lower:
+                        event_msg = "✓ Connected to database"
+                    elif "api ready" in line_lower or "api server ready" in line_lower:
+                        event_msg = "✓ API server ready"
+                    elif "rebuilding" in line_lower or "rebuilt" in line_lower:
+                        event_msg = "✓ Server rebuild complete"
+                    
+                    if event_msg and event_msg not in reported_events:
+                        await self.send_ws_message({
+                            "type": "text_delta",
+                            "content": f"\n{event_msg}\n"
+                        })
+                        reported_events.add(event_msg)
+            await asyncio.sleep(0.1)
+        await self.broadcast_processes_state()
+
+    async def run_agent_flow(self, user_text: str):
+        await self.send_ws_message({
+            "type": "status",
+            "status": "thinking",
+            "message": "Run Agent: Detecting project type..."
+        })
+        
+        files_list = []
+        try:
+            items = await async_list_workspace_dir(self.workspace_root, "")
+            for it in items:
+                files_list.append(it["name"])
+                if it["isDir"] and it["name"] not in (".git", "node_modules", "venv", "__pycache__", ".devpilot"):
+                    try:
+                        sub_items = await async_list_workspace_dir(self.workspace_root, it["name"])
+                        for s_it in sub_items[:15]:
+                            files_list.append(f"{it['name']}/{s_it['name']}")
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.error(f"Error listing workspace files: {str(e)}")
+
+        prompt = (
+            f"The user wants to run/start the project. User request: '{user_text}'\n"
+            f"Workspace files:\n{json.dumps(files_list, indent=2)}\n\n"
+            "Analyze the workspace files and the user request to determine:\n"
+            "1. The project/service type or framework (e.g. 'React (Vite)', 'FastAPI', 'Python Flask', etc.).\n"
+            "2. The exact terminal command to run, start, or serve the requested service/project.\n"
+            "Ensure the command is correct for this project structure. If a subdirectory (like 'frontend' or 'backend') has a package.json or main.py and the user specifies it, make sure to include directory navigation or a prefix (e.g. 'npm run dev --prefix frontend' or navigate to it first).\n\n"
+            "Output your response strictly as a JSON object with two fields:\n"
+            "- 'framework': a string indicating the framework/language/service name (e.g. 'React (Vite)', 'FastAPI', 'Flask', 'Django', etc.)\n"
+            "- 'command': the exact command to run/start/serve the application (e.g. 'npm run dev', 'uvicorn main:app --reload', etc.)\n"
+            "Respond with ONLY the JSON object, no other text."
+        )
+        system_prompt = "You are a master developer assistant. Analyze the project structure and output the correct run command in JSON format."
+        
+        response = await self._run_llm_query(system_prompt, prompt)
+        
+        try:
+            clean_res = response.strip()
+            if clean_res.startswith("```json"):
+                clean_res = clean_res[7:]
+            if clean_res.endswith("```"):
+                clean_res = clean_res[:-3]
+            parsed = json.loads(clean_res.strip())
+            framework = parsed.get("framework", "Unknown Framework")
+            command = parsed.get("command")
+        except Exception as e:
+            logger.error(f"Failed to parse LLM run command JSON: {str(e)}")
+            framework = "Unknown"
+            if "package.json" in files_list:
+                command = "npm run dev"
+            elif "main.py" in files_list:
+                command = "python main.py"
+            else:
+                command = "python -m http.server 8000"
+
+        await self.send_ws_message({
+            "type": "text_delta",
+            "content": f"**Detected project type:** {framework}\n**Suggested command:** `{command}`\n\n"
+        })
+
+        is_approved = False
+        risk = "mutative"
+        reason = "Run Agent execution"
+        if self.permission_manager:
+            is_approved, risk, reason = self.permission_manager.check_permission(command)
+            
+        if not is_approved:
+            import uuid
+            tc_id = f"run_{uuid.uuid4().hex[:6]}"
+            event = asyncio.Event()
+            self.pending_confirmations[tc_id] = {
+                "event": event,
+                "approved": False,
+                "scope": "once",
+                "command": command
+            }
+            
+            await self.send_ws_message({
+                "type": "permission_request",
+                "tool_call_id": tc_id,
+                "tool_name": "run_terminal_command",
+                "command": command,
+                "risk": risk,
+                "reason": reason,
+                "explanation": f"The Run Agent wants to run the project using command: `{command}`",
+                "args": {"command": command}
+            })
+            
+            await event.wait()
+            decision = self.pending_confirmations[tc_id]
+            del self.pending_confirmations[tc_id]
+            
+            if not decision["approved"]:
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": "*Execution cancelled by the user.*\n"
+                })
+                return
+            command = decision.get("command", command)
+
+        await self.send_ws_message({
+            "type": "status",
+            "status": "tool_executing",
+            "message": f"Starting project with `{command}`..."
+        })
+        
+        proc = await global_process_manager.start_process(command, self.workspace_root, name=framework)
+        asyncio.create_task(self.monitor_and_stream_events(proc))
+        
+        for _ in range(40):
+            await asyncio.sleep(0.25)
+            if proc.startup_success_event.is_set():
+                break
+            if proc.status in ("stopped", "failed", "crashed"):
+                break
+                
+        if proc.port_conflict:
+            await self.send_ws_message({
+                "type": "text_delta",
+                "content": f"⚠️ Port conflict detected: Port {proc.port} is already in use.\n"
+            })
+            
+            conflict_pid, conflict_name = get_process_using_port(proc.port)
+            await self.send_ws_message({
+                "type": "text_delta",
+                "content": f"Process `{conflict_name}` (PID: {conflict_pid}) is using port {proc.port}.\n"
+            })
+            
+            tc_id = f"port_{uuid.uuid4().hex[:6]}"
+            event = asyncio.Event()
+            self.pending_confirmations[tc_id] = {
+                "event": event,
+                "action": None
+            }
+            
+            await self.send_ws_message({
+                "type": "port_conflict_request",
+                "tool_call_id": tc_id,
+                "port": proc.port,
+                "pid": conflict_pid,
+                "process_name": conflict_name
+            })
+            
+            await event.wait()
+            action = self.pending_confirmations[tc_id].get("action")
+            del self.pending_confirmations[tc_id]
+            
+            if action == "stop":
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": f"Stopping conflicting process `{conflict_name}` (PID: {conflict_pid})...\n"
+                })
+                kill_process_by_pid(conflict_pid)
+                await global_process_manager.stop_process(proc.id)
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": f"Retrying run command: `{command}`\n"
+                })
+                proc = await global_process_manager.start_process(command, self.workspace_root, name=framework)
+                asyncio.create_task(self.monitor_and_stream_events(proc))
+                for _ in range(40):
+                    await asyncio.sleep(0.25)
+                    if proc.startup_success_event.is_set():
+                        break
+                    if proc.status in ("stopped", "failed", "crashed"):
+                        break
+            elif action == "next_port":
+                next_port = proc.port + 1
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": f"Determining run command for next available port: {next_port}...\n"
+                })
+                rewrite_prompt = (
+                    f"The run command `{command}` failed because port {proc.port} is in use.\n"
+                    f"Please modify the command so it runs on port {next_port}.\n"
+                    "Respond with ONLY the modified command string, e.g. 'PORT=5174 npm run dev' or 'uvicorn main:app --port 8001'."
+                )
+                new_command = await self._run_llm_query("You are a devops engineer helper.", rewrite_prompt)
+                new_command = new_command.strip().strip("`").strip()
+                
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": f"Retrying with command: `{new_command}`\n"
+                })
+                await global_process_manager.stop_process(proc.id)
+                proc = await global_process_manager.start_process(new_command, self.workspace_root, name=framework)
+                asyncio.create_task(self.monitor_and_stream_events(proc))
+                for _ in range(40):
+                    await asyncio.sleep(0.25)
+                    if proc.startup_success_event.is_set():
+                        break
+                    if proc.status in ("stopped", "failed", "crashed"):
+                        break
+            else:
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": "Startup cancelled by the user.\n"
+                })
+                await global_process_manager.stop_process(proc.id)
+                return
+
+        if proc.status == "running":
+            localhost_url = proc.localhost_url or f"http://localhost:{proc.port}"
+            network_url = proc.network_url or "N/A"
+            port_str = str(proc.port) if proc.port else "N/A"
+            
+            content_summary = (
+                "**Application started successfully.**\n\n"
+                f"Framework: **{framework}**\n"
+                "Status: **Running**\n"
+                f"Local URL: [{localhost_url}]({localhost_url})\n"
+                f"Network URL: {network_url}\n"
+                f"Port: [{port_str}]({localhost_url})\n"
+                f"Process ID: **{proc.pid}**\n"
+            )
+            await self.send_ws_message({
+                "type": "text_delta",
+                "content": content_summary
+            })
+        else:
+            await self.send_ws_message({
+                "type": "text_delta",
+                "content": "❌ Application failed to start.\n"
+            })
+            await self.handle_intelligent_recovery(proc, command, framework)
+
+    async def handle_intelligent_recovery(self, proc, original_command: str, framework: str):
+        await self.send_ws_message({
+            "type": "status",
+            "status": "thinking",
+            "message": "Terminal Analysis Agent: Diagnosing startup failure..."
+        })
+        
+        logs_snippet = "".join(proc.logs[-30:])
+        prompt = (
+            f"The terminal command `{original_command}` failed to start the project. Here are the last few lines of terminal logs:\n"
+            f"{logs_snippet}\n\n"
+            "Analyze the log output to determine the root cause and propose a fix. If the fix is a command we can run "
+            "(e.g. running 'npm install' or 'pip install' or installing a missing package), set 'can_auto_fix' to true and provide the command.\n"
+            "Output your response strictly as a JSON object:\n"
+            "{\n"
+            "  \"root_cause\": \"A clear, user-friendly explanation of why it failed\",\n"
+            "  \"fix_suggestion\": \"What needs to be done to fix it\",\n"
+            "  \"fix_command\": \"Optional shell command to execute the fix\",\n"
+            "  \"can_auto_fix\": true\n"
+            "}\n"
+            "Respond with ONLY the JSON object, no other text."
+        )
+        system_prompt = "You are a senior codebase auditor and devops expert. Analyze logs and output JSON diagnostics."
+        
+        response = await self._run_llm_query(system_prompt, prompt)
+        
+        try:
+            clean_res = response.strip()
+            if clean_res.startswith("```json"):
+                clean_res = clean_res[7:]
+            if clean_res.endswith("```"):
+                clean_res = clean_res[:-3]
+            parsed = json.loads(clean_res.strip())
+            
+            root_cause = parsed.get("root_cause", "Unknown error")
+            fix_suggestion = parsed.get("fix_suggestion", "Check logs and configure correctly")
+            fix_command = parsed.get("fix_command")
+            can_auto_fix = parsed.get("can_auto_fix", False)
+        except Exception as e:
+            logger.error(f"Failed to parse LLM diagnostics response: {str(e)}")
+            root_cause = "Unknown startup error."
+            fix_suggestion = "Inspect terminal output and dependencies."
+            fix_command = None
+            can_auto_fix = False
+            
+        await self.send_ws_message({
+            "type": "text_delta",
+            "content": f"### Diagnostic Report\n* **Root Cause:** {root_cause}\n* **Suggestion:** {fix_suggestion}\n\n"
+        })
+        
+        if can_auto_fix and fix_command:
+            await self.send_ws_message({
+                "type": "text_delta",
+                "content": f"Attempting automatic recovery: Running `{fix_command}`...\n"
+            })
+            
+            is_approved = False
+            risk = "mutative"
+            reason = "Run Agent automatic fix execution"
+            if self.permission_manager:
+                is_approved, risk, reason = self.permission_manager.check_permission(fix_command)
+                
+            if not is_approved:
+                import uuid
+                tc_id = f"fix_{uuid.uuid4().hex[:6]}"
+                event = asyncio.Event()
+                self.pending_confirmations[tc_id] = {
+                    "event": event,
+                    "approved": False,
+                    "scope": "once",
+                    "command": fix_command
+                }
+                
+                await self.send_ws_message({
+                    "type": "permission_request",
+                    "tool_call_id": tc_id,
+                    "tool_name": "run_terminal_command",
+                    "command": fix_command,
+                    "risk": risk,
+                    "reason": reason,
+                    "explanation": f"Run Agent wants to run fix command: `{fix_command}`",
+                    "args": {"command": fix_command}
+                })
+                
+                await event.wait()
+                decision = self.pending_confirmations[tc_id]
+                del self.pending_confirmations[tc_id]
+                
+                if not decision["approved"]:
+                    await self.send_ws_message({
+                        "type": "text_delta",
+                        "content": "*Automatic recovery cancelled by user.*\n"
+                    })
+                    return
+                fix_command = decision.get("command", fix_command)
+
+            await self.send_ws_message({
+                "type": "status",
+                "status": "tool_executing",
+                "message": f"Executing fix command: `{fix_command}`..."
+            })
+            
+            result = await self._run_shell_command(fix_command)
+            await self.send_ws_message({
+                "type": "text_delta",
+                "content": f"Fix command finished. Output:\n```\n{result[:500]}...\n```\n"
+            })
+            
+            await self.send_ws_message({
+                "type": "text_delta",
+                "content": f"Retrying run command: `{original_command}`\n"
+            })
+            
+            await global_process_manager.stop_process(proc.id)
+            proc = await global_process_manager.start_process(original_command, self.workspace_root, name=framework)
+            asyncio.create_task(self.monitor_and_stream_events(proc))
+            
+            for _ in range(40):
+                await asyncio.sleep(0.25)
+                if proc.startup_success_event.is_set():
+                    break
+                if proc.status in ("stopped", "failed", "crashed"):
+                    break
+                    
+            if proc.status == "running":
+                localhost_url = proc.localhost_url or f"http://localhost:{proc.port}"
+                network_url = proc.network_url or "N/A"
+                port_str = str(proc.port) if proc.port else "N/A"
+                content_summary = (
+                    "**Application recovered and started successfully!**\n\n"
+                    f"Framework: **{framework}**\n"
+                    "Status: **Running**\n"
+                    f"Local URL: [{localhost_url}]({localhost_url})\n"
+                    f"Network URL: {network_url}\n"
+                    f"Port: [{port_str}]({localhost_url})\n"
+                    f"Process ID: **{proc.pid}**\n"
+                )
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": content_summary
+                })
+            else:
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": "❌ Application failed to start after automatic recovery attempt. Please inspect logs.\n"
+                })
