@@ -19,8 +19,8 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 # Initialize Config Manager
 config_manager = ConfigManager()
 
-# Default to the persistent last workspace if set, otherwise start empty
-INITIAL_WORKSPACE_ROOT = config_manager.get_last_workspace() or ""
+# Default to the environment variable, persistent last workspace, or empty string
+INITIAL_WORKSPACE_ROOT = os.environ.get("INITIAL_WORKSPACE_ROOT") or config_manager.get_last_workspace() or ""
 
 class WorkspaceState:
     def __init__(self, initial_root: str):

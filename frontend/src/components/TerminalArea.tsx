@@ -87,8 +87,20 @@ function TerminalPane({
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
+    // Helper to send a resize control message
+    const sendResize = () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'resize',
+          cols: term.cols,
+          rows: term.rows,
+        }));
+      }
+    };
+
     ws.onopen = () => {
-      term.write('\r\nConnected to DevPilot Terminal Shell...\r\n');
+      // Send initial terminal dimensions so the PTY is created at the right size
+      sendResize();
     };
 
     ws.onmessage = (event) => {
@@ -96,16 +108,24 @@ function TerminalPane({
     };
 
     ws.onclose = () => {
-      term.write('\r\nTerminal WebSocket connection closed.\r\n');
+      term.write('\r\n\x1b[90mTerminal session ended.\x1b[0m\r\n');
     };
 
     ws.onerror = () => {
-      term.write('\r\nTerminal WebSocket connection error.\r\n');
+      term.write('\r\n\x1b[31mTerminal connection error.\x1b[0m\r\n');
     };
 
+    // Forward all user input to the PTY via WebSocket
     const disposable = term.onData((data) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(data);
+      }
+    });
+
+    // Send resize events when xterm's dimensions change (from fitAddon)
+    const resizeDisposable = term.onResize(({ cols, rows }) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'resize', cols, rows }));
       }
     });
 
@@ -125,6 +145,7 @@ function TerminalPane({
     return () => {
       clearTimeout(timer);
       disposable.dispose();
+      resizeDisposable.dispose();
       term.dispose();
       resizeObserver.disconnect();
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {

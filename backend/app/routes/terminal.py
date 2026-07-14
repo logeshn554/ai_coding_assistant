@@ -1,3 +1,4 @@
+import json
 from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from ..state import workspace_state, SESSION_TOKEN, logger
@@ -22,12 +23,50 @@ async def websocket_terminal(websocket: WebSocket, token: Optional[str] = Query(
             pass
             
     term_manager = TerminalManager(workspace_state.root, send_to_client)
-    await term_manager.start()
+
+    # Wait for an initial resize message from the frontend before starting the PTY.
+    # This ensures the PTY is created with the correct terminal dimensions.
+    # If the first message isn't a resize, start with defaults and treat it as input.
+    initial_cols, initial_rows = 120, 30
+    first_data = None
+    try:
+        raw = await websocket.receive_text()
+        try:
+            msg = json.loads(raw)
+            if isinstance(msg, dict) and msg.get("type") == "resize":
+                initial_cols = msg.get("cols", 120)
+                initial_rows = msg.get("rows", 30)
+            else:
+                first_data = raw  # Not a resize — treat as input after start
+        except (json.JSONDecodeError, TypeError):
+            first_data = raw
+    except WebSocketDisconnect:
+        return
+
+    await term_manager.start(cols=initial_cols, rows=initial_rows)
+
+    # If the first message was input (not resize), forward it now
+    if first_data is not None:
+        await term_manager.write(first_data)
     
     try:
         while True:
-            data = await websocket.receive_text()
-            await term_manager.write(data)
+            raw = await websocket.receive_text()
+            
+            # Check if this is a JSON control message (resize, etc.)
+            if raw.startswith("{"):
+                try:
+                    msg = json.loads(raw)
+                    if isinstance(msg, dict) and msg.get("type") == "resize":
+                        cols = msg.get("cols", 120)
+                        rows = msg.get("rows", 30)
+                        await term_manager.resize(cols, rows)
+                        continue
+                except (json.JSONDecodeError, TypeError):
+                    pass  # Not valid JSON — treat as regular terminal input
+            
+            # Regular terminal input — forward to the PTY
+            await term_manager.write(raw)
     except WebSocketDisconnect:
         logger.info("Terminal WebSocket disconnected")
     except Exception as e:

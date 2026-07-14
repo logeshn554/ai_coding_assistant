@@ -27,10 +27,14 @@ class PermissionManager:
 
     def _get_command_pattern(self, command: str) -> str:
         # Normalize command (strip extra whitespace, normalize slash direction, etc.)
+        if not command or not isinstance(command, str):
+            return ""
         cmd = command.strip().replace("\\", "/")
         return cmd
 
     def get_command_risk(self, command: str) -> str:
+        if not command or not isinstance(command, str):
+            return RISK_SAFE
         cmd = command.strip().lower()
         
         # Destructive patterns (removed keyword blocklist - security theater)

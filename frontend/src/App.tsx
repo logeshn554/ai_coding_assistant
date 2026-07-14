@@ -38,8 +38,16 @@ function EditorShell() {
     folderPathInput,
     setFolderPathInput,
     changeWorkspacePath,
-    refreshTrigger
+    refreshTrigger,
+    selectFolder
   } = useWorkspace();
+
+  const handleBrowseFolderClick = async () => {
+    const selected = await selectFolder();
+    if (selected) {
+      setFolderPathInput(selected);
+    }
+  };
 
   const {
     openFiles,
@@ -286,17 +294,26 @@ function EditorShell() {
             className="w-[450px] bg-[#181818] border border-[#2d2d2d] rounded-none shadow-2xl p-5"
           >
             <h3 className="text-xs font-semibold text-white mb-2 font-sans">Open Workspace Folder</h3>
-            <p className="text-[10px] text-gray-500 mb-4 font-sans">
-              Enter the absolute folder path on your computer. DevPilot will load its file tree and run commands inside it.
+            <p className="text-[10px] text-gray-550 mb-4 font-sans">
+              Enter or browse the absolute folder path on your computer. DevPilot will load its file tree and run commands inside it.
             </p>
-            <input
-              autoFocus
-              type="text"
-              value={folderPathInput}
-              onChange={(e) => setFolderPathInput(e.target.value)}
-              className="w-full px-3 py-2 bg-[#131313] border border-[#2d2d2d] rounded-none text-xs text-white focus:outline-none focus:border-[#8b5cf6]/50 mb-4 font-mono"
-              placeholder="e.g. E:/my-project"
-            />
+            <div className="flex gap-2 mb-4">
+              <input
+                autoFocus
+                type="text"
+                value={folderPathInput}
+                onChange={(e) => setFolderPathInput(e.target.value)}
+                className="flex-1 px-3 py-2 bg-[#131313] border border-[#2d2d2d] rounded-none text-xs text-white focus:outline-none focus:border-[#8b5cf6]/50 font-mono"
+                placeholder="e.g. E:/my-project"
+              />
+              <button
+                type="button"
+                onClick={handleBrowseFolderClick}
+                className="px-3 py-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] text-white text-xs font-medium rounded-none border border-[#2d2d2d] hover:border-[#8b5cf6]/50 transition-colors cursor-pointer"
+              >
+                Browse...
+              </button>
+            </div>
             <div className="flex justify-end gap-2 text-xs font-sans">
               <button
                 type="button"

@@ -1,0 +1,27 @@
+services:
+  devpilot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: devpilot
+    ports:
+      - "8000:8000"
+    environment:
+      - DOCKER_MODE=true
+      - ALLOW_REMOTE=true
+      - HOST=0.0.0.0
+      - PORT=8000
+      # You can mount your own coding workspace project to /workspace inside the container
+      # and this environment variable will set it as the default workspace on start.
+      - INITIAL_WORKSPACE_ROOT=/workspace
+      # Override config/profile key-value settings if needed
+      # - CORS_ORIGINS=http://localhost:8000
+    volumes:
+      # Persists configurations and API keys (e.g. Anthropic, OpenAI, etc.)
+      - devpilot-config:/root/.devpilot
+      # Mounts the current directory as the workspace folder inside the container
+      - .:/workspace
+    restart: unless-stopped
+
+volumes:
+  devpilot-config:

@@ -5,6 +5,60 @@ import subprocess
 from pathlib import Path
 import keyring
 
+from keyring.backend import KeyringBackend
+
+class DevPilotFileKeyring(KeyringBackend):
+    """
+    A simple file-based keyring backend that persists keys/passwords in a JSON file
+    under the user's config directory. Useful in headless/Docker environments.
+    """
+    priority = 1
+
+    def __init__(self, filepath=None):
+        if filepath is None:
+            self.filepath = Path.home() / ".devpilot" / ".keyring.json"
+        else:
+            self.filepath = Path(filepath)
+
+    def _load_data(self) -> dict:
+        try:
+            if self.filepath.exists():
+                with open(self.filepath, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return {}
+
+    def _save_data(self, data: dict):
+        try:
+            self.filepath.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.filepath, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=4)
+        except Exception:
+            pass
+
+    def get_password(self, service, username):
+        data = self._load_data()
+        return data.get(service, {}).get(username)
+
+    def set_password(self, service, username, password):
+        data = self._load_data()
+        data.setdefault(service, {})[username] = password
+        self._save_data(data)
+
+    def delete_password(self, service, username):
+        data = self._load_data()
+        if service in data and username in data[service]:
+            del data[service][username]
+            self._save_data(data)
+
+# Force plaintext keyring in headless docker environment to prevent keyring errors or prompting for master password
+if os.environ.get("DOCKER_MODE", "false").lower() == "true":
+    try:
+        keyring.set_keyring(DevPilotFileKeyring())
+    except Exception as e:
+        print(f"Warning: Failed to set DevPilotFileKeyring: {e}")
+
 logger = logging.getLogger("devpilot.config")
 
 CONFIG_DIR = Path.home() / ".devpilot"

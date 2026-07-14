@@ -35,10 +35,25 @@ def permission_error_handler(request: Request, exc: PermissionError):
         content={"detail": str(exc)}
     )
 
-# Setup CORS - restricted to http://localhost:5173 only
+# Setup CORS
+cors_origins = ["http://localhost:5173"]
+cors_env = os.environ.get("CORS_ORIGINS")
+if cors_env:
+    cors_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+elif os.environ.get("ALLOW_REMOTE", "false").lower() == "true" or os.environ.get("DOCKER_MODE", "false").lower() == "true":
+    cors_origins = [
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://127.0.0.1:5173"
+    ]
+
+allow_all = "*" in cors_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[] if allow_all else cors_origins,
+    allow_origin_regex=".*" if allow_all else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

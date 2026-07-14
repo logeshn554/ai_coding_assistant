@@ -660,7 +660,7 @@ class AgentSession:
             items = await async_list_workspace_dir(self.workspace_root, "")
             for it in items:
                 files_list.append(it["name"])
-                if it["isDir"] and it["name"] not in (".git", "node_modules", "venv", "__pycache__", ".devpilot"):
+                if it.get("is_dir", it.get("isDir", False)) and it["name"] not in (".git", "node_modules", "venv", "__pycache__", ".devpilot"):
                     try:
                         sub_items = await async_list_workspace_dir(self.workspace_root, it["name"])
                         for s_it in sub_items[:15]:
@@ -693,8 +693,10 @@ class AgentSession:
             if clean_res.endswith("```"):
                 clean_res = clean_res[:-3]
             parsed = json.loads(clean_res.strip())
-            framework = parsed.get("framework", "Unknown Framework")
+            framework = parsed.get("framework") or "Unknown Framework"
             command = parsed.get("command")
+            if not command or not isinstance(command, str) or not command.strip():
+                raise ValueError("Command field is missing, empty, or not a string in LLM response.")
         except Exception as e:
             logger.error(f"Failed to parse LLM run command JSON: {str(e)}")
             framework = "Unknown"

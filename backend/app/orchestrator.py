@@ -154,6 +154,199 @@ summary_prompt_template = PromptTemplate.from_template(
     "Keep your response concise."
 )
 
+# ── New Agent Prompt Templates (LangChain) ──────────────────────────────────
+
+frontend_planner_prompt_template = PromptTemplate.from_template(
+    "You are the Frontend Planner Agent. Create a detailed frontend development plan for:\n\n"
+    "Task: {task_description}\n\n"
+    "Define:\n"
+    "1. UI architecture and page hierarchy\n"
+    "2. Component tree and reusable components\n"
+    "3. State management approach (Context, Redux, Zustand)\n"
+    "4. Routes and navigation structure\n"
+    "5. Design system tokens (colors, typography, spacing)\n"
+    "6. Responsive strategy (breakpoints, mobile-first)\n"
+    "7. Accessibility requirements (WCAG 2.1)\n\n"
+    "Output a structured Frontend Development Plan in markdown."
+)
+
+backend_planner_prompt_template = PromptTemplate.from_template(
+    "You are the Backend Planner Agent. Create a detailed backend development plan for:\n\n"
+    "Task: {task_description}\n\n"
+    "Define:\n"
+    "1. Backend architecture (REST/GraphQL/microservices)\n"
+    "2. API structure and endpoint inventory\n"
+    "3. Database schema and entity relationships\n"
+    "4. Authentication and authorization strategy (JWT/OAuth/RBAC)\n"
+    "5. Business logic layers (controllers/services/repositories)\n"
+    "6. Queue, cache, and storage requirements\n"
+    "7. Security threat model\n\n"
+    "Output a structured Backend Development Plan in markdown."
+)
+
+architect_prompt_template = PromptTemplate.from_template(
+    "You are the Software Architect Agent. Design the overall system architecture for:\n\n"
+    "Task: {task_description}\n\n"
+    "Produce:\n"
+    "1. Recommended folder structure (feature-first or layer-first)\n"
+    "2. Architecture pattern recommendation with justification\n"
+    "3. Event flow diagram (text-based)\n"
+    "4. API flow and data flow\n"
+    "5. Key design patterns (Repository, Factory, Observer, etc.)\n"
+    "6. Dependency graph between modules\n"
+    "7. Domain-driven design bounded contexts\n\n"
+    "Be specific and actionable. Output in markdown."
+)
+
+frontend_dev_prompt_template = PromptTemplate.from_template(
+    "You are the Frontend Developer Agent. Implement the following frontend feature:\n\n"
+    "Task: {task_description}\n"
+    "File: {path}\n"
+    "Original Content:\n{original}\n\n"
+    "Requirements:\n"
+    "- React with TypeScript, strict types\n"
+    "- Accessibility: aria labels, keyboard navigation, focus management\n"
+    "- Responsive layout with mobile-first CSS\n"
+    "- Smooth CSS animations/transitions where appropriate\n"
+    "- Follow existing design system and CSS variables\n"
+    "- Performance: React.memo, useCallback, useMemo where beneficial\n"
+    "- SEO: semantic HTML5 elements\n\n"
+    "Output ONLY the complete updated file content. No markdown code blocks."
+)
+
+backend_dev_prompt_template = PromptTemplate.from_template(
+    "You are the Backend Developer Agent. Implement the following backend feature:\n\n"
+    "Task: {task_description}\n"
+    "File: {path}\n"
+    "Original Content:\n{original}\n\n"
+    "Requirements:\n"
+    "- Clean Architecture: controllers → services → repositories\n"
+    "- Comprehensive error handling with typed exceptions\n"
+    "- Structured logging for all key operations\n"
+    "- Input validation and sanitization\n"
+    "- Follow Repository pattern and Dependency Injection\n"
+    "- Full docstrings (Google-style)\n"
+    "- No hardcoded secrets — use environment variables\n\n"
+    "Output ONLY the complete updated file content. No markdown code blocks."
+)
+
+database_prompt_template = PromptTemplate.from_template(
+    "You are the Database Agent. Design and implement database-related work for:\n\n"
+    "Task: {task_description}\n\n"
+    "Produce:\n"
+    "1. Schema design: tables/collections, fields, data types\n"
+    "2. Relationships: foreign keys, indexes, constraints\n"
+    "3. Migration script (SQL or ORM Alembic format)\n"
+    "4. Seed data for development/testing\n"
+    "5. Query optimization suggestions (indexes, query plans)\n"
+    "6. Backup and recovery strategy\n\n"
+    "Output in markdown with SQL/ORM code blocks."
+)
+
+api_agent_prompt_template = PromptTemplate.from_template(
+    "You are the API Agent. Create API contracts and documentation for:\n\n"
+    "Task: {task_description}\n\n"
+    "Produce:\n"
+    "1. OpenAPI 3.0 YAML specification\n"
+    "2. Request/response schemas with validation rules\n"
+    "3. API versioning strategy (/v1/, /v2/)\n"
+    "4. Rate limiting recommendations (per endpoint)\n"
+    "5. Standard error response format\n"
+    "6. Required authentication headers\n"
+    "7. Example curl requests\n\n"
+    "Output the OpenAPI YAML spec followed by implementation notes."
+)
+
+integration_prompt_template = PromptTemplate.from_template(
+    "You are the Integration Agent. Verify all system components work correctly for:\n\n"
+    "Task: {task_description}\n\n"
+    "Codebase:\n{codebase_text}\n\n"
+    "Verify and document:\n"
+    "1. Frontend ↔ Backend API contract alignment\n"
+    "2. Database connection and ORM query correctness\n"
+    "3. Authentication flow end-to-end\n"
+    "4. External API integrations and error handling\n"
+    "5. Cache and queue connectivity\n"
+    "6. Environment variable requirements\n"
+    "7. Any integration gaps or type mismatches\n\n"
+    "Output an integration verification report in markdown."
+)
+
+security_prompt_template = PromptTemplate.from_template(
+    "You are the Security Agent. Perform a thorough security audit for:\n\n"
+    "Task: {task_description}\n\n"
+    "Codebase:\n{codebase_text}\n\n"
+    "Check for:\n"
+    "1. OWASP Top 10 vulnerabilities\n"
+    "2. SQL Injection and NoSQL Injection risks\n"
+    "3. XSS (reflected, stored, DOM-based)\n"
+    "4. CSRF protection gaps\n"
+    "5. Authentication and session weaknesses\n"
+    "6. Exposed secrets, API keys, or credentials in code\n"
+    "7. JWT implementation issues (alg=none, key confusion)\n"
+    "8. RBAC misconfigurations\n"
+    "9. Missing rate limits and brute-force protections\n"
+    "10. Insecure HTTP headers (CSP, HSTS, X-Frame-Options)\n\n"
+    "Output a formatted SECURITY_REPORT.md with severity ratings (CRITICAL/HIGH/MEDIUM/LOW)."
+)
+
+performance_prompt_template = PromptTemplate.from_template(
+    "You are the Performance Agent. Analyze and optimize performance for:\n\n"
+    "Task: {task_description}\n\n"
+    "Codebase:\n{codebase_text}\n\n"
+    "Review and optimize:\n"
+    "1. Frontend bundle size — identify heavy dependencies, suggest lazy loading\n"
+    "2. Unnecessary re-renders — identify missing React.memo/useCallback\n"
+    "3. Backend query efficiency — identify N+1 queries, missing indexes\n"
+    "4. Caching opportunities — Redis, in-memory, HTTP cache headers\n"
+    "5. Image and asset optimization strategies\n"
+    "6. Memory usage patterns — leaks, excessive allocations\n"
+    "7. Response time bottlenecks — profiling recommendations\n\n"
+    "Output a PERFORMANCE_REPORT.md with specific actionable improvements and estimated impact."
+)
+
+ai_reviewer_prompt_template = PromptTemplate.from_template(
+    "You are the AI Reviewer Agent, acting as a Senior Staff Engineer. Deep technical review of:\n\n"
+    "Task: {task_description}\n\n"
+    "Codebase:\n{codebase_text}\n\n"
+    "Review for:\n"
+    "1. Algorithm efficiency — suggest better time/space complexities\n"
+    "2. Technical debt — identify and suggest elimination\n"
+    "3. Architecture simplification opportunities\n"
+    "4. Code maintainability score (1-10) with detailed justification\n"
+    "5. SOLID principles violations (identify specific file+line)\n"
+    "6. Missing abstractions or over-engineering\n"
+    "7. Top 3 highest-priority refactors with code examples\n\n"
+    "Be precise, honest, and include before/after code examples. Output in markdown."
+)
+
+devops_prompt_template = PromptTemplate.from_template(
+    "You are the DevOps Agent. Create infrastructure and deployment configuration for:\n\n"
+    "Task: {task_description}\n\n"
+    "Produce complete, production-ready configurations:\n"
+    "1. Dockerfile (multi-stage build)\n"
+    "2. docker-compose.yml (with volumes, networks, health checks)\n"
+    "3. GitHub Actions CI/CD workflow (.github/workflows/ci.yml)\n"
+    "4. NGINX reverse proxy config (if applicable)\n"
+    "5. Environment variables documentation (.env.example)\n"
+    "6. Monitoring setup (Prometheus/Grafana or similar)\n\n"
+    "Label each file clearly and use proper code blocks."
+)
+
+release_prompt_template = PromptTemplate.from_template(
+    "You are the Release Agent. Prepare the production release for:\n\n"
+    "Task: {task_description}\n\n"
+    "Collaboration Log:\n{history_summary}\n\n"
+    "Produce a complete RELEASE_NOTES.md containing:\n"
+    "1. Version recommendation (semantic versioning: MAJOR.MINOR.PATCH)\n"
+    "2. Release notes in changelog format (Added/Changed/Fixed/Removed)\n"
+    "3. Production deployment checklist (step-by-step)\n"
+    "4. Rollback plan (step-by-step procedure)\n"
+    "5. Post-deployment monitoring plan\n"
+    "6. Go/No-Go criteria checklist\n\n"
+    "Output a professional RELEASE_NOTES.md document."
+)
+
 logger = logging.getLogger("devpilot.orchestrator")
 
 class EventBus:
@@ -586,6 +779,511 @@ class GitAgent(BaseAgent):
         await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Completed"
 
+
+# ── New Specialized Agents (LangGraph nodes) ─────────────────────────────────
+
+class FrontendPlannerAgent(BaseAgent):
+    """Plans UI architecture, component hierarchy, state management, and design system."""
+    def __init__(self, orchestrator):
+        super().__init__("Frontend Planner Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Frontend Planner Agent: Creating UI/UX architecture plan...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a senior frontend architect. Output a detailed, actionable frontend development plan."),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = frontend_planner_prompt_template.format(task_description=task_description)
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        plan = response_msg.content
+
+        self.orchestrator.context.memory["frontend_plan"] = plan
+        await self.orchestrator.context.log(f"Frontend Planner Agent: Plan ready.\n{plan[:200]}...")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Frontend Development Plan created."
+
+
+class BackendPlannerAgent(BaseAgent):
+    """Plans API structure, database schema, authentication, business logic, and infrastructure."""
+    def __init__(self, orchestrator):
+        super().__init__("Backend Planner Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Backend Planner Agent: Designing backend architecture plan...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a senior backend architect. Output a detailed, actionable backend development plan."),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = backend_planner_prompt_template.format(task_description=task_description)
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        plan = response_msg.content
+
+        self.orchestrator.context.memory["backend_plan"] = plan
+        await self.orchestrator.context.log(f"Backend Planner Agent: Plan ready.\n{plan[:200]}...")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Backend Development Plan created."
+
+
+class SoftwareArchitectAgent(BaseAgent):
+    """Designs folder structure, architecture patterns, event/API/DB flows, and design patterns."""
+    def __init__(self, orchestrator):
+        super().__init__("Software Architect Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Software Architect Agent: Designing system architecture...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a principal software architect. Design clean, scalable, production-ready system architecture."),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = architect_prompt_template.format(task_description=task_description)
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        architecture = response_msg.content
+
+        self.orchestrator.context.memory["architecture"] = architecture
+        await self.orchestrator.context.log(f"Software Architect Agent: Architecture ready.\n{architecture[:200]}...")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "System architecture designed."
+
+
+class FrontendDeveloperAgent(BaseAgent):
+    """Builds React/TypeScript UI: components, pages, hooks, animations, accessibility, SEO."""
+    def __init__(self, orchestrator):
+        super().__init__("Frontend Developer Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Frontend Developer Agent: Building UI components...")
+        await self.orchestrator.update_task_progress(task_id, 10, session)
+
+        target_files = self.orchestrator.context.memory.get("target_files", [])
+        file_contents = self.orchestrator.context.memory.get("file_contents", {})
+
+        frontend_prefixes = ("frontend/", "src/", "components/", "pages/", "app/", ".tsx", ".ts", ".jsx", ".js", ".css")
+        frontend_files = [f for f in target_files if any(f.startswith(p) or f.endswith(p) for p in frontend_prefixes)]
+        if not frontend_files:
+            frontend_files = target_files
+
+        if not frontend_files:
+            await self.orchestrator.context.log("Frontend Developer Agent: No frontend files to modify.")
+            await self.orchestrator.update_task_progress(task_id, 100, session)
+            return "No frontend files to modify."
+
+        async def process_file(path: str):
+            original = file_contents.get(path, "")
+            chat_prompt = ChatPromptTemplate.from_messages([
+                ("system", "You are a senior React/TypeScript developer. Output ONLY raw file content, no markdown."),
+                ("human", "{prompt_content}")
+            ])
+            prompt_content = frontend_dev_prompt_template.format(
+                task_description=task_description, path=path, original=original
+            )
+            llm = DevPilotChatModel(session=session, agent_name=self.name)
+            chain = chat_prompt | llm
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            new_code = response_msg.content.strip()
+            if new_code.startswith("```"):
+                lines = new_code.split("\n")
+                lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                new_code = "\n".join(lines)
+
+            tc_id = f"fedev_{task_id}_{uuid.uuid4().hex[:6]}"
+            await session.send_ws_message({
+                "type": "status", "status": "tool_executing",
+                "message": f"Frontend Developer writing {path}...",
+                "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": new_code}}
+            })
+            result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": new_code}, auto_apply=False)
+            await session.send_ws_message({
+                "type": "tool_result", "tool_call_id": tc_id,
+                "name": "write_file", "status": "success", "result": result
+            })
+            await self.orchestrator.context.log(f"Frontend Developer Agent: Updated {path}.")
+
+        await asyncio.gather(*[process_file(p) for p in frontend_files])
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Frontend components implemented."
+
+
+class BackendDeveloperAgent(BaseAgent):
+    """Builds REST APIs, auth, controllers, services, repositories, middleware, validation, logging."""
+    def __init__(self, orchestrator):
+        super().__init__("Backend Developer Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Backend Developer Agent: Building API services...")
+        await self.orchestrator.update_task_progress(task_id, 10, session)
+
+        target_files = self.orchestrator.context.memory.get("target_files", [])
+        file_contents = self.orchestrator.context.memory.get("file_contents", {})
+
+        backend_prefixes = ("backend/", "app/", "api/", "server/", ".py", ".go", ".java")
+        backend_files = [f for f in target_files if any(f.startswith(p) or f.endswith(p) for p in backend_prefixes)]
+        if not backend_files:
+            backend_files = target_files
+
+        if not backend_files:
+            await self.orchestrator.context.log("Backend Developer Agent: No backend files to modify.")
+            await self.orchestrator.update_task_progress(task_id, 100, session)
+            return "No backend files to modify."
+
+        async def process_file(path: str):
+            original = file_contents.get(path, "")
+            chat_prompt = ChatPromptTemplate.from_messages([
+                ("system", "You are a senior backend engineer. Output ONLY raw file content, no markdown."),
+                ("human", "{prompt_content}")
+            ])
+            prompt_content = backend_dev_prompt_template.format(
+                task_description=task_description, path=path, original=original
+            )
+            llm = DevPilotChatModel(session=session, agent_name=self.name)
+            chain = chat_prompt | llm
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            new_code = response_msg.content.strip()
+            if new_code.startswith("```"):
+                lines = new_code.split("\n")
+                lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                new_code = "\n".join(lines)
+
+            tc_id = f"bedev_{task_id}_{uuid.uuid4().hex[:6]}"
+            await session.send_ws_message({
+                "type": "status", "status": "tool_executing",
+                "message": f"Backend Developer writing {path}...",
+                "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": new_code}}
+            })
+            result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": new_code}, auto_apply=False)
+            await session.send_ws_message({
+                "type": "tool_result", "tool_call_id": tc_id,
+                "name": "write_file", "status": "success", "result": result
+            })
+            await self.orchestrator.context.log(f"Backend Developer Agent: Updated {path}.")
+
+        await asyncio.gather(*[process_file(p) for p in backend_files])
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Backend services implemented."
+
+
+class DatabaseAgent(BaseAgent):
+    """Designs schemas, migrations, indexes, seed data, and query optimizations. Writes DATABASE_DESIGN.md."""
+    def __init__(self, orchestrator):
+        super().__init__("Database Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Database Agent: Designing schema and migrations...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a senior database architect. Design optimal schemas and migration scripts."),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = database_prompt_template.format(task_description=task_description)
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        db_design = response_msg.content
+
+        self.orchestrator.context.memory["database_design"] = db_design
+        await self.orchestrator.update_task_progress(task_id, 60, session)
+
+        path = "DATABASE_DESIGN.md"
+        tc_id = f"db_{task_id}_{uuid.uuid4().hex[:6]}"
+        await session.send_ws_message({
+            "type": "status", "status": "tool_executing",
+            "message": f"Writing database design to {path}...",
+            "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": db_design}}
+        })
+        result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": db_design}, auto_apply=False)
+        await session.send_ws_message({
+            "type": "tool_result", "tool_call_id": tc_id,
+            "name": "write_file", "status": "success", "result": result
+        })
+        await self.orchestrator.context.log(f"Database Agent: Schema and migrations documented in {path}.")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Database schema and migrations designed."
+
+
+class APIAgent(BaseAgent):
+    """Creates OpenAPI/Swagger contracts, request/response validation, versioning. Writes API_SPEC.md."""
+    def __init__(self, orchestrator):
+        super().__init__("API Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("API Agent: Generating OpenAPI contracts...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are an expert API designer. Generate OpenAPI 3.0 specs and validation rules."),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = api_agent_prompt_template.format(task_description=task_description)
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        api_spec = response_msg.content
+
+        self.orchestrator.context.memory["api_spec"] = api_spec
+        await self.orchestrator.update_task_progress(task_id, 60, session)
+
+        path = "API_SPEC.md"
+        tc_id = f"api_{task_id}_{uuid.uuid4().hex[:6]}"
+        await session.send_ws_message({
+            "type": "status", "status": "tool_executing",
+            "message": f"Writing API specification to {path}...",
+            "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": api_spec}}
+        })
+        result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": api_spec}, auto_apply=False)
+        await session.send_ws_message({
+            "type": "tool_result", "tool_call_id": tc_id,
+            "name": "write_file", "status": "success", "result": result
+        })
+        await self.orchestrator.context.log(f"API Agent: OpenAPI specification written to {path}.")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "API contracts and OpenAPI spec generated."
+
+
+class IntegrationAgent(BaseAgent):
+    """Connects and verifies frontend/backend/DB/auth/external APIs are correctly integrated."""
+    def __init__(self, orchestrator):
+        super().__init__("Integration Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Integration Agent: Verifying full system integration...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        from .async_files import async_get_codebase_contents
+        codebase_text = await async_get_codebase_contents(session.workspace_root)
+
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a senior integration engineer. Verify all system components connect correctly."),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = integration_prompt_template.format(
+            task_description=task_description, codebase_text=codebase_text[:8000]
+        )
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        integration_report = response_msg.content
+
+        self.orchestrator.context.memory["integration_report"] = integration_report
+        await self.orchestrator.context.log(f"Integration Agent: Integration verified.\n{integration_report[:250]}...")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Integration verification complete."
+
+
+class SecurityAgent(BaseAgent):
+    """OWASP Top 10 audit, XSS/CSRF/SQLi detection, JWT/RBAC checks. Writes SECURITY_REPORT.md."""
+    def __init__(self, orchestrator):
+        super().__init__("Security Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Security Agent: Running OWASP security audit...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        from .async_files import async_get_codebase_contents
+        codebase_text = await async_get_codebase_contents(session.workspace_root)
+
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a senior application security engineer. Perform thorough OWASP-based security audits."),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = security_prompt_template.format(
+            task_description=task_description, codebase_text=codebase_text[:8000]
+        )
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        security_report = response_msg.content
+
+        self.orchestrator.context.memory["security_report"] = security_report
+        await self.orchestrator.update_task_progress(task_id, 60, session)
+
+        path = "SECURITY_REPORT.md"
+        tc_id = f"sec_{task_id}_{uuid.uuid4().hex[:6]}"
+        await session.send_ws_message({
+            "type": "status", "status": "tool_executing",
+            "message": f"Writing security report to {path}...",
+            "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": security_report}}
+        })
+        result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": security_report}, auto_apply=False)
+        await session.send_ws_message({
+            "type": "tool_result", "tool_call_id": tc_id,
+            "name": "write_file", "status": "success", "result": result
+        })
+        await self.orchestrator.context.log(f"Security Agent: Security audit complete. Report in {path}.")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Security audit complete."
+
+
+class PerformanceAgent(BaseAgent):
+    """Optimizes frontend/backend/DB performance: bundles, queries, caching, memory. Writes PERFORMANCE_REPORT.md."""
+    def __init__(self, orchestrator):
+        super().__init__("Performance Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Performance Agent: Analyzing performance bottlenecks...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        from .async_files import async_get_codebase_contents
+        codebase_text = await async_get_codebase_contents(session.workspace_root)
+
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a performance engineering expert. Identify and fix performance issues."),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = performance_prompt_template.format(
+            task_description=task_description, codebase_text=codebase_text[:8000]
+        )
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        perf_report = response_msg.content
+
+        self.orchestrator.context.memory["performance_report"] = perf_report
+        await self.orchestrator.update_task_progress(task_id, 60, session)
+
+        path = "PERFORMANCE_REPORT.md"
+        tc_id = f"perf_{task_id}_{uuid.uuid4().hex[:6]}"
+        await session.send_ws_message({
+            "type": "status", "status": "tool_executing",
+            "message": f"Writing performance report to {path}...",
+            "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": perf_report}}
+        })
+        result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": perf_report}, auto_apply=False)
+        await session.send_ws_message({
+            "type": "tool_result", "tool_call_id": tc_id,
+            "name": "write_file", "status": "success", "result": result
+        })
+        await self.orchestrator.context.log(f"Performance Agent: Report written to {path}.")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Performance analysis complete."
+
+
+class AIReviewerAgent(BaseAgent):
+    """Senior Staff Engineer deep review: algorithms, tech debt, SOLID, maintainability."""
+    def __init__(self, orchestrator):
+        super().__init__("AI Reviewer Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("AI Reviewer Agent: Deep technical review as Staff Engineer...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        from .async_files import async_get_codebase_contents
+        codebase_text = await async_get_codebase_contents(session.workspace_root)
+
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a Staff/Principal Engineer. Perform a deep, honest technical review."),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = ai_reviewer_prompt_template.format(
+            task_description=task_description, codebase_text=codebase_text[:8000]
+        )
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        ai_review = response_msg.content
+
+        self.orchestrator.context.memory["ai_review"] = ai_review
+        await self.orchestrator.context.log(f"AI Reviewer Agent: Deep review complete.\n{ai_review[:250]}...")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "AI deep review complete."
+
+
+class DevOpsAgent(BaseAgent):
+    """Creates Docker, docker-compose, GitHub Actions CI/CD, NGINX config. Writes DEVOPS_CONFIG.md."""
+    def __init__(self, orchestrator):
+        super().__init__("DevOps Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("DevOps Agent: Creating Docker and CI/CD configuration...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a senior DevOps engineer. Create production-ready Docker and CI/CD configs."),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = devops_prompt_template.format(task_description=task_description)
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        devops_config = response_msg.content
+
+        self.orchestrator.context.memory["devops_config"] = devops_config
+        await self.orchestrator.update_task_progress(task_id, 60, session)
+
+        path = "DEVOPS_CONFIG.md"
+        tc_id = f"devops_{task_id}_{uuid.uuid4().hex[:6]}"
+        await session.send_ws_message({
+            "type": "status", "status": "tool_executing",
+            "message": f"Writing DevOps configuration to {path}...",
+            "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": devops_config}}
+        })
+        result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": devops_config}, auto_apply=False)
+        await session.send_ws_message({
+            "type": "tool_result", "tool_call_id": tc_id,
+            "name": "write_file", "status": "success", "result": result
+        })
+        await self.orchestrator.context.log(f"DevOps Agent: Configuration written to {path}.")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Docker and CI/CD configuration generated."
+
+
+class ReleaseAgent(BaseAgent):
+    """Prepares production builds: versioning, release notes, deployment checklist, rollback plan. Writes RELEASE_NOTES.md."""
+    def __init__(self, orchestrator):
+        super().__init__("Release Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Release Agent: Preparing production release package...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        history_summary = "\n".join(self.orchestrator.context.collaboration_log[-30:])
+
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a release engineer. Prepare comprehensive, professional release documentation."),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = release_prompt_template.format(
+            task_description=task_description, history_summary=history_summary
+        )
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        release_notes = response_msg.content
+
+        self.orchestrator.context.memory["release_notes"] = release_notes
+        await self.orchestrator.update_task_progress(task_id, 60, session)
+
+        path = "RELEASE_NOTES.md"
+        tc_id = f"rel_{task_id}_{uuid.uuid4().hex[:6]}"
+        await session.send_ws_message({
+            "type": "status", "status": "tool_executing",
+            "message": f"Writing release notes to {path}...",
+            "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": release_notes}}
+        })
+        result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": release_notes}, auto_apply=False)
+        await session.send_ws_message({
+            "type": "tool_result", "tool_call_id": tc_id,
+            "name": "write_file", "status": "success", "result": result
+        })
+        await self.orchestrator.context.log(f"Release Agent: Release notes written to {path}.")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Release package prepared."
+
 def extract_json(text: str) -> dict:
     text = text.strip()
     try:
@@ -647,17 +1345,53 @@ class AgentState(TypedDict):
 
 async def orchestrator_node(state: AgentState) -> AgentState:
     state["step_count"] += 1
-    if state["step_count"] >= 10:
+    if state["step_count"] >= 30:
         state["next_agents"] = ["Orchestrator"]
         return state
 
     agents_description = """
-Available Agents:
-- Requirement Analysis Agent: Identifies which files in the codebase need to be read or modified. Call this first if you don't know which files are target of the user's request.
-- File System Agent: Reads the contents of target files. Call this to retrieve contents of code files before making changes.
-- Coding Agent: Performs file modifications. Call this only after you know the file contents and target changes.
-- Terminal Agent: Runs build commands, compilation check commands, or syntax tests. Call this to verify modifications.
-- Git Agent: Reviews files, checks git diff status, or inspects logs. Call this to summarize final changes.
+Available Agents (22 Specialized LangGraph Agents):
+
+=== TIER 1: PLANNING ===
+- Planner Agent: Master planning — breaks user request into subtasks with dependencies and assigns agents.
+- Frontend Planner Agent: UI architecture, component tree, state management, routes, design system, responsive strategy.
+- Backend Planner Agent: API structure, DB schema, auth strategy, business logic, queues, cache, security threat model.
+- Requirement Analysis Agent: Identifies which files need to be read or modified. CALL THIS FIRST when target files are unknown.
+
+=== TIER 2: ARCHITECTURE ===
+- Software Architect Agent: Folder structure, architecture patterns, event/API/DB flows, design patterns, DDD.
+
+=== TIER 3: DEVELOPMENT ===
+- File System Agent: Reads file contents from workspace. ALWAYS call before any code-writing agent.
+- Coding Agent: General-purpose file modifications. Use for any file type when no specialist is needed.
+- Frontend Developer Agent: React/TypeScript UI — components, pages, hooks, animations, accessibility, SEO.
+- Backend Developer Agent: REST APIs, auth, controllers, services, repositories, middleware, validation, logging.
+- Database Agent: Schema design, migrations, indexes, seed data, query optimization. Writes DATABASE_DESIGN.md.
+- API Agent: OpenAPI 3.0/Swagger contracts, request/response validation, versioning, rate limiting. Writes API_SPEC.md.
+
+=== TIER 4: QUALITY ASSURANCE ===
+- Integration Agent: Verifies frontend<->backend<->DB connectivity, API contract alignment, external API integrations.
+- Testing Agent: Runs test suites (pytest/npm test), generates coverage reports.
+- Debugging Agent: Analyzes error logs, identifies bugs, proposes concrete fixes. Run after failures.
+- Security Agent: OWASP Top 10, XSS, CSRF, SQLi, JWT, RBAC, headers. Writes SECURITY_REPORT.md with severity ratings.
+- Performance Agent: Bundle size, N+1 queries, caching, lazy loading, memory leaks. Writes PERFORMANCE_REPORT.md.
+- Code Review Agent: Code quality, naming, architecture adherence, style consistency.
+- AI Reviewer Agent: Senior Staff Engineer review — algorithms, tech debt, SOLID, maintainability score (1-10).
+
+=== TIER 5: OPERATIONS ===
+- Documentation Agent: README, API docs, architecture docs, developer guide. Writes DOCS.md.
+- Git Agent: Checks git status/diff, summarizes changes.
+- Terminal Agent: Runs build commands, npm/pytest, migrations, Docker commands.
+- DevOps Agent: Dockerfile, docker-compose, GitHub Actions CI/CD. Writes DEVOPS_CONFIG.md.
+- Release Agent: Semver versioning, release notes, deployment checklist, rollback plan. Writes RELEASE_NOTES.md.
+
+=== PARALLEL EXECUTION RULES ===
+Run simultaneously when independent (always prefer parallel over sequential):
+- After planning: [Frontend Planner Agent, Backend Planner Agent, Requirement Analysis Agent] in parallel
+- After architecture: [Database Agent, API Agent] in parallel
+- During development: [Documentation Agent, Git Agent] alongside [Coding Agent/Frontend Developer Agent/Backend Developer Agent]
+- After code changes: [Testing Agent, Security Agent, Performance Agent, Debugging Agent] in parallel
+- Final phase: [Integration Agent, Code Review Agent, AI Reviewer Agent] then [Release Agent, DevOps Agent]
 """
     history_summary = "\n".join(state["collaboration_log"])
     memory_summary = json.dumps(state["memory"])
@@ -797,16 +1531,34 @@ class AgentOrchestrator:
         self.context = SharedContext()
         self.event_bus = EventBus()
         self.agents = {
+            # Tier 1: Planning
             "Planner Agent": PlannerAgent(self),
+            "Frontend Planner Agent": FrontendPlannerAgent(self),
+            "Backend Planner Agent": BackendPlannerAgent(self),
             "Requirement Analysis Agent": RequirementAnalysisAgent(self),
-            "Coding Agent": CodingAgent(self),
+            # Tier 2: Architecture
+            "Software Architect Agent": SoftwareArchitectAgent(self),
+            # Tier 3: Development
             "File System Agent": FileSystemAgent(self),
-            "Terminal Agent": TerminalAgent(self),
+            "Coding Agent": CodingAgent(self),
+            "Frontend Developer Agent": FrontendDeveloperAgent(self),
+            "Backend Developer Agent": BackendDeveloperAgent(self),
+            "Database Agent": DatabaseAgent(self),
+            "API Agent": APIAgent(self),
+            # Tier 4: Quality Assurance
+            "Integration Agent": IntegrationAgent(self),
             "Testing Agent": TestingAgent(self),
             "Debugging Agent": DebuggingAgent(self),
-            "Documentation Agent": DocumentationAgent(self),
+            "Security Agent": SecurityAgent(self),
+            "Performance Agent": PerformanceAgent(self),
             "Code Review Agent": CodeReviewAgent(self),
-            "Git Agent": GitAgent(self)
+            "AI Reviewer Agent": AIReviewerAgent(self),
+            # Tier 5: Operations
+            "Documentation Agent": DocumentationAgent(self),
+            "Git Agent": GitAgent(self),
+            "Terminal Agent": TerminalAgent(self),
+            "DevOps Agent": DevOpsAgent(self),
+            "Release Agent": ReleaseAgent(self),
         }
         agent_names = list(self.agents.keys())
         if len(agent_names) != len(set(agent_names)):

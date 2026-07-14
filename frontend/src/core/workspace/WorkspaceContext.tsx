@@ -13,6 +13,7 @@ interface WorkspaceContextType {
   changeWorkspacePath: (path: string) => Promise<boolean>;
   handleOpenWorkspaceFolder: () => Promise<void>;
   triggerRefresh: () => void;
+  selectFolder: () => Promise<string | null>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -66,23 +67,38 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
   };
 
   const handleOpenWorkspaceFolder = async () => {
-    const win = window as any;
-    if (win.pywebview && win.pywebview.api && typeof win.pywebview.api.select_folder === 'function') {
-      try {
-        const selected = await win.pywebview.api.select_folder();
-        if (selected) {
-          await changeWorkspacePath(selected);
-        }
-      } catch (err) {
-        showToast('Native folder selector error: ' + err, 'error');
-      }
-    } else {
-      setIsOpenFolderModalOpen(true);
-    }
+    setIsOpenFolderModalOpen(true);
   };
 
   const triggerRefresh = () => {
     setRefreshTrigger(prev => prev + 1);
+  };
+
+  const selectFolder = async (): Promise<string | null> => {
+    // @ts-ignore
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.select_folder) {
+      try {
+        // @ts-ignore
+        const path = await window.pywebview.api.select_folder();
+        if (path) return path;
+      } catch (e) {
+        console.error("pywebview select_folder failed:", e);
+      }
+    }
+
+    try {
+      const res = await fetch('/api/workspace/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.path || null;
+      }
+    } catch (e) {
+      console.error("Backend select_folder failed:", e);
+    }
+    return null;
   };
 
   useEffect(() => {
@@ -101,7 +117,8 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
         fetchWorkspacePath,
         changeWorkspacePath,
         handleOpenWorkspaceFolder,
-        triggerRefresh
+        triggerRefresh,
+        selectFolder
       }}
     >
       {children}

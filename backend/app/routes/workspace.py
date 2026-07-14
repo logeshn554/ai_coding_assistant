@@ -41,3 +41,24 @@ def change_workspace(req: WorkspaceChangeRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/workspace/select")
+def select_workspace():
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        folder_path = filedialog.askdirectory(title="Select Workspace Folder")
+        root.destroy()
+        
+        if folder_path:
+            normalized = os.path.abspath(folder_path).replace("\\", "/")
+            return {"path": normalized}
+        return {"path": None}
+    except Exception as e:
+        logger.error(f"Failed to open native directory dialog: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

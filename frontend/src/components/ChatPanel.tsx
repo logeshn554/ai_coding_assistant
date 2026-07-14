@@ -84,6 +84,16 @@ interface ChatPanelProps {
   onSelectFile?: (filePath: any) => any;
 }
 
+const renderContentString = (content: any): string => {
+  if (content === null || content === undefined) return '';
+  if (typeof content === 'string') return content;
+  try {
+    return JSON.stringify(content, null, 2);
+  } catch {
+    return String(content);
+  }
+};
+
 export default function ChatPanel({
   messages,
   onSendMessage,
@@ -570,7 +580,7 @@ export default function ChatPanel({
                     </div>
                     <div className="flex flex-col items-end max-w-[calc(100%-1.5rem)]">
                       <div className="p-2 bg-[#2a2a2b] border border-[#2d2d2d] text-xs text-white rounded-none leading-relaxed whitespace-pre-wrap select-text">
-                        {renderMessageContent(msg.content?.trim() || '')}
+                        {renderMessageContent(renderContentString(msg.content).trim())}
                       </div>
                     </div>
                   </div>
@@ -599,7 +609,7 @@ export default function ChatPanel({
                           View tool logs & output
                         </summary>
                         <pre className="mt-1 p-2 bg-[#1e1e1e] text-[9px] text-gray-400 max-h-36 overflow-y-auto whitespace-pre-wrap select-text border border-[#2d2d2d] scrollbar-thin">
-                          {msg.content}
+                          {renderContentString(msg.content)}
                         </pre>
                       </details>
                     </div>
@@ -812,7 +822,7 @@ export default function ChatPanel({
                     </div>
                     <div className="flex flex-col items-start max-w-[calc(100%-1.5rem)] select-text">
                       <div className="p-2 bg-[#141414] border border-[#2d2d2d] text-xs text-gray-300 rounded-none leading-relaxed whitespace-pre-wrap select-text">
-                        {renderMessageContent(msg.content.trim())}
+                        {renderMessageContent(renderContentString(msg.content).trim())}
                       </div>
                     </div>
                   </div>

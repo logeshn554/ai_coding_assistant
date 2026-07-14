@@ -1,0 +1,32 @@
+[project]
+name = "parallel_agent_system"
+version = "0.1.0"
+description = "Parallel Multi-Agent System using LangGraph and OpenHands"
+requires-python = ">=3.12"
+dependencies = [
+    "langgraph>=0.2.0",
+    "langgraph-checkpoint-postgres>=2.0.0",
+    "langchain-core>=0.3.0",
+    "langsmith>=0.1.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "redis>=5.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.22.0",
+    "docker>=7.0.0",
+    "structlog>=24.1.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.pyright]
+extraPaths = [".."]
