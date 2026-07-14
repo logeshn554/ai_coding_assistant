@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CoreProvider } from './core/CoreProvider';
 import { useWorkspace } from './core/workspace/WorkspaceContext';
 import { useEditor } from './core/editor/EditorContext';
@@ -8,6 +8,7 @@ import { useGit } from './core/git/GitContext';
 import { useAI } from './core/ai/AIContext';
 import { useSettings } from './core/settings/SettingsContext';
 import { useToast } from './core/toast/ToastContext';
+import { LSPProvider } from './core/lsp/LSPContext';
 
 // Import subpanels
 import { TitleBar } from './components/titlebar/TitleBar';
@@ -28,9 +29,52 @@ import ProfileSidebar from './components/ProfileSidebar';
 import EditorArea from './components/EditorArea';
 import ChatPanel from './components/ChatPanel';
 import SettingsModal from './components/SettingsModal';
+import QuickOpen from './components/QuickOpen';
+import GoToSymbol from './components/GoToSymbol';
 
 function EditorShell() {
   const { toasts, removeToast } = useToast();
+
+  // ── Quick Open & Go to Symbol state ──────────────────────────────────────
+  const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
+  const [isGoToSymbolOpen, setIsGoToSymbolOpen] = useState(false);
+
+  // Live Monaco editor instance forwarded from EditorArea
+  const editorInstanceRef = useRef<any>(null);
+
+  // Global keyboard shortcuts: Ctrl+P → Quick Open, Ctrl+Shift+O → Go to Symbol
+  useEffect(() => {
+    const handleGlobalKey = (e: KeyboardEvent) => {
+      const isCtrl = e.ctrlKey || e.metaKey;
+      // Ctrl+P → Quick Open (suppress browser print)
+      if (isCtrl && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        setIsGoToSymbolOpen(false);
+        setIsQuickOpenOpen((v) => !v);
+        return;
+      }
+      // Ctrl+Shift+O → Go to Symbol
+      if (isCtrl && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o') {
+        e.preventDefault();
+        setIsQuickOpenOpen(false);
+        setIsGoToSymbolOpen((v) => !v);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKey, { capture: true });
+    return () => window.removeEventListener('keydown', handleGlobalKey, { capture: true });
+  }, []);
+
+  // Reveal a line in Monaco when Go to Symbol selects a result
+  const handleRevealLine = (line: number, col: number = 1) => {
+    const editor = editorInstanceRef.current;
+    if (!editor) return;
+    try {
+      editor.revealLineInCenter(line);
+      editor.setPosition({ lineNumber: line, column: col });
+      editor.focus();
+    } catch {}
+  };
   const {
     workspacePath,
     isOpenFolderModalOpen,
@@ -195,6 +239,7 @@ function EditorShell() {
                 refreshTrigger={refreshTrigger}
                 onOpenFolder={() => setIsOpenFolderModalOpen(true)}
                 workspacePath={workspacePath}
+                onEditorRef={(ed) => { editorInstanceRef.current = ed; }}
               />
             </div>
 
@@ -279,6 +324,22 @@ function EditorShell() {
 
       <CommandPalette />
 
+      {/* ── Quick Open overlay (Ctrl+P) ── */}
+      <QuickOpen
+        isOpen={isQuickOpenOpen}
+        onClose={() => setIsQuickOpenOpen(false)}
+        onOpenFile={handleSelectFile}
+        recentFiles={openFiles}
+      />
+
+      {/* ── Go to Symbol overlay (Ctrl+Shift+O) ── */}
+      <GoToSymbol
+        isOpen={isGoToSymbolOpen}
+        onClose={() => setIsGoToSymbolOpen(false)}
+        activeFilePath={activeFilePath}
+        onRevealLine={handleRevealLine}
+      />
+
       {/* Settings Modal overlay */}
       <SettingsModal
         isOpen={isSettingsOpen}
@@ -358,7 +419,9 @@ function EditorShell() {
 export default function App() {
   return (
     <CoreProvider>
-      <EditorShell />
+      <LSPProvider>
+        <EditorShell />
+      </LSPProvider>
     </CoreProvider>
   );
 }

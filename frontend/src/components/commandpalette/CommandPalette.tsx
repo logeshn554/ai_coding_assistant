@@ -28,6 +28,23 @@ export const CommandPalette: React.FC = () => {
   };
 
   const commands = [
+    {
+      label: 'Go to File…  (Quick Open)',
+      shortcut: 'Ctrl+P',
+      action: () => {
+        setIsCommandPaletteOpen(false);
+        // Dispatch a synthetic Ctrl+P — App.tsx intercepts this
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true }));
+      }
+    },
+    {
+      label: 'Go to Symbol in File…',
+      shortcut: 'Ctrl+Shift+O',
+      action: () => {
+        setIsCommandPaletteOpen(false);
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'o', ctrlKey: true, shiftKey: true, bubbles: true }));
+      }
+    },
     { label: 'File: Open Workspace Folder', action: () => { setIsCommandPaletteOpen(false); handleOpenWorkspaceFolder(); } },
     { label: 'AI: Configure Model Profile Settings', action: () => { setIsCommandPaletteOpen(false); setIsSettingsOpen(true); } },
     { label: 'AI: Clear Assistant Chat Logs', action: () => { setIsCommandPaletteOpen(false); setMessages([]); } },
@@ -44,6 +61,7 @@ export const CommandPalette: React.FC = () => {
     { label: 'View: Open Dependencies manager', action: () => { setIsCommandPaletteOpen(false); setSidebarTab('packages'); setIsSidebarOpen(true); } },
     { label: 'Tools: Scan for Bugs in Workspace', action: () => { setIsCommandPaletteOpen(false); handleScanForBugs(); } }
   ];
+
 
   const filteredCommands = commands.filter(cmd =>
     cmd.label.toLowerCase().includes(commandSearch.toLowerCase())
@@ -80,9 +98,14 @@ export const CommandPalette: React.FC = () => {
             <button
               key={idx}
               onClick={cmd.action}
-              className="w-full text-left px-4 py-1.5 hover:bg-[#8b5cf6]/10 hover:text-white transition-colors text-xs text-gray-300 font-mono cursor-pointer font-sans"
+              className="w-full text-left px-4 py-1.5 hover:bg-[#8b5cf6]/10 hover:text-white transition-colors text-xs text-gray-300 font-mono cursor-pointer font-sans flex items-center justify-between"
             >
-              {cmd.label}
+              <span>{cmd.label}</span>
+              {(cmd as any).shortcut && (
+                <span className="text-[9px] bg-white/5 text-gray-500 px-1.5 py-0.5 rounded font-mono shrink-0 ml-3">
+                  {(cmd as any).shortcut}
+                </span>
+              )}
             </button>
           ))}
           {filteredCommands.length === 0 && (
