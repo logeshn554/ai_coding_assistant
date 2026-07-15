@@ -326,6 +326,19 @@ async def websocket_chat(websocket: WebSocket, token: Optional[str] = Query(None
             
     session = AgentSession(workspace_state.root, active_profile, send_to_client, permission_manager)
     
+    # Restore context memory from Redis if available
+    try:
+        import redis.asyncio as aioredis
+        workspace_id = os.path.basename(workspace_state.root) or "default"
+        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+        redis_client = aioredis.from_url(redis_url, decode_responses=True)
+        raw = await redis_client.get(f"session:{workspace_id}:ctx")
+        if raw:
+            session.orchestrator.context.memory = json.loads(raw)
+        await redis_client.close()
+    except Exception as e:
+        logger.error(f"Failed to restore context from Redis: {e}")
+    
     try:
         while True:
             raw_msg = await websocket.receive_text()

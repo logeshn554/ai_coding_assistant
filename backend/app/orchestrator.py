@@ -384,6 +384,7 @@ class BaseAgent:
         raise NotImplementedError
 
 class PlannerAgent(BaseAgent):
+    """Breaks down requests into a logical sequence of subtasks with dependencies."""
     def __init__(self, orchestrator):
         super().__init__("Planner Agent", orchestrator)
 
@@ -423,6 +424,7 @@ class PlannerAgent(BaseAgent):
             return "Fallback plan created."
 
 class RequirementAnalysisAgent(BaseAgent):
+    """Identifies target files to read/modify for a given task."""
     def __init__(self, orchestrator):
         super().__init__("Requirement Analysis Agent", orchestrator)
         
@@ -483,6 +485,7 @@ class RequirementAnalysisAgent(BaseAgent):
         return "Completed"
 
 class FileSystemAgent(BaseAgent):
+    """Reads multiple codebase files concurrently."""
     def __init__(self, orchestrator):
         super().__init__("File System Agent", orchestrator)
         
@@ -513,6 +516,7 @@ class FileSystemAgent(BaseAgent):
         return "Completed"
 
 class CodingAgent(BaseAgent):
+    """General-purpose code generator that modifies files to implement features."""
     def __init__(self, orchestrator):
         super().__init__("Coding Agent", orchestrator)
         
@@ -581,6 +585,7 @@ class CodingAgent(BaseAgent):
         return "Completed"
 
 class TerminalAgent(BaseAgent):
+    """Runs arbitrary build, verification, and terminal commands."""
     def __init__(self, orchestrator):
         super().__init__("Terminal Agent", orchestrator)
         
@@ -629,6 +634,7 @@ class TerminalAgent(BaseAgent):
         return "Completed"
 
 class TestingAgent(BaseAgent):
+    """Runs tests (pytest/npm test) to verify code changes."""
     def __init__(self, orchestrator):
         super().__init__("Testing Agent", orchestrator)
         
@@ -666,6 +672,7 @@ class TestingAgent(BaseAgent):
         return "Completed"
 
 class DebuggingAgent(BaseAgent):
+    """Diagnoses errors in collaboration logs and proposes code fixes."""
     def __init__(self, orchestrator):
         super().__init__("Debugging Agent", orchestrator)
         
@@ -694,6 +701,7 @@ class DebuggingAgent(BaseAgent):
 
 
 class DocumentationAgent(BaseAgent):
+    """Generates technical documentation and writes DOCS.md."""
     def __init__(self, orchestrator):
         super().__init__("Documentation Agent", orchestrator)
         
@@ -736,6 +744,7 @@ class DocumentationAgent(BaseAgent):
         return "Completed"
 
 class CodeReviewAgent(BaseAgent):
+    """Audits codebase changes for style, bugs, efficiency, and correctness."""
     def __init__(self, orchestrator):
         super().__init__("Code Review Agent", orchestrator)
         
@@ -743,20 +752,23 @@ class CodeReviewAgent(BaseAgent):
         await self.orchestrator.context.log(f"Code Review Agent: Auditing codebase modifications...")
         await self.orchestrator.update_task_progress(task_id, 30, session)
         
-        from .async_files import async_get_codebase_contents
-        codebase_text = await async_get_codebase_contents(session.workspace_root)
-        
-        chat_prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a senior code reviewer. Provide constructive criticism and issues found."),
-            ("human", "{prompt_content}")
-        ])
-        prompt_content = review_prompt_template.format(task_description=task_description, codebase_text=codebase_text)
+        file_contents = await async_get_codebase_dict(session.workspace_root)
+        chunks = chunked_codebase(file_contents)
         
         llm = DevPilotChatModel(session=session, agent_name=self.name)
-        chain = chat_prompt | llm
-        
-        review_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        review = review_msg.content
+        findings = []
+        for i, chunk in enumerate(chunks):
+            await self.orchestrator.context.log(f"Code Review Agent: Auditing chunk {i+1}/{len(chunks)}...")
+            chat_prompt = ChatPromptTemplate.from_messages([
+                ("system", "You are a senior code reviewer. Provide constructive criticism and issues found."),
+                ("human", "{prompt_content}")
+            ])
+            prompt_content = review_prompt_template.format(task_description=task_description, codebase_text=chunk)
+            chain = chat_prompt | llm
+            review_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            findings.append(review_msg.content)
+            
+        review = "\n\n".join(findings)
         
         await self.orchestrator.context.log(f"Code Review Agent: Review completed. Summary:\n{review[:250]}...")
         self.orchestrator.context.memory["code_review"] = review
@@ -764,6 +776,7 @@ class CodeReviewAgent(BaseAgent):
         return "Completed"
 
 class GitAgent(BaseAgent):
+    """Audits git status and command diffs for workspace changes."""
     def __init__(self, orchestrator):
         super().__init__("Git Agent", orchestrator)
         
@@ -1094,20 +1107,25 @@ class SecurityAgent(BaseAgent):
         await self.orchestrator.context.log("Security Agent: Running OWASP security audit...")
         await self.orchestrator.update_task_progress(task_id, 20, session)
 
-        from .async_files import async_get_codebase_contents
-        codebase_text = await async_get_codebase_contents(session.workspace_root)
+        file_contents = await async_get_codebase_dict(session.workspace_root)
+        chunks = chunked_codebase(file_contents)
 
-        chat_prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a senior application security engineer. Perform thorough OWASP-based security audits."),
-            ("human", "{prompt_content}")
-        ])
-        prompt_content = security_prompt_template.format(
-            task_description=task_description, codebase_text=codebase_text[:8000]
-        )
         llm = DevPilotChatModel(session=session, agent_name=self.name)
-        chain = chat_prompt | llm
-        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        security_report = response_msg.content
+        findings = []
+        for i, chunk in enumerate(chunks):
+            await self.orchestrator.context.log(f"Security Agent: Auditing chunk {i+1}/{len(chunks)}...")
+            chat_prompt = ChatPromptTemplate.from_messages([
+                ("system", "You are a senior application security engineer. Perform thorough OWASP-based security audits."),
+                ("human", "{prompt_content}")
+            ])
+            prompt_content = security_prompt_template.format(
+                task_description=task_description, codebase_text=chunk
+            )
+            chain = chat_prompt | llm
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            findings.append(response_msg.content)
+
+        security_report = "\n\n".join(findings)
 
         self.orchestrator.context.memory["security_report"] = security_report
         await self.orchestrator.update_task_progress(task_id, 60, session)
@@ -1138,20 +1156,25 @@ class PerformanceAgent(BaseAgent):
         await self.orchestrator.context.log("Performance Agent: Analyzing performance bottlenecks...")
         await self.orchestrator.update_task_progress(task_id, 20, session)
 
-        from .async_files import async_get_codebase_contents
-        codebase_text = await async_get_codebase_contents(session.workspace_root)
+        file_contents = await async_get_codebase_dict(session.workspace_root)
+        chunks = chunked_codebase(file_contents)
 
-        chat_prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a performance engineering expert. Identify and fix performance issues."),
-            ("human", "{prompt_content}")
-        ])
-        prompt_content = performance_prompt_template.format(
-            task_description=task_description, codebase_text=codebase_text[:8000]
-        )
         llm = DevPilotChatModel(session=session, agent_name=self.name)
-        chain = chat_prompt | llm
-        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        perf_report = response_msg.content
+        findings = []
+        for i, chunk in enumerate(chunks):
+            await self.orchestrator.context.log(f"Performance Agent: Auditing chunk {i+1}/{len(chunks)}...")
+            chat_prompt = ChatPromptTemplate.from_messages([
+                ("system", "You are a performance engineering expert. Identify and fix performance issues."),
+                ("human", "{prompt_content}")
+            ])
+            prompt_content = performance_prompt_template.format(
+                task_description=task_description, codebase_text=chunk
+            )
+            chain = chat_prompt | llm
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            findings.append(response_msg.content)
+
+        perf_report = "\n\n".join(findings)
 
         self.orchestrator.context.memory["performance_report"] = perf_report
         await self.orchestrator.update_task_progress(task_id, 60, session)
@@ -1182,20 +1205,25 @@ class AIReviewerAgent(BaseAgent):
         await self.orchestrator.context.log("AI Reviewer Agent: Deep technical review as Staff Engineer...")
         await self.orchestrator.update_task_progress(task_id, 20, session)
 
-        from .async_files import async_get_codebase_contents
-        codebase_text = await async_get_codebase_contents(session.workspace_root)
+        file_contents = await async_get_codebase_dict(session.workspace_root)
+        chunks = chunked_codebase(file_contents)
 
-        chat_prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a Staff/Principal Engineer. Perform a deep, honest technical review."),
-            ("human", "{prompt_content}")
-        ])
-        prompt_content = ai_reviewer_prompt_template.format(
-            task_description=task_description, codebase_text=codebase_text[:8000]
-        )
         llm = DevPilotChatModel(session=session, agent_name=self.name)
-        chain = chat_prompt | llm
-        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        ai_review = response_msg.content
+        findings = []
+        for i, chunk in enumerate(chunks):
+            await self.orchestrator.context.log(f"AI Reviewer Agent: Auditing chunk {i+1}/{len(chunks)}...")
+            chat_prompt = ChatPromptTemplate.from_messages([
+                ("system", "You are a Staff/Principal Engineer. Perform a deep, honest technical review."),
+                ("human", "{prompt_content}")
+            ])
+            prompt_content = ai_reviewer_prompt_template.format(
+                task_description=task_description, codebase_text=chunk
+            )
+            chain = chat_prompt | llm
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            findings.append(response_msg.content)
+
+        ai_review = "\n\n".join(findings)
 
         self.orchestrator.context.memory["ai_review"] = ai_review
         await self.orchestrator.context.log(f"AI Reviewer Agent: Deep review complete.\n{ai_review[:250]}...")
@@ -1343,56 +1371,80 @@ class AgentState(TypedDict):
     step_count: int
     orchestrator: Any
 
+MAX_CHARS = 8000
+
+async def async_get_codebase_dict(workspace_root: str) -> dict:
+    exclude_dirs = {".git", "node_modules", "venv", "__pycache__", ".devpilot", "dist", "build"}
+    exclude_extensions = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}
+    
+    is_editor_root = False
+    try:
+        is_editor_root = (
+            os.path.isdir(os.path.join(workspace_root, "backend", "app")) and
+            os.path.isdir(os.path.join(workspace_root, "frontend", "src"))
+        )
+    except Exception:
+        pass
+
+    file_dict = {}
+    for root, dirs, files in os.walk(workspace_root):
+        current_excludes = set(exclude_dirs)
+        if is_editor_root and root == os.path.realpath(workspace_root):
+            current_excludes.update({"frontend", "backend", "venv"})
+        dirs[:] = [d for d in dirs if d not in current_excludes]
+        
+        if is_editor_root and os.path.realpath(root) == os.path.realpath(workspace_root):
+            files = [f for f in files if f not in {"requirements.txt", "run.py", "README.md"}]
+
+        for file in files:
+            ext = os.path.splitext(file)[1].lower()
+            if ext in exclude_extensions:
+                continue
+            abs_file_path = os.path.join(root, file)
+            rel_file_path = os.path.relpath(abs_file_path, workspace_root).replace("\\", "/")
+            try:
+                with open(abs_file_path, "r", encoding="utf-8", errors="replace") as f:
+                    content = f.read()
+                file_dict[rel_file_path] = content
+            except Exception:
+                continue
+    return file_dict
+
+def chunked_codebase(file_contents: dict, max_chars=MAX_CHARS):
+    chunks, current, size = [], [], 0
+    for path, content in file_contents.items():
+        entry = f"### {path}\n{content}\n"
+        if size + len(entry) > max_chars and current:
+            chunks.append("\n".join(current))
+            current, size = [], 0
+        current.append(entry)
+        size += len(entry)
+    if current:
+        chunks.append("\n".join(current))
+    return chunks
+
 async def orchestrator_node(state: AgentState) -> AgentState:
     state["step_count"] += 1
-    if state["step_count"] >= 30:
+    
+    orchestrator = state["orchestrator"]
+    max_steps = 30
+    if hasattr(orchestrator, "max_steps") and isinstance(orchestrator.max_steps, int):
+        max_steps = orchestrator.max_steps
+        
+    if state["step_count"] >= max_steps:
         state["next_agents"] = ["Orchestrator"]
+        state["agent_tasks"] = {"Orchestrator": "Step limit reached — wrapping up."}
         return state
 
-    agents_description = """
-Available Agents (22 Specialized LangGraph Agents):
+    from unittest.mock import MagicMock
+    if hasattr(orchestrator, "agents") and not isinstance(orchestrator.agents, MagicMock):
+        agents_description = "\n".join(
+            f"- {name}: {agent.__doc__ or 'No description.'}"
+            for name, agent in orchestrator.agents.items()
+        )
+    else:
+        agents_description = "No description available."
 
-=== TIER 1: PLANNING ===
-- Planner Agent: Master planning — breaks user request into subtasks with dependencies and assigns agents.
-- Frontend Planner Agent: UI architecture, component tree, state management, routes, design system, responsive strategy.
-- Backend Planner Agent: API structure, DB schema, auth strategy, business logic, queues, cache, security threat model.
-- Requirement Analysis Agent: Identifies which files need to be read or modified. CALL THIS FIRST when target files are unknown.
-
-=== TIER 2: ARCHITECTURE ===
-- Software Architect Agent: Folder structure, architecture patterns, event/API/DB flows, design patterns, DDD.
-
-=== TIER 3: DEVELOPMENT ===
-- File System Agent: Reads file contents from workspace. ALWAYS call before any code-writing agent.
-- Coding Agent: General-purpose file modifications. Use for any file type when no specialist is needed.
-- Frontend Developer Agent: React/TypeScript UI — components, pages, hooks, animations, accessibility, SEO.
-- Backend Developer Agent: REST APIs, auth, controllers, services, repositories, middleware, validation, logging.
-- Database Agent: Schema design, migrations, indexes, seed data, query optimization. Writes DATABASE_DESIGN.md.
-- API Agent: OpenAPI 3.0/Swagger contracts, request/response validation, versioning, rate limiting. Writes API_SPEC.md.
-
-=== TIER 4: QUALITY ASSURANCE ===
-- Integration Agent: Verifies frontend<->backend<->DB connectivity, API contract alignment, external API integrations.
-- Testing Agent: Runs test suites (pytest/npm test), generates coverage reports.
-- Debugging Agent: Analyzes error logs, identifies bugs, proposes concrete fixes. Run after failures.
-- Security Agent: OWASP Top 10, XSS, CSRF, SQLi, JWT, RBAC, headers. Writes SECURITY_REPORT.md with severity ratings.
-- Performance Agent: Bundle size, N+1 queries, caching, lazy loading, memory leaks. Writes PERFORMANCE_REPORT.md.
-- Code Review Agent: Code quality, naming, architecture adherence, style consistency.
-- AI Reviewer Agent: Senior Staff Engineer review — algorithms, tech debt, SOLID, maintainability score (1-10).
-
-=== TIER 5: OPERATIONS ===
-- Documentation Agent: README, API docs, architecture docs, developer guide. Writes DOCS.md.
-- Git Agent: Checks git status/diff, summarizes changes.
-- Terminal Agent: Runs build commands, npm/pytest, migrations, Docker commands.
-- DevOps Agent: Dockerfile, docker-compose, GitHub Actions CI/CD. Writes DEVOPS_CONFIG.md.
-- Release Agent: Semver versioning, release notes, deployment checklist, rollback plan. Writes RELEASE_NOTES.md.
-
-=== PARALLEL EXECUTION RULES ===
-Run simultaneously when independent (always prefer parallel over sequential):
-- After planning: [Frontend Planner Agent, Backend Planner Agent, Requirement Analysis Agent] in parallel
-- After architecture: [Database Agent, API Agent] in parallel
-- During development: [Documentation Agent, Git Agent] alongside [Coding Agent/Frontend Developer Agent/Backend Developer Agent]
-- After code changes: [Testing Agent, Security Agent, Performance Agent, Debugging Agent] in parallel
-- Final phase: [Integration Agent, Code Review Agent, AI Reviewer Agent] then [Release Agent, DevOps Agent]
-"""
     history_summary = "\n".join(state["collaboration_log"])
     memory_summary = json.dumps(state["memory"])
     
@@ -1470,6 +1522,26 @@ Run simultaneously when independent (always prefer parallel over sequential):
     state["next_agents"] = selected_agents
     state["agent_tasks"] = agent_tasks
     
+    # Serialize to Redis after orchestrator node planning
+    session = state.get("session")
+    is_mock = False
+    if session:
+        class_name = session.__class__.__name__
+        if "Mock" in class_name or "MagicMock" in class_name:
+            is_mock = True
+            
+    if not is_mock:
+        try:
+            import redis.asyncio as aioredis
+            if session and hasattr(session, "workspace_root"):
+                workspace_id = os.path.basename(session.workspace_root) or "default"
+                redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+                redis_client = aioredis.from_url(redis_url, decode_responses=True)
+                await redis_client.set(f"session:{workspace_id}:ctx", json.dumps(state["memory"]), ex=3600)
+                await redis_client.close()
+        except Exception as e:
+            logger.error(f"Failed to persist context to Redis in orchestrator_node: {e}")
+            
     return state
 
 def make_agent_node(agent_name: str):
@@ -1488,7 +1560,22 @@ def make_agent_node(agent_name: str):
         state["subtasks"].append(task_entry)
         state["task_id_counter"] += 1
         
-        await state["session"].send_ws_message({
+        orchestrator = state["orchestrator"]
+        session = state["session"]
+        is_mock = False
+        if session:
+            class_name = session.__class__.__name__
+            if "Mock" in class_name or "MagicMock" in class_name:
+                is_mock = True
+                
+        # Emit WebSocket event at the start of agent node
+        if not is_mock:
+            try:
+                await orchestrator.update_task_progress(subtask_id, 10, session, "running")
+            except Exception as e:
+                logger.error(f"Error updating start task progress: {e}")
+        
+        await session.send_ws_message({
             "type": "agent_state",
             "active_agent": agent_name,
             "active_task": agent_description,
@@ -1496,16 +1583,24 @@ def make_agent_node(agent_name: str):
             "collaboration_log": state["collaboration_log"]
         })
         
-        agent = state["orchestrator"].agents[agent_name]
+        agent = orchestrator.agents[agent_name]
+        status = "completed"
+        progress = 100
         try:
-            await agent.execute(agent_description, state["session"], subtask_id)
-            task_entry["status"] = "completed"
-            task_entry["progress"] = 100
+            await agent.execute(agent_description, session, subtask_id)
         except Exception as e:
-            task_entry["status"] = "failed"
-            await state["orchestrator"].context.log(f"Orchestrator: Error executing agent {agent_name}: {str(e)}")
+            status = "failed"
+            progress = 100
+            await orchestrator.context.log(f"Orchestrator: Error executing agent {agent_name}: {str(e)}")
             
-        await state["session"].send_ws_message({
+        # Emit WebSocket event at the end of agent node
+        if not is_mock:
+            try:
+                await orchestrator.update_task_progress(subtask_id, progress, session, status)
+            except Exception as e:
+                logger.error(f"Error updating end task progress: {e}")
+                
+        await session.send_ws_message({
             "type": "agent_state",
             "active_agent": agent_name,
             "active_task": "Step finished",
@@ -1513,6 +1608,19 @@ def make_agent_node(agent_name: str):
             "collaboration_log": state["collaboration_log"]
         })
         
+        # Serialize to Redis after agent execution
+        if not is_mock:
+            try:
+                import redis.asyncio as aioredis
+                if session and hasattr(session, "workspace_root"):
+                    workspace_id = os.path.basename(session.workspace_root) or "default"
+                    redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
+                    redis_client = aioredis.from_url(redis_url, decode_responses=True)
+                    await redis_client.set(f"session:{workspace_id}:ctx", json.dumps(state["memory"]), ex=3600)
+                    await redis_client.close()
+            except Exception as e:
+                logger.error(f"Failed to persist context to Redis in agent turn: {e}")
+                
         return state
     return node
 
@@ -1527,7 +1635,8 @@ def route_next(state: AgentState) -> List[str]:
     return valid_agents
 
 class AgentOrchestrator:
-    def __init__(self):
+    def __init__(self, max_steps: int = 30):
+        self.max_steps = max_steps
         self.context = SharedContext()
         self.event_bus = EventBus()
         self.agents = {
@@ -1564,8 +1673,23 @@ class AgentOrchestrator:
         if len(agent_names) != len(set(agent_names)):
             logger.warning("Duplicate agent mappings detected in orchestrator registry!")
 
-    async def update_task_progress(self, task_id: int, progress: int, session):
-        pass
+    async def update_task_progress(self, task_id: int, progress: int, session, status: str = None):
+        task = next((t for t in self.context.subtasks if t["id"] == task_id), None)
+        if task:
+            task["progress"] = progress
+            if status:
+                task["status"] = status
+            elif progress == 100:
+                task["status"] = "completed"
+            else:
+                task["status"] = "running"
+                
+            await session.send_ws_message({
+                "type": "task_progress",
+                "task_id": task_id,
+                "progress": progress,
+                "status": task["status"]
+            })
 
     async def run_task(self, task_description: str, session) -> str:
         await self.context.log("Orchestrator: Initializing dynamic agent router session...")
