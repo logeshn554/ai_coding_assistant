@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef } from 'react';
 import { CoreProvider } from './core/CoreProvider';
 import { useWorkspace } from './core/workspace/WorkspaceContext';
 import { useEditor } from './core/editor/EditorContext';
@@ -32,38 +32,32 @@ import SettingsModal from './components/SettingsModal';
 import QuickOpen from './components/QuickOpen';
 import GoToSymbol from './components/GoToSymbol';
 
+// Custom Hooks and standalone components
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useResizeManager } from './hooks/useResizeManager';
+import { OpenFolderModal } from './components/OpenFolderModal';
+
 function EditorShell() {
   const { toasts, removeToast } = useToast();
 
-  // ── Quick Open & Go to Symbol state ──────────────────────────────────────
-  const [isQuickOpenOpen, setIsQuickOpenOpen] = useState(false);
-  const [isGoToSymbolOpen, setIsGoToSymbolOpen] = useState(false);
+  const {
+    isQuickOpenOpen,
+    setIsQuickOpenOpen,
+    isGoToSymbolOpen,
+    setIsGoToSymbolOpen
+  } = useKeyboardShortcuts();
+
+  const {
+    terminalHeight,
+    sidebarWidth,
+    aiPanelWidth,
+    setIsResizingSidebar,
+    setIsResizingTerminal,
+    setIsResizingAiPanel
+  } = useResizeManager();
 
   // Live Monaco editor instance forwarded from EditorArea
   const editorInstanceRef = useRef<any>(null);
-
-  // Global keyboard shortcuts: Ctrl+P → Quick Open, Ctrl+Shift+O → Go to Symbol
-  useEffect(() => {
-    const handleGlobalKey = (e: KeyboardEvent) => {
-      const isCtrl = e.ctrlKey || e.metaKey;
-      // Ctrl+P → Quick Open (suppress browser print)
-      if (isCtrl && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'p') {
-        e.preventDefault();
-        setIsGoToSymbolOpen(false);
-        setIsQuickOpenOpen((v) => !v);
-        return;
-      }
-      // Ctrl+Shift+O → Go to Symbol
-      if (isCtrl && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'o') {
-        e.preventDefault();
-        setIsQuickOpenOpen(false);
-        setIsGoToSymbolOpen((v) => !v);
-        return;
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKey, { capture: true });
-    return () => window.removeEventListener('keydown', handleGlobalKey, { capture: true });
-  }, []);
 
   // Reveal a line in Monaco when Go to Symbol selects a result
   const handleRevealLine = (line: number, col: number = 1) => {
@@ -77,21 +71,9 @@ function EditorShell() {
   };
   const {
     workspacePath,
-    isOpenFolderModalOpen,
     setIsOpenFolderModalOpen,
-    folderPathInput,
-    setFolderPathInput,
-    changeWorkspacePath,
-    refreshTrigger,
-    selectFolder
+    refreshTrigger
   } = useWorkspace();
-
-  const handleBrowseFolderClick = async () => {
-    const selected = await selectFolder();
-    if (selected) {
-      setFolderPathInput(selected);
-    }
-  };
 
   const {
     openFiles,
@@ -102,22 +84,10 @@ function EditorShell() {
   } = useEditor();
 
   const {
-    terminalHeight,
-    setTerminalHeight,
-    isResizingTerminal,
-    setIsResizingTerminal,
     activeProcesses
   } = useTerminal();
 
   const {
-    sidebarWidth,
-    setSidebarWidth,
-    isResizingSidebar,
-    setIsResizingSidebar,
-    aiPanelWidth,
-    setAiPanelWidth,
-    isResizingAiPanel,
-    setIsResizingAiPanel,
     isSidebarOpen,
     sidebarTab,
     isAiPanelOpen
@@ -143,46 +113,10 @@ function EditorShell() {
     handleSelectSession,
     handleDeleteSession,
     handleNewSession,
-    handleRenameSession
+    handleRenameSession,
+    contextTokens,
+    contextPercentage
   } = useAI();
-
-  // Global mouse move listener for panel resizing
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (isResizingSidebar) {
-        const newWidth = Math.max(150, Math.min(500, e.clientX - 56));
-        setSidebarWidth(newWidth);
-      } else if (isResizingAiPanel) {
-        const newWidth = Math.max(250, Math.min(600, window.innerWidth - e.clientX));
-        setAiPanelWidth(newWidth);
-      } else if (isResizingTerminal) {
-        const newHeight = Math.max(100, Math.min(500, window.innerHeight - e.clientY - 24));
-        setTerminalHeight(newHeight);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizingSidebar(false);
-      setIsResizingAiPanel(false);
-      setIsResizingTerminal(false);
-    };
-
-    if (isResizingSidebar || isResizingAiPanel || isResizingTerminal) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizingSidebar, isResizingAiPanel, isResizingTerminal]);
-
-  const handleOpenFolderSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!folderPathInput.trim()) return;
-    await changeWorkspacePath(folderPathInput.trim());
-  };
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[var(--dp-bg-primary)] text-[var(--dp-text-primary)] overflow-hidden font-sans select-none">
@@ -265,17 +199,6 @@ function EditorShell() {
                 className="dp-resize-handle-h absolute -left-1 top-0 bottom-0 w-2 z-50 select-none cursor-col-resize hover:bg-[var(--dp-accent)]/20 transition-colors"
               />
               <div className="flex-1 h-full min-w-0 border border-[var(--dp-border)] bg-[var(--dp-bg-secondary)] rounded-lg overflow-hidden flex flex-col shadow-lg shadow-black/20">
-                {(() => {
-                  let totalChars = 0;
-                  messages.forEach(m => {
-                    totalChars += (m.content || '').length;
-                  });
-                  totalChars += openFiles.length * 8000;
-                  const estimatedTokens = Math.max(120, Math.round(totalChars / 3.8));
-                  const maxTokens = 128000;
-                  const percentage = Math.min(100, Math.round((estimatedTokens / maxTokens) * 100));
-                  let formattedTokens = estimatedTokens >= 1000 ? (estimatedTokens / 1000).toFixed(1) + 'K' : estimatedTokens.toString();
-                  return (
                     <ChatPanel
                       messages={messages}
                       onSendMessage={(text, mode, autoApply) =>
@@ -296,8 +219,8 @@ function EditorShell() {
                       onCancelGeneration={handleCancelGeneration}
                       activeAgent={activeAgent}
                       activeTask={activeTask}
-                      contextTokens={formattedTokens}
-                      contextPercentage={percentage}
+                      contextTokens={contextTokens}
+                      contextPercentage={contextPercentage}
                       activeProcesses={activeProcesses}
                       onConfirmPortConflict={handleConfirmPortConflict}
                       onStopProcess={(procId) => handleKillProcess(procId || '')}
@@ -311,8 +234,6 @@ function EditorShell() {
                       onGitAction={handleGitAction}
                       onSelectFile={handleSelectFile}
                     />
-                  );
-                })()}
               </div>
             </div>
           )}
@@ -348,51 +269,7 @@ function EditorShell() {
       />
 
       {/* Manual Open Workspace Modal */}
-      {isOpenFolderModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <form
-            onSubmit={handleOpenFolderSubmit}
-            className="w-[450px] bg-[#181818] border border-[#2d2d2d] rounded-none shadow-2xl p-5"
-          >
-            <h3 className="text-xs font-semibold text-white mb-2 font-sans">Open Workspace Folder</h3>
-            <p className="text-[10px] text-gray-550 mb-4 font-sans">
-              Enter or browse the absolute folder path on your computer. DevPilot will load its file tree and run commands inside it.
-            </p>
-            <div className="flex gap-2 mb-4">
-              <input
-                autoFocus
-                type="text"
-                value={folderPathInput}
-                onChange={(e) => setFolderPathInput(e.target.value)}
-                className="flex-1 px-3 py-2 bg-[#131313] border border-[#2d2d2d] rounded-none text-xs text-white focus:outline-none focus:border-[#8b5cf6]/50 font-mono"
-                placeholder="e.g. E:/my-project"
-              />
-              <button
-                type="button"
-                onClick={handleBrowseFolderClick}
-                className="px-3 py-2 bg-[#2d2d2d] hover:bg-[#3d3d3d] text-white text-xs font-medium rounded-none border border-[#2d2d2d] hover:border-[#8b5cf6]/50 transition-colors cursor-pointer"
-              >
-                Browse...
-              </button>
-            </div>
-            <div className="flex justify-end gap-2 text-xs font-sans">
-              <button
-                type="button"
-                onClick={() => setIsOpenFolderModalOpen(false)}
-                className="px-4 py-2 bg-transparent text-gray-400 hover:text-white transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-[#8b5cf6] hover:bg-[#7c4dff] text-white rounded-none transition-colors font-medium cursor-pointer"
-              >
-                Open Folder
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      <OpenFolderModal />
 
       {/* Toast Overlay */}
       <div className="fixed bottom-8 right-6 z-50 flex flex-col gap-2 pointer-events-none">

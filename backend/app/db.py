@@ -40,45 +40,27 @@ class MessageModel(Base):
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
-# Track active session in memory
-_active_session_id = None
-
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await migrate_legacy_history()
     
-    # Run the bug scanning tool across the workspace and store a concise report
-    try:
-        report = await generate_bug_report_async()
-        bug_report_path = DB_DIR / "bug_report.txt"
-        bug_report_path.write_text(report, encoding="utf-8")
-    except Exception as e:
-        print(f"Bug scanning failed: {e}")
+    # Initialize default session if db is empty
+    async with async_session() as db:
+        res = await db.execute(select(SessionModel))
+        any_session = res.scalars().first()
+        if not any_session:
+            default_session = SessionModel(id="default-session", title="Default Conversation")
+            db.add(default_session)
+            await db.commit()
 
-    # Initialize active session
-    global _active_session_id
+async def get_fallback_session_id() -> str:
     async with async_session() as db:
         res = await db.execute(select(SessionModel).order_by(SessionModel.updated_at.desc()))
         last_session = res.scalars().first()
         if last_session:
-            _active_session_id = last_session.id
-        else:
-            # Create default session
-            default_session = SessionModel(id="default-session", title="Default Conversation")
-            db.add(default_session)
-            await db.commit()
-            _active_session_id = "default-session"
-
-async def get_active_session_id() -> str:
-    global _active_session_id
-    if not _active_session_id:
-        _active_session_id = "default-session"
-    return _active_session_id
-
-def set_active_session_id(s_id: str):
-    global _active_session_id
-    _active_session_id = s_id
+            return last_session.id
+        return "default-session"
 
 async def migrate_legacy_history():
     legacy_file = DB_DIR / "chat_sessions.json"

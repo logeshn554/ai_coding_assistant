@@ -1,6 +1,13 @@
 from typing import Literal
 from langgraph.graph import StateGraph, END
-from langgraph.graph.state import CompiledStateGraph
+try:
+    from langgraph.graph.state import CompiledStateGraph
+except (ImportError, ModuleNotFoundError):
+    try:
+        from langgraph.graph import CompiledStateGraph
+    except (ImportError, ModuleNotFoundError):
+        from typing import Any
+        CompiledStateGraph = Any
 from langgraph.checkpoint.memory import MemorySaver
 
 from parallel_agent_system.core.config import SystemConfig
@@ -13,13 +20,90 @@ from parallel_agent_system.graph.nodes.router import route_node, run_agents_para
 
 
 async def reduce_node(state: GraphState) -> dict:
-    """Merges parallel agent execution results."""
-    return {"status": "reducing"}
+    """Merges parallel agent execution results and runs conflict checks."""
+    results = state.get("results", [])
+    global_cost = sum(r.cost_usd for r in results)
+    
+    # Conflict detection
+    file_modifiers = {}  # file_path -> list of subtask IDs
+    conflicts = []
+    
+    for r in results:
+        for f in r.files_changed:
+            if f not in file_modifiers:
+                file_modifiers[f] = []
+            file_modifiers[f].append(r.subtask_id)
+            
+    for f, subtasks in file_modifiers.items():
+        if len(subtasks) > 1:
+            conflicts.append(f"Conflict: File '{f}' was modified by multiple parallel subtasks: {', '.join(subtasks)}")
+            
+    messages = []
+    status = "reducing"
+    if conflicts:
+        from langchain_core.messages import AIMessage
+        conflict_msg = "\n".join(conflicts)
+        messages.append(AIMessage(content=f"⚠️ Parallel conflict detected!\n{conflict_msg}"))
+        status = "failed"
+        
+    return {
+        "global_cost_usd": global_cost,
+        "messages": messages,
+        "status": status
+    }
 
 
 async def monitor_node(state: GraphState) -> dict:
-    """Monitors cost, stuck state, and progress."""
-    return {"status": "monitoring"}
+    """Monitors global budgets (cost & iterations) and determines graph completion status."""
+    from parallel_agent_system.core.config import SystemConfig
+    config = SystemConfig()
+    
+    # 1. Budget checks
+    global_cost = state.get("global_cost_usd", 0.0)
+    if global_cost > config.max_global_cost_usd:
+        from langchain_core.messages import AIMessage
+        return {
+            "status": "failed",
+            "messages": [AIMessage(content=f"❌ Global cost budget exceeded: ${global_cost:.2f} > ${config.max_global_cost_usd:.2f}")]
+        }
+        
+    iteration = state.get("iteration", 0)
+    if iteration > config.max_retries:
+        from langchain_core.messages import AIMessage
+        return {
+            "status": "failed",
+            "messages": [AIMessage(content=f"❌ Iteration retry limit exceeded: {iteration} > {config.max_retries}")]
+        }
+        
+    # 2. Check if all subtasks are finished successfully
+    subtasks = state.get("subtasks", [])
+    results = state.get("results", [])
+    
+    results_map = {r.subtask_id: r for r in results}
+    
+    all_success = True
+    any_failed = False
+    for st in subtasks:
+        res = results_map.get(st.id)
+        if not res:
+            all_success = False
+        else:
+            if res.status != "success":
+                any_failed = True
+                all_success = False
+                
+    if all_success:
+        return {"status": "complete"}
+    elif any_failed:
+        if iteration < config.max_retries:
+            return {
+                "status": "running",
+                "iteration": iteration + 1
+            }
+        else:
+            return {"status": "failed"}
+    else:
+        return {"status": "running"}
 
 
 def route_after_monitor(state: GraphState) -> str:

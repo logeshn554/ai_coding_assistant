@@ -8,10 +8,9 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Qu
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from ..state import workspace_state, config_manager, permission_manager, SESSION_TOKEN, logger
-from ..db import async_session, SessionModel, MessageModel, get_active_session_id, set_active_session_id
+from ..db import async_session, SessionModel, MessageModel, get_fallback_session_id
+from fastapi import Request
 from ..agent import AgentSession
-from ..processes import global_process_manager
-from ..utils import run_cmd_async
 
 router = APIRouter()
 
@@ -27,9 +26,52 @@ class ChatSessionRenameRequest(BaseModel):
 class ChatSessionSaveRequest(BaseModel):
     messages: list
 
+class TokenizeRequest(BaseModel):
+    messages: list
+    open_files: list[str]
+
+async def resolve_session_id(request: Request = None, session_id: Optional[str] = None) -> str:
+    if session_id:
+        return session_id
+    if request:
+        s_id = request.query_params.get("session_id")
+        if s_id:
+            return s_id
+        s_id = request.headers.get("X-Session-ID")
+        if s_id:
+            return s_id
+    return await get_fallback_session_id()
+
+@router.post("/api/chat/tokenize")
+async def tokenize_chat_context(req: TokenizeRequest):
+    try:
+        total_chars = 0
+        for msg in req.messages:
+            content = msg.get("content") or ""
+            if isinstance(content, (dict, list)):
+                content = json.dumps(content)
+            total_chars += len(str(content))
+            
+        for rel_path in req.open_files:
+            if not workspace_state.root:
+                continue
+            from ..files import safe_path
+            try:
+                abs_path = safe_path(rel_path, workspace_state.root)
+                if os.path.isfile(abs_path):
+                    with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
+                        total_chars += len(f.read())
+            except Exception:
+                pass
+                
+        tokens = max(120, total_chars // 4)
+        return {"tokens": tokens}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/api/chat/history")
-async def get_chat_history():
-    active_id = await get_active_session_id()
+async def get_chat_history(request: Request, session_id: Optional[str] = None):
+    active_id = await resolve_session_id(request, session_id)
     async with async_session() as db:
         stmt = select(SessionModel).where(SessionModel.id == active_id)
         res = await db.execute(stmt)
@@ -52,48 +94,55 @@ async def get_chat_history():
         return {"messages": messages_list}
 
 @router.post("/api/chat/history")
-async def save_chat_history(req: ChatHistoryRequest):
-    active_id = await get_active_session_id()
+async def save_chat_history(req: ChatHistoryRequest, request: Request, session_id: Optional[str] = None):
+    active_id = await resolve_session_id(request, session_id)
     try:
         async with async_session() as db:
-            stmt = select(SessionModel).where(SessionModel.id == active_id)
-            res = await db.execute(stmt)
-            session = res.scalar()
-            if not session:
-                session = SessionModel(id=active_id, title="Default Conversation")
-                db.add(session)
-                
-            del_stmt = delete(MessageModel).where(MessageModel.session_id == active_id)
-            await db.execute(del_stmt)
-            
-            for m in req.messages:
-                role = m.get("role", "user")
-                content = m.get("content", "")
-                if isinstance(content, (dict, list)):
-                    content = json.dumps(content)
-                
-                m_ts = m.get("timestamp")
-                if m_ts:
-                    dt = datetime.datetime.utcfromtimestamp(m_ts)
-                else:
-                    dt = datetime.datetime.utcnow()
+            async with db.begin():
+                stmt = select(SessionModel).where(SessionModel.id == active_id)
+                res = await db.execute(stmt)
+                session = res.scalar()
+                if not session:
+                    session = SessionModel(id=active_id, title="Default Conversation")
+                    db.add(session)
+                    await db.flush()
                     
-                msg = MessageModel(
-                    session_id=active_id,
-                    role=role,
-                    content=content,
-                    timestamp=dt
-                )
-                db.add(msg)
+                msg_stmt = select(MessageModel).where(MessageModel.session_id == active_id).order_by(MessageModel.id.asc())
+                msg_res = await db.execute(msg_stmt)
+                existing_msgs = msg_res.scalars().all()
                 
-            session.updated_at = datetime.datetime.utcnow()
-            await db.commit()
+                n_existing = len(existing_msgs)
+                
+                for i, m in enumerate(req.messages):
+                    if i < n_existing:
+                        continue
+                        
+                    role = m.get("role", "user")
+                    content = m.get("content", "")
+                    if isinstance(content, (dict, list)):
+                        content = json.dumps(content)
+                        
+                    m_ts = m.get("timestamp")
+                    if m_ts:
+                        dt = datetime.datetime.utcfromtimestamp(m_ts)
+                    else:
+                        dt = datetime.datetime.utcnow()
+                        
+                    msg = MessageModel(
+                        session_id=active_id,
+                        role=role,
+                        content=content,
+                        timestamp=dt
+                    )
+                    db.add(msg)
+                    
+                session.updated_at = datetime.datetime.utcnow()
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/chat/sessions")
-async def get_chat_sessions():
+async def get_chat_sessions(request: Request):
     async with async_session() as db:
         stmt = select(SessionModel).order_by(SessionModel.updated_at.desc())
         res = await db.execute(stmt)
@@ -108,7 +157,7 @@ async def get_chat_sessions():
                 "updated_at": int(s.updated_at.timestamp())
             })
         
-        active_id = await get_active_session_id()
+        active_id = await resolve_session_id(request)
         return {
             "sessions": sessions_list,
             "active_session_id": active_id
@@ -126,7 +175,6 @@ async def create_chat_session(req: ChatSessionCreateRequest):
             db.add(new_session)
             await db.commit()
             
-            set_active_session_id(new_id)
             return {
                 "success": True, 
                 "session": {
@@ -148,8 +196,6 @@ async def get_chat_session_details(session_id: str):
         session = res.scalar()
         if not session:
             raise HTTPException(status_code=404, detail="Chat session not found")
-        
-        set_active_session_id(session_id)
         
         messages_list = []
         for m in session.messages:
@@ -203,7 +249,7 @@ async def rename_chat_session(session_id: str, req: ChatSessionRenameRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/api/chat/sessions/{session_id}")
-async def delete_chat_session(session_id: str):
+async def delete_chat_session(session_id: str, request: Request):
     try:
         async with async_session() as db:
             stmt = select(SessionModel).where(SessionModel.id == session_id)
@@ -215,17 +261,13 @@ async def delete_chat_session(session_id: str):
             await db.delete(session)
             await db.commit()
             
-            active_id = await get_active_session_id()
-            if active_id == session_id:
-                res_remaining = await db.execute(select(SessionModel).order_by(SessionModel.updated_at.desc()))
-                latest = res_remaining.scalars().first()
-                if latest:
-                    set_active_session_id(latest.id)
-                else:
-                    default_session = SessionModel(id="default-session", title="Default Conversation")
-                    db.add(default_session)
-                    await db.commit()
-                    set_active_session_id("default-session")
+            # Check if database is empty now
+            res_remaining = await db.execute(select(SessionModel).order_by(SessionModel.updated_at.desc()))
+            latest = res_remaining.scalars().first()
+            if not latest:
+                default_session = SessionModel(id="default-session", title="Default Conversation")
+                db.add(default_session)
+                await db.commit()
                     
         return {"success": True}
     except HTTPException:
@@ -241,7 +283,6 @@ async def clear_all_sessions():
             default_session = SessionModel(id="default-session", title="Default Conversation")
             db.add(default_session)
             await db.commit()
-            set_active_session_id("default-session")
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -292,6 +333,7 @@ async def get_workspace_stats():
 
         git_commits = 0
         try:
+            from ..utils import run_cmd_async
             commits_out = await run_cmd_async("git rev-list --count HEAD", workspace_state.root)
             if "fatal:" not in commits_out:
                 git_commits = int(commits_out.strip())
@@ -308,7 +350,11 @@ async def get_workspace_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.websocket("/ws/chat")
-async def websocket_chat(websocket: WebSocket, token: Optional[str] = Query(None)):
+async def websocket_chat(
+    websocket: WebSocket,
+    token: Optional[str] = Query(None),
+    session_id: Optional[str] = Query(None)
+):
     ws_token = token or websocket.query_params.get("token") or websocket.headers.get("x-session-token")
     if not ws_token or ws_token != SESSION_TOKEN:
         await websocket.accept()
@@ -324,7 +370,14 @@ async def websocket_chat(websocket: WebSocket, token: Optional[str] = Query(None
         except Exception:
             pass
             
-    session = AgentSession(workspace_state.root, active_profile, send_to_client, permission_manager)
+    session = AgentSession(
+        workspace_state.root,
+        active_profile,
+        send_to_client,
+        permission_manager,
+        session_id=session_id
+    )
+    await session.load_history_from_db()
     
     # Restore context memory from Redis if available
     try:
@@ -340,6 +393,7 @@ async def websocket_chat(websocket: WebSocket, token: Optional[str] = Query(None
         logger.error(f"Failed to restore context from Redis: {e}")
     
     try:
+        from ..processes import global_process_manager
         while True:
             raw_msg = await websocket.receive_text()
             msg = json.loads(raw_msg)

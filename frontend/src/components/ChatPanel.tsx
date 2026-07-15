@@ -15,36 +15,7 @@ import {
   FileText
 } from 'lucide-react';
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system' | 'tool';
-  content?: string;
-  tool_calls?: any[];
-  tool_call_id?: string;
-  name?: string;
-  status?: 'success' | 'error';
-  isConfirmPending?: boolean;
-  confirmArgs?: any;
-  confirmDiff?: {
-    path: string;
-    original: string;
-    proposed: string;
-    hunks?: any[];
-  };
-
-  // Permission Request Fields
-  isPermissionRequest?: boolean;
-  permissionCommand?: string;
-  permissionRisk?: string;
-  permissionReason?: string;
-  permissionExplanation?: string;
-
-  // Port Conflict Request Fields
-  isPortConflictRequest?: boolean;
-  portConflictPort?: number;
-  portConflictPid?: number;
-  portConflictProcessName?: string;
-}
+import type { ChatMessage } from '../types/chat';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -360,10 +331,10 @@ export default function ChatPanel({
   const showTypingIndicator = isGenerating && (!lastMessage || lastMessage.role === 'user');
 
   return (
-    <div className="h-full flex flex-col bg-[#181818] text-[#cccccc] font-sans relative overflow-hidden">
+    <div className="h-full flex flex-col bg-[var(--dp-bg-dark)] text-[#cccccc] font-sans relative overflow-hidden">
 
       {/* Header Row - Compact */}
-      <div className="p-2 border-b border-[#2d2d2d] bg-[#131313] flex items-center justify-between shrink-0 select-none">
+      <div className="p-2 border-b border-[#2d2d2d] bg-[var(--dp-bg-tertiary)] flex items-center justify-between shrink-0 select-none">
         <div className="flex items-center gap-1.5">
           <Sparkles className="w-3.5 h-3.5 text-violet-400 animate-pulse-subtle shrink-0" />
           <span className="text-xs font-semibold text-white tracking-wide">DevPilot Chat</span>

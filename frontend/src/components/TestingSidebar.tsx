@@ -70,9 +70,9 @@ export default function TestingSidebar() {
   }, []);
 
   return (
-    <div className="h-full flex flex-col bg-[#181818] text-[#cccccc] font-sans select-none">
+    <div className="h-full flex flex-col bg-[var(--dp-bg-dark)] text-[#cccccc] font-sans select-none">
       {/* Header */}
-      <div className="px-3 py-1.5 border-b border-[#2d2d2d] bg-[#181818] flex items-center justify-between shrink-0">
+      <div className="px-3 py-1.5 border-b border-[#2d2d2d] bg-[var(--dp-bg-dark)] flex items-center justify-between shrink-0">
         <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
           <Beaker className="w-3.5 h-3.5 text-violet-400" />
           Test Explorer
@@ -91,7 +91,7 @@ export default function TestingSidebar() {
         <button
           onClick={handleRunAll}
           disabled={running || tests.length === 0}
-          className="w-full py-1 bg-[#8b5cf6] hover:bg-[#7c4dff] disabled:opacity-40 text-white rounded-none text-[10px] font-semibold flex items-center justify-center gap-1 cursor-pointer border border-violet-500/20"
+          className="w-full py-1 bg-[var(--dp-accent)] hover:bg-[var(--dp-accent-hover)] disabled:opacity-40 text-white rounded-none text-[10px] font-semibold flex items-center justify-center gap-1 cursor-pointer border border-violet-500/20"
         >
           {running ? (
             <>

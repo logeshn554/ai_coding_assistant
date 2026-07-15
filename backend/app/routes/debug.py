@@ -53,9 +53,22 @@ def get_debug_logs():
 
 @router.post("/api/scan-bugs")
 async def api_scan_bugs():
-    try:
-        from ..diff_utils import generate_bug_report
-        report = generate_bug_report()
-        return {"success": True, "report": report}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
+    import asyncio
+    from pathlib import Path
+    from ..diff_utils import generate_bug_report_async
+    
+    async def run_scan_and_save():
+        try:
+            report = await generate_bug_report_async()
+            # Resolve db directory similarly to db.py
+            user_home = Path.home()
+            app_data_dir = user_home / ".gemini" / "antigravity-ide"
+            db_dir = app_data_dir / "db"
+            db_dir.mkdir(parents=True, exist_ok=True)
+            bug_report_path = db_dir / "bug_report.txt"
+            bug_report_path.write_text(report, encoding="utf-8")
+        except Exception as e:
+            print(f"Background bug scanning failed: {e}")
+            
+    asyncio.create_task(run_scan_and_save())
+    return {"success": True, "message": "Background bug scanning initiated on-demand."}

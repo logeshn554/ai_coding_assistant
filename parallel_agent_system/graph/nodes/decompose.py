@@ -47,8 +47,12 @@ async def decompose_task_node(state: GraphState) -> dict:
     Calls the LLM to decompose the goal into N SubTasks.
     Converts descriptive dependencies into unique UUID strings.
     """
+    if state.get("subtasks"):
+        return {"status": "running"}
+
     config = SystemConfig()
     api_key = SecretRegistry.get("LLM_API_KEY")
+    session = state.get("session")
 
     # Offline/Test Fallback mode to allow tests to run without external API requirements
     if not api_key or api_key.startswith("mock") or "test" in state.get("goal", "").lower():
@@ -76,22 +80,56 @@ async def decompose_task_node(state: GraphState) -> dict:
             )
         ]
     else:
-        # Setup LangChain LLM with structured output mapping
-        llm = ChatOpenAI(
-            model=config.decomposer_model,
-            openai_api_key=api_key,
-            temperature=0.0
-        )
-        structured_llm = llm.with_structured_output(DecomposedTasksList)
+        if session:
+            from backend.app.orchestrator import DevPilotChatModel
+            llm = DevPilotChatModel(session=session, agent_name="Decomposer Agent")
+            
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", DECOMPOSE_SYSTEM_PROMPT + "\n\nResponse MUST be a valid JSON object matching this schema:\n"
+                           "{\n  \"tasks\": [\n    {\n      \"agent_type\": \"code\"|\"test\"|\"docs\"|\"review\",\n      \"description\": \"...\",\n      \"priority\": 0,\n      \"depends_on\": []\n    }\n  ]\n}\n"
+                           "Output only the JSON block without markdown fences, prose, or markdown formatting."),
+                ("user", "Decompose this goal: {goal}")
+            ])
+            
+            chain = prompt | llm
+            response = await chain.ainvoke({"goal": state["goal"]})
+            text_res = response.content if hasattr(response, "content") else str(response)
+            
+            # Robust JSON parsing
+            import re
+            import json
+            text_res = re.sub(r"```json\s*", "", text_res)
+            text_res = re.sub(r"```\s*", "", text_res)
+            text_res = text_res.strip()
+            match = re.search(r"(\{.*\})", text_res, re.DOTALL)
+            if match:
+                text_res = match.group(1)
+            parsed = json.loads(text_res)
+            if "tasks" in parsed:
+                validated = DecomposedTasksList(tasks=[RawSubTask(**t) for t in parsed["tasks"]])
+            else:
+                if isinstance(parsed, list):
+                    validated = DecomposedTasksList(tasks=[RawSubTask(**t) for t in parsed])
+                else:
+                    raise ValueError("JSON does not match the DecomposedTasksList schema")
+            raw_tasks = validated.tasks
+        else:
+            # Setup LangChain LLM with structured output mapping for test fallback
+            llm = ChatOpenAI(
+                model=config.decomposer_model,
+                openai_api_key=api_key,
+                temperature=0.0
+            )
+            structured_llm = llm.with_structured_output(DecomposedTasksList)
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", DECOMPOSE_SYSTEM_PROMPT),
-            ("user", "Decompose this goal: {goal}")
-        ])
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", DECOMPOSE_SYSTEM_PROMPT),
+                ("user", "Decompose this goal: {goal}")
+            ])
 
-        chain = prompt | structured_llm
-        response = await chain.ainvoke({"goal": state["goal"]})
-        raw_tasks = response.tasks
+            chain = prompt | structured_llm
+            response = await chain.ainvoke({"goal": state["goal"]})
+            raw_tasks = response.tasks
 
     # Enforce maximum 8 subtasks limit
     raw_tasks = raw_tasks[:8]

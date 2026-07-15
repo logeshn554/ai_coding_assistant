@@ -71,6 +71,25 @@ class ModelRouter:
             return OpenAIAdapter(key, url, model)
         return OpenAIAdapter(key, url, model)
 
+    _fallback_listeners = []
+
+    @classmethod
+    def register_fallback_listener(cls, listener):
+        cls._fallback_listeners.append(listener)
+
+    @classmethod
+    def unregister_fallback_listener(cls, listener):
+        if listener in cls._fallback_listeners:
+            cls._fallback_listeners.remove(listener)
+
+    @classmethod
+    def notify_fallback(cls, error_msg: str):
+        for listener in cls._fallback_listeners:
+            try:
+                listener(error_msg)
+            except Exception:
+                pass
+
     async def completion(self, profile: dict, messages: list, system_prompt: str = None, is_agent: bool = False, task_type: str = "general") -> str:
         """
         Queries the routed model and aggregates streamed text chunks.
@@ -83,10 +102,12 @@ class ModelRouter:
                     response_text += chunk["content"]
         except Exception as e:
             logger.error(f"ModelRouter: Primary model path failed: {str(e)}")
+            self.notify_fallback(str(e))
             
             # Fallback path: try local Ollama mock if cloud api fails
             if "local" not in profile.get("model_name", "").lower():
                 logger.warning("ModelRouter: Triggering offline local provider fallback route...")
+                self.notify_fallback(str(e))
                 fallback_adapter = OpenAIAdapter(
                     api_key="ollama",
                     base_url="http://127.0.0.1:11434/v1",

@@ -1692,64 +1692,163 @@ class AgentOrchestrator:
             })
 
     async def run_task(self, task_description: str, session) -> str:
-        await self.context.log("Orchestrator: Initializing dynamic agent router session...")
+        await self.context.log("Orchestrator: Initializing dynamic agent router session plan...")
         self.context.subtasks = []
         
-        # Initialize graph state
-        initial_state: AgentState = {
-            "task_description": task_description,
-            "collaboration_log": self.context.collaboration_log,
-            "memory": self.context.memory,
-            "subtasks": self.context.subtasks,
-            "active_agent": "Orchestrator",
-            "active_task": "Deciding next agent...",
-            "next_agents": ["Orchestrator"],
-            "agent_tasks": {},
-            "session": session,
-            "task_id_counter": 1,
-            "step_count": 0,
-            "orchestrator": self
-        }
+        # 1. Run Planner Agent first to plan subtasks
+        planner = self.agents["Planner Agent"]
+        await planner.execute(task_description, session, task_id=0)
         
-        # Compile graph
-        workflow = StateGraph(AgentState)
-        workflow.add_node("Orchestrator", orchestrator_node)
-        for name in self.agents:
-            workflow.add_node(name, make_agent_node(name))
+        if len(self.context.subtasks) > 1:
+            await self.context.log("Orchestrator: Multiple independent subtasks planned. Delegating to LangGraph supervisor...")
             
-        workflow.add_edge(START, "Orchestrator")
-        workflow.add_conditional_edges(
-            "Orchestrator",
-            route_next,
-            {
-                "end": END,
-                **{name: name for name in self.agents}
+            from parallel_agent_system.core.state import SubTask as ParallelSubTask, GraphState as ParallelGraphState
+            from parallel_agent_system.graph.supervisor import build_supervisor_graph
+            from parallel_agent_system.core.config import SystemConfig
+            from parallel_agent_system.runtime.secret_registry import SecretRegistry
+            import uuid
+            
+            # Map backend agent names to parallel agent_types
+            def map_agent_name(name: str) -> str:
+                name_l = name.lower()
+                if "test" in name_l:
+                    return "test"
+                elif "doc" in name_l:
+                    return "docs"
+                elif "review" in name_l:
+                    return "review"
+                return "code"
+
+            # Map old integer task IDs to new UUID string IDs
+            id_map = {}
+            for st in self.context.subtasks:
+                id_map[st["id"]] = f"task_{uuid.uuid4().hex[:8]}"
+
+            parallel_subtasks = []
+            for st in self.context.subtasks:
+                new_id = id_map[st["id"]]
+                depends_on_list = []
+                for dep_id in st.get("dependencies", []):
+                    if dep_id in id_map:
+                        depends_on_list.append(id_map[dep_id])
+                
+                p_task = ParallelSubTask(
+                    id=new_id,
+                    agent_type=map_agent_name(st["agent"]),
+                    description=st["description"],
+                    workspace_dir=f"./workspace/agent-{new_id[:8]}",
+                    depends_on=depends_on_list
+                )
+                parallel_subtasks.append(p_task)
+
+            # Set up LLM key
+            api_key = session.profile.get("api_key") or ""
+            SecretRegistry.set("LLM_API_KEY", api_key)
+            
+            config = SystemConfig()
+            graph = build_supervisor_graph(config)
+            
+            initial_state: ParallelGraphState = {
+                "run_id": f"run_{uuid.uuid4().hex[:8]}",
+                "goal": task_description,
+                "subtasks": parallel_subtasks,
+                "results": [],
+                "global_cost_usd": 0.0,
+                "iteration": 1,
+                "status": "pending",
+                "human_confirmation_required": False,
+                "messages": [],
+                "session": session
             }
-        )
-        for name in self.agents:
-            workflow.add_edge(name, "Orchestrator")
             
-        compiled_graph = workflow.compile()
-        
-        # Run graph
-        final_state = await compiled_graph.ainvoke(initial_state)
-        
-        # Update our context from final state
-        self.context.collaboration_log = final_state["collaboration_log"]
-        self.context.memory = final_state["memory"]
-        self.context.subtasks = final_state["subtasks"]
-        
-        self.context.active_agent = "Orchestrator"
-        await self.context.log("Orchestrator: Dynamic routing session finished.")
-        
-        await session.send_ws_message({
-            "type": "agent_state",
-            "active_agent": "Orchestrator",
-            "active_task": "All tasks completed",
-            "subtasks": self.context.subtasks,
-            "collaboration_log": self.context.collaboration_log
-        })
-        
+            session.parallel_subtasks = []
+            for st in parallel_subtasks:
+                session.parallel_subtasks.append({
+                    "id": st.id,
+                    "agent": st.agent_type.capitalize() + " Agent",
+                    "description": st.description,
+                    "status": "pending",
+                    "progress": 0
+                })
+                
+            await session.send_ws_message({
+                "type": "agent_state",
+                "active_agent": "Orchestrator Agent",
+                "active_task": "Starting parallel graph execution...",
+                "subtasks": session.parallel_subtasks,
+                "collaboration_log": session.collaboration_log
+            })
+            
+            config_run = {"configurable": {"thread_id": f"thread_{uuid.uuid4().hex[:8]}"}}
+            final_state = await graph.ainvoke(initial_state, config=config_run)
+            
+            # Map results back to orchestrator context
+            self.context.subtasks = session.parallel_subtasks
+            self.context.collaboration_log = session.collaboration_log
+            
+            await session.send_ws_message({
+                "type": "agent_state",
+                "active_agent": "Orchestrator",
+                "active_task": "All parallel tasks completed",
+                "subtasks": self.context.subtasks,
+                "collaboration_log": self.context.collaboration_log
+            })
+            
+        else:
+            # Fallback to default sequential routing workflow
+            # Initialize graph state
+            initial_state: AgentState = {
+                "task_description": task_description,
+                "collaboration_log": self.context.collaboration_log,
+                "memory": self.context.memory,
+                "subtasks": self.context.subtasks,
+                "active_agent": "Orchestrator",
+                "active_task": "Deciding next agent...",
+                "next_agents": ["Orchestrator"],
+                "agent_tasks": {},
+                "session": session,
+                "task_id_counter": 1,
+                "step_count": 0,
+                "orchestrator": self
+            }
+            
+            # Compile graph
+            workflow = StateGraph(AgentState)
+            workflow.add_node("Orchestrator", orchestrator_node)
+            for name in self.agents:
+                workflow.add_node(name, make_agent_node(name))
+                
+            workflow.add_edge(START, "Orchestrator")
+            workflow.add_conditional_edges(
+                "Orchestrator",
+                route_next,
+                {
+                    "end": END,
+                    **{name: name for name in self.agents}
+                }
+            )
+            for name in self.agents:
+                workflow.add_edge(name, "Orchestrator")
+                
+            compiled_graph = workflow.compile()
+            final_state = await compiled_graph.ainvoke(initial_state)
+            
+            # Update our context from final state
+            self.context.collaboration_log = final_state["collaboration_log"]
+            self.context.memory = final_state["memory"]
+            self.context.subtasks = final_state["subtasks"]
+            
+            self.context.active_agent = "Orchestrator"
+            await self.context.log("Orchestrator: Dynamic routing session finished.")
+            
+            await session.send_ws_message({
+                "type": "agent_state",
+                "active_agent": "Orchestrator",
+                "active_task": "All tasks completed",
+                "subtasks": self.context.subtasks,
+                "collaboration_log": self.context.collaboration_log
+            })
+            
         final_history_summary = "\n".join(self.context.collaboration_log)
         chat_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are the head Orchestrator assistant. Summarize the task outcome clearly."),

@@ -46,12 +46,21 @@ async def run_agents_parallel_node(state: GraphState) -> dict:
     except ImportError:
         pass
 
+    session = state.get("session")
+    run_id = state.get("run_id", "")
+    attempt = state.get("iteration", 1)
+
+    # Ensure run_id and attempt are populated in subtask models
+    for t in subtasks:
+        t.run_id = run_id
+        t.attempt = attempt
+
     async def run_one(subtask: SubTask) -> AgentResult:
         """Executes a single subtask, falling back to a mock result if the registry is missing."""
         if subtask.agent_type in agent_registry:
             agent_cls = agent_registry[subtask.agent_type]
             agent_instance = agent_cls(config=config)
-            return await agent_instance.run(subtask)
+            return await agent_instance.run(subtask, session=session)
         else:
             # Fallback mock runner for Phase 2 testing
             await asyncio.sleep(0.01)

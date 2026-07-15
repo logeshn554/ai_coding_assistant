@@ -92,10 +92,11 @@ class RedisEventStore:
     Provides real-time pub/sub tail capabilities for WebSocket streaming.
     """
 
-    def __init__(self, run_id: str, subtask_id: str):
+    def __init__(self, run_id: str, subtask_id: str, attempt: int = 1):
         self.run_id = run_id
         self.subtask_id = subtask_id
-        self.key = f"events:{run_id}:{subtask_id}"
+        self.attempt = attempt
+        self.key = f"events:{run_id}:{subtask_id}:{attempt}"
         self.client = get_redis_client()
 
     async def append(self, event: Event) -> None:

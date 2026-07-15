@@ -10,7 +10,7 @@ export const StatusBar: React.FC = () => {
   const { workspacePath } = useWorkspace();
   const { statusBarBranch, statusBarDebug } = useGit();
   const { activeProfileName } = useSettings();
-  const { isGenerating } = useAI();
+  const { isGenerating, isWsConnected, isModelFallback } = useAI();
   const { activeFilePath } = useEditor();
 
   const [cursorInfo, setCursorInfo] = useState({ line: 1, column: 1 });
@@ -94,6 +94,22 @@ export const StatusBar: React.FC = () => {
 
       {/* Right Section */}
       <div className="flex items-center gap-3">
+        {/* WebSocket Connection Status */}
+        {!isWsConnected && (
+          <div className="flex items-center gap-1 text-[var(--dp-error)] animate-pulse" title="WebSocket disconnected. Retrying...">
+            <AlertCircle className="w-3 h-3" />
+            <span className="text-[10px] font-semibold">Disconnected</span>
+          </div>
+        )}
+
+        {/* Model Fallback Warning */}
+        {isModelFallback && (
+          <div className="flex items-center gap-1 text-[var(--dp-warning)] font-semibold" title="Primary model failed. Fallback to local llama3 active.">
+            <AlertTriangle className="w-3 h-3 text-[var(--dp-warning)]" />
+            <span className="text-[10px]">Fallback: llama3</span>
+          </div>
+        )}
+
         {/* AI Status */}
         {isGenerating ? (
           <div className="flex items-center gap-1.5 text-[var(--dp-accent)] animate-pulse-subtle">

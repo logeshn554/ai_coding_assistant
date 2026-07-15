@@ -2,7 +2,14 @@ import operator
 from typing import Annotated, Literal, TypedDict
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
-from langgraph.graph.message import add_messages
+try:
+    from langgraph.graph.message import add_messages
+except (ImportError, ModuleNotFoundError):
+    try:
+        from langgraph.graph import add_messages
+    except (ImportError, ModuleNotFoundError):
+        def add_messages(left, right):
+            return left + right
 
 
 class SubTask(BaseModel):
@@ -13,6 +20,8 @@ class SubTask(BaseModel):
     workspace_dir: str
     priority: int = 0
     depends_on: list[str] = Field(default_factory=list)  # list of other subtask IDs
+    run_id: str = ""
+    attempt: int = 1
 
 
 class AgentResult(BaseModel):

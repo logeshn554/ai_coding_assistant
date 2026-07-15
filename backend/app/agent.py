@@ -512,7 +512,7 @@ RESPONSE QUALITY:
 """
 
 class AgentSession:
-    def __init__(self, workspace_root: str, profile: dict, send_ws_message, permission_manager=None):
+    def __init__(self, workspace_root: str, profile: dict, send_ws_message, permission_manager=None, session_id=None):
         self.workspace_root = workspace_root
         self.profile = profile
         self.send_ws_message = send_ws_message
@@ -524,6 +524,91 @@ class AgentSession:
         self.audit_log = []
         self.is_running = False
         self.active_task = None
+        self.session_id = session_id or "default-session"
+        self.parallel_subtasks = []
+        self.collaboration_log = []
+
+        from .adapters.router import ModelRouter
+        def on_model_fallback(error_msg: str):
+            asyncio.create_task(self.send_ws_message({
+                "type": "model_fallback",
+                "error": error_msg
+            }))
+        self._fallback_listener = on_model_fallback
+        ModelRouter.register_fallback_listener(self._fallback_listener)
+
+    def __del__(self):
+        try:
+            from .adapters.router import ModelRouter
+            ModelRouter.unregister_fallback_listener(self._fallback_listener)
+        except Exception:
+            pass
+
+    async def load_history_from_db(self):
+        try:
+            from .db import async_session, SessionModel
+            from sqlalchemy.future import select
+            async with async_session() as db:
+                stmt = select(SessionModel).where(SessionModel.id == self.session_id)
+                res = await db.execute(stmt)
+                session_obj = res.scalar()
+                if session_obj:
+                    self.conversation_history = []
+                    for m in session_obj.messages:
+                        content = m.content
+                        try:
+                            content = json.loads(m.content)
+                        except Exception:
+                            pass
+                        self.conversation_history.append({
+                            "role": m.role,
+                            "content": content
+                        })
+        except Exception as e:
+            logger.error(f"Failed to load history from DB: {e}")
+
+    async def save_history_to_db(self):
+        try:
+            from .db import async_session, SessionModel, MessageModel
+            from sqlalchemy.future import select
+            import json
+            import datetime
+            
+            async with async_session() as db:
+                async with db.begin():
+                    stmt = select(SessionModel).where(SessionModel.id == self.session_id)
+                    res = await db.execute(stmt)
+                    session_obj = res.scalar()
+                    if not session_obj:
+                        session_obj = SessionModel(id=self.session_id, title="Default Conversation")
+                        db.add(session_obj)
+                        await db.flush()
+                        
+                    msg_stmt = select(MessageModel).where(MessageModel.session_id == self.session_id).order_by(MessageModel.id.asc())
+                    msg_res = await db.execute(msg_stmt)
+                    existing_msgs = msg_res.scalars().all()
+                    
+                    n_existing = len(existing_msgs)
+                    for i, m in enumerate(self.conversation_history):
+                        if i < n_existing:
+                            continue
+                            
+                        role = m.get("role", "user")
+                        content = m.get("content", "")
+                        if isinstance(content, (dict, list)):
+                            content = json.dumps(content)
+                            
+                        msg = MessageModel(
+                            session_id=self.session_id,
+                            role=role,
+                            content=content,
+                            timestamp=datetime.datetime.utcnow()
+                        )
+                        db.add(msg)
+                        
+                    session_obj.updated_at = datetime.datetime.utcnow()
+        except Exception as e:
+            logger.error(f"Failed to auto-save history to DB: {e}")
 
     def log_audit(self, tool_name: str, arguments: dict, status: str, details: str = ""):
         log_entry = {
@@ -601,6 +686,7 @@ class AgentSession:
                 })
             finally:
                 self.is_running = False
+                await self.save_history_to_db()
                 await self.send_ws_message({"type": "session_done"})
                 await self.broadcast_processes_state()
             return
@@ -671,17 +757,42 @@ class AgentSession:
                 tool_calls_to_run = []
                 
                 # 1. Stream the model's text response and collect tool calls
-                async for chunk in adapter.stream_chat(self.conversation_history, tools, system_prompt):
-                    if chunk["type"] == "text":
-                        response_text += chunk["content"]
-                        await self.send_ws_message({
-                            "type": "text_delta",
-                            "content": chunk["content"]
-                        })
-                    elif chunk["type"] == "tool_call":
-                        tool_calls_to_run.append(chunk)
-                    elif chunk["type"] == "done":
-                        stop_reason = chunk["stop_reason"]
+                try:
+                    async for chunk in adapter.stream_chat(self.conversation_history, tools, system_prompt):
+                        if chunk["type"] == "text":
+                            response_text += chunk["content"]
+                            await self.send_ws_message({
+                                "type": "text_delta",
+                                "content": chunk["content"]
+                            })
+                        elif chunk["type"] == "tool_call":
+                            tool_calls_to_run.append(chunk)
+                        elif chunk["type"] == "done":
+                            stop_reason = chunk["stop_reason"]
+                except Exception as e:
+                    if "local" not in self.profile.get("model_name", "").lower():
+                        logger.warning("AgentSession: Primary stream failed, triggering local fallback...")
+                        from .adapters.router import ModelRouter
+                        ModelRouter.notify_fallback(str(e))
+                        
+                        fallback_adapter = OpenAIAdapter(
+                            api_key="ollama",
+                            base_url="http://127.0.0.1:11434/v1",
+                            model_name="llama3"
+                        )
+                        async for chunk in fallback_adapter.stream_chat(self.conversation_history, tools, system_prompt):
+                            if chunk["type"] == "text":
+                                response_text += chunk["content"]
+                                await self.send_ws_message({
+                                    "type": "text_delta",
+                                    "content": chunk["content"]
+                                })
+                            elif chunk["type"] == "tool_call":
+                                tool_calls_to_run.append(chunk)
+                            elif chunk["type"] == "done":
+                                stop_reason = chunk["stop_reason"]
+                    else:
+                        raise e
                 
                 # 2. Append assistant response to history
                 assistant_msg = {"role": "assistant"}
@@ -766,6 +877,7 @@ class AgentSession:
             await self.send_ws_message({"type": "session_done"})
         finally:
             self.is_running = False
+            await self.save_history_to_db()
 
     async def _execute_tool_with_guardrails(self, tc_id: str, name: str, args: dict, auto_apply: bool) -> str:
         """
@@ -993,7 +1105,10 @@ class AgentSession:
                     "content": line
                 })
                 
-            exit_code = await process.wait()
+            try:
+                exit_code = await asyncio.wait_for(process.wait(), timeout=max(1.0, 30.0 - (time.time() - start_time)))
+            except asyncio.TimeoutError:
+                raise
             elapsed_time = round(time.time() - start_time, 2)
             
             # Send terminal finished status

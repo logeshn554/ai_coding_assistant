@@ -6,26 +6,7 @@ import { useTerminal } from '../terminal/TerminalContext';
 import { useGit } from '../git/GitContext';
 import { useToast } from '../toast/ToastContext';
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system' | 'tool';
-  content?: string | any;
-  name?: string;
-  tool_call_id?: string;
-  status?: 'success' | 'error';
-  isConfirmPending?: boolean;
-  isPermissionRequest?: boolean;
-  permissionCommand?: string;
-  permissionRisk?: string;
-  permissionReason?: string;
-  permissionExplanation?: string;
-  isPortConflictRequest?: boolean;
-  portConflictPort?: number;
-  portConflictPid?: number;
-  portConflictProcessName?: string;
-  confirmArgs?: any;
-  confirmDiff?: any;
-}
+import type { ChatMessage } from '../../types/chat';
 
 interface AIContextType {
   messages: ChatMessage[];
@@ -37,6 +18,10 @@ interface AIContextType {
   subtasks: any[];
   sessions: any[];
   activeSessionId: string;
+  isWsConnected: boolean;
+  isModelFallback: boolean;
+  contextTokens: string;
+  contextPercentage: number;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   handleSendMessage: (text: string, mode: 'Ask' | 'Plan' | 'Agent/Write', autoApply: boolean) => void;
   handleConfirmTool: (toolCallId: string, approved: boolean, scope: string, hunkDecisions?: any) => void;
@@ -62,9 +47,14 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [subtasks, setSubtasks] = useState<any[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [activeSessionId, setActiveSessionId] = useState('default-session');
+  
+  const [isWsConnected, setIsWsConnected] = useState(false);
+  const [isModelFallback, setIsModelFallback] = useState(false);
+  const [contextTokens, setContextTokens] = useState('0');
+  const [contextPercentage, setContextPercentage] = useState(0);
 
   const { workspacePath, triggerRefresh } = useWorkspace();
-  const { setProposedDiff, handleSelectFile } = useEditor();
+  const { setProposedDiff, handleSelectFile, openFiles } = useEditor();
   const {
     setActiveTerminalCommand,
     setActiveTerminalStatus,
@@ -77,6 +67,34 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const wsRef = useRef<WebSocket | null>(null);
   const lastAssistantMsgIdRef = useRef<string | null>(null);
+  const reconnectDelayRef = useRef(1000);
+
+  // Debounced tokenization from the backend
+  useEffect(() => {
+    const updateTokenCount = async () => {
+      try {
+        const res = await fetch('/api/chat/tokenize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: messages.map(m => ({ role: m.role, content: m.content })),
+            open_files: openFiles
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const tokens = data.tokens || 0;
+          setContextTokens(tokens >= 1000 ? (tokens / 1000).toFixed(1) + 'K' : tokens.toString());
+          setContextPercentage(Math.min(100, Math.round((tokens / 128000) * 100)));
+        }
+      } catch (e) {
+        console.error('Failed to tokenize chat context:', e);
+      }
+    };
+
+    const timer = setTimeout(updateTokenCount, 500);
+    return () => clearTimeout(timer);
+  }, [messages, openFiles]);
 
   const fetchSessions = async () => {
     try {
@@ -181,9 +199,16 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const connectChatSocket = () => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/chat`;
+    const wsUrl = `${protocol}//${window.location.host}/ws/chat?session_id=${activeSessionId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
+    (window as any).__devpilotWS = ws;
+
+    ws.onopen = () => {
+      logger.info("Chat socket connected.");
+      setIsWsConnected(true);
+      reconnectDelayRef.current = 1000;
+    };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -306,14 +331,22 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
             }
           ]);
           break;
+        case 'model_fallback':
+          setIsModelFallback(true);
+          showToast(`⚠️ Configured model failed! Fallback to local Ollama llama3. Error: ${data.error}`, 'error');
+          break;
         default:
           break;
       }
     };
 
     ws.onclose = () => {
-      logger.info("Chat socket closed. Reconnecting...");
-      setTimeout(connectChatSocket, 3000);
+      setIsWsConnected(false);
+      logger.info(`Chat socket closed. Reconnecting in ${reconnectDelayRef.current}ms...`);
+      setTimeout(() => {
+        connectChatSocket();
+      }, reconnectDelayRef.current);
+      reconnectDelayRef.current = Math.min(16000, reconnectDelayRef.current * 2);
     };
   };
 
@@ -420,17 +453,18 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     }
   };
 
-  // Connect websocket and load history on startup
+  // Reconnect socket and load history when activeSessionId changes
   useEffect(() => {
     connectChatSocket();
     fetchChatHistory();
+    setIsModelFallback(false); // Reset fallback warnings on session change
     return () => {
       if (wsRef.current) {
         wsRef.current.onclose = null;
         wsRef.current.close();
       }
     };
-  }, []);
+  }, [activeSessionId]);
 
   // Hot reload workspace profiles
   useEffect(() => {
@@ -451,6 +485,10 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         subtasks,
         sessions,
         activeSessionId,
+        isWsConnected,
+        isModelFallback,
+        contextTokens,
+        contextPercentage,
         setMessages,
         handleSendMessage,
         handleConfirmTool,

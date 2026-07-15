@@ -42,7 +42,7 @@ class BaseParallelAgent:
             keep_first=config.condenser_keep_first
         )
 
-    async def run(self, subtask: SubTask) -> AgentResult:
+    async def run(self, subtask: SubTask, session=None) -> AgentResult:
         """
         Spins up isolated workspace, executes the agent stream loop, and collects final results.
         Enforces execution stuck loops, monologue streaks, and budget boundaries.
@@ -62,16 +62,45 @@ class BaseParallelAgent:
         conversation = Conversation(agent=agent, workspace=workspace)
         
         # Setup Redis stream logs
-        event_store = RedisEventStore(run_id=subtask.id, subtask_id=subtask.id)
+        event_store = RedisEventStore(run_id=subtask.run_id or subtask.id, subtask_id=subtask.id, attempt=subtask.attempt)
         
         # Initialize stuck and budget loop monitor
         monitor = AgentMonitor(subtask_id=subtask.id, config=self.config)
+
+        async def update_ui(status, progress):
+            if session:
+                subtask_entry = next((s for s in session.parallel_subtasks if s["id"] == subtask.id), None)
+                if not subtask_entry:
+                    subtask_entry = {
+                        "id": subtask.id,
+                        "agent": self.agent_type.capitalize() + " Agent",
+                        "description": subtask.description,
+                        "status": status,
+                        "progress": progress
+                    }
+                    session.parallel_subtasks.append(subtask_entry)
+                else:
+                    subtask_entry["status"] = status
+                    subtask_entry["progress"] = progress
+                
+                log_msg = f"Agent {self.agent_type.capitalize()} (Subtask {subtask.id[:8]}): Iteration {monitor.iterations}, Cost: ${monitor.cost:.3f}"
+                if log_msg not in session.collaboration_log:
+                    session.collaboration_log.append(log_msg)
+                    
+                await session.send_ws_message({
+                    "type": "agent_state",
+                    "active_agent": self.agent_type.capitalize() + " Agent",
+                    "active_task": subtask.description,
+                    "subtasks": session.parallel_subtasks,
+                    "collaboration_log": session.collaboration_log
+                })
 
         try:
             # Stream events and check guardrails
             async for event in conversation.stream(subtask.description):
                 await event_store.append(event)
                 monitor.observe(event)
+                await update_ui("running", min(95, 10 + monitor.iterations * 5))
                 
                 # Enforce safety boundaries
                 if monitor.is_stuck():
@@ -80,6 +109,7 @@ class BaseParallelAgent:
                     raise BudgetExceeded(f"Cost limit hit for {subtask.id}")
                     
         except (StuckError, BudgetExceeded) as e:
+            await update_ui("failed", 100)
             return AgentResult(
                 subtask_id=subtask.id,
                 agent_type=self.agent_type,
@@ -92,6 +122,7 @@ class BaseParallelAgent:
             )
         except Exception as e:
             # Uncaught execution errors
+            await update_ui("failed", 100)
             return AgentResult(
                 subtask_id=subtask.id,
                 agent_type=self.agent_type,
@@ -110,6 +141,7 @@ class BaseParallelAgent:
         finish = conversation.state.last_finish_action
         files_changed = finish.outputs.get("files_changed", []) if finish.outputs else []
 
+        await update_ui("success", 100)
         return AgentResult(
             subtask_id=subtask.id,
             agent_type=self.agent_type,
