@@ -16,6 +16,11 @@ SESSION_TOKEN = secrets.token_hex(32)
 # Initialize slowapi rate limiter
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
+# Initialize shared Redis client
+import redis.asyncio as aioredis
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
+redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
+
 # Initialize Config Manager
 config_manager = ConfigManager()
 

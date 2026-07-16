@@ -1,5 +1,5 @@
 from typing import Literal
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, END, START
 try:
     from langgraph.graph.state import CompiledStateGraph
 except (ImportError, ModuleNotFoundError):
@@ -8,7 +8,14 @@ except (ImportError, ModuleNotFoundError):
     except (ImportError, ModuleNotFoundError):
         from typing import Any
         CompiledStateGraph = Any
-from langgraph.checkpoint.memory import MemorySaver
+try:
+    from langgraph.checkpoint.memory import MemorySaver
+except (ImportError, ModuleNotFoundError):
+    try:
+        from langgraph.checkpoint import MemorySaver
+    except (ImportError, ModuleNotFoundError):
+        class MemorySaver:
+            pass
 
 from parallel_agent_system.core.config import SystemConfig
 from parallel_agent_system.core.state import GraphState
@@ -22,6 +29,7 @@ from parallel_agent_system.graph.nodes.router import route_node, run_agents_para
 async def reduce_node(state: GraphState) -> dict:
     """Merges parallel agent execution results and runs conflict checks."""
     results = state.get("results", [])
+    subtasks = state.get("subtasks", [])
     global_cost = sum(r.cost_usd for r in results)
     
     # Conflict detection
@@ -34,17 +42,21 @@ async def reduce_node(state: GraphState) -> dict:
                 file_modifiers[f] = []
             file_modifiers[f].append(r.subtask_id)
             
-    for f, subtasks in file_modifiers.items():
-        if len(subtasks) > 1:
-            conflicts.append(f"Conflict: File '{f}' was modified by multiple parallel subtasks: {', '.join(subtasks)}")
+    for f, subtasks_list in file_modifiers.items():
+        if len(subtasks_list) > 1:
+            conflicts.append(f"Conflict: File '{f}' was modified by multiple parallel subtasks: {', '.join(subtasks_list)}")
             
     messages = []
-    status = "reducing"
+    failed_results = [r for r in results if r.status != "success"]
+    complete = len(results) >= len(subtasks)
+    
     if conflicts:
         from langchain_core.messages import AIMessage
         conflict_msg = "\n".join(conflicts)
         messages.append(AIMessage(content=f"⚠️ Parallel conflict detected!\n{conflict_msg}"))
         status = "failed"
+    else:
+        status = "complete" if complete and not failed_results else "running"
         
     return {
         "global_cost_usd": global_cost,
@@ -136,7 +148,7 @@ def build_supervisor_graph(config: SystemConfig) -> CompiledStateGraph:
     graph.add_node("monitor", monitor_node)
 
     # Setup static transitions
-    graph.set_entry_point("decompose")
+    graph.add_edge(START, "decompose")
     graph.add_edge("decompose", "route")
     graph.add_edge("route", "run_agents")
     graph.add_edge("run_agents", "reduce")
@@ -163,4 +175,10 @@ def build_supervisor_graph(config: SystemConfig) -> CompiledStateGraph:
         checkpointer = MemorySaver()
 
     # Compile the graph with interrupt before the monitor node for human-in-the-loop
-    return graph.compile(checkpointer=checkpointer, interrupt_before=["monitor"])
+    try:
+        return graph.compile(checkpointer=checkpointer, interrupt_before=["monitor"])
+    except TypeError:
+        try:
+            return graph.compile(interrupt_before=["monitor"])
+        except TypeError:
+            return graph.compile()

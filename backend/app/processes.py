@@ -51,7 +51,10 @@ class ActiveProcess:
         self.logs.append(f"Starting: {self.command}\n")
         
         kwargs = {}
-        if sys.platform != "win32":
+        if sys.platform == "win32":
+            import subprocess
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        else:
             kwargs["executable"] = "/bin/bash"
             import pwd
             def drop_privileges():

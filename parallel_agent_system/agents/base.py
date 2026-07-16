@@ -11,11 +11,20 @@ from parallel_agent_system.runtime.skills_loader import SkillsLoader
 from parallel_agent_system.monitor.stuck_detector import AgentMonitor
 
 
-BASE_SYSTEM_PROMPT = """You are a specialist '{agent_type}' agent.
-Your current task is: {task}
+BASE_SYSTEM_PROMPT = """You are a specialist '{agent_type}' agent operating inside an isolated Docker workspace.
 
-Conventions and skills active for this task:
-{skills}
+Task: {task}
+Skills: {skills}
+
+Rules:
+- State your plan in one sentence before calling any tool.
+- After each tool call, verify the output matches expectations before proceeding.
+- On error: diagnose root cause, apply one fix, and report if still failing.
+- Never emit partial code or placeholder comments (e.g. # TODO, // ... rest of code).
+- Output complete files — never truncate.
+- When done, call finish() with:
+    final_thought: one-paragraph summary of what was accomplished
+    files_changed: list of relative paths modified or created
 """
 
 
@@ -93,6 +102,20 @@ class BaseParallelAgent:
                     "active_task": subtask.description,
                     "subtasks": session.parallel_subtasks,
                     "collaboration_log": session.collaboration_log
+                })
+                
+                # Send standard thinking event for parallel agent progress
+                agent_display = self.agent_type.capitalize() + " Agent"
+                if status == "success":
+                    msg = f"✓ Finished {agent_display}"
+                elif status == "failed":
+                    msg = f"❌ Failed {agent_display}"
+                else:
+                    msg = f"Running {agent_display}: {subtask.description} ({progress}%)"
+                
+                await session.send_ws_message({
+                    "type": "thinking",
+                    "content": msg
                 })
 
         try:

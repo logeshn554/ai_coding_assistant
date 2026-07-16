@@ -13,9 +13,10 @@ class TerminalManager:
     Uses pywinpty (ConPTY) on Windows and the pty module on Unix/macOS.
     """
 
-    def __init__(self, workspace_root: str, send_callback):
+    def __init__(self, workspace_root: str, send_callback, shell: str | None = None):
         self.workspace_root = workspace_root
         self.send_callback = send_callback  # async function to send data to websocket
+        self.shell = shell
         self._pty = None          # winpty.PtyProcess (Windows) or fd (Unix)
         self._process = None      # subprocess.Popen (Unix only)
         self._read_task = None
@@ -65,7 +66,13 @@ class TerminalManager:
         import fcntl
         import termios
 
-        shell_path = os.environ.get("SHELL") or "/bin/bash"
+        shell_path = self.shell
+        if not shell_path:
+            shell_path = os.environ.get("SHELL") or "/bin/bash"
+        elif shell_path == "bash":
+            shell_path = "/bin/bash"
+        elif shell_path == "sh":
+            shell_path = "/bin/sh"
 
         # Create a PTY pair
         master_fd, slave_fd = pty.openpty()
@@ -101,6 +108,20 @@ class TerminalManager:
 
     def _get_shell_command(self) -> str:
         """Get the shell command string for winpty."""
+        if self.shell:
+            if self.shell == "powershell":
+                ps_path = os.path.join(
+                    os.environ.get("SystemRoot", r"C:\Windows"),
+                    "System32", "WindowsPowerShell", "v1.0", "powershell.exe"
+                )
+                if os.path.isfile(ps_path):
+                    return ps_path
+            elif self.shell == "cmd":
+                return "cmd.exe"
+            elif self.shell == "bash":
+                return "bash.exe"
+            return self.shell
+
         if sys.platform == "win32":
             # Try to find powershell, fall back to cmd
             ps_path = os.path.join(

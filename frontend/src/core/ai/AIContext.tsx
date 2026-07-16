@@ -215,11 +215,68 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       switch (data.type) {
         case 'text_delta':
           const currentAssistantId = lastAssistantMsgIdRef.current;
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === currentAssistantId ? { ...msg, content: (msg.content || '') + data.content } : msg
-            )
-          );
+          if (currentAssistantId) {
+            setMessages((prev) =>
+              prev.map((msg) => {
+                if (msg.id !== currentAssistantId) return msg;
+                const newContent = (msg.content || '') + data.content;
+                
+                // Filter out raw JSON or reasoning objects
+                const trimmed = newContent.trim();
+                if (trimmed.startsWith('{')) {
+                  try {
+                    const parsed = JSON.parse(trimmed);
+                    const steps: string[] = [];
+                    if (parsed.reasoning) {
+                      steps.push(parsed.reasoning);
+                    }
+                    if (parsed.descriptions && Array.isArray(parsed.descriptions)) {
+                      steps.push(...parsed.descriptions);
+                    }
+                    if (parsed.agents && Array.isArray(parsed.agents)) {
+                      steps.push(...parsed.agents.map((a: string) => `Routing: ${a}`));
+                    }
+                    
+                    // Filter duplicate steps
+                    const currentSteps = msg.thinkingSteps || [];
+                    const uniqueNewSteps = steps.filter(s => !currentSteps.includes(s));
+                    
+                    return {
+                      ...msg,
+                      content: '', // Hide raw JSON content
+                      thinkingSteps: [...currentSteps, ...uniqueNewSteps]
+                    };
+                  } catch {
+                    // If it contains JSON routing keys but is not fully parsed yet, hide it from rendering raw JSON
+                    if (trimmed.includes('"reasoning"') || trimmed.includes('"agents"') || trimmed.includes('"descriptions"')) {
+                      return {
+                        ...msg,
+                        content: '', // Keep content hidden while streaming JSON
+                      };
+                    }
+                  }
+                }
+                
+                return { ...msg, content: newContent };
+              })
+            );
+          }
+          break;
+        case 'thinking':
+          const thinkingAssistantId = lastAssistantMsgIdRef.current;
+          if (thinkingAssistantId && data.content) {
+            setMessages((prev) =>
+              prev.map((msg) => {
+                if (msg.id !== thinkingAssistantId) return msg;
+                const currentSteps = msg.thinkingSteps || [];
+                if (currentSteps.includes(data.content)) return msg;
+                return {
+                  ...msg,
+                  thinkingSteps: [...currentSteps, data.content]
+                };
+              })
+            );
+          }
           break;
         case 'status':
           setStatusMessage(data.message);

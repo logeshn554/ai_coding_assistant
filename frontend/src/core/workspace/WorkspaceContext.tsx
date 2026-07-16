@@ -4,11 +4,7 @@ import { useToast } from '../toast/ToastContext';
 
 interface WorkspaceContextType {
   workspacePath: string;
-  folderPathInput: string;
-  isOpenFolderModalOpen: boolean;
   refreshTrigger: number;
-  setFolderPathInput: (path: string) => void;
-  setIsOpenFolderModalOpen: (open: boolean) => void;
   fetchWorkspacePath: () => Promise<void>;
   changeWorkspacePath: (path: string) => Promise<boolean>;
   handleOpenWorkspaceFolder: () => Promise<void>;
@@ -20,8 +16,6 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 
 export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [workspacePath, setWorkspacePath] = useState('');
-  const [folderPathInput, setFolderPathInput] = useState('');
-  const [isOpenFolderModalOpen, setIsOpenFolderModalOpen] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { showToast } = useToast();
 
@@ -31,7 +25,6 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
       if (res.ok) {
         const data = await res.json();
         setWorkspacePath(data.workspace);
-        setFolderPathInput(data.workspace);
       }
     } catch (e) {
       console.error(e);
@@ -48,9 +41,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
       const data = await res.json();
       if (res.ok && data.success) {
         setWorkspacePath(data.workspace);
-        setFolderPathInput(data.workspace);
         setRefreshTrigger(prev => prev + 1);
-        setIsOpenFolderModalOpen(false);
         showToast(
           data.workspace ? 'Workspace folder opened successfully!' : 'Workspace folder closed.',
           'success'
@@ -64,14 +55,6 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
       showToast('Error opening folder: ' + err, 'error');
       return false;
     }
-  };
-
-  const handleOpenWorkspaceFolder = async () => {
-    setIsOpenFolderModalOpen(true);
-  };
-
-  const triggerRefresh = () => {
-    setRefreshTrigger(prev => prev + 1);
   };
 
   const selectFolder = async (): Promise<string | null> => {
@@ -101,6 +84,17 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     return null;
   };
 
+  const handleOpenWorkspaceFolder = async () => {
+    const selected = await selectFolder();
+    if (selected) {
+      await changeWorkspacePath(selected);
+    }
+  };
+
+  const triggerRefresh = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
+
   useEffect(() => {
     fetchWorkspacePath();
   }, []);
@@ -109,11 +103,7 @@ export const WorkspaceProvider: React.FC<{ children: ReactNode }> = ({ children 
     <WorkspaceContext.Provider
       value={{
         workspacePath,
-        folderPathInput,
-        isOpenFolderModalOpen,
         refreshTrigger,
-        setFolderPathInput,
-        setIsOpenFolderModalOpen,
         fetchWorkspacePath,
         changeWorkspacePath,
         handleOpenWorkspaceFolder,

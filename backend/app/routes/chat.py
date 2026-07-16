@@ -349,7 +349,10 @@ async def get_workspace_stats():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+from ..state import limiter
+
 @router.websocket("/ws/chat")
+@limiter.limit("10/minute")
 async def websocket_chat(
     websocket: WebSocket,
     token: Optional[str] = Query(None),
@@ -381,14 +384,11 @@ async def websocket_chat(
     
     # Restore context memory from Redis if available
     try:
-        import redis.asyncio as aioredis
+        from ..state import redis_client
         workspace_id = os.path.basename(workspace_state.root) or "default"
-        redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379")
-        redis_client = aioredis.from_url(redis_url, decode_responses=True)
         raw = await redis_client.get(f"session:{workspace_id}:ctx")
         if raw:
             session.orchestrator.context.memory = json.loads(raw)
-        await redis_client.close()
     except Exception as e:
         logger.error(f"Failed to restore context from Redis: {e}")
     

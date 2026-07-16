@@ -35,7 +35,7 @@ import GoToSymbol from './components/GoToSymbol';
 // Custom Hooks and standalone components
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useResizeManager } from './hooks/useResizeManager';
-import { OpenFolderModal } from './components/OpenFolderModal';
+
 
 function EditorShell() {
   const { toasts, removeToast } = useToast();
@@ -71,7 +71,7 @@ function EditorShell() {
   };
   const {
     workspacePath,
-    setIsOpenFolderModalOpen,
+    handleOpenWorkspaceFolder,
     refreshTrigger
   } = useWorkspace();
 
@@ -139,7 +139,7 @@ function EditorShell() {
                     selectedFilePath={activeFilePath}
                     refreshTrigger={refreshTrigger}
                     workspacePath={workspacePath}
-                    onOpenFolder={() => setIsOpenFolderModalOpen(true)}
+                    onOpenFolder={handleOpenWorkspaceFolder}
                     gitChanges={gitChanges}
                   />
                 )}
@@ -171,7 +171,7 @@ function EditorShell() {
                 proposedDiff={proposedDiff}
                 onRefreshWorkspace={() => {}}
                 refreshTrigger={refreshTrigger}
-                onOpenFolder={() => setIsOpenFolderModalOpen(true)}
+                onOpenFolder={handleOpenWorkspaceFolder}
                 workspacePath={workspacePath}
                 onEditorRef={(ed) => { editorInstanceRef.current = ed; }}
               />
@@ -268,8 +268,7 @@ function EditorShell() {
         onProfileChanged={handleSettingsChanged}
       />
 
-      {/* Manual Open Workspace Modal */}
-      <OpenFolderModal />
+
 
       {/* Toast Overlay */}
       <div className="fixed bottom-8 right-6 z-50 flex flex-col gap-2 pointer-events-none">

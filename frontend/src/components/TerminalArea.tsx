@@ -26,6 +26,7 @@ interface TerminalPaneProps {
   onClose: () => void;
   showClose: boolean;
   commandToRun: CommandTrigger | null;
+  shell?: string;
 }
 
 function TerminalPane({
@@ -35,7 +36,8 @@ function TerminalPane({
   onFocus,
   onClose,
   showClose,
-  commandToRun
+  commandToRun,
+  shell
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -43,15 +45,20 @@ function TerminalPane({
   const [shellName, setShellName] = useState('Terminal');
 
   useEffect(() => {
-    fetch('/api/shell/name')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.name) {
-          setShellName(`Terminal (${data.name})`);
-        }
-      })
-      .catch(() => {});
-  }, []);
+    if (shell) {
+      const name = shell === 'cmd' ? 'CMD' : shell.charAt(0).toUpperCase() + shell.slice(1);
+      setShellName(`Terminal (${name})`);
+    } else {
+      fetch('/api/shell/name')
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.name) {
+            setShellName(`Terminal (${data.name})`);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [shell]);
 
   useEffect(() => {
     if (!terminalRef.current || !containerRef.current) return;
@@ -83,7 +90,8 @@ function TerminalPane({
     fitAddon.fit();
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/terminal`;
+    const token = localStorage.getItem('session_token') || '';
+    const wsUrl = `${protocol}//${window.location.host}/ws/terminal?token=${token}${shell ? `&shell=${encodeURIComponent(shell)}` : ''}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -222,8 +230,19 @@ export default function TerminalArea({
   const [showHistory, setShowHistory] = useState(false);
   const [filterText, setFilterText] = useState('');
   
+const SHELL_OPTIONS = [
+  { value: '', label: 'Default' },
+  { value: 'bash', label: 'Bash' },
+  { value: 'sh', label: 'Sh' },
+  { value: 'powershell', label: 'PowerShell' },
+  { value: 'cmd', label: 'CMD' }
+];
+
   // Split terminals management
-  const [splitTerminals, setSplitTerminals] = useState<number[]>([0]);
+  const [splitTerminals, setSplitTerminals] = useState<{ id: number; shell: string }[]>([
+    { id: 0, shell: '' }
+  ]);
+  const [selectedShell, setSelectedShell] = useState<string>('');
   const [nextId, setNextId] = useState(1);
   const [activePaneId, setActivePaneId] = useState<number>(0);
   const [commandToRun, setCommandToRun] = useState<CommandTrigger | null>(null);
@@ -233,17 +252,17 @@ export default function TerminalArea({
       return; // max 3 columns for space constraints
     }
     const newId = nextId;
-    setSplitTerminals(prev => [...prev, newId]);
+    setSplitTerminals(prev => [...prev, { id: newId, shell: selectedShell }]);
     setNextId(prev => prev + 1);
     setActivePaneId(newId);
   };
 
   const removeSplit = (id: number) => {
     setSplitTerminals(prev => {
-      const remaining = prev.filter(t => t !== id);
+      const remaining = prev.filter(t => t.id !== id);
       // fallback activePaneId if the closed one was active
       if (activePaneId === id && remaining.length > 0) {
-        setActivePaneId(remaining[remaining.length - 1]);
+        setActivePaneId(remaining[remaining.length - 1].id);
       }
       return remaining;
     });
@@ -329,6 +348,20 @@ export default function TerminalArea({
             </div>
           )}
 
+          {/* Shell Selector Dropdown */}
+          <select
+            value={selectedShell}
+            onChange={(e) => setSelectedShell(e.target.value)}
+            className="bg-black/40 text-[10px] border border-white/5 hover:border-violet-500/30 focus:border-violet-500/50 rounded px-2 py-0.5 text-white focus:outline-none transition-all cursor-pointer"
+            title="Choose next shell"
+          >
+            {SHELL_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value} className="bg-[#161822] text-white">
+                {opt.label}
+              </option>
+            ))}
+          </select>
+
           {/* Split Terminal button */}
           <button
             onClick={handleSplit}
@@ -350,16 +383,17 @@ export default function TerminalArea({
       
       {/* Shell Area: Displays active split panels side-by-side */}
       <div className="flex-1 flex flex-row bg-[#0d0f12] overflow-hidden divide-x divide-white/10">
-        {splitTerminals.map((id) => (
+        {splitTerminals.map((pane) => (
           <TerminalPane
-            key={id}
-            id={id}
+            key={pane.id}
+            id={pane.id}
             workspacePath={workspacePath}
-            isActive={activePaneId === id}
-            onFocus={() => setActivePaneId(id)}
-            onClose={() => removeSplit(id)}
+            isActive={activePaneId === pane.id}
+            onFocus={() => setActivePaneId(pane.id)}
+            onClose={() => removeSplit(pane.id)}
             showClose={splitTerminals.length > 1}
             commandToRun={commandToRun}
+            shell={pane.shell}
           />
         ))}
       </div>

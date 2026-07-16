@@ -15,7 +15,12 @@ except (ImportError, ModuleNotFoundError):
 class SubTask(BaseModel):
     """Represents a decomposed subtask to be executed by a specialist agent."""
     id: str
-    agent_type: Literal["code", "test", "docs", "review"]
+    agent_type: Literal[
+        "code", "frontend", "backend", "test", "docs", "review",
+        "security", "performance", "debug", "database", "api",
+        "integration", "devops", "release", "git", "terminal",
+        "planner", "architect", "requirement"
+    ]
     description: str
     workspace_dir: str
     priority: int = 0

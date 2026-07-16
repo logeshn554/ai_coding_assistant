@@ -27,6 +27,8 @@ test = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "--cov=parallel_agent_system --cov-report=term-missing --cov-fail-under=70"
+pythonpath = [".."]
 
 [tool.pyright]
 extraPaths = [".."]

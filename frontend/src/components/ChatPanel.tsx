@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 
 import type { ChatMessage } from '../types/chat';
+import { MessageList } from './chat/MessageList';
+import { AgentStatusBar } from './chat/AgentStatusBar';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -55,15 +57,7 @@ interface ChatPanelProps {
   onSelectFile?: (filePath: any) => any;
 }
 
-const renderContentString = (content: any): string => {
-  if (content === null || content === undefined) return '';
-  if (typeof content === 'string') return content;
-  try {
-    return JSON.stringify(content, null, 2);
-  } catch {
-    return String(content);
-  }
-};
+
 
 export default function ChatPanel({
   messages,
@@ -89,8 +83,6 @@ export default function ChatPanel({
   onNewSession,
   onRenameSession
 }: ChatPanelProps) {
-  const [editingCommandId, setEditingCommandId] = useState<string | null>(null);
-  const [editedCommandText, setEditedCommandText] = useState<string>('');
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<'Auto' | 'Ask' | 'Plan' | 'Agent'>('Auto');
   const autoApply = false;
@@ -250,81 +242,16 @@ export default function ChatPanel({
     }
   };
 
-  // Helper to format tool arguments
-  const formatArgs = (args: any) => {
-    try {
-      if (typeof args === 'string') return args;
-      return JSON.stringify(args, null, 2);
-    } catch {
-      return String(args);
-    }
-  };
 
-  const renderDiffHunk = (msgId: string, hunk: any, idx: number) => {
-    const isAccepted = hunkDecisions[msgId]?.[hunk.id] ?? true;
 
-    return (
-      <div key={hunk.id} className="border border-white/5 bg-black/40 rounded-lg overflow-hidden text-[10px] my-2">
-        <div className="flex items-center justify-between px-3 py-1.5 bg-white/3 border-b border-white/5 select-none font-sans">
-          <span className="text-gray-400 font-semibold uppercase text-[8px] tracking-wider font-mono">Hunk #{idx + 1}</span>
-          <div className="flex gap-1.5 text-[8px]">
-            <button
-              type="button"
-              onClick={() => {
-                setHunkDecisions(prev => ({
-                  ...prev,
-                  [msgId]: {
-                    ...(prev[msgId] || {}),
-                    [hunk.id]: false
-                  }
-                }));
-              }}
-              className={`px-2 py-0.5 rounded transition-all font-bold cursor-pointer focus-visible:ring-1 focus-visible:ring-red-500 focus-visible:outline-none ${!isAccepted
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/40 font-bold'
-                  : 'bg-white/5 text-gray-500 hover:text-gray-300'
-                }`}
-            >
-              Reject
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setHunkDecisions(prev => ({
-                  ...prev,
-                  [msgId]: {
-                    ...(prev[msgId] || {}),
-                    [hunk.id]: true
-                  }
-                }));
-              }}
-              className={`px-2 py-0.5 rounded transition-all font-bold cursor-pointer focus-visible:ring-1 focus-visible:ring-emerald-500 focus-visible:outline-none ${isAccepted
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold'
-                  : 'bg-white/5 text-gray-500 hover:text-gray-300'
-                }`}
-            >
-              Accept
-            </button>
-          </div>
-        </div>
-
-        <pre className="p-2.5 font-mono max-h-48 overflow-y-auto whitespace-pre overflow-x-auto leading-relaxed select-text bg-black/20 text-gray-300">
-          {hunk.lines.map((l: string, i: number) => {
-            const isAdded = l.startsWith('+');
-            const isRemoved = l.startsWith('-');
-            const lineClass = isAdded
-              ? 'bg-emerald-500/10 text-emerald-400 px-1 rounded-sm w-full block'
-              : isRemoved
-                ? 'bg-red-500/10 text-red-400 line-through px-1 rounded-sm w-full block'
-                : 'text-gray-400 w-full block';
-            return (
-              <span key={i} className={lineClass}>
-                {l}
-              </span>
-            );
-          })}
-        </pre>
-      </div>
-    );
+  const handleToggleHunk = (msgId: string, hunkId: string, accepted: boolean) => {
+    setHunkDecisions(prev => ({
+      ...prev,
+      [msgId]: {
+        ...(prev[msgId] || {}),
+        [hunkId]: accepted
+      }
+    }));
   };
 
   const lastMessage = messages[messages.length - 1];
@@ -407,8 +334,8 @@ export default function ChatPanel({
                     <div
                       key={s.id}
                       className={`group flex items-center justify-between p-1.5 transition-all text-xs border ${isActive
-                          ? 'bg-violet-500/10 border-violet-500/30 text-white font-medium'
-                          : 'bg-black/10 border-transparent text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                        ? 'bg-violet-500/10 border-violet-500/30 text-white font-medium'
+                        : 'bg-black/10 border-transparent text-gray-400 hover:bg-white/5 hover:text-gray-200'
                         } rounded-none`}
                     >
                       {isRenaming ? (
@@ -538,285 +465,30 @@ export default function ChatPanel({
             </div>
           </div>
         ) : (
-          <div className="space-y-3 select-text">
-            {messages.map((msg) => {
-              const isUser = msg.role === 'user';
-
-              // 1. RENDER USER MESSAGE
-              if (isUser) {
-                return (
-                  <div key={msg.id} className="flex gap-2 max-w-[95%] items-start ml-auto flex-row-reverse select-text">
-                    <div className="w-5 h-5 rounded-sm bg-[#8b5cf6] text-white shrink-0 flex items-center justify-center text-[9px] font-bold select-none">
-                      U
-                    </div>
-                    <div className="flex flex-col items-end max-w-[calc(100%-1.5rem)]">
-                      <div className="p-2 bg-[#2a2a2b] border border-[#2d2d2d] text-xs text-white rounded-none leading-relaxed whitespace-pre-wrap select-text">
-                        {renderMessageContent(renderContentString(msg.content).trim())}
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-
-              // 2. RENDER COMPLETED TOOL RESULTS INLINE
-              if (msg.role === 'tool') {
-                const isSuccess = msg.status === 'success';
-                return (
-                  <div key={msg.id} className="flex gap-2 max-w-[95%] items-start select-text">
-                    <div className="w-5 h-5 rounded-sm bg-[#131313] border border-[#2d2d2d] text-gray-500 shrink-0 flex items-center justify-center text-[8px] font-bold font-mono select-none">
-                      TL
-                    </div>
-                    <div className="flex-1 max-w-[calc(100%-1.5rem)] border border-[#2d2d2d] bg-[#141414] p-2 space-y-1.5 text-[10px] font-mono select-text">
-                      <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1">
-                        <span className="font-semibold text-gray-300 truncate">Tool: {msg.name || 'unknown'}</span>
-                        <span className={`px-1.5 py-0.2 rounded-none text-[8px] font-bold ${
-                          isSuccess ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                        }`}>
-                          {isSuccess ? 'SUCCESS' : 'FAILED'}
-                        </span>
-                      </div>
-                      <details className="group">
-                        <summary className="cursor-pointer text-[9px] text-gray-500 hover:text-gray-300 select-none py-0.5 font-sans">
-                          View tool logs & output
-                        </summary>
-                        <pre className="mt-1 p-2 bg-[#1e1e1e] text-[9px] text-gray-400 max-h-36 overflow-y-auto whitespace-pre-wrap select-text border border-[#2d2d2d] scrollbar-thin">
-                          {renderContentString(msg.content)}
-                        </pre>
-                      </details>
-                    </div>
-                  </div>
-                );
-              }
-
-              // 3. RENDER PENDING CONFIRMATIONS / DIALOGS INLINE
-              if (msg.isConfirmPending || (msg.role === 'assistant' && msg.isConfirmPending)) {
-                return (
-                  <div key={msg.id} className="flex gap-2 max-w-[95%] items-start select-text">
-                    <div className="w-5 h-5 rounded-sm bg-[#8b5cf6]/20 border border-[#8b5cf6]/40 text-violet-400 shrink-0 flex items-center justify-center text-[9px] font-bold select-none">
-                      ?
-                    </div>
-                    <div className="flex-1 max-w-[calc(100%-1.5rem)] select-text">
-                      
-                      {/* Sub-Case: Smart command permission requests */}
-                      {msg.isPermissionRequest && (
-                        <div className="border border-violet-500/25 bg-[#1b1c24] p-3 space-y-2.5 font-sans text-xs">
-                          <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1.5 font-mono select-none">
-                            <span className="text-[10px] font-bold text-violet-300">Tool Permission: run_command</span>
-                            <span className={`px-1 text-[8px] font-bold uppercase border animate-pulse ${msg.permissionRisk === 'destructive'
-                              ? 'bg-red-500/15 text-red-400 border-red-500/20'
-                              : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/20'
-                            }`}>
-                              {msg.permissionRisk || 'medium'} Risk
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-gray-300 space-y-2 leading-relaxed">
-                            {msg.permissionExplanation && (
-                              <div className="bg-[#131313] p-2 border border-[#2d2d2d] text-gray-400 font-mono text-[9px]">
-                                {msg.permissionExplanation}
-                              </div>
-                            )}
-                            <div className="space-y-1 font-mono">
-                              <span className="text-[9px] text-gray-500 block uppercase font-bold select-none">Exact Command (Editable):</span>
-                              <input
-                                type="text"
-                                value={editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || '')}
-                                onFocus={() => {
-                                  if (editingCommandId !== msg.id) {
-                                    setEditingCommandId(msg.id);
-                                    setEditedCommandText(msg.permissionCommand || '');
-                                  }
-                                }}
-                                onChange={(e) => setEditedCommandText(e.target.value)}
-                                className="w-full bg-[#131313] font-mono text-[10px] border border-[#2d2d2d] rounded-none p-1.5 text-white focus:outline-none focus:border-[#8b5cf6]"
-                              />
-                            </div>
-                            <div className="grid grid-cols-2 gap-1 text-[9px] pt-1 select-none font-sans">
-                              <button
-                                type="button"
-                                onClick={() => msg.tool_call_id && onConfirmPermission?.(msg.tool_call_id, true, 'once', editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || ''))}
-                                className="py-1.5 bg-[#8b5cf6] hover:bg-[#7c4dff] text-white font-bold cursor-pointer text-center rounded-none"
-                              >
-                                Allow Once
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => msg.tool_call_id && onConfirmPermission?.(msg.tool_call_id, true, 'session', editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || ''))}
-                                className="py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 font-semibold cursor-pointer text-center border border-[#2d2d2d] rounded-none"
-                              >
-                                Allow Session
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => msg.tool_call_id && onConfirmPermission?.(msg.tool_call_id, true, 'project', editingCommandId === msg.id ? editedCommandText : (msg.permissionCommand || ''))}
-                                className="py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 font-semibold cursor-pointer text-center border border-[#2d2d2d] rounded-none"
-                              >
-                                Allow Project
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => msg.tool_call_id && onConfirmPermission?.(msg.tool_call_id, false, 'once', '')}
-                                className="py-1.5 bg-red-650/15 border border-red-500/20 text-red-400 font-bold cursor-pointer text-center rounded-none"
-                              >
-                                Deny
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Sub-Case: Port conflicts */}
-                      {msg.isPortConflictRequest && (
-                        <div className="border border-red-500/25 bg-[#241a1c] p-3 space-y-2.5 font-sans text-xs">
-                          <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1.5 font-mono select-none">
-                            <span className="text-[10px] font-bold text-red-400">Port Conflict Resolution</span>
-                          </div>
-                          <div className="text-[10px] text-gray-300 space-y-2">
-                            <p>Port <span className="font-bold text-red-450">{msg.portConflictPort}</span> is in use by <span className="font-bold text-red-450">{msg.portConflictProcessName}</span> (PID: {msg.portConflictPid}).</p>
-                            <div className="flex flex-col gap-1 pt-1 select-none font-sans">
-                              <button
-                                type="button"
-                                onClick={() => msg.tool_call_id && onConfirmPortConflict?.(msg.tool_call_id, 'stop')}
-                                className="w-full py-1.5 bg-red-650 hover:bg-red-600 text-white font-bold cursor-pointer rounded-none"
-                              >
-                                Stop Process (PID: {msg.portConflictPid})
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => msg.tool_call_id && onConfirmPortConflict?.(msg.tool_call_id, 'next_port')}
-                                className="w-full py-1.5 bg-[#8b5cf6] hover:bg-[#7c4dff] text-white font-bold cursor-pointer rounded-none"
-                              >
-                                Use Next Available Port
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => msg.tool_call_id && onConfirmPortConflict?.(msg.tool_call_id, 'cancel')}
-                                className="w-full py-1.5 bg-white/5 hover:bg-white/10 text-gray-400 cursor-pointer rounded-none border border-[#2d2d2d]"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Sub-Case: File edits / Proposed Diff Hunks */}
-                      {msg.confirmDiff && (
-                        <div className="border border-violet-500/25 bg-[#1b1c24] p-3 space-y-2.5 font-sans text-xs">
-                          <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1.5 font-mono select-none">
-                            <span className="text-[10px] font-bold text-violet-300">File Edit: edit_file</span>
-                            <span className="px-1 text-[8px] font-bold uppercase bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 animate-pulse">
-                              PENDING APPROVAL
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-gray-300 space-y-1.5">
-                            <div className="bg-[#131313] p-1.5 border border-[#2d2d2d] font-mono text-[9px] truncate" title={msg.confirmDiff.path}>
-                              Path: {msg.confirmDiff.path.split('/').pop()} <span className="text-gray-500">({msg.confirmDiff.path})</span>
-                            </div>
-                            {msg.confirmDiff.hunks && msg.confirmDiff.hunks.length > 0 && (
-                              <div className="space-y-1.5">
-                                {msg.confirmDiff.hunks.map((hunk: any, idx: number) => renderDiffHunk(msg.id, hunk, idx))}
-                              </div>
-                            )}
-                            <div className="flex gap-2 pt-1 font-sans select-none">
-                              <button
-                                type="button"
-                                onClick={() => msg.tool_call_id && onConfirmTool(msg.tool_call_id, false)}
-                                className="flex-1 py-1.5 bg-red-650/15 border border-red-500/20 text-red-400 font-bold rounded-none cursor-pointer"
-                              >
-                                Reject All
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (msg.tool_call_id) {
-                                    const decisions = hunkDecisions[msg.id] || {};
-                                    if (msg.confirmDiff?.hunks) {
-                                      msg.confirmDiff.hunks.forEach((h: any) => {
-                                        if (decisions[h.id] === undefined) {
-                                          decisions[h.id] = true;
-                                        }
-                                      });
-                                    }
-                                    onConfirmTool(msg.tool_call_id, true, decisions);
-                                  }
-                                }}
-                                className="flex-1 py-1.5 bg-[#8b5cf6] hover:bg-[#7c4dff] text-white font-bold rounded-none cursor-pointer"
-                              >
-                                Accept All
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Sub-Case: Other/Dangerous confirmations */}
-                      {!msg.isPermissionRequest && !msg.isPortConflictRequest && !msg.confirmDiff && (
-                        <div className="border border-red-500/25 bg-[#241a1a] p-3 space-y-2.5 font-sans text-xs">
-                          <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1.5 font-mono select-none">
-                            <span className="text-[10px] font-bold text-red-400">Dangerous command execution</span>
-                          </div>
-                          <div className="text-[10px] text-gray-300 space-y-2 font-mono">
-                            <pre className="bg-[#131313] p-2 border border-[#2d2d2d] whitespace-pre-wrap select-all text-[9px] text-gray-400 scrollbar-thin">
-                              {formatArgs(msg.confirmArgs)}
-                            </pre>
-                            <div className="flex gap-1.5 pt-1 font-sans select-none">
-                              <button
-                                type="button"
-                                onClick={() => msg.tool_call_id && onConfirmTool(msg.tool_call_id, false)}
-                                className="flex-1 py-1.5 bg-white/5 border border-[#2d2d2d] text-gray-300 hover:text-white font-bold cursor-pointer rounded-none"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => msg.tool_call_id && onConfirmTool(msg.tool_call_id, true)}
-                                className="flex-1 py-1.5 bg-red-650 hover:bg-red-600 text-white font-bold cursor-pointer rounded-none"
-                              >
-                                Run Command
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                    </div>
-                  </div>
-                );
-              }
-
-              // 4. RENDER STANDARD ASSISTANT RESPONSE
-              if (msg.role === 'assistant' && msg.content) {
-                return (
-                  <div key={msg.id} className="flex gap-2 max-w-[95%] items-start select-text">
-                    <div className="w-5 h-5 rounded-sm bg-[#1e1e1e] border border-[#2d2d2d] text-violet-400 shrink-0 flex items-center justify-center text-[9px] font-bold select-none">
-                      AI
-                    </div>
-                    <div className="flex flex-col items-start max-w-[calc(100%-1.5rem)] select-text">
-                      <div className="p-2 bg-[#141414] border border-[#2d2d2d] text-xs text-gray-300 rounded-none leading-relaxed whitespace-pre-wrap select-text">
-                        {renderMessageContent(renderContentString(msg.content).trim())}
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-
-              return null;
-            })}
-          </div>
+          <MessageList
+            messages={messages}
+            onConfirmTool={onConfirmTool}
+            onConfirmPermission={onConfirmPermission}
+            onConfirmPortConflict={onConfirmPortConflict}
+            hunkDecisions={hunkDecisions}
+            onToggleHunk={handleToggleHunk}
+            renderMessageContent={renderMessageContent}
+          />
         )}
 
         {/* Streaming Loader / Thinking indicator inside message feed */}
         {showTypingIndicator && (
-          <div className="flex gap-2 max-w-[95%] items-start select-none">
-            <div className="w-5 h-5 rounded-sm bg-[#1e1e1e] border border-[#2d2d2d] text-violet-400 shrink-0 flex items-center justify-center text-[9px] font-bold">
+          <div className="flex gap-2.5 max-w-[95%] items-start select-none mb-4 animate-fade-in">
+            <div className="w-6 h-6 rounded-md bg-[#8b5cf6]/10 border border-[#8b5cf6]/20 text-violet-400 shrink-0 flex items-center justify-center text-[10px] font-bold">
               AI
             </div>
-            <div className="flex flex-col items-start max-w-[calc(100%-1.5rem)]">
-              <div className="p-2 bg-[#141414] border border-[#2d2d2d] rounded-none flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-                <span className="text-[10px] text-gray-500 font-mono ml-1.5">
+            <div className="flex flex-col items-start max-w-[calc(100%-1.75rem)]">
+              <div className="p-2.5 bg-[#141414] border border-[#2d2d2d] rounded-lg flex items-center gap-2 shadow-md">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500"></span>
+                </span>
+                <span className="text-[11px] text-gray-400 font-medium font-sans animate-pulse">
                   {statusMessage || 'Thinking...'}
                 </span>
               </div>
@@ -829,32 +501,18 @@ export default function ChatPanel({
 
       {/* Input Bar (fixed to bottom) */}
       <form onSubmit={handleSubmit} className="p-2.5 border-t border-[#2d2d2d] bg-[#131313] shrink-0 font-sans">
-        
+
         {/* Token Usage Status Bar - Compact */}
-        {contextPercentage !== undefined && contextPercentage > 0 && (
-          <div className="flex items-center justify-between font-mono text-[9px] select-none text-gray-500 pb-2 px-0.5">
-            <div className="flex items-center gap-1.5">
-              <span>Context:</span>
-              <span className={`font-bold ${
-                contextPercentage < 70 ? 'text-emerald-500' : contextPercentage < 90 ? 'text-amber-500' : 'text-rose-500'
-              }`}>
-                {(() => {
-                  const totalBlocks = 12;
-                  const filledBlocks = Math.round((contextPercentage / 100) * totalBlocks);
-                  const emptyBlocks = totalBlocks - filledBlocks;
-                  return '█'.repeat(filledBlocks) + '░'.repeat(emptyBlocks);
-                })()}
-              </span>
-            </div>
-            <span className="text-gray-400">
-              {contextTokens} / 128k
-            </span>
-          </div>
-        )}
+        <AgentStatusBar
+          contextPercentage={contextPercentage}
+          contextTokens={contextTokens}
+          activeProfileName={activeProfileName}
+          onOpenSettings={onOpenSettings}
+        />
 
         {/* Input Text Box Container */}
         <div className="bg-[#1e1e1e] border border-[#2d2d2d] rounded-none p-2 flex flex-col gap-1.5 focus-within:border-[#8b5cf6]/50">
-          
+
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

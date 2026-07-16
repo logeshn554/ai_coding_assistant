@@ -27,4 +27,5 @@ export interface ChatMessage {
   portConflictPort?: number;
   portConflictPid?: number;
   portConflictProcessName?: string;
+  thinkingSteps?: string[];
 }

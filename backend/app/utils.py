@@ -9,7 +9,10 @@ async def run_cmd_async(cmd: str, cwd: str) -> str:
         raise PermissionError("Access denied: changing directory outside the workspace root is locked.")
 
     kwargs = {}
-    if sys.platform != "win32":
+    if sys.platform == "win32":
+        import subprocess
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    else:
         kwargs["executable"] = "/bin/bash"
         import pwd
         def drop_privileges():

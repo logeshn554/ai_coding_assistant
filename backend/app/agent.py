@@ -520,7 +520,8 @@ class AgentSession:
         self.orchestrator = AgentOrchestrator()
         self.conversation_history = []
         self.pending_confirmations = {}  # tool_call_id -> {"event": asyncio.Event(), "approved": bool}
-        self.max_turns = 25
+        max_turns_config = profile.get("max_turns") or profile.get("max_orchestrator_steps") or 25
+        self.max_turns = int(max_turns_config)
         self.audit_log = []
         self.is_running = False
         self.active_task = None
@@ -1046,7 +1047,10 @@ class AgentSession:
         shell_executable = ShellAdapter.get_shell_executable(interactive=False)
 
         kwargs = {}
-        if sys.platform != "win32":
+        if sys.platform == "win32":
+            import subprocess
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        else:
             import pwd
             def drop_privileges():
                 try:

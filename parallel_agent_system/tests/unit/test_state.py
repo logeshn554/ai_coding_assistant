@@ -69,12 +69,12 @@ async def test_supervisor_graph_skeleton():
         "messages": []
     }
     
-    # Run the graph using a thread_id configuration for checkpointer compatibility
-    config_run = {"configurable": {"thread_id": "test-thread"}}
-    
     # The supervisor graph compiled runs up to the monitor interrupt.
     # Let's run it.
-    state = await graph.ainvoke(initial_state, config=config_run)
+    state = await graph.ainvoke(
+        initial_state,
+        config={"configurable": {"thread_id": "test-thread"}}
+    )
     
     # Assert nodes ran and updated state
     assert state is not None
