@@ -24,6 +24,22 @@ test = [
     "pytest-cov>=4.1.0",
 ]
 
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"parallel_agent_system" = "."}
+packages = [
+    "parallel_agent_system",
+    "parallel_agent_system.agents",
+    "parallel_agent_system.core",
+    "parallel_agent_system.graph",
+    "parallel_agent_system.graph.nodes",
+    "parallel_agent_system.monitor",
+    "parallel_agent_system.runtime"
+]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
