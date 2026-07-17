@@ -148,9 +148,7 @@ async def test_run_shell_command_timeout_emits_failed_status():
         return mock_proc
 
     with patch("asyncio.create_subprocess_exec", side_effect=mock_subprocess), \
-         patch("backend.app.processes.confine_subprocess", return_value=None), \
-         patch("sys.platform", "win32"), \
-         patch("subprocess.call", return_value=0):
+         patch("backend.app.processes.confine_subprocess", return_value=None):
          
         res = await agent_instance._run_shell_command("sleep 35")
         
