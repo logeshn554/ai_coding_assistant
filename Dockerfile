@@ -24,6 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY backend/requirements.txt ./backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
+# Copy and install parallel_agent_system
+COPY parallel_agent_system/ ./parallel_agent_system/
+RUN pip install --no-cache-dir ./parallel_agent_system
+
 # Copy built frontend dist folder so FastAPI can serve it statically
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
