@@ -14,15 +14,15 @@ describe('SettingsModal', () => {
         return Promise.resolve({
           ok: true,
           json: () => Promise.resolve({
-            active_profile_id: 'default-anthropic',
+            active_profile_id: 'default-ollama',
             profiles: [
               {
-                id: 'default-anthropic',
-                name: 'Anthropic Claude 3.5 Sonnet',
-                api_key: '••••••••••••••••',
-                base_url: 'https://api.anthropic.com/v1',
-                model_name: 'claude-sonnet-4-6',
-                api_format: 'anthropic'
+                id: 'default-ollama',
+                name: 'Ollama Local',
+                api_key: '',
+                base_url: 'http://localhost:11434/v1',
+                model_name: '',
+                api_format: 'openai'
               }
             ]
           })
@@ -93,7 +93,7 @@ describe('SettingsModal', () => {
     expect(screen.getByText('Workspace Settings & Preferences')).toBeInTheDocument();
   });
 
-  it('loads preset and updates the form values', async () => {
+  it('handles editing profile manually', async () => {
     render(
       <SettingsModal
         isOpen={true}
@@ -102,20 +102,15 @@ describe('SettingsModal', () => {
       />
     );
 
-    await screen.findByText('Anthropic Claude 3.5 Sonnet');
+    await screen.findByText('Ollama Local');
 
-    const profileItem = screen.getByText('Anthropic Claude 3.5 Sonnet');
+    const profileItem = screen.getByText('Ollama Local');
     fireEvent.click(profileItem);
 
-    // Select the first combobox which is the Model Preset select
-    const selectEl = screen.getAllByRole('combobox')[0];
-    fireEvent.change(selectEl, { target: { value: '1' } });
+    const nameInput = screen.getByPlaceholderText(/e\.g\. My Anthropic Profile/i);
+    fireEvent.change(nameInput, { target: { value: 'New Custom Profile Name' } });
 
-    await waitFor(() => {
-      const inputs = screen.getAllByRole('textbox');
-      const profileNameInput = inputs.find(i => (i as HTMLInputElement).value === 'OpenAI GPT-4o');
-      expect(profileNameInput).toBeDefined();
-    });
+    expect(nameInput).toHaveValue('New Custom Profile Name');
   });
 
   it('handles fetching models and shows loading status', async () => {
@@ -127,7 +122,7 @@ describe('SettingsModal', () => {
       />
     );
 
-    await screen.findByText('Anthropic Claude 3.5 Sonnet');
+    await screen.findByText('Ollama Local');
     
     // Click Add Profile to create profile with no model name
     const addButton = screen.getByRole('button', { name: /Add Profile/i });

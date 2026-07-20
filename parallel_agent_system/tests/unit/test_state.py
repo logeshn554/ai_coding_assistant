@@ -66,7 +66,8 @@ async def test_supervisor_graph_skeleton():
         "iteration": 0,
         "status": "pending",
         "human_confirmation_required": False,
-        "messages": []
+        "messages": [],
+        "refinement_cycles": 0,
     }
     
     # The supervisor graph compiled runs up to the monitor interrupt.

@@ -9,6 +9,12 @@ from ..state import config_manager, logger
 
 router = APIRouter()
 
+def _is_masked_key(key: str) -> bool:
+    """Returns True if the API key string is empty or a masked placeholder."""
+    if not key or not key.strip():
+        return True
+    return any(c in key for c in ("\u2022", "...", "*"))
+
 class ProfileSaveRequest(BaseModel):
     id: Optional[str] = None
     name: str
@@ -57,7 +63,7 @@ def delete_profile(profile_id: str):
 @router.post("/api/models/fetch")
 def fetch_available_models(req: ModelsFetchRequest):
     api_key = req.api_key.strip()
-    if (not api_key or "•" in api_key or "..." in api_key or "*" in api_key) and req.profile_id:
+    if _is_masked_key(api_key) and req.profile_id:
         profiles = config_manager.list_profiles(mask_keys=False).get("profiles", [])
         matched = next((p for p in profiles if p.get("id") == req.profile_id), None)
         if matched:
@@ -130,22 +136,12 @@ def fetch_available_models(req: ModelsFetchRequest):
                 return {"success": True, "models": models}
         except Exception as e:
             logger.warning(f"Failed to fetch models from API: {str(e)}")
-            fallback_map = {
-                "anthropic": ["claude-sonnet-4-6", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"],
-                "openai": ["gpt-4o", "gpt-4o-mini", "o1-preview", "o1-mini"],
-                "google": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
-            }
-            fallback = fallback_map.get(req.api_format, [])
-            return {"success": False, "models": fallback, "message": f"Offline presets: {e}"}
+            return {"success": False, "models": [], "message": f"Offline presets: {e}"}
     except Exception as e:
         logger.warning(f"Error fetching models: {str(e)}")
-        fallback_map = {
-            "anthropic": ["claude-sonnet-4-6", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229"],
-            "openai": ["gpt-4o", "gpt-4o-mini", "o1-preview", "o1-mini"],
-            "google": ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
-        }
-        fallback = fallback_map.get(req.api_format, [])
-        return {"success": False, "models": fallback, "message": str(e)}
+        return {"success": False, "models": [], "message": str(e)}
+
+
 
 @router.post("/api/test-connection")
 async def test_connection(profile: ProfileSaveRequest):
@@ -154,11 +150,16 @@ async def test_connection(profile: ProfileSaveRequest):
         key = profile.api_key
         url = profile.base_url
         model = profile.model_name
-        
-        # If API key is masked, retrieve the original saved key from disk
-        if not key or "•" in key or "..." in key or "*" in key:
-            saved = config_manager.get_profile(profile.id or "")
-            if saved:
+
+        # If API key is masked or missing, retrieve the real key from the keyring.
+        # Try the profile's own ID first; fall back to the active profile.
+        if _is_masked_key(key):
+            saved = None
+            if profile.id:
+                saved = config_manager.get_profile(profile.id)
+            if not saved or _is_masked_key(saved.get("api_key", "")):
+                saved = config_manager.get_active_profile()
+            if saved and not _is_masked_key(saved.get("api_key", "")):
                 key = saved["api_key"]
                 
         if fmt == "anthropic":

@@ -6,12 +6,34 @@ import time
 import re
 import os
 from typing import List, Dict, Any, TypedDict, Optional
+from pydantic import BaseModel, Field, ValidationError
 from langgraph.graph import StateGraph, START, END
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+
+
+# ---------------------------------------------------------------------------
+# Structured output model for orchestrator routing decisions.
+# Replaces ad-hoc dict access on raw LLM JSON, giving us schema validation
+# and clean ValidationError tracebacks instead of silent bad state.
+# ---------------------------------------------------------------------------
+class OrchestratorDecision(BaseModel):
+    """Validated schema for the orchestrator LLM routing decision."""
+    agents: List[str] = Field(
+        default_factory=list,
+        description="Agent names to invoke next"
+    )
+    reasoning: str = Field(
+        default="",
+        description="Why these agents were chosen"
+    )
+    descriptions: List[str] = Field(
+        default_factory=list,
+        description="Task description per agent, index-aligned with agents list"
+    )
 
 class DevPilotChatModel(BaseChatModel):
     session: Any
@@ -1573,39 +1595,39 @@ async def orchestrator_node(state: AgentState) -> AgentState:
     agent_tasks = {}
     
     try:
+        # --- Strip markdown fences if present ---
         clean_res = response.strip()
         if clean_res.startswith("```json"):
             clean_res = clean_res[7:]
+        if clean_res.startswith("```"):
+            clean_res = clean_res[3:]
         if clean_res.endswith("```"):
             clean_res = clean_res[:-3]
-        decision = json.loads(clean_res.strip())
-        
-        # Parse agents list
-        selected_agents = decision.get("agents", [])
-        if isinstance(selected_agents, str):
-            selected_agents = [selected_agents]
-        if not selected_agents and "agent" in decision:
-            selected_agents = [decision["agent"]]
-        if not selected_agents:
-            selected_agents = ["Orchestrator"]
-            
-        # Parse task descriptions
-        descriptions = decision.get("descriptions", [])
-        if isinstance(descriptions, str):
-            descriptions = [descriptions]
-        if not descriptions and "description" in decision:
-            descriptions = [decision["description"]]
-            
-        # Build tasks mapping
+        clean_res = clean_res.strip()
+
+        # --- Parse JSON then validate with Pydantic ---
+        raw_decision = json.loads(clean_res)
+
+        # Normalise: some LLMs emit {"agent": ...} instead of {"agents": [...]}
+        if "agents" not in raw_decision and "agent" in raw_decision:
+            raw_decision["agents"] = [raw_decision["agent"]]
+        if "descriptions" not in raw_decision and "description" in raw_decision:
+            raw_decision["descriptions"] = [raw_decision["description"]]
+
+        decision = OrchestratorDecision(**raw_decision)
+
+        selected_agents = decision.agents or ["Orchestrator"]
+        descriptions = decision.descriptions
+
+        # Build tasks mapping (index-aligned)
         for i, name in enumerate(selected_agents):
             desc = descriptions[i] if i < len(descriptions) else "Execute task"
             agent_tasks[name] = desc
-            
-        reasoning = decision.get("reasoning", "")
-        if reasoning and state["session"]:
+
+        if decision.reasoning and state["session"]:
             await state["session"].send_ws_message({
                 "type": "thinking",
-                "content": f"Decision: {reasoning}"
+                "content": f"Decision: {decision.reasoning}"
             })
         if state["session"]:
             for name in selected_agents:
@@ -1614,18 +1636,28 @@ async def orchestrator_node(state: AgentState) -> AgentState:
                         "type": "thinking",
                         "content": f"Routing to {name}..."
                     })
-        log_msg = f"Orchestrator: Selected agent(s) {selected_agents} to run in parallel. Reasoning: {reasoning}"
+        log_msg = (
+            f"Orchestrator: Selected agent(s) {selected_agents} to run in parallel. "
+            f"Reasoning: {decision.reasoning}"
+        )
         state["collaboration_log"].append(log_msg)
         state["orchestrator"].context.collaboration_log = state["collaboration_log"]
         logger.info(log_msg)
-    except Exception as e:
-        log_msg = f"Orchestrator: Parsing error, defaulting to complete: {str(e)}"
+    except (json.JSONDecodeError, ValidationError) as e:
+        log_msg = f"Orchestrator: Decision parse/validation error, defaulting to complete: {str(e)}"
         state["collaboration_log"].append(log_msg)
         state["orchestrator"].context.collaboration_log = state["collaboration_log"]
-        logger.info(log_msg)
+        logger.warning(log_msg)
         selected_agents = ["Orchestrator"]
         agent_tasks = {"Orchestrator": "Task complete"}
-        
+    except Exception as e:
+        log_msg = f"Orchestrator: Unexpected error in decision routing: {str(e)}"
+        state["collaboration_log"].append(log_msg)
+        state["orchestrator"].context.collaboration_log = state["collaboration_log"]
+        logger.error(log_msg)
+        selected_agents = ["Orchestrator"]
+        agent_tasks = {"Orchestrator": "Task complete"}
+
     state["next_agents"] = selected_agents
     state["agent_tasks"] = agent_tasks
     

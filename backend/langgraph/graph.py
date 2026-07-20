@@ -30,14 +30,14 @@ class StateGraph:
     def add_conditional_edges(self, node, fn, mapping):
         self.conditional[node] = (fn, mapping)
 
-    def compile(self):
+    def compile(self, *args, **kwargs):
         graph = self
 
         class CompiledGraph:
             def __init__(self, graph):
                 self.graph = graph
 
-            async def ainvoke(self, state):
+            async def ainvoke(self, state, config=None, **kwargs):
                 # Follow the first edge from START if it exists.
                 next_nodes = self.graph.edges.get(START, [])
                 if not next_nodes:

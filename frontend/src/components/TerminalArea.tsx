@@ -27,6 +27,8 @@ interface TerminalPaneProps {
   showClose: boolean;
   commandToRun: CommandTrigger | null;
   shell?: string;
+  fontSize?: number;
+  scrollback?: number;
 }
 
 function TerminalPane({
@@ -37,7 +39,9 @@ function TerminalPane({
   onClose,
   showClose,
   commandToRun,
-  shell
+  shell,
+  fontSize = 13,
+  scrollback = 5000,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -80,8 +84,8 @@ function TerminalPane({
         white: '#abb2bf',
       },
       fontFamily: "'Fira Code', monospace",
-      fontSize: 12,
-      scrollback: 5000,
+      fontSize,
+      scrollback,
     });
 
     const fitAddon = new FitAddon();
@@ -213,6 +217,14 @@ function TerminalPane({
   );
 }
 
+const SHELL_OPTIONS = [
+  { value: '', label: 'Default (OS)' },
+  { value: 'powershell', label: 'PowerShell' },
+  { value: 'cmd', label: 'CMD' },
+  { value: 'bash', label: 'Bash' },
+  { value: 'sh', label: 'Sh' },
+];
+
 export default function TerminalArea({ 
   workspacePath,
   activeTerminalCommand,
@@ -229,16 +241,12 @@ export default function TerminalArea({
   ]);
   const [showHistory, setShowHistory] = useState(false);
   const [filterText, setFilterText] = useState('');
-  
-const SHELL_OPTIONS = [
-  { value: '', label: 'Default' },
-  { value: 'bash', label: 'Bash' },
-  { value: 'sh', label: 'Sh' },
-  { value: 'powershell', label: 'PowerShell' },
-  { value: 'cmd', label: 'CMD' }
-];
 
-  // Split terminals management
+  // Terminal preferences loaded from backend settings
+  const [fontSize, setFontSize] = useState(13);
+  const [scrollback, setScrollback] = useState(5000);
+
+  // Split terminals management — default shell starts empty until settings load
   const [splitTerminals, setSplitTerminals] = useState<{ id: number; shell: string }[]>([
     { id: 0, shell: '' }
   ]);
@@ -246,6 +254,44 @@ const SHELL_OPTIONS = [
   const [nextId, setNextId] = useState(1);
   const [activePaneId, setActivePaneId] = useState<number>(0);
   const [commandToRun, setCommandToRun] = useState<CommandTrigger | null>(null);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // Load saved terminal preferences from the backend on mount.
+  // We apply the default shell to the initial pane once settings arrive.
+  useEffect(() => {
+    fetch('/api/config/settings', {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token') || ''}` }
+    })
+      .then(r => r.json())
+      .then(data => {
+        const shell = data.default_shell || '';
+        setSelectedShell(shell);
+        setSplitTerminals([{ id: 0, shell }]);
+        if (data.terminal_font_size) setFontSize(data.terminal_font_size);
+        if (data.terminal_scrollback) setScrollback(data.terminal_scrollback);
+        setSettingsLoaded(true);
+      })
+      .catch(() => setSettingsLoaded(true));
+  }, []);
+
+  // Persist the chosen shell immediately when the user changes the selector.
+  const handleShellChange = (newShell: string) => {
+    setSelectedShell(newShell);
+    fetch('/api/config/settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('session_token') || ''}`
+      },
+      body: JSON.stringify({
+        exclude_list: [],          // backend merges; only terminal fields matter here
+        auto_backup_enabled: true,
+        default_shell: newShell,
+        terminal_font_size: fontSize,
+        terminal_scrollback: scrollback,
+      })
+    }).catch(() => {});
+  };
 
   const handleSplit = () => {
     if (splitTerminals.length >= 3) {
@@ -348,12 +394,12 @@ const SHELL_OPTIONS = [
             </div>
           )}
 
-          {/* Shell Selector Dropdown */}
+          {/* Shell Selector Dropdown — selection is persisted to backend settings */}
           <select
             value={selectedShell}
-            onChange={(e) => setSelectedShell(e.target.value)}
+            onChange={(e) => handleShellChange(e.target.value)}
             className="bg-black/40 text-[10px] border border-white/5 hover:border-violet-500/30 focus:border-violet-500/50 rounded px-2 py-0.5 text-white focus:outline-none transition-all cursor-pointer"
-            title="Choose next shell"
+            title="Default shell (saved automatically)"
           >
             {SHELL_OPTIONS.map(opt => (
               <option key={opt.value} value={opt.value} className="bg-[#161822] text-white">
@@ -394,6 +440,8 @@ const SHELL_OPTIONS = [
             showClose={splitTerminals.length > 1}
             commandToRun={commandToRun}
             shell={pane.shell}
+            fontSize={fontSize}
+            scrollback={scrollback}
           />
         ))}
       </div>

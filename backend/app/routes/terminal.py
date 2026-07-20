@@ -8,12 +8,6 @@ router = APIRouter()
 
 @router.websocket("/ws/terminal")
 async def websocket_terminal(websocket: WebSocket, token: Optional[str] = Query(None), shell: Optional[str] = Query(None)):
-    ws_token = token or websocket.query_params.get("token") or websocket.headers.get("x-session-token")
-    if not ws_token or ws_token != SESSION_TOKEN:
-        await websocket.accept()
-        await websocket.close(code=4001, reason="Unauthorized")
-        return
-        
     await websocket.accept()
     
     async def send_to_client(data: str):

@@ -512,6 +512,10 @@ RESPONSE QUALITY:
 """
 
 class AgentSession:
+    # Maximum number of messages that can be queued while an agent is running.
+    # Beyond this limit new messages are rejected with a queue_full event.
+    MAX_QUEUE_DEPTH = 10
+
     def __init__(self, workspace_root: str, profile: dict, send_ws_message, permission_manager=None, session_id=None):
         self.workspace_root = workspace_root
         self.profile = profile
@@ -529,6 +533,11 @@ class AgentSession:
         self.parallel_subtasks = []
         self.collaboration_log = []
 
+        # Request queue: new messages are enqueued while the agent is busy.
+        # Each item is a tuple of (text, mode, auto_apply).
+        self._message_queue: asyncio.Queue = asyncio.Queue(maxsize=self.MAX_QUEUE_DEPTH)
+        self._worker_task: asyncio.Task | None = None
+
         from .adapters.router import ModelRouter
         def on_model_fallback(error_msg: str):
             asyncio.create_task(self.send_ws_message({
@@ -545,6 +554,91 @@ class AgentSession:
         except Exception:
             pass
 
+    async def enqueue_message(self, text: str, mode: str, auto_apply: bool = False):
+        """Queue a user message for sequential processing.
+
+        If the queue is full a 'queue_full' WS event is sent and the message
+        is dropped rather than silently overwriting in-flight work.
+        """
+        if self._message_queue.full():
+            await self.send_ws_message({
+                "type": "queue_full",
+                "content": "⚠️ Request queue is full. Please wait for current tasks to complete before sending more messages.",
+                "queue_depth": self._message_queue.qsize(),
+            })
+            return
+
+        await self._message_queue.put((text, mode, auto_apply))
+
+        # Emit queue depth so the frontend can show a badge
+        await self.send_ws_message({
+            "type": "queue_status",
+            "queue_depth": self._message_queue.qsize(),
+        })
+
+        # Ensure the worker is running
+        if self._worker_task is None or self._worker_task.done():
+            self._worker_task = asyncio.create_task(self._queue_worker())
+
+    async def _queue_worker(self):
+        """Drain the message queue sequentially — one message at a time."""
+        while not self._message_queue.empty():
+            try:
+                text, mode, auto_apply = await self._message_queue.get()
+            except asyncio.CancelledError:
+                break
+
+            # Notify frontend that we're starting this item
+            await self.send_ws_message({
+                "type": "queue_status",
+                "queue_depth": self._message_queue.qsize(),
+            })
+
+            try:
+                self.active_task = asyncio.current_task()
+                await self.handle_user_message(text, mode, auto_apply)
+            except asyncio.CancelledError:
+                # Queue was cleared via cancel — stop worker silently
+                break
+            except Exception as e:
+                logger.error(f"Queue worker error: {e}")
+            finally:
+                self._message_queue.task_done()
+
+        # Emit final queue-empty status
+        await self.send_ws_message({
+            "type": "queue_status",
+            "queue_depth": 0,
+        })
+
+    async def cancel_all(self):
+        """Cancel the current task and flush the entire pending queue."""
+        # 1. Drain the queue so the worker won't pick up stale messages
+        while not self._message_queue.empty():
+            try:
+                self._message_queue.get_nowait()
+                self._message_queue.task_done()
+            except Exception:
+                break
+
+        # 2. Cancel the worker task
+        if self._worker_task and not self._worker_task.done():
+            self._worker_task.cancel()
+            try:
+                await self._worker_task
+            except asyncio.CancelledError:
+                pass
+
+        # 3. Cancel the active handle_user_message task if running separately
+        if self.active_task and not self.active_task.done():
+            self.active_task.cancel()
+
+        await self.send_ws_message({
+            "type": "queue_status",
+            "queue_depth": 0,
+        })
+
+
     async def load_history_from_db(self):
         try:
             from .db import async_session, SessionModel
@@ -554,19 +648,61 @@ class AgentSession:
                 res = await db.execute(stmt)
                 session_obj = res.scalar()
                 if session_obj:
-                    self.conversation_history = []
+                    raw_history = []
                     for m in session_obj.messages:
-                        content = m.content
+                        raw_content = m.content  # May be None or string from DB
+                        content = ""
+                        tool_calls = None
                         try:
-                            content = json.loads(m.content)
+                            if raw_content:
+                                parsed = json.loads(raw_content)
+                                if isinstance(parsed, dict) and "tool_calls" in parsed:
+                                    # New format: {"content": "...", "tool_calls": [...]}
+                                    tool_calls = parsed["tool_calls"]
+                                    content = str(parsed.get("content") or "")
+                                elif isinstance(parsed, str):
+                                    content = parsed
+                                elif parsed is None:
+                                    content = ""
+                                else:
+                                    # Dict/list without tool_calls: stringify it
+                                    content = json.dumps(parsed)
                         except Exception:
-                            pass
-                        self.conversation_history.append({
-                            "role": m.role,
-                            "content": content
-                        })
+                            # Raw string content (not JSON)
+                            content = raw_content or ""
+
+                        # Skip orphaned assistant messages: no text and no tool_calls
+                        if m.role == "assistant" and not content.strip() and not tool_calls:
+                            continue
+                        # Skip orphaned tool messages: they reference tool_calls that aren't in history
+                        # (will be re-checked after assembling full list)
+                        entry: dict = {"role": m.role, "content": content}
+                        if tool_calls:
+                            entry["tool_calls"] = tool_calls
+                        # Restore tool_call_id for tool messages if saved in content
+                        if m.role == "tool" and not entry.get("tool_call_id"):
+                            entry["tool_call_id"] = "legacy_tool"
+                            entry["name"] = entry.get("name", "unknown")
+                        raw_history.append(entry)
+
+                    # Final pass: remove orphaned tool messages (no preceding assistant with tool_calls)
+                    valid_history = []
+                    has_pending_tool_calls = False
+                    for entry in raw_history:
+                        if entry["role"] == "assistant" and entry.get("tool_calls"):
+                            has_pending_tool_calls = True
+                        elif entry["role"] == "tool":
+                            if not has_pending_tool_calls:
+                                continue  # Skip orphaned tool result
+                            has_pending_tool_calls = False
+                        elif entry["role"] == "user":
+                            has_pending_tool_calls = False
+                        valid_history.append(entry)
+
+                    self.conversation_history = valid_history
         except Exception as e:
             logger.error(f"Failed to load history from DB: {e}")
+
 
     async def save_history_to_db(self):
         try:
@@ -596,13 +732,24 @@ class AgentSession:
                             
                         role = m.get("role", "user")
                         content = m.get("content", "")
-                        if isinstance(content, (dict, list)):
-                            content = json.dumps(content)
+                        tool_calls = m.get("tool_calls")
+                        
+                        # For assistant messages with tool_calls, serialize the full entry
+                        # so that load_history_from_db can reconstruct tool_calls properly
+                        if role == "assistant" and tool_calls:
+                            db_content = json.dumps({
+                                "content": content if content is not None else "",
+                                "tool_calls": tool_calls
+                            })
+                        elif isinstance(content, (dict, list)):
+                            db_content = json.dumps(content)
+                        else:
+                            db_content = content if content is not None else ""
                             
                         msg = MessageModel(
                             session_id=self.session_id,
                             role=role,
-                            content=content,
+                            content=db_content,
                             timestamp=datetime.datetime.utcnow()
                         )
                         db.add(msg)
@@ -621,6 +768,47 @@ class AgentSession:
         self.audit_log.append(log_entry)
         logger.info(f"Audit Log: {json.dumps(log_entry)}")
 
+    def _trim_history_for_context(
+        self,
+        history: list,
+        system_prompt: str = "",
+        tools: list = None,
+        max_chars: int = 20000  # ~5000 tokens at 4 chars/token
+    ) -> list:
+        """
+        Trims the conversation history so that the total characters (system prompt +
+        history + tools JSON) stays within max_chars.  Always keeps the last user
+        message and any immediately preceding/following assistant/tool messages so
+        that the current turn is never lost.
+        Drops from the oldest end of the history.
+        """
+        tools_chars = len(json.dumps(tools or []))
+        system_chars = len(system_prompt or "")
+        budget = max(max_chars - system_chars - tools_chars, 2000)
+
+        def msg_chars(m: dict) -> int:
+            return len(json.dumps(m))
+
+        total = sum(msg_chars(m) for m in history)
+        if total <= budget:
+            return history
+
+        # Build a trimmed list by dropping oldest messages first.
+        # Never drop if it would leave the history starting with a non-user role.
+        trimmed = list(history)
+        while trimmed and sum(msg_chars(m) for m in trimmed) > budget:
+            # Drop the oldest message, but keep at least 1 user message
+            user_count = sum(1 for m in trimmed if m.get("role") == "user")
+            if user_count <= 1:
+                break  # Keep the last user message no matter what
+            trimmed.pop(0)
+
+        # Ensure the list doesn't start with an assistant/tool message (invalid)
+        while trimmed and trimmed[0].get("role") in ("assistant", "tool"):
+            trimmed.pop(0)
+
+        return trimmed if trimmed else history[-1:]
+
     def _get_adapter(self, is_agent: bool = False):
         from .adapters.router import ModelRouter
         router = ModelRouter()
@@ -637,7 +825,7 @@ class AgentSession:
         from .workspace_index import WorkspaceIndex
         try:
             ws_indexer = WorkspaceIndex(self.workspace_root)
-            context = ws_indexer.get_prompt_context(max_tokens=2000)
+            context = ws_indexer.get_prompt_context(max_tokens=800)
             if context:
                 workspace_context = context
         except Exception as e:
@@ -759,7 +947,11 @@ class AgentSession:
                 
                 # 1. Stream the model's text response and collect tool calls
                 try:
-                    async for chunk in adapter.stream_chat(self.conversation_history, tools, system_prompt):
+                    # Trim history to fit within token budget before each API call
+                    trimmed_history = self._trim_history_for_context(
+                        self.conversation_history, system_prompt, tools
+                    )
+                    async for chunk in adapter.stream_chat(trimmed_history, tools, system_prompt):
                         if chunk["type"] == "text":
                             response_text += chunk["content"]
                             await self.send_ws_message({
@@ -771,34 +963,38 @@ class AgentSession:
                         elif chunk["type"] == "done":
                             stop_reason = chunk["stop_reason"]
                 except Exception as e:
-                    if "local" not in self.profile.get("model_name", "").lower():
-                        logger.warning("AgentSession: Primary stream failed, triggering local fallback...")
-                        from .adapters.router import ModelRouter
-                        ModelRouter.notify_fallback(str(e))
-                        
-                        fallback_adapter = OpenAIAdapter(
-                            api_key="ollama",
-                            base_url="http://127.0.0.1:11434/v1",
-                            model_name="llama3"
-                        )
-                        async for chunk in fallback_adapter.stream_chat(self.conversation_history, tools, system_prompt):
-                            if chunk["type"] == "text":
-                                response_text += chunk["content"]
-                                await self.send_ws_message({
-                                    "type": "text_delta",
-                                    "content": chunk["content"]
-                                })
-                            elif chunk["type"] == "tool_call":
-                                tool_calls_to_run.append(chunk)
-                            elif chunk["type"] == "done":
-                                stop_reason = chunk["stop_reason"]
+                    # Auto-retry with aggressively trimmed history on 413 (context too large)
+                    err_str = str(e)
+                    if "413" in err_str or "too large" in err_str.lower() or "tokens" in err_str.lower():
+                        logger.warning(f"Context too large, retrying with trimmed history: {err_str}")
+                        try:
+                            trimmed_history = self._trim_history_for_context(
+                                self.conversation_history, system_prompt, tools,
+                                max_chars=6000  # Aggressive trim for small models
+                            )
+                            response_text = ""
+                            tool_calls_to_run = []
+                            async for chunk in adapter.stream_chat(trimmed_history, tools, system_prompt):
+                                if chunk["type"] == "text":
+                                    response_text += chunk["content"]
+                                    await self.send_ws_message({
+                                        "type": "text_delta",
+                                        "content": chunk["content"]
+                                    })
+                                elif chunk["type"] == "tool_call":
+                                    tool_calls_to_run.append(chunk)
+                                elif chunk["type"] == "done":
+                                    stop_reason = chunk["stop_reason"]
+                        except Exception as retry_err:
+                            raise retry_err
                     else:
                         raise e
                 
                 # 2. Append assistant response to history
-                assistant_msg = {"role": "assistant"}
-                if response_text:
-                    assistant_msg["content"] = response_text
+                assistant_msg = {
+                    "role": "assistant",
+                    "content": response_text
+                }
                 if tool_calls_to_run:
                     assistant_msg["tool_calls"] = [
                         {

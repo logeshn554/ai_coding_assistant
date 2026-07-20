@@ -19,6 +19,10 @@ class SystemConfig(BaseSettings):
     max_iterations_per_agent: int = 100
     max_retries: int = 3
 
+    # Evaluator-optimizer: maximum code → review → refine cycles before routing to END.
+    # Prevents infinite loops when the Coding Agent cannot resolve a high-severity issue.
+    max_refinement_cycles: int = 2
+
     # Stuck detector thresholds
     repeat_pair_threshold: int = 4
     monologue_threshold: int = 3

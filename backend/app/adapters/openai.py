@@ -171,32 +171,36 @@ class OpenAIAdapter(ModelAdapter):
             elif role == "tool":
                 openai_msgs.append({
                     "role": "tool",
-                    "tool_call_id": msg["tool_call_id"],
-                    "content": str(msg["content"])
+                    "tool_call_id": msg.get("tool_call_id", "legacy_tool"),
+                    "content": str(msg.get("content", ""))
                 })
             elif role == "assistant":
                 content = msg.get("content")
                 tool_calls = msg.get("tool_calls")
-                
-                item = {
-                    "role": "assistant"
-                }
-                if content:
-                    item["content"] = content
-                elif not tool_calls:
-                    item["content"] = " "  # OpenAI requires content or tool_calls
+
+                # Ensure content is always a plain string
+                if content is None:
+                    content_str = "" if tool_calls else " "
+                elif isinstance(content, str):
+                    content_str = content
                 else:
-                    item["content"] = None
-                
+                    # Dicts/lists/ints from legacy DB: stringify them
+                    content_str = json.dumps(content)
+
+                item = {
+                    "role": "assistant",
+                    "content": content_str
+                }
+
                 if tool_calls:
                     tcs = []
                     for tc in tool_calls:
                         tc_item = {
-                            "id": tc["id"],
+                            "id": tc.get("id", f"call_{len(tcs)}"),
                             "type": "function",
                             "function": {
-                                "name": tc["name"],
-                                "arguments": json.dumps(tc["input"])
+                                "name": tc.get("name", "unknown"),
+                                "arguments": json.dumps(tc.get("input", {}))
                             }
                         }
                         if tc.get("thought_signature"):
@@ -207,7 +211,7 @@ class OpenAIAdapter(ModelAdapter):
                             }
                         tcs.append(tc_item)
                     item["tool_calls"] = tcs
-                    
+
                 openai_msgs.append(item)
                 
         return openai_msgs

@@ -40,6 +40,11 @@ class AgentResult(BaseModel):
     iterations: int = 0
     event_log_key: str
     error: str | None = None
+    # Evaluator-optimizer signals — populated by review/security/test agents.
+    # severity: highest issue severity found ("low", "medium", "high", "critical").
+    # test_failures: number of failing test cases reported in this result.
+    severity: str | None = None
+    test_failures: int = 0
 
 
 class GraphState(TypedDict):
@@ -53,3 +58,6 @@ class GraphState(TypedDict):
     status: Literal["pending", "running", "reducing", "monitoring", "complete", "failed"]
     human_confirmation_required: bool
     messages: Annotated[list[BaseMessage], add_messages]
+    # Evaluator-optimizer: tracks how many refine → re-run cycles have occurred.
+    # Capped at SystemConfig.max_refinement_cycles to prevent infinite loops.
+    refinement_cycles: int

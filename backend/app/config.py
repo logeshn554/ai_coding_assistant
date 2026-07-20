@@ -68,7 +68,6 @@ class ConfigManager:
     def __init__(self):
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         self._init_config()
-        self._ensure_google_profile()
 
     def _init_config(self):
         """
@@ -76,72 +75,23 @@ class ConfigManager:
         """
         if not CONFIG_FILE.exists():
             default_config = {
-                "active_profile_id": "default-anthropic",
+                "active_profile_id": "default-ollama",
                 "last_workspace": "",
                 "profiles": [
                     {
-                        "id": "default-anthropic",
-                        "name": "Anthropic Claude 3.5 Sonnet",
-                        "base_url": "https://api.anthropic.com/v1",
-                        "model_name": "claude-sonnet-4-6",
-                        "api_format": "anthropic"
-                    },
-                    {
-                        "id": "default-openai",
-                        "name": "OpenAI GPT-4o",
-                        "base_url": "https://api.openai.com/v1",
-                        "model_name": "gpt-4o",
-                        "api_format": "openai"
-                    },
-                    {
-                        "id": "default-google",
-                        "name": "Google Gemini 1.5 Flash",
-                        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-                        "model_name": "gemini-1.5-flash",
-                        "api_format": "google"
-                    },
-                    {
                         "id": "default-ollama",
-                        "name": "Ollama (Local Llama 3)",
+                        "name": "Ollama Local",
                         "base_url": "http://localhost:11434/v1",
-                        "model_name": "llama3",
+                        "model_name": "",
                         "api_format": "openai"
                     }
                 ]
             }
             self._save_raw_config(default_config)
-            
-            # Save default passwords in keyring
             try:
-                keyring.set_password("devpilot", "default-anthropic", "")
-                keyring.set_password("devpilot", "default-openai", "")
-                keyring.set_password("devpilot", "default-google", "")
-                keyring.set_password("devpilot", "default-ollama", "ollama")
+                keyring.set_password("devpilot", "default-ollama", "")
             except Exception as e:
-                logger.error(f"Failed to set initial keyring passwords: {e}")
-
-    def _ensure_google_profile(self):
-        try:
-            config = self._read_raw_config()
-            profiles = config.get("profiles", [])
-            has_google = any(p.get("id") == "default-google" or "google" in p.get("api_format", "").lower() for p in profiles)
-            if not has_google:
-                google_profile = {
-                    "id": "default-google",
-                    "name": "Google Gemini 1.5 Flash",
-                    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-                    "model_name": "gemini-1.5-flash",
-                    "api_format": "google"
-                }
-                profiles.append(google_profile)
-                config["profiles"] = profiles
-                self._save_raw_config(config)
-                try:
-                    keyring.set_password("devpilot", "default-google", "")
-                except Exception as e:
-                    logger.error(f"Failed to set google profile password in keyring: {e}")
-        except Exception:
-            pass
+                logger.error(f"Failed to set initial keyring password: {e}")
 
     def _read_raw_config(self) -> dict:
         try:
@@ -372,6 +322,42 @@ class ConfigManager:
         config["agent_models"] = agent_models
         self._save_raw_config(config)
 
+    # ------------------------------------------------------------------
+    # Terminal preferences
+    # ------------------------------------------------------------------
+
+    def get_default_shell(self) -> str:
+        """Returns the user's preferred default terminal shell.
+        Empty string means 'use OS default' (PowerShell on Windows, $SHELL on Unix).
+        Valid values: '', 'cmd', 'powershell', 'bash', 'sh'.
+        """
+        config = self._read_raw_config()
+        return config.get("default_shell", "")
+
+    def set_default_shell(self, shell: str):
+        """Persist the user's preferred terminal shell."""
+        config = self._read_raw_config()
+        config["default_shell"] = shell
+        self._save_raw_config(config)
+
+    def get_terminal_font_size(self) -> int:
+        config = self._read_raw_config()
+        return config.get("terminal_font_size", 13)
+
+    def set_terminal_font_size(self, size: int):
+        config = self._read_raw_config()
+        config["terminal_font_size"] = max(8, min(size, 32))
+        self._save_raw_config(config)
+
+    def get_terminal_scrollback(self) -> int:
+        config = self._read_raw_config()
+        return config.get("terminal_scrollback", 5000)
+
+    def set_terminal_scrollback(self, lines: int):
+        config = self._read_raw_config()
+        config["terminal_scrollback"] = max(500, min(lines, 100000))
+        self._save_raw_config(config)
+
     def generate_bug_report(self) -> str:
         """Scans the full workspace using the `scan_for_bugs` tool and returns a concise report."""
         try:
@@ -379,4 +365,4 @@ class ConfigManager:
             return generate_bug_report_sync()
         except Exception as e:
             logger.error(f"Bug scanning failed: {e}")
-            return f"Bug scanning failed: {e}"
+            return f"Bug scanning failed: {e}"

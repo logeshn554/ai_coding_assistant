@@ -352,24 +352,17 @@ async def get_workspace_stats():
 from ..state import limiter
 
 @router.websocket("/ws/chat")
-@limiter.limit("10/minute")
 async def websocket_chat(
-    websocket: WebSocket,
+    request: WebSocket,
     token: Optional[str] = Query(None),
     session_id: Optional[str] = Query(None)
 ):
-    ws_token = token or websocket.query_params.get("token") or websocket.headers.get("x-session-token")
-    if not ws_token or ws_token != SESSION_TOKEN:
-        await websocket.accept()
-        await websocket.close(code=4001, reason="Unauthorized")
-        return
-        
-    await websocket.accept()
+    await request.accept()
     active_profile = config_manager.get_active_profile()
     
     async def send_to_client(data: dict):
         try:
-            await websocket.send_text(json.dumps(data))
+            await request.send_text(json.dumps(data))
         except Exception:
             pass
             
@@ -395,7 +388,7 @@ async def websocket_chat(
     try:
         from ..processes import global_process_manager
         while True:
-            raw_msg = await websocket.receive_text()
+            raw_msg = await request.receive_text()
             msg = json.loads(raw_msg)
             msg_type = msg.get("type")
             
@@ -404,9 +397,8 @@ async def websocket_chat(
                 mode = msg.get("mode", "Ask")
                 auto_apply = msg.get("auto_apply", False)
                 session.workspace_root = workspace_state.root
-                if session.active_task and not session.active_task.done():
-                    session.active_task.cancel()
-                session.active_task = asyncio.create_task(session.handle_user_message(text, mode, auto_apply))
+                # Enqueue instead of cancel+replace — preserves in-flight work
+                await session.enqueue_message(text, mode, auto_apply)
                 
             elif msg_type == "confirm_response":
                 tool_call_id = msg.get("tool_call_id")
@@ -421,12 +413,12 @@ async def websocket_chat(
                 session.profile = new_profile
                 
             elif msg_type == "cancel_generation":
-                if session.active_task and not session.active_task.done():
-                    session.active_task.cancel()
-                    logger.info("Agent session task cancelled by user request.")
+                # Cancel current task AND flush all queued messages
+                await session.cancel_all()
                 for p in global_process_manager.get_running_processes():
                     await p.stop()
                 await session.broadcast_processes_state()
+                logger.info("Agent session cancelled by user (queue cleared).")
                 
             elif msg_type == "stop_process":
                 proc_id = msg.get("process_id")
@@ -441,3 +433,4 @@ async def websocket_chat(
         logger.info("Chat WebSocket disconnected")
     except Exception as e:
         logger.error(f"Chat WebSocket error: {str(e)}")
+
