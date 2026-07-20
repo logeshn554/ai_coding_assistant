@@ -64,93 +64,6 @@ function AgentModelRow({ label, value, selectableModels, onChange }: AgentModelR
             placeholder="Type model name..."
           />
         )}
-        {activeSettingsTab === 'terminal' && (
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            <div className="space-y-1">
-              <h3 className="text-sm font-semibold text-white">Terminal Preferences</h3>
-              <p className="text-[10px] text-gray-500">Configure default terminal shell and display settings. Changes are saved immediately.</p>
-            </div>
-
-            {/* Default Shell */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-400">Default Shell</label>
-              <p className="text-[10px] text-gray-600">Selected shell is used for every new terminal pane, including after page reload.</p>
-              <select
-                id="default-shell-select"
-                value={defaultShell}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setDefaultShell(val);
-                  saveTerminalPrefs(val, termFontSize, termScrollback);
-                }}
-                className="bg-black/40 text-xs border border-white/10 hover:border-violet-500/40 focus:border-violet-500/60 rounded-lg px-3 py-1.5 text-white focus:outline-none transition-all cursor-pointer w-52"
-              >
-                <option value="">Default (OS shell)</option>
-                <option value="powershell">PowerShell</option>
-                <option value="cmd">CMD</option>
-                <option value="bash">Bash</option>
-                <option value="sh">Sh</option>
-              </select>
-            </div>
-
-            {/* Font Size */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-400">
-                Font Size — <span className="text-violet-400 font-mono">{termFontSize}px</span>
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  id="term-font-size"
-                  type="range"
-                  min={8}
-                  max={32}
-                  step={1}
-                  value={termFontSize}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    setTermFontSize(val);
-                  }}
-                  onMouseUp={(e) => {
-                    const val = parseInt((e.target as HTMLInputElement).value, 10);
-                    saveTerminalPrefs(defaultShell, val, termScrollback);
-                  }}
-                  className="accent-violet-500 w-48 cursor-pointer"
-                />
-                <span className="text-[10px] text-gray-500 w-6">{termFontSize}</span>
-              </div>
-            </div>
-
-            {/* Scrollback */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-400">Scrollback Buffer</label>
-              <p className="text-[10px] text-gray-600">Lines of terminal history kept in memory (500 – 100,000).</p>
-              <div className="flex items-center gap-2">
-                <input
-                  id="term-scrollback"
-                  type="number"
-                  min={500}
-                  max={100000}
-                  step={500}
-                  value={termScrollback}
-                  onChange={(e) => {
-                    const val = Math.max(500, Math.min(100000, parseInt(e.target.value, 10) || 5000));
-                    setTermScrollback(val);
-                  }}
-                  onBlur={() => saveTerminalPrefs(defaultShell, termFontSize, termScrollback)}
-                  className="bg-black/40 text-xs border border-white/10 hover:border-violet-500/40 focus:border-violet-500/60 rounded-lg px-3 py-1.5 text-white focus:outline-none transition-all w-28"
-                />
-                <span className="text-[10px] text-gray-500">lines</span>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-white/5">
-              <p className="text-[10px] text-gray-600">
-                💡 Font size and scrollback take effect on <strong className="text-gray-400">new terminal panes</strong> — existing open panes keep their current settings.
-              </p>
-            </div>
-          </div>
-        )}
-
       </div>
     </div>
   );
@@ -1014,6 +927,93 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
               )}
             </div>
 
+          </div>
+        )}
+
+        {activeSettingsTab === 'terminal' && (
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-white">Terminal Preferences</h3>
+              <p className="text-[10px] text-gray-500">Configure default terminal shell and display settings. Changes are saved immediately.</p>
+            </div>
+
+            {/* Default Shell */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-400">Default Shell</label>
+              <p className="text-[10px] text-gray-600">Selected shell is used for every new terminal pane, including after page reload.</p>
+              <select
+                id="default-shell-select"
+                value={defaultShell}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setDefaultShell(val);
+                  saveTerminalPrefs(val, termFontSize, termScrollback);
+                }}
+                className="bg-black/40 text-xs border border-white/10 hover:border-violet-500/40 focus:border-violet-500/60 rounded-lg px-3 py-1.5 text-white focus:outline-none transition-all cursor-pointer w-52"
+              >
+                <option value="">Default (OS shell)</option>
+                <option value="powershell">PowerShell</option>
+                <option value="cmd">CMD</option>
+                <option value="bash">Bash</option>
+                <option value="sh">Sh</option>
+              </select>
+            </div>
+
+            {/* Font Size */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-400">
+                Font Size — <span className="text-violet-400 font-mono">{termFontSize}px</span>
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  id="term-font-size"
+                  type="range"
+                  min={8}
+                  max={32}
+                  step={1}
+                  value={termFontSize}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    setTermFontSize(val);
+                  }}
+                  onMouseUp={(e) => {
+                    const val = parseInt((e.target as HTMLInputElement).value, 10);
+                    saveTerminalPrefs(defaultShell, val, termScrollback);
+                  }}
+                  className="accent-violet-500 w-48 cursor-pointer"
+                />
+                <span className="text-[10px] text-gray-500 w-6">{termFontSize}</span>
+              </div>
+            </div>
+
+            {/* Scrollback */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-400">Scrollback Buffer</label>
+              <p className="text-[10px] text-gray-600">Lines of terminal history kept in memory (500 – 100,000).</p>
+              <div className="flex items-center gap-2">
+                <input
+                  id="term-scrollback"
+                  type="number"
+                  min={500}
+                  max={100000}
+                  step={500}
+                  value={termScrollback}
+                  onChange={(e) => {
+                    const val = Math.max(500, Math.min(100000, parseInt(e.target.value, 10) || 5000));
+                    setTermScrollback(val);
+                  }}
+                  onBlur={() => saveTerminalPrefs(defaultShell, termFontSize, termScrollback)}
+                  className="bg-black/40 text-xs border border-white/10 hover:border-violet-500/40 focus:border-violet-500/60 rounded-lg px-3 py-1.5 text-white focus:outline-none transition-all w-28"
+                />
+                <span className="text-[10px] text-gray-500">lines</span>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-white/5">
+              <p className="text-[10px] text-gray-600">
+                💡 Font size and scrollback take effect on <strong className="text-gray-400">new terminal panes</strong> — existing open panes keep their current settings.
+              </p>
+            </div>
           </div>
         )}
       </div>

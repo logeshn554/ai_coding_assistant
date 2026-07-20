@@ -254,7 +254,6 @@ export default function TerminalArea({
   const [nextId, setNextId] = useState(1);
   const [activePaneId, setActivePaneId] = useState<number>(0);
   const [commandToRun, setCommandToRun] = useState<CommandTrigger | null>(null);
-  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // Load saved terminal preferences from the backend on mount.
   // We apply the default shell to the initial pane once settings arrive.
@@ -269,9 +268,8 @@ export default function TerminalArea({
         setSplitTerminals([{ id: 0, shell }]);
         if (data.terminal_font_size) setFontSize(data.terminal_font_size);
         if (data.terminal_scrollback) setScrollback(data.terminal_scrollback);
-        setSettingsLoaded(true);
       })
-      .catch(() => setSettingsLoaded(true));
+      .catch(() => {});
   }, []);
 
   // Persist the chosen shell immediately when the user changes the selector.
