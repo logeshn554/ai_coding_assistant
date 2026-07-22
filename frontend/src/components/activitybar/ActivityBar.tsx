@@ -1,5 +1,5 @@
 import React from 'react';
-import { Folder, Search, Settings, GitBranch, Play, Puzzle, Bot, LayoutGrid } from 'lucide-react';
+import { Folder, Search, Settings, GitBranch, Play, Puzzle, Bot, LayoutGrid, User } from 'lucide-react';
 import { useUI } from '../../core/ui/UIContext';
 import { useSettings } from '../../core/settings/SettingsContext';
 import { useGit } from '../../core/git/GitContext';
@@ -64,6 +64,31 @@ export const ActivityBar: React.FC = () => {
 
       {/* Bottom Icons: Profile & Settings */}
       <div className="flex flex-col w-full items-center gap-2">
+        {/* Profile */}
+        <div className="relative w-full flex justify-center py-1">
+          {isSidebarOpen && sidebarTab === 'profile' && (
+            <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-[var(--dp-accent)] rounded-r-md shadow-[0_0_8px_var(--dp-accent)]" />
+          )}
+          <button
+            onClick={() => {
+              if (isSidebarOpen && sidebarTab === 'profile') {
+                setIsSidebarOpen(false);
+              } else {
+                setSidebarTab('profile' as any);
+                setIsSidebarOpen(true);
+              }
+            }}
+            className={`p-2.5 transition-all duration-150 flex items-center justify-center cursor-pointer rounded-lg hover:bg-white/[0.04]
+              ${isSidebarOpen && sidebarTab === 'profile'
+                ? 'text-white'
+                : 'text-gray-500 hover:text-gray-200'
+              }`}
+            title="Profile"
+          >
+            <User className="w-[20px] h-[20px]" />
+          </button>
+        </div>
+
         {/* Settings */}
         <div className="relative w-full flex justify-center py-1">
           <button
