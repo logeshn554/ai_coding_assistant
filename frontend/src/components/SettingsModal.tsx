@@ -116,14 +116,14 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
       const res = await fetch('/api/config/settings');
       if (res.ok) {
         const data = await res.json();
-        setExcludeList(data.exclude_list || []);
-        setAutoBackupEnabled(data.auto_backup_enabled ?? true);
-        setAgentModelName(data.agent_model_name || '');
-        setAgentModels(data.agent_models || {});
+        setExcludeList(Array.isArray(data?.exclude_list) ? data.exclude_list : []);
+        setAutoBackupEnabled(data?.auto_backup_enabled ?? true);
+        setAgentModelName(data?.agent_model_name || '');
+        setAgentModels(data?.agent_models && typeof data.agent_models === 'object' ? data.agent_models : {});
         // Terminal preferences
-        setDefaultShell(data.default_shell || '');
-        if (data.terminal_font_size) setTermFontSize(data.terminal_font_size);
-        if (data.terminal_scrollback) setTermScrollback(data.terminal_scrollback);
+        setDefaultShell(data?.default_shell || '');
+        if (data?.terminal_font_size) setTermFontSize(data.terminal_font_size);
+        if (data?.terminal_scrollback) setTermScrollback(data.terminal_scrollback);
       }
     } catch (e) {
       console.error('Error loading preferences:', e);
@@ -241,32 +241,33 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   };
 
   useEffect(() => {
-    if (isOpen && activeSettingsTab === 'permissions') {
+    if (isOpen) {
+      loadProfiles();
+      loadPreferences();
       loadPermissions();
     }
-  }, [isOpen, activeSettingsTab]);
+  }, [isOpen]);
 
   const loadProfiles = async () => {
     try {
       const res = await fetch('/api/profiles');
-      const data = await res.json();
-      setProfiles(data.profiles);
-      setActiveId(data.active_profile_id);
-      if (data.active_profile_id && !selectedProfile) {
-        const active = data.profiles.find((p: Profile) => p.id === data.active_profile_id);
-        if (active) setSelectedProfile(active);
+      if (res.ok) {
+        const data = await res.json();
+        const profList = Array.isArray(data?.profiles) ? data.profiles : [];
+        setProfiles(profList);
+        setActiveId(data?.active_profile_id || '');
+        if (data?.active_profile_id && !selectedProfile) {
+          const active = profList.find((p: Profile) => p.id === data.active_profile_id);
+          if (active) setSelectedProfile(active);
+        } else if (profList.length > 0 && !selectedProfile) {
+          setSelectedProfile(profList[0]);
+        }
       }
     } catch (e) {
       console.error('Error loading profiles:', e);
+      setProfiles([]);
     }
   };
-
-  useEffect(() => {
-    if (isOpen) {
-      loadProfiles();
-      loadPreferences();
-    }
-  }, [isOpen]);
 
   const getSelectableModels = () => {
     const list = [...modelOptions];
@@ -470,7 +471,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             <div className="w-1/3 border-r border-white/5 bg-[#0e1014] p-4 flex flex-col justify-between">
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Profiles</div>
-                {profiles.map((p) => (
+                {(profiles || []).map((p) => (
                   <div
                     key={p.id}
                     onClick={() => handleSelectProfile(p)}
@@ -747,7 +748,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                 <div className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
                   Project Permissions (Saved on Disk)
                 </div>
-                {permissions.project.length === 0 ? (
+                {(!permissions?.project || permissions.project.length === 0) ? (
                   <div className="text-gray-500 italic p-3 bg-black/15 border border-white/5 rounded-lg">
                     No persistent command permissions granted for this project yet.
                   </div>
@@ -773,7 +774,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                 <div className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
                   Session Permissions (In-Memory Only)
                 </div>
-                {permissions.session.length === 0 ? (
+                {(!permissions?.session || permissions.session.length === 0) ? (
                   <div className="text-gray-500 italic p-3 bg-black/15 border border-white/5 rounded-lg">
                     No temporary session command permissions granted yet.
                   </div>
