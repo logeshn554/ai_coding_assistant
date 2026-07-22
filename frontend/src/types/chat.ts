@@ -65,8 +65,9 @@ export interface Session {
 
 export interface ProcessEntry {
   id: string;
-  command: string;
-  status: 'starting' | 'running' | 'stopped' | 'error';
+  name: string;
+  command?: string;
+  status?: 'starting' | 'running' | 'stopped' | 'error';
   pid?: number;
   port?: number;
 }

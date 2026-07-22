@@ -6,7 +6,7 @@ import { useTerminal } from '../terminal/TerminalContext';
 import { useGit } from '../git/GitContext';
 import { useToast } from '../toast/ToastContext';
 
-import type { ChatMessage, Session, ProcessEntry, SubTask } from '../../types/chat';
+import type { ChatMessage, Session, SubTask } from '../../types/chat';
 
 interface AIContextType {
   messages: ChatMessage[];

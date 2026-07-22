@@ -1,17 +1,10 @@
 import React, { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
-
-interface Process {
-  id: string;
-  name: string;
-  pid: number;
-  port?: number;
-  command?: string;
-}
+import type { ProcessEntry } from '../../types/chat';
 
 interface TerminalContextType {
   consoleLogs: string[];
-  activeProcesses: Process[];
+  activeProcesses: ProcessEntry[];
   activeTerminalCommand: string | null;
   activeTerminalStatus: 'running' | 'completed' | 'failed' | null;
   activeTerminalExitCode: number | null;
@@ -20,7 +13,7 @@ interface TerminalContextType {
   terminalHeight: number;
   isResizingTerminal: boolean;
   setConsoleLogs: React.Dispatch<React.SetStateAction<string[]>>;
-  setActiveProcesses: React.Dispatch<React.SetStateAction<Process[]>>;
+  setActiveProcesses: React.Dispatch<React.SetStateAction<ProcessEntry[]>>;
   setActiveTerminalCommand: (cmd: string | null) => void;
   setActiveTerminalStatus: (status: 'running' | 'completed' | 'failed' | null) => void;
   setActiveTerminalExitCode: (code: number | null) => void;
@@ -34,7 +27,7 @@ const TerminalContext = createContext<TerminalContextType | undefined>(undefined
 
 export const TerminalProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
-  const [activeProcesses, setActiveProcesses] = useState<Process[]>([]);
+  const [activeProcesses, setActiveProcesses] = useState<ProcessEntry[]>([]);
   const [activeTerminalCommand, setActiveTerminalCommand] = useState<string | null>(null);
   const [activeTerminalStatus, setActiveTerminalStatus] = useState<'running' | 'completed' | 'failed' | null>(null);
   const [activeTerminalExitCode, setActiveTerminalExitCode] = useState<number | null>(null);
