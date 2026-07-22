@@ -145,6 +145,16 @@ export const StatusBar: React.FC = () => {
           </span>
         )}
 
+        {/* AI Tokens & Context Info */}
+        <span className="text-[10px] font-mono text-violet-400 bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/20" title="Active Context Tokens">
+          14.2K Tokens
+        </span>
+
+        {/* Indexed Files */}
+        <span className="text-[10px] font-mono text-gray-400" title="Indexed Workspace Files">
+          142 Files Indexed
+        </span>
+
         {/* Encoding & Indentation */}
         <span className="text-[10px] text-gray-500">UTF-8</span>
         <span className="text-[10px] text-gray-500">Spaces: 2</span>

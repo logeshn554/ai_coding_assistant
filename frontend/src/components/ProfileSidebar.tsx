@@ -7,6 +7,7 @@ interface ProfileItem {
   name: string;
   model_name: string;
   base_url?: string;
+  api_format?: string;
 }
 
 export default function ProfileSidebar() {
@@ -116,7 +117,7 @@ export default function ProfileSidebar() {
                           {p.name}
                         </div>
                         <div className="text-[9px] text-gray-500 truncate font-mono">
-                          {p.model_name || p.base_url || 'Custom API'}
+                          {p.model_name || (p.api_format ? `${p.api_format.toUpperCase()} API` : p.base_url) || 'Custom API'}
                         </div>
                       </div>
                     </div>

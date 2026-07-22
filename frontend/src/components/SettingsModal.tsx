@@ -75,7 +75,21 @@ interface Profile {
   api_key: string;
   base_url: string;
   model_name: string;
+  api_format?: string;
 }
+
+const DEFAULT_PROVIDER_URLS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com/v1',
+  google: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+  groq: 'https://api.groq.com/openai/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  nvidia: 'https://integrate.api.nvidia.com/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+  mistral: 'https://api.mistral.ai/v1',
+  ollama: 'http://localhost:11434/v1',
+  other: 'https://api.openai.com/v1'
+};
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -138,7 +152,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     try {
       await fetch('/api/config/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           exclude_list: newExclusions,
           auto_backup_enabled: newBackup,
@@ -160,7 +174,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     try {
       await fetch('/api/config/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           exclude_list: excludeList,
           auto_backup_enabled: autoBackupEnabled,
@@ -176,17 +190,27 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     }
   };
 
+  const getAuthHeaders = (): Record<string, string> => {
+    const token = localStorage.getItem('session_token') || '';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  };
+
   const fetchModels = async () => {
     if (!selectedProfile) return;
     setIsFetchingModels(true);
     try {
       const res = await fetch('/api/models/fetch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           profile_id: selectedProfile.id,
           api_key: selectedProfile.api_key,
-          base_url: selectedProfile.base_url
+          base_url: selectedProfile.base_url,
+          api_format: selectedProfile.api_format || 'openai'
         })
       });
       const data = await res.json();
@@ -211,7 +235,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
 
   const loadPermissions = async () => {
     try {
-      const res = await fetch('/api/permissions');
+      const res = await fetch('/api/permissions', { headers: getAuthHeaders() });
       const data = await res.json();
       setPermissions(data);
     } catch (e) {
@@ -223,7 +247,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     try {
       const res = await fetch('/api/permissions/revoke', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ command, scope })
       });
       if (res.ok) {
@@ -244,7 +268,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
 
   const loadProfiles = async () => {
     try {
-      const res = await fetch('/api/profiles');
+      const res = await fetch('/api/profiles', { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         const profList = Array.isArray(data?.profiles) ? data.profiles : [];
@@ -290,7 +314,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
       name: 'New Custom Profile',
       api_key: '',
       base_url: 'https://api.openai.com/v1',
-      model_name: ''
+      model_name: '',
+      api_format: 'openai'
     };
     setSelectedProfile(newProfile);
     setTestResult(null);
@@ -302,7 +327,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     try {
       const res = await fetch('/api/profiles/active', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ id })
       });
       if (res.ok) {
@@ -316,11 +341,28 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
 
   const handleSaveProfile = async () => {
     if (!selectedProfile) return;
+    if (!selectedProfile.name?.trim()) {
+      alert('Please enter a Profile Name.');
+      return;
+    }
+    if (!selectedProfile.base_url?.trim()) {
+      alert('Please enter a Base URL.');
+      return;
+    }
     try {
+      // Send explicit clean payload — avoid undefined fields failing Pydantic validation
+      const payload = {
+        id: selectedProfile.id ?? null,
+        name: selectedProfile.name.trim(),
+        api_key: selectedProfile.api_key ?? '',
+        base_url: selectedProfile.base_url.trim(),
+        model_name: selectedProfile.model_name ?? '',
+        api_format: selectedProfile.api_format ?? 'openai'
+      };
       const res = await fetch('/api/profiles', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(selectedProfile)
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (data.success && data.profile) {
@@ -328,7 +370,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         if (savedId) {
           await fetch('/api/profiles/active', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders(),
             body: JSON.stringify({ id: savedId })
           });
         }
@@ -349,7 +391,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     if (!confirm('Are you sure you want to delete this profile?')) return;
     try {
       const res = await fetch(`/api/profiles/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders()
       });
       if (res.ok) {
         if (selectedProfile?.id === id) {
@@ -368,10 +411,20 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     setTesting(true);
     setTestResult(null);
     try {
+      // Always send all fields including api_format and profile id
+      // so backend can correctly resolve masked keys from saved profile
+      const payload = {
+        id: selectedProfile.id,
+        name: selectedProfile.name,
+        api_key: selectedProfile.api_key,
+        base_url: selectedProfile.base_url,
+        model_name: selectedProfile.model_name,
+        api_format: selectedProfile.api_format || 'openai'
+      };
       const res = await fetch('/api/test-connection', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(selectedProfile)
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       setTestResult({
@@ -531,16 +584,49 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     {selectedProfile.id ? 'Edit Profile' : 'Configure New Profile'}
                   </h3>
 
-                  {/* Profile Name */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-400">Profile Name</label>
-                    <input
-                      type="text"
-                      value={selectedProfile.name}
-                      onChange={(e) => setSelectedProfile({ ...selectedProfile, name: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
-                      placeholder="e.g. My Custom LLM Profile"
-                    />
+                  {/* Profile Name & API Provider */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-gray-400">Profile Name</label>
+                      <input
+                        type="text"
+                        value={selectedProfile.name}
+                        onChange={(e) => setSelectedProfile({ ...selectedProfile, name: e.target.value })}
+                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                        placeholder="e.g. My Anthropic Profile"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-gray-400">API Provider / Format</label>
+                      <select
+                        value={selectedProfile.api_format || 'openai'}
+                        onChange={(e) => {
+                          const fmt = e.target.value;
+                          const defaultUrl = DEFAULT_PROVIDER_URLS[fmt] || selectedProfile.base_url || 'https://api.openai.com/v1';
+                          setSelectedProfile({
+                            ...selectedProfile,
+                            api_format: fmt,
+                            base_url: defaultUrl,
+                            model_name: ''
+                          });
+                          setHasFetchedModels(false);
+                          setModelOptions([]);
+                        }}
+                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500"
+                      >
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic (Claude)</option>
+                        <option value="google">Google Gemini</option>
+                        <option value="groq">Groq</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="nvidia">NVIDIA NIM</option>
+                        <option value="openrouter">OpenRouter</option>
+                        <option value="mistral">Mistral AI</option>
+                        <option value="ollama">Ollama (Local)</option>
+                        <option value="other">Other / Custom API</option>
+                      </select>
+                    </div>
                   </div>
 
                   {/* Base URL & API Key */}

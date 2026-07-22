@@ -698,37 +698,83 @@ export default function EditorArea({
               </div>
             </div>
 
-            {/* ── Monaco Editor ── */}
-            <div className="flex-1 overflow-hidden">
-              {showDiff ? (
-                <DiffEditor
-                  original={proposedDiff.original}
-                  modified={proposedDiff.proposed}
-                  language={getLanguage(activeTab.path)}
-                  theme="vs-dark"
-                  height="100%"
-                  options={{
-                    renderSideBySide: true,
-                    readOnly: true,
-                    minimap: { enabled: false },
-                    scrollBeyondLastLine: false,
-                    fontFamily: EDITOR_OPTIONS.fontFamily,
-                    fontSize: EDITOR_OPTIONS.fontSize,
-                    fontLigatures: true,
-                  }}
-                />
-              ) : (
-                <Editor
-                  key={activeTab.path} // remount on file change so state is clean
-                  value={activeTab.content}
-                  onChange={handleEditorChange}
-                  language={getLanguage(activeTab.path)}
-                  theme="vs-dark"
-                  height="100%"
-                  options={EDITOR_OPTIONS}
-                  onMount={handleEditorMount}
-                />
+            {/* ── Monaco Editor / Diff Editor ── */}
+            <div className="flex-1 overflow-hidden flex flex-col relative">
+              {showDiff && proposedDiff && (
+                <div className="bg-[#181a24] border-b border-white/10 px-4 py-2 flex items-center justify-between z-10 shrink-0 select-none">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse"></span>
+                    <span className="text-xs font-semibold text-white">AI Proposed Code Changes</span>
+                    <span className="text-[10px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded">
+                      {proposedDiff.path}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => {
+                        handleSaveActiveFile();
+                        onRefreshWorkspace();
+                      }}
+                      className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      ✓ Accept Changes
+                    </button>
+                    <button 
+                      onClick={() => onRefreshWorkspace()}
+                      className="px-3 py-1 bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 border border-rose-500/30 rounded text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      ✕ Reject
+                    </button>
+                    <button 
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('devpilot-explain-diff', { detail: proposedDiff }));
+                      }}
+                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-gray-300 rounded text-xs font-medium transition-colors"
+                    >
+                      💡 Explain
+                    </button>
+                    <button 
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent('devpilot-regenerate-diff', { detail: proposedDiff }));
+                      }}
+                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-violet-300 rounded text-xs font-medium transition-colors"
+                    >
+                      🔄 Regenerate
+                    </button>
+                  </div>
+                </div>
               )}
+              <div className="flex-1 overflow-hidden">
+                {showDiff ? (
+                  <DiffEditor
+                    original={proposedDiff.original}
+                    modified={proposedDiff.proposed}
+                    language={getLanguage(activeTab.path)}
+                    theme="vs-dark"
+                    height="100%"
+                    options={{
+                      renderSideBySide: true,
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      scrollBeyondLastLine: false,
+                      fontFamily: EDITOR_OPTIONS.fontFamily,
+                      fontSize: EDITOR_OPTIONS.fontSize,
+                      fontLigatures: true,
+                    }}
+                  />
+                ) : (
+                  <Editor
+                    key={activeTab.path} // remount on file change so state is clean
+                    value={activeTab.content}
+                    onChange={handleEditorChange}
+                    language={getLanguage(activeTab.path)}
+                    theme="vs-dark"
+                    height="100%"
+                    options={EDITOR_OPTIONS}
+                    onMount={handleEditorMount}
+                  />
+                )}
+              </div>
             </div>
           </div>
         ) : (

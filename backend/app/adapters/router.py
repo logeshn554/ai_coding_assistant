@@ -45,10 +45,11 @@ class ModelRouter:
             else:
                 return OpenAIAdapter(key, url, model)
 
-        # Standard routing based on base_url or model name
-        if "anthropic.com" in url_l or "claude" in model_l:
+        # Standard routing based on api_format, base_url or model name
+        fmt = (profile.get("api_format") or "").lower()
+        if fmt == "anthropic" or "anthropic.com" in url_l or "claude" in model_l:
             return AnthropicAdapter(key, url, model)
-        elif "generativelanguage.googleapis.com" in url_l:
+        elif fmt == "google" or "generativelanguage.googleapis.com" in url_l:
             if "openai" not in url_l:
                 url = "https://generativelanguage.googleapis.com/v1beta/openai/"
             return OpenAIAdapter(key, url, model)

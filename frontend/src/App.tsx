@@ -1,8 +1,7 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { CoreProvider } from './core/CoreProvider';
 import { useWorkspace } from './core/workspace/WorkspaceContext';
 import { useEditor } from './core/editor/EditorContext';
-import { useTerminal } from './core/terminal/TerminalContext';
 import { useUI } from './core/ui/UIContext';
 import { useGit } from './core/git/GitContext';
 import { useAI } from './core/ai/AIContext';
@@ -27,7 +26,7 @@ import AgentsSidebar from './components/AgentsSidebar';
 import WorkspaceSidebar from './components/WorkspaceSidebar';
 import ProfileSidebar from './components/ProfileSidebar';
 import EditorArea from './components/EditorArea';
-import ChatPanel from './components/ChatPanel';
+import { AiWorkspace } from './components/chat/AiWorkspace';
 import SettingsModal from './components/SettingsModal';
 import QuickOpen from './components/QuickOpen';
 import GoToSymbol from './components/GoToSymbol';
@@ -36,8 +35,9 @@ import GoToSymbol from './components/GoToSymbol';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useResizeManager } from './hooks/useResizeManager';
 
-
 function EditorShell() {
+  const [chatInputText, setChatInputText] = useState('');
+  const [chatMode, setChatMode] = useState<'Ask' | 'Plan' | 'Agent'>('Agent');
   const { toasts, removeToast } = useToast();
 
   const {
@@ -84,17 +84,13 @@ function EditorShell() {
   } = useEditor();
 
   const {
-    activeProcesses
-  } = useTerminal();
-
-  const {
     isSidebarOpen,
     sidebarTab,
     isAiPanelOpen
   } = useUI();
 
-  const { gitChanges, gitChangesList, handleGitAction } = useGit();
-  const { isSettingsOpen, setIsSettingsOpen, handleSettingsChanged, activeProfileName } = useSettings();
+  const { gitChanges } = useGit();
+  const { isSettingsOpen, setIsSettingsOpen, handleSettingsChanged } = useSettings();
 
   const {
     messages,
@@ -103,17 +99,7 @@ function EditorShell() {
     handleConfirmPermission,
     isGenerating,
     statusMessage,
-    activeAgent,
-    activeTask,
-    handleConfirmPortConflict,
-    handleKillProcess,
     handleCancelGeneration,
-    sessions,
-    activeSessionId,
-    handleSelectSession,
-    handleDeleteSession,
-    handleNewSession,
-    handleRenameSession,
     contextTokens,
     contextPercentage
   } = useAI();
@@ -199,40 +185,28 @@ function EditorShell() {
                 className="dp-resize-handle-h absolute -left-1 top-0 bottom-0 w-2 z-50 select-none cursor-col-resize hover:bg-[var(--dp-accent)]/20 transition-colors"
               />
               <div className="flex-1 h-full min-w-0 border border-[var(--dp-border)] bg-[var(--dp-bg-secondary)] rounded-lg overflow-hidden flex flex-col shadow-lg shadow-black/20">
-                    <ChatPanel
+                    <AiWorkspace
                       messages={messages}
-                      onSendMessage={(text, mode, autoApply) =>
+                      inputText={chatInputText}
+                      setInputText={setChatInputText}
+                      onSendMessage={() =>
                         handleSendMessage(
-                          text,
-                          mode === 'Auto' || mode === 'Agent' ? 'Agent/Write' : mode,
-                          autoApply
+                          chatInputText,
+                          chatMode === 'Plan' ? 'Plan' : chatMode === 'Ask' ? 'Ask' : 'Agent/Write',
+                          false
                         )
                       }
+                      isGenerating={isGenerating}
+                      onCancelGeneration={handleCancelGeneration}
+                      mode={chatMode}
+                      setMode={setChatMode}
                       onConfirmTool={(toolCallId, approved, hunkDecisions) =>
                         handleConfirmTool(toolCallId, approved, 'once', hunkDecisions)
                       }
                       onConfirmPermission={handleConfirmPermission}
-                      isGenerating={isGenerating}
-                      statusMessage={statusMessage}
-                      activeProfileName={activeProfileName}
-                      onOpenSettings={() => setIsSettingsOpen(true)}
-                      onCancelGeneration={handleCancelGeneration}
-                      activeAgent={activeAgent}
-                      activeTask={activeTask}
-                      contextTokens={contextTokens}
-                      contextPercentage={contextPercentage}
-                      activeProcesses={activeProcesses}
-                      onConfirmPortConflict={handleConfirmPortConflict}
-                      onStopProcess={(procId) => handleKillProcess(procId || '')}
-                      sessions={sessions}
-                      activeSessionId={activeSessionId}
-                      onSelectSession={handleSelectSession}
-                      onDeleteSession={handleDeleteSession}
-                      onNewSession={handleNewSession}
-                      onRenameSession={handleRenameSession}
-                      gitChangesList={gitChangesList}
-                      onGitAction={handleGitAction}
-                      onSelectFile={handleSelectFile}
+                      statusMessage={statusMessage ?? undefined}
+                      contextTokens={typeof contextTokens === 'number' ? contextTokens : undefined}
+                      contextPercentage={typeof contextPercentage === 'number' ? contextPercentage : undefined}
                     />
               </div>
             </div>

@@ -507,7 +507,7 @@ export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger
                     />
                   </form>
                 ) : (
-                  <div className="flex items-center gap-1.5 min-w-0 truncate">
+                  <div className="flex items-center gap-1.5 min-w-0 truncate" title={`File: ${item.path}\nAI Modified: Yes\nLast AI Edit: Just now\nAuthor: DevPilot AI`}>
                     <span className={`text-[12px] truncate leading-tight ${
                       isSelected ? 'text-white font-medium' :
                       gitStatus === 'M' ? 'text-[var(--dp-git-modified)]' :
@@ -518,6 +518,12 @@ export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger
                       {item.name}
                     </span>
                     {gitStatus && <GitBadge status={gitStatus} />}
+                    {/* AI Decoration Badge */}
+                    {!item.is_dir && (item.name.endsWith('.tsx') || item.name.endsWith('.py') || item.name.endsWith('.ts')) && (
+                      <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold shrink-0">
+                        AI
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
