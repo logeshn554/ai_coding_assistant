@@ -38,21 +38,44 @@ class StateGraph:
                 self.graph = graph
 
             async def ainvoke(self, state, config=None, **kwargs):
-                # Follow the first edge from START if it exists.
                 next_nodes = self.graph.edges.get(START, [])
                 if not next_nodes:
                     return state
                 current = next_nodes[0]
-                fn = self.graph.nodes.get(current)
-                if fn is None:
-                    return state
-                state = await fn(state)
-                # Apply conditional routing if defined.
-                if current in self.graph.conditional:
-                    cond_fn, mapping = self.graph.conditional[current]
-                    route = cond_fn(state)
-                    if route == END:
-                        return state
+                
+                max_steps = 100
+                step = 0
+                while current and current != END and step < max_steps:
+                    step += 1
+                    fn = self.graph.nodes.get(current)
+                    if fn is None:
+                        break
+                    state = await fn(state)
+                    
+                    if current in self.graph.conditional:
+                        cond_fn, mapping = self.graph.conditional[current]
+                        route = cond_fn(state)
+                        
+                        if isinstance(route, list):
+                            # Parallel execution of nodes in list
+                            for target in route:
+                                target_node = mapping.get(target, target)
+                                if target_node != END and target_node in self.graph.nodes:
+                                    target_fn = self.graph.nodes[target_node]
+                                    state = await target_fn(state)
+                            # After parallel nodes execute, return to Orchestrator if static edge exists
+                            # Or default back to Orchestrator
+                            current = "Orchestrator"
+                        else:
+                            target_node = mapping.get(route, route)
+                            if target_node == END:
+                                break
+                            current = target_node
+                    elif current in self.graph.edges and self.graph.edges[current]:
+                        current = self.graph.edges[current][0]
+                    else:
+                        break
+
                 return state
 
         return CompiledGraph(graph)

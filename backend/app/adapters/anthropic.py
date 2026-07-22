@@ -82,15 +82,25 @@ class AnthropicAdapter(ModelAdapter):
         # Map internal messages to Anthropic's format
         anthropic_messages = self._to_anthropic_messages(messages)
 
+        is_agent_mode = "OPERATING MODE: Agent" in system_prompt or "MULTI-AGENT ORCHESTRATION" in system_prompt
         try:
-            stream = await client.messages.create(
-                model=self.model_name,
-                max_tokens=4000,
-                system=system_prompt,
-                messages=anthropic_messages,
-                tools=anthropic_tools,
-                stream=True
-            )
+            kwargs = {
+                "model": self.model_name,
+                "system": system_prompt,
+                "messages": anthropic_messages,
+                "tools": anthropic_tools,
+                "stream": True,
+            }
+            if is_agent_mode:
+                kwargs["max_tokens"] = 16000
+                kwargs["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": 10000
+                }
+            else:
+                kwargs["max_tokens"] = 4000
+
+            stream = await client.messages.create(**kwargs)
 
             current_tool_calls: Dict[int, Dict[str, Any]] = {}  # Index -> tool_call data
 

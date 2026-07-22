@@ -41,37 +41,75 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 import redis.asyncio as aioredis
 
 class InMemoryFallbackRedis:
+    # Seconds to wait before re-attempting a Redis connection after a failure.
+    RECONNECT_COOLDOWN = 60
+
     def __init__(self, redis_url: str):
         self.url = redis_url
         self.client = None
-        self.fallback_db = {}
+        self.fallback_db: dict[str, str] = {}
+        self._fallback_expiry: dict[str, float] = {}  # key → unix expiry time
         self.use_fallback = False
-        
+        self._last_failure_time: float = 0.0
+
+    def _evict_expired(self):
+        """Remove stale TTL entries from the fallback store."""
+        import time as _time
+        now = _time.monotonic()
+        expired = [k for k, exp in self._fallback_expiry.items() if exp <= now]
+        for k in expired:
+            self.fallback_db.pop(k, None)
+            del self._fallback_expiry[k]
+
+    def _should_retry_redis(self) -> bool:
+        """Return True if enough time has passed to warrant a reconnect attempt."""
+        import time as _time
+        return _time.monotonic() - self._last_failure_time >= self.RECONNECT_COOLDOWN
+
     async def get(self, key: str):
-        if self.use_fallback:
+        self._evict_expired()
+        if self.use_fallback and not self._should_retry_redis():
             return self.fallback_db.get(key)
         try:
+            if self.use_fallback:
+                # Probe for reconnection
+                self.client = aioredis.from_url(self.url, decode_responses=True)
+                self.use_fallback = False
             if self.client is None:
                 self.client = aioredis.from_url(self.url, decode_responses=True)
             return await self.client.get(key)
         except Exception:
+            import time as _time
             self.use_fallback = True
+            self._last_failure_time = _time.monotonic()
             logger.info("Redis is offline or not configured. Using in-memory fallback for session context storage.")
             return self.fallback_db.get(key)
-            
+
     async def set(self, key: str, value: str, ex: int = None):
-        if self.use_fallback:
+        self._evict_expired()
+        if self.use_fallback and not self._should_retry_redis():
+            import time as _time
             self.fallback_db[key] = value
+            if ex is not None:
+                self._fallback_expiry[key] = _time.monotonic() + ex
             return True
         try:
+            if self.use_fallback:
+                self.client = aioredis.from_url(self.url, decode_responses=True)
+                self.use_fallback = False
             if self.client is None:
                 self.client = aioredis.from_url(self.url, decode_responses=True)
             return await self.client.set(key, value, ex=ex)
         except Exception:
+            import time as _time
             self.use_fallback = True
+            self._last_failure_time = _time.monotonic()
             logger.info("Redis is offline or not configured. Using in-memory fallback for session context storage.")
             self.fallback_db[key] = value
+            if ex is not None:
+                self._fallback_expiry[key] = _time.monotonic() + ex
             return True
+
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 redis_client = InMemoryFallbackRedis(REDIS_URL)

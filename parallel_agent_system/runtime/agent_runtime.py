@@ -54,7 +54,21 @@ class DockerWorkspace:
         self.cleaned = False
 
     async def cleanup(self) -> None:
-        """Cleans up host mounts and terminates execution containers."""
+        """Cleans up host mounts and terminates execution containers.
+
+        WARNING: This is currently a stub. When the Docker runtime is fully
+        implemented, this method must:
+          1. Stop and remove the container (docker stop + docker rm or auto_remove).
+          2. Unmount or delete agent_workspace_path volumes.
+          3. Release the host_port reservation.
+
+        Until then, callers must NOT assume resources have been freed.
+        """
+        import logging as _logging
+        _logging.getLogger("parallel_agent_system.runtime").warning(
+            "DockerWorkspace.cleanup() called but container teardown is not yet implemented. "
+            "Container '%s' may still be running.", self.container_name
+        )
         self.cleaned = True
 
 

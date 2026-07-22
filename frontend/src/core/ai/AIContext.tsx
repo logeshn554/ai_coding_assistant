@@ -60,7 +60,9 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     setActiveTerminalStatus,
     setActiveTerminalExitCode,
     setActiveTerminalElapsed,
-    setActiveProcesses
+    setActiveProcesses,
+    setConsoleLogs,
+    setBottomTab
   } = useTerminal();
   const { updateStatusBarInfo } = useGit();
   const { showToast } = useToast();
@@ -366,6 +368,15 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
           setActiveTerminalStatus(data.status);
           setActiveTerminalExitCode(data.exit_code);
           setActiveTerminalElapsed(data.elapsed);
+          if (data.status === 'running') {
+            setBottomTab('terminal');
+          }
+          break;
+        case 'terminal_stream':
+          if (data.content) {
+            setConsoleLogs((prev) => [...prev, data.content]);
+            window.dispatchEvent(new CustomEvent('devpilot_terminal_stream', { detail: data.content }));
+          }
           break;
         case 'processes_update':
           setActiveProcesses(data.processes || []);

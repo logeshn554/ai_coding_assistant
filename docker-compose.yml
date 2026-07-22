@@ -11,16 +11,16 @@ services:
       - ALLOW_REMOTE=true
       - HOST=0.0.0.0
       - PORT=8000
-      # You can mount your own coding workspace project to /workspace inside the container
-      # and this environment variable will set it as the default workspace on start.
-      - INITIAL_WORKSPACE_ROOT=/workspace
+      - INITIAL_WORKSPACE_ROOT=
       # Override config/profile key-value settings if needed
       # - CORS_ORIGINS=http://localhost:8000
     volumes:
       # Persists configurations and API keys (e.g. Anthropic, OpenAI, etc.)
       - devpilot-config:/root/.devpilot
-      # Mounts the current directory as the workspace folder inside the container
-      - .:/workspace
+      # Mount Windows drives so the folder browser can see your laptop's disk
+      - C:/:/host/c
+      - D:/:/host/d
+      - E:/:/host/e
     restart: unless-stopped
 
 volumes:

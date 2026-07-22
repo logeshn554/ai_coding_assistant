@@ -98,4 +98,39 @@ def test_workspace_context_indexer(tmp_path):
     context = indexer.get_prompt_context(max_tokens=2000)
     assert "src/index.js" in context
     assert "console.log" in context
+
+@pytest.mark.asyncio
+async def test_openai_adapter_non_stream_fallback():
+    from unittest.mock import MagicMock, AsyncMock, patch
+    from app.adapters.openai import OpenAIAdapter
+
+    adapter = OpenAIAdapter(api_key="test_key", base_url="http://test", model_name="nova-micro")
+
+    mock_msg = MagicMock()
+    mock_msg.content = "Fallback response"
+    mock_msg.tool_calls = None
+    mock_choice = MagicMock()
+    mock_choice.message = mock_msg
+    mock_choice.finish_reason = "stop"
+    mock_non_stream = MagicMock()
+    mock_non_stream.choices = [mock_choice]
+
+    with patch("app.adapters.openai.AsyncOpenAI") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        
+        # First call (stream=True) raises API error, second call (stream=False) succeeds
+        mock_client.chat.completions.create = AsyncMock(side_effect=[
+            Exception("BedrockException - modelStreamErrorException"),
+            mock_non_stream
+        ])
+
+        chunks = []
+        tools = [{"name": "test_tool", "description": "test", "input_schema": {}}]
+        async for chunk in adapter.stream_chat(messages=[{"role": "user", "content": "hi"}], tools=tools, system_prompt="sys"):
+            chunks.append(chunk)
+
+        assert len(chunks) == 2
+        assert chunks[0] == {"type": "text", "content": "Fallback response"}
+        assert chunks[1] == {"type": "done", "stop_reason": "stop"}
 

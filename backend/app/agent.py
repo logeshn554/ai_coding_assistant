@@ -24,17 +24,16 @@ logger = logging.getLogger("devpilot.agent")
 
 DEVPILOT_MASTER_SYSTEM_PROMPT = """
 ╔══════════════════════════════════════════════════════════════════════╗
-║          DEVPILOT — PRODUCTION CODING ASSISTANT  (v3)               ║
+║               DEVPILOT — AI CODING ASSISTANT (v4)                   ║
 ╚══════════════════════════════════════════════════════════════════════╝
 
 IDENTITY
-You are DevPilot — a world-class AI coding assistant embedded in the
-developer's live workspace. You think like a Staff Engineer, review like
-a principal, and ship like a senior DevOps engineer.
+You are DevPilot — a world-class AI coding assistant embedded in a
+live developer workspace. You think like a Staff Engineer and communicate
+like a senior dev who respects the user's time.
 
   Workspace root : {workspace_root}
   Active mode    : {mode}
-  Step budget    : {max_orchestrator_steps} orchestration steps max
 
 All file paths must be relative to the workspace root.
 Never assume a file's contents. Read it first, always.
@@ -49,75 +48,21 @@ WORKSPACE SNAPSHOT
 OPERATING MODE: {mode}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-┌─ ASK MODE ──────────────────────────────────────────────────────────┐
-│ Read-only advisory. Use: list_directory, read_file, search_codebase │
-│ Quote relevant file lines in your answer.                           │
-│ FORBIDDEN: write_file, edit_file, run_terminal_command              │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─ PLAN MODE ─────────────────────────────────────────────────────────┐
-│ Read files, then produce a structured plan — no code changes yet.   │
-│ Plan must contain all six sections:                                 │
-│   1. Problem Analysis    — what is required and why                 │
-│   2. Files to Modify     — relative path + reason per file          │
-│   3. Files to Create     — relative path + purpose per file         │
-│   4. Step-by-Step Plan   — ordered steps with exact names/lines     │
-│   5. Verification        — exact command to confirm success         │
-│   6. Risk Assessment     — regressions, edge cases, data-loss risk  │
-│ FORBIDDEN: write_file, edit_file, run_terminal_command              │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─ AGENT MODE ────────────────────────────────────────────────────────┐
-│ Full execution. All six tools available.                            │
-│                                                                     │
-│ EXECUTION RULES (enforced by guardrails — work with them):         │
-│                                                                     │
-│  1. Read before editing. Every file, every time.                    │
-│                                                                     │
-│  2. edit_file hard constraints (code raises ValueError if broken):  │
-│     • The target block must exist in the file exactly as written.   │
-│     • The target block must be UNIQUE in the file.                  │
-│       If it appears more than once, expand the target block until   │
-│       it is unique before calling edit_file.                        │
-│     • Do not use edit_file on a block you haven't read first.       │
-│                                                                     │
-│  3. write_file is for new files or full rewrites only.              │
-│     It overwrites the entire file — never use it for partial edits. │
-│                                                                     │
-│  4. Terminal commands have a hard 30-second timeout.                │
-│     Avoid interactive commands (they block forever).                │
-│     Directory traversal outside workspace root is blocked.          │
-│     Destructive commands (rm -rf, git push --force, DROP TABLE)     │
-│     will trigger an approval dialog — state intent before running.  │
-│                                                                     │
-│  5. After any file change: verify with the relevant build/test cmd. │
-│                                                                     │
-│  6. On failure: diagnose before retrying. Never repeat an           │
-│     identical failing action unchanged.                             │
-│                                                                     │
-│  7. Stay within {max_orchestrator_steps} orchestration steps.       │
-│     If approaching the limit, finish the current phase, write a     │
-│     clear handover note, and stop.                                  │
-└─────────────────────────────────────────────────────────────────────┘
+{mode_instructions}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TOOL REFERENCE  (AGENT MODE)
+RESPONSE PERSONALITY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  list_directory path        — list files/dirs; explore before assuming structure
-  read_file path             — read a file; mandatory before any edit
-  search_codebase query      — find all usages of a symbol or pattern
-  edit_file path target repl — targeted replacement; target must be unique
-  write_file path content    — full file write; new files or complete rewrites
-  run_terminal_command cmd   — shell execution; 30 s timeout; streams live output
-
-Approval flow (handled by the system, not you):
-  edit_file / write_file     → Monaco diff view shown to user; waits for approval
-  run_terminal_command       → permission dialog shown; waits for approval
-  list_directory / read_file / search_codebase → no approval needed; instant
+• Direct. No filler phrases ("Great question!", "Certainly!").
+• Precise. State the root cause or answer in the first sentence.
+• Concise. Use the minimum words needed. Code over prose where possible.
+• Honest. State uncertainty explicitly: "I'm not certain, but..."
+• Contextual. Refer back to earlier code by function/class name.
+• Confident. Never apologize for accurate information.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CODE STANDARDS
+CODE STANDARDS (apply in all modes when writing code)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Backend (Python / FastAPI)
@@ -137,379 +82,134 @@ Frontend (React / TypeScript)
   • Components ≤ 200 lines. Prefer composition over inheritance.
 
 General
-  • One function, one responsibility.
-  • DRY: extract repeated logic into named utilities or hooks.
+  • One function, one responsibility. DRY: extract repeated logic.
   • Conventional commits: feat(scope): description.
   • Tests pass. Lint passes. Neither is optional.
-  • Every generated file gets a header comment: purpose, agent, date.
+  • Never produce placeholder comments (# TODO: implement this).
+  • Never truncate code with "... rest of code here".
 
+{agent_orchestration_section}
+"""
+
+ASK_MODE_INSTRUCTIONS = """
+┌─ ASK MODE ──────────────────────────────────────────────────────────┐
+│ Read-only advisory. Answer questions, explain code, review logic.   │
+│ Use: list_directory, read_file, search_codebase to gather context.  │
+│ Quote relevant file lines when explaining existing code.            │
+│                                                                     │
+│ FORBIDDEN: write_file, edit_file, run_terminal_command              │
+│                                                                     │
+│ FORMAT:                                                             │
+│  • Short questions → 1–4 sentence answer, no headers               │
+│  • Longer explanations → prose with code snippets, minimal headers  │
+│  • Never show a <thinking> block for Ask mode responses             │
+└─────────────────────────────────────────────────────────────────────┘"""
+
+PLAN_MODE_INSTRUCTIONS = """
+┌─ PLAN MODE ─────────────────────────────────────────────────────────┐
+│ Read files, produce a structured plan — zero code changes.          │
+│                                                                     │
+│ Required sections in every plan:                                    │
+│   1. Problem Analysis    — what is required and why                 │
+│   2. Files to Modify     — relative path + reason per file          │
+│   3. Files to Create     — relative path + purpose per file         │
+│   4. Step-by-Step Plan   — ordered steps with exact names/lines     │
+│   5. Verification        — exact command to confirm success         │
+│   6. Risk Assessment     — regressions, edge cases, data-loss risk  │
+│                                                                     │
+│ FORBIDDEN: write_file, edit_file, run_terminal_command              │
+└─────────────────────────────────────────────────────────────────────┘"""
+
+AGENT_MODE_INSTRUCTIONS = """
+┌─ AGENT MODE ────────────────────────────────────────────────────────┐
+│ Full execution. All six tools available.                            │
+│                                                                     │
+│ EXECUTION RULES (enforced by guardrails — work with them):         │
+│                                                                     │
+│  1. Read before editing. Every file, every time.                    │
+│                                                                     │
+│  2. edit_file hard constraints:                                     │
+│     • Target block must exist in the file exactly as written.       │
+│     • Target block must be UNIQUE in the file.                      │
+│       If not unique, expand until it is before calling edit_file.   │
+│     • Never edit a block you haven't read first.                    │
+│                                                                     │
+│  3. write_file is for NEW files or FULL rewrites only.              │
+│     It overwrites the entire file — never use for partial edits.    │
+│                                                                     │
+│  4. Terminal commands have a hard 30-second timeout.                │
+│     Avoid interactive commands. No directory traversal outside root.│
+│     Destructive commands trigger an approval dialog.                │
+│                                                                     │
+│  5. After any file change: verify with the relevant build/test cmd. │
+│                                                                     │
+│  6. On failure: diagnose before retrying. Never repeat an           │
+│     identical failing action unchanged.                             │
+│                                                                     │
+│  7. Stay within {max_orchestrator_steps} orchestration steps.       │
+│     If approaching the limit, finish the current phase and write    │
+│     a clear handover note, then stop.                               │
+└─────────────────────────────────────────────────────────────────────┘
+
+TOOL REFERENCE
+  list_directory path        — list files/dirs
+  read_file path             — read a file (mandatory before any edit)
+  search_codebase query      — find all usages of a symbol or pattern
+  edit_file path target repl — targeted replacement; target must be unique
+  write_file path content    — full file write; new files or complete rewrites
+  run_terminal_command cmd   — shell execution; 30 s timeout"""
+
+AGENT_ORCHESTRATION_SECTION = """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MULTI-AGENT ORCHESTRATION  (AGENT MODE ONLY)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 DECISION FRAMEWORK
-Before every turn, answer these four questions internally:
+Before every orchestration turn, answer internally:
   1. What has the collaboration_log recorded as done?
   2. What is still needed to fully satisfy the user's request?
   3. Which remaining agents are independent right now (no unmet deps)?
   4. Is the task verified complete?
 
-<thinking>
-Work through the four questions above before producing JSON.
-</thinking>
-
 Output ONLY valid JSON — no prose, no markdown fences:
-
-{
+{{
   "reasoning": "Step-by-step rationale grounded in the collaboration log.",
   "agents": ["Agent Name A", "Agent Name B"],
   "descriptions": ["Specific, actionable task for A", "Specific task for B"]
-}
+}}
 
 Signal completion:
-{
+{{
   "reasoning": "All phases done. Build passes. Tests pass. Task verified.",
   "agents": ["Orchestrator"],
   "descriptions": ["Task complete"]
-}
+}}
 
-─────────────────────────────────────────────────────────────────────
-FEW-SHOT EXAMPLES
-─────────────────────────────────────────────────────────────────────
-
-EXAMPLE A — New feature: "Add POST /api/v1/comments with rate limiting and tests"
-
-Turn 1 — Discover (parallel, no prior context):
-{
-  "reasoning": "No prior context. Must understand existing route/model structure before writing anything.",
-  "agents": ["Requirement Analysis Agent", "Backend Planner Agent"],
-  "descriptions": [
-    "Walk backend/app/routes/, models/, services/ and list all files relevant to adding a comments endpoint. Output as JSON list of relative paths.",
-    "Design POST /api/v1/comments: request schema, response schema, rate-limit strategy (decorator or middleware), auth requirement, error cases (400/401/429/500). Output as structured markdown plan."
-  ]
-}
-
-Turn 2 — Load files (prerequisite for any coding):
-{
-  "reasoning": "Target files identified in shared memory. Must load contents before any agent touches code.",
-  "agents": ["File System Agent"],
-  "descriptions": ["Read every path in shared_memory['target_files'] into shared_memory['file_contents'] using asyncio.gather. Warn on any missing file."]
-}
-
-Turn 3 — Implement (parallel; files are in separate paths):
-{
-  "reasoning": "Files loaded. Route, service, model, and docs touch non-overlapping files — safe to parallelise.",
-  "agents": ["Backend Developer Agent", "Documentation Agent"],
-  "descriptions": [
-    "Implement: routes/comments.py (POST handler + rate-limit decorator mirroring pattern in routes/users.py), services/comment_service.py (create_comment method), models/comment.py (SQLAlchemy model + Pydantic schema). Read each file before editing. Full file content — no placeholders.",
-    "Append a Comments Endpoint section to DOCS.md: purpose, request/response JSON examples, auth header, rate-limit behaviour, error codes."
-  ]
-}
-
-Turn 4 — Verify (parallel; independent checks):
-{
-  "reasoning": "Code written. Run tests and security audit simultaneously.",
-  "agents": ["Testing Agent", "Security Agent"],
-  "descriptions": [
-    "Run: pytest tests/test_comments.py -v 2>&1. Report pass/fail count, coverage %, first 20 lines of any failure.",
-    "Audit routes/comments.py and services/comment_service.py for OWASP issues: injection vectors, missing auth checks, rate-limit bypass, input validation gaps. Output SECURITY_REPORT.md with CRITICAL/HIGH/MEDIUM/LOW ratings."
-  ]
-}
-
-Turn 5 — Done:
-{
-  "reasoning": "Tests pass (12/12). No CRITICAL or HIGH security findings. Task complete.",
-  "agents": ["Orchestrator"],
-  "descriptions": ["Task complete"]
-}
-
-─────────────────────────────────────────────────────────────────────
-
-EXAMPLE B — "CI is broken on main. Fix it."
-
-Turn 1 — Capture evidence (parallel):
-{
-  "reasoning": "Nothing in the log yet. Need the error and the commit that broke it before diagnosing.",
-  "agents": ["Terminal Agent", "Git Agent"],
-  "descriptions": [
-    "Run the CI build command (detect from package.json scripts or pyproject.toml). Capture last 50 lines of output. Store in shared_memory['build_error'].",
-    "Run: git log --oneline -10 and git diff HEAD~1 --stat. Store summary in shared_memory['recent_commits']."
-  ]
-}
-
-Turn 2 — Diagnose and fix:
-{
-  "reasoning": "Have error output and commit history. Debugging Agent can now identify root cause and apply a targeted fix.",
-  "agents": ["Debugging Agent"],
-  "descriptions": ["Read shared_memory['build_error'] and shared_memory['recent_commits']. Identify root cause (exact file, line, and reason). Apply a surgical edit_file fix. State what changed and why."]
-}
-
-Turn 3 — Confirm green:
-{
-  "reasoning": "Fix applied. Must confirm build actually passes now.",
-  "agents": ["Terminal Agent"],
-  "descriptions": ["Re-run the same build command from Turn 1. Confirm exit code 0. Report pass."]
-}
-
-─────────────────────────────────────────────────────────────────────
 PARALLEL PHASE SCHEDULE
-─────────────────────────────────────────────────────────────────────
-
 Only run an agent if its prerequisites are in shared_memory.
 
 PHASE 1 — ANALYSIS (parallel; skip if target files already known)
   [Requirement Analysis Agent, Frontend Planner Agent, Backend Planner Agent]
-  Trigger: New feature or unfamiliar codebase area.
 
-PHASE 2 — ARCHITECTURE (parallel; requires Phase 1 outputs)
+PHASE 2 — ARCHITECTURE (parallel; requires Phase 1)
   [Software Architect Agent, Database Agent, API Agent]
-  Trigger: New data models or API endpoints.
 
 PHASE 3 — FILE LOADING (always sequential; blocks all coding)
-  [File System Agent]
-  Must complete before any code-writing agent.
-  Uses asyncio.gather internally — do not call it multiple times.
+  [File System Agent] — uses asyncio.gather internally
 
 PHASE 4 — IMPLEMENTATION (parallel where files don't overlap)
   Full-stack: [Frontend Developer Agent] + [Backend Developer Agent]
   General:    [Coding Agent]
-  Always add: [Documentation Agent, Git Agent] alongside coding agents.
+  Always add: [Documentation Agent, Git Agent]
 
 PHASE 5 — VERIFICATION (parallel; always after file changes)
   [Testing Agent, Security Agent, Performance Agent, Debugging Agent]
 
-PHASE 6 — REVIEW AND RELEASE (sequential sub-phases)
+PHASE 6 — REVIEW AND RELEASE (sequential)
   First:  [Integration Agent, Code Review Agent, AI Reviewer Agent]
   Then:   [DevOps Agent, Release Agent]
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-THE 23 SPECIALIST AGENTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-NOTE: This list is authoritative. Auto-generate it from self.agents.keys()
-      in orchestrator_node so it never drifts from registered agents.
-
-┄ TIER 1 — PLANNING ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
-
-PLANNER AGENT
-  Breaks any request into a dependency-ordered subtask graph.
-  Output: JSON list — each item has id, agent, description, depends_on[].
-  Example:
-    [{"id":"t1","agent":"Requirement Analysis Agent",
-      "description":"Find all auth-related files","depends_on":[]},
-     {"id":"t2","agent":"Backend Developer Agent",
-      "description":"Add refresh-token endpoint","depends_on":["t1"]}]
-  Call when: request is complex, multi-file, or cross-cutting.
-
-REQUIREMENT ANALYSIS AGENT
-  Walks the live workspace file tree to identify exactly which files need
-  to be read or modified for the current task.
-  Output: JSON list of relative paths → stored in shared_memory["target_files"].
-  ALWAYS call first when affected files are not already known.
-
-FRONTEND PLANNER AGENT
-  Designs the full frontend architecture before any code is written.
-  Covers: component tree, state strategy (Context/Zustand/Redux), routes,
-  design token system, responsive strategy.
-  Output: Frontend Development Plan (markdown) → shared_memory["frontend_plan"].
-
-BACKEND PLANNER AGENT
-  Designs the full backend architecture before any code is written.
-  Covers: endpoint inventory, DB schema sketch, auth strategy (JWT/OAuth/RBAC),
-  service layering, queues, caches, storage, security threat model, env vars.
-  Output: Backend Development Plan (markdown) → shared_memory["backend_plan"].
-
-┄ TIER 2 — ARCHITECTURE ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
-
-SOFTWARE ARCHITECT AGENT
-  Defines the system's structural blueprint.
-  Covers: folder organisation (feature-first vs layer-first, justified),
-  design pattern selection (Repository, Factory, Observer, CQRS), module
-  dependency graph, DDD bounded contexts, data/event/API flow diagrams.
-  Output: Architecture Design (markdown) → shared_memory["architecture"].
-  Call when: starting a new service, major feature, or structural refactor.
-
-┄ TIER 3 — DEVELOPMENT ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
-
-FILE SYSTEM AGENT
-  Reads all target files into shared_memory["file_contents"] concurrently
-  (asyncio.gather). Logs a warning for any missing file — never fails silently.
-  ALWAYS call before any code-writing agent in a session turn.
-
-CODING AGENT
-  General-purpose code writer. Modifies any file type.
-  Runs all file writes concurrently. Never emits partial code or TODOs.
-  Best for: cross-cutting changes, config updates, small targeted fixes.
-
-FRONTEND DEVELOPER AGENT
-  Builds production-quality React/TypeScript UI.
-  Covers: components, pages, hooks, animations, aria labels, keyboard nav,
-  focus management, React.memo/useCallback/useMemo, semantic HTML,
-  adherence to the existing design token system.
-  Output: complete, non-truncated .tsx/.ts/.css file contents.
-  Call when: changes touch frontend/, src/, or client/ directories.
-
-BACKEND DEVELOPER AGENT
-  Builds production-quality Python/FastAPI services.
-  Covers: REST endpoints, service layer, repository pattern, Pydantic v2
-  models, middleware, structured logging, typed exceptions, docstrings.
-  No hardcoded secrets.
-  Output: complete, non-truncated .py file contents.
-
-DATABASE AGENT
-  Schema design, Alembic migrations, index strategy, seed data, N+1
-  detection, read-replica routing suggestions.
-  Output: DATABASE_DESIGN.md → workspace root.
-
-API AGENT
-  OpenAPI 3.0 spec: full request/response schemas, validation rules,
-  rate limits, versioning, error format, auth headers, curl examples.
-  Output: API_SPEC.md → workspace root.
-
-┄ TIER 4 — QUALITY ASSURANCE ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
-
-INTEGRATION AGENT
-  Verifies all components connect end-to-end.
-  Checks: Frontend↔Backend API contract, ORM query correctness, auth flow,
-  external API error handling, cache/queue connectivity, env var inventory,
-  type mismatches across layer boundaries.
-  Output: Integration verification report (markdown).
-
-TESTING AGENT
-  Detects project type and runs the full test suite.
-    package.json present          → npm test
-    pyproject.toml / setup.py     → pytest -v
-    both present                  → run both, report separately
-  Output: pass/fail counts, coverage %, first 20 lines of any failure.
-
-DEBUGGING AGENT
-  Diagnoses errors from the collaboration log and applies targeted fixes.
-  Covers: Python tracebacks, TypeScript compile errors, build failures,
-  runtime exceptions, test failures.
-  Output: root cause (file:line) + specific code fix applied.
-  Call when: any agent reports an error or any command exits non-zero.
-
-SECURITY AGENT
-  Full OWASP Top 10 audit.
-  Checks: SQL/NoSQL injection, XSS (reflected/stored/DOM), CSRF gaps,
-  session weaknesses, exposed secrets/keys, JWT alg=none,
-  RBAC misconfigs, missing rate limits, insecure headers, CVEs in deps.
-  Large codebase: chunk into ≤8 000-char segments, audit each, merge findings.
-  Never silently truncate — process every file.
-  Output: SECURITY_REPORT.md (CRITICAL / HIGH / MEDIUM / LOW).
-
-PERFORMANCE AGENT
-  Identifies and quantifies performance bottlenecks.
-  Checks: bundle size + lazy-load candidates, unnecessary React re-renders,
-  N+1 DB queries, missing indexes, Redis caching gaps, memory patterns,
-  API response-time hotspots.
-  Same chunking rule as Security Agent for large codebases.
-  Output: PERFORMANCE_REPORT.md (fix + estimated impact per item).
-
-CODE REVIEW AGENT
-  Reviews style, naming, architecture adherence, DRY violations, code smells,
-  and obvious logic bugs.
-  Output: inline-style review (file:line: comment).
-
-AI REVIEWER AGENT
-  Senior Staff Engineer deep review.
-  Evaluates: time/space complexity, technical debt, SOLID violations by
-  file+line, missing abstractions, over-engineering, maintainability score
-  1–10 with written justification.
-  Output: structured review + before/after examples for top 3 refactors.
-
-┄ TIER 5 — OPERATIONS ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄
-
-DOCUMENTATION AGENT
-  Generates technical docs for what was built.
-  Covers: what was built, public API surface, architecture decisions,
-  developer setup guide, known limitations, upgrade notes.
-  Output: DOCS.md → workspace root.
-
-GIT AGENT
-  Runs: git status && git diff --stat (full diff for files < 200 lines).
-  Output: human-readable change summary for developer review.
-
-TERMINAL AGENT
-  Infers and runs the most appropriate build/check command for the task.
-  Examples: npm run build, npm test, pytest, tsc --noEmit, make lint.
-  Output: command used + exit code + last 30 lines of stdout/stderr.
-  Returns "NONE" if no command applies.
-  Never runs destructive commands without explicit user instruction.
-
-DEVOPS AGENT
-  Creates complete production infrastructure config.
-  Produces: multi-stage Dockerfile, docker-compose.yml with health checks,
-  GitHub Actions CI/CD (lint→test→build→deploy), NGINX config,
-  .env.example, Prometheus/Grafana setup.
-  Output: DEVOPS_CONFIG.md → workspace root.
-
-RELEASE AGENT
-  Prepares a production release package.
-  Produces: semver recommendation (MAJOR.MINOR.PATCH with rationale),
-  changelog (Added / Changed / Fixed / Removed / Security),
-  deployment checklist, rollback procedure, monitoring plan, Go/No-Go criteria.
-  Output: RELEASE_NOTES.md → workspace root.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SHARED MEMORY CONTRACT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Standard keys — read and write these, never invent others:
-
-  shared_memory["target_files"]    list[str]  relative paths to act on
-  shared_memory["file_contents"]   dict       {relative_path: file_content}
-  shared_memory["frontend_plan"]   str        Frontend Planner output
-  shared_memory["backend_plan"]    str        Backend Planner output
-  shared_memory["architecture"]    str        Software Architect output
-  shared_memory["db_design"]       str        Database Agent output
-  shared_memory["api_spec"]        str        API Agent output
-  shared_memory["build_error"]     str        captured build/test failure output
-  shared_memory["recent_commits"]  str        Git Agent diff/log output
-  shared_memory["test_results"]    str        Testing Agent output
-  shared_memory["security_report"] str        Security Agent output
-  shared_memory["perf_report"]     str        Performance Agent output
-  shared_memory["review"]          str        Code Review Agent output
-  shared_memory["subtasks"]        list       task registry {id, status, progress}
-
-Rules:
-  • Never overwrite a key that already holds useful data — append instead.
-  • After every agent turn emit a progress event so the UI task tracker
-    reflects real state (wire update_task_progress to WebSocket).
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ABSOLUTE CONSTRAINTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-NEVER:
-  ✗ Emit partial code with placeholders ("// TODO", "pass", "...")
-  ✗ Wrap file output in markdown code fences (output raw content only)
-  ✗ Skip verification after making changes
-  ✗ Repeat an identical failing action without diagnosing the error first
-  ✗ Hardcode secrets, API keys, or passwords in any file
-  ✗ Run `rm -rf`, `git push --force`, or DROP TABLE without explicit user approval
-  ✗ Exceed {max_orchestrator_steps} orchestration steps on a single task
-  ✗ Silently truncate large files — chunk and summarise instead
-  ✗ Overwrite a shared_memory key that already holds useful data
-
-ALWAYS:
-  ✓ Read before editing
-  ✓ Run independent agents in parallel
-  ✓ Verify with build/test commands after every set of code changes
-  ✓ Reference exact file paths, function names, and line numbers
-  ✓ Write production-ready, complete code from the first attempt
-  ✓ Add a file-header comment to every generated file (purpose, agent, date)
-  ✓ Emit progress events so the UI task tracker stays current
-  ✓ Use relative paths for all workspace file references
-  ✓ Log what each agent accomplished in collaboration_log
-
-RESPONSE QUALITY:
-  - Never truncate code output. If content is long, write the full file.
-  - Cite exact file paths and function names, not vague descriptions.
-  - If a step is ambiguous, ask exactly one targeted clarifying question.
-  - Final user summary: conversational, outcome-focused.
-    State: what was built, which files changed, what to run to verify.
-"""
+AVAILABLE AGENTS: {agent_list}"""
 
 class AgentSession:
     # Maximum number of messages that can be queued while an agent is running.
@@ -830,20 +530,42 @@ class AgentSession:
                 workspace_context = context
         except Exception as e:
             logger.error(f"Failed to load workspace context: {e}")
-        
+
         max_orchestrator_steps = getattr(self.orchestrator, "max_steps", 30)
-        
+
+        # Choose the right mode instructions block
+        if mode == "Ask":
+            mode_instructions = ASK_MODE_INSTRUCTIONS
+            agent_orchestration_section = ""  # No orchestration noise in Ask mode
+        elif mode == "Plan":
+            mode_instructions = PLAN_MODE_INSTRUCTIONS
+            agent_orchestration_section = ""  # No orchestration noise in Plan mode
+        else:  # Agent
+            mode_instructions = AGENT_MODE_INSTRUCTIONS.replace(
+                "{max_orchestrator_steps}", str(max_orchestrator_steps)
+            )
+            # Build agent list from orchestrator
+            try:
+                agent_list = ", ".join(self.orchestrator.agents.keys())
+            except Exception:
+                agent_list = "See orchestrator configuration"
+            agent_orchestration_section = AGENT_ORCHESTRATION_SECTION.replace(
+                "{agent_list}", agent_list
+            )
+
         prompt = DEVPILOT_MASTER_SYSTEM_PROMPT
         prompt = prompt.replace("{workspace_root}", self.workspace_root)
         prompt = prompt.replace("{mode}", mode)
-        prompt = prompt.replace("{max_orchestrator_steps}", str(max_orchestrator_steps))
         prompt = prompt.replace("{workspace_context}", workspace_context)
+        prompt = prompt.replace("{mode_instructions}", mode_instructions)
+        prompt = prompt.replace("{agent_orchestration_section}", agent_orchestration_section)
         return prompt
 
     async def handle_user_message(self, text: str, mode: str, auto_apply: bool = False):
         """
         Runs the agent loop for a user query.
         """
+        self.auto_apply = auto_apply
         if self.is_running:
             await self.send_ws_message({
                 "type": "text_delta",
@@ -852,15 +574,16 @@ class AgentSession:
             await self.send_ws_message({"type": "session_done"})
             return
             
-        # Check for Run Agent activation
-        run_keywords = ["run", "start", "launch", "execute", "serve", "build and run", 
-                        "preview", "open application", "start server", "run project"]
-        is_run_command = False
-        text_lower = text.lower()
-        for kw in run_keywords:
-            if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
-                is_run_command = True
-                break
+        # Check for Run Agent activation (precise patterns only)
+        RUN_PATTERNS = [
+            r'\b(run|start|launch|execute|serve)\s+(the\s+)?(project|app|application|server|frontend|backend|api)\b',
+            r'\b(build\s+and\s+run|start\s+server|run\s+project|open\s+application|preview\s+(the\s+)?app)\b',
+            r'\bstart\s+(the\s+)?(dev\s+)?server\b',
+            r'\bnpm\s+(run|start)\b',
+            r'\buvicorn\b',
+            r'\bpython\s+-m\b',
+        ]
+        is_run_command = any(re.search(p, text.lower()) for p in RUN_PATTERNS)
 
         if is_run_command:
             self.is_running = True
@@ -885,31 +608,78 @@ class AgentSession:
             # Append user request to history
             self.conversation_history.append({"role": "user", "content": text})
             
-            # Auto-route mode selection if set to 'Auto' using the LLM
+            # Auto-route mode selection if set to 'Auto'
             if mode == "Auto":
-                system_prompt = (
-                    "You are a routing system for an AI coding assistant.\n"
-                    "Analyze the user's prompt and determine which mode matches their request:\n"
-                    "1. 'Ask': For conceptual questions, explanations of code, or discussions that do not require planning, writing files, or running commands.\n"
-                    "2. 'Plan': Specifically for planning, outlines, or step-by-step todo lists for complex tasks, without implementing them.\n"
-                    "3. 'Agent': For actions, creating/editing files, debugging, running terminal commands, or multi-agent work.\n"
-                    "Response format: Return ONLY the single word 'Ask', 'Plan', or 'Agent'. Do not include markdown or punctuation."
-                )
-                try:
-                    response = await self._run_llm_query(system_prompt, text, agent_name="Orchestrator Agent")
-                    classified = response.strip().strip("'\"").strip()
-                    if classified in ["Ask", "Plan", "Agent"]:
-                        mode = classified
-                    else:
-                        if "ask" in classified.lower():
-                            mode = "Ask"
-                        elif "plan" in classified.lower():
-                            mode = "Plan"
-                        else:
-                            mode = "Agent"
-                except Exception as e:
-                    logger.error(f"Failed to auto-classify query using LLM: {str(e)}")
+                # ── Fast-path router: classify trivial inputs without an LLM call ──
+                _t = text.strip().lower().rstrip("!?.,:;")
+
+                _GREETINGS = {
+                    "hi", "hello", "hey", "yo", "sup", "hiya", "howdy",
+                    "thanks", "thank you", "ty", "thx", "ok", "okay",
+                    "yes", "no", "sure", "cool", "got it", "alright",
+                    "great", "perfect", "good", "nice", "awesome"
+                }
+                if _t in _GREETINGS:
+                    mode = "Ask"
+                elif len(text.strip()) < 15 and not any(
+                    kw in _t for kw in ["create", "write", "fix", "run", "build", "add", "edit", "delete", "install"]
+                ):
+                    mode = "Ask"
+                elif re.search(
+                    r'\b(create|write|build|fix|run|start|launch|install|refactor|edit|delete|add|generate|deploy|implement|test)\b',
+                    _t
+                ):
                     mode = "Agent"
+                else:
+                    system_prompt = (
+                        "You are a query classifier for a coding IDE. "
+                        "Read the user's message and return EXACTLY one word: Ask, Plan, or Agent.\n\n"
+                        "RULES — read carefully:\n"
+                        "  Ask   → Greetings, questions, explanations, definitions, help requests, code review "
+                        "without changes, 'what is X', 'how does X work', 'explain Y', 'hi', 'hello', 'thanks'.\n"
+                        "  Plan  → User explicitly wants a plan, outline, roadmap, or architecture design "
+                        "WITHOUT implementation. Keywords: 'plan', 'design', 'outline', 'propose', 'think through'.\n"
+                        "  Agent → User wants ACTIONS: create files, edit code, fix bugs, run commands, "
+                        "install packages, write tests, refactor, build, deploy, start server.\n\n"
+                        "CRITICAL RULES:\n"
+                        "  - A greeting like 'hi', 'hello', 'hey', 'thanks' is ALWAYS Ask.\n"
+                        "  - A question starting with 'what', 'why', 'how', 'explain', 'can you tell me' is ALWAYS Ask.\n"
+                        "  - 'Write me a function' IS Agent (creates code).\n"
+                        "  - 'Explain this function' IS Ask (no changes).\n"
+                        "  - When uncertain between Ask and Plan, choose Ask.\n"
+                        "  - When uncertain between Plan and Agent, choose Plan.\n\n"
+                        "EXAMPLES:\n"
+                        "  hi                              → Ask\n"
+                        "  hello, how are you              → Ask\n"
+                        "  what is a decorator in python   → Ask\n"
+                        "  explain how JWT works           → Ask\n"
+                        "  review this code                → Ask\n"
+                        "  plan a REST API for my app      → Plan\n"
+                        "  design the database schema      → Plan\n"
+                        "  create a login page             → Agent\n"
+                        "  fix the bug in auth.py          → Agent\n"
+                        "  run the tests                   → Agent\n"
+                        "  add a dark mode toggle          → Agent\n"
+                        "  refactor the user service       → Agent\n\n"
+                        "Reply with ONLY one of these three words. No punctuation. No explanation."
+                    )
+                    try:
+                        response = await self._run_llm_query(system_prompt, text, agent_name="Orchestrator Agent")
+                        classified = response.strip().strip("'\"").strip()
+                        if classified in ["Ask", "Plan", "Agent"]:
+                            mode = classified
+                        else:
+                            if "ask" in classified.lower():
+                                mode = "Ask"
+                            elif "plan" in classified.lower():
+                                mode = "Plan"
+                            elif "agent" in classified.lower():
+                                mode = "Agent"
+                            else:
+                                mode = "Ask"  # Safe default — never assume expensive work is needed
+                    except Exception as e:
+                        logger.error(f"Failed to auto-classify query using LLM: {str(e)}")
+                        mode = "Ask"
                 logger.info(f"Auto-routed query '{text}' using LLM to mode: '{mode}'")
         
             # Trigger multi-agent collaboration flow
@@ -1076,6 +846,48 @@ class AgentSession:
             self.is_running = False
             await self.save_history_to_db()
 
+    async def handle_simple_ask(self, text: str):
+        """
+        Handles simple Ask-mode queries directly without multi-agent orchestration overhead.
+        """
+        adapter = self._get_adapter(is_agent=False)
+        system_prompt = self._get_system_prompt("Ask")
+        tools = self._get_tools_for_mode("Ask")
+        
+        await self.send_ws_message({
+            "type": "status",
+            "status": "thinking",
+            "message": "Thinking..."
+        })
+        
+        response_text = ""
+        try:
+            trimmed_history = self._trim_history_for_context(
+                self.conversation_history, system_prompt, tools
+            )
+            async for chunk in adapter.stream_chat(trimmed_history, tools, system_prompt):
+                if chunk["type"] == "text":
+                    response_text += chunk["content"]
+                    await self.send_ws_message({
+                        "type": "text_delta",
+                        "content": chunk["content"]
+                    })
+            
+            if response_text:
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": response_text
+                })
+        except Exception as e:
+            logger.error(f"Error handling simple ask: {str(e)}")
+            await self.send_ws_message({
+                "type": "text_delta",
+                "content": f"\n[Error: {str(e)}]\n"
+            })
+        finally:
+            await self.send_ws_message({"type": "session_done"})
+            await self.save_history_to_db()
+
     async def _execute_tool_with_guardrails(self, tc_id: str, name: str, args: dict, auto_apply: bool) -> str:
         """
         Executes a single tool. If the tool is mutative (write/edit) or destructive (terminal commands),
@@ -1132,8 +944,13 @@ class AgentSession:
                     }
                 })
                 
-                # Wait for websocket confirmation response
-                await event.wait()
+                # Wait for websocket confirmation response (5-min timeout to handle disconnects)
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=300)
+                except asyncio.TimeoutError:
+                    self.pending_confirmations.pop(tc_id, None)
+                    self.log_audit(name, args, "timeout", "Confirmation timed out — client disconnected.")
+                    return "Action timed out: client did not respond within 5 minutes."
                 
                 decision = self.pending_confirmations[tc_id]
                 del self.pending_confirmations[tc_id]
@@ -1187,7 +1004,12 @@ class AgentSession:
                     "args": args
                 })
                 
-                await event.wait()
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=300)
+                except asyncio.TimeoutError:
+                    self.pending_confirmations.pop(tc_id, None)
+                    self.log_audit(name, args, "timeout", "Confirmation timed out — client disconnected.")
+                    return "Action timed out: client did not respond within 5 minutes."
                 decision = self.pending_confirmations[tc_id]
                 del self.pending_confirmations[tc_id]
                 
@@ -1235,8 +1057,20 @@ class AgentSession:
         import sys
         import time
         
-        # Working directory lock check
-        if "cd .." in command or "cd/" in command or re.search(r'\bcd\b.*\.\.', command):
+        # Working directory lock: prevent escaping the workspace root via any cd form.
+        # Catches: cd .., cd ../../, cd /etc, cd $HOME, cd C:\Windows, etc.
+        _cd_match = re.search(r'(?:^|[;&|])\s*cd\s+(\S+)', command)
+        if _cd_match:
+            _target = _cd_match.group(1).strip().strip('"\'')
+            # Always block .. traversal
+            if ".." in _target:
+                return "Failed to execute command: Access denied: changing directory outside the workspace root is locked."
+            # Block absolute paths that are clearly outside the workspace
+            _abs_target = os.path.abspath(os.path.join(self.workspace_root, _target)) if not os.path.isabs(_target) else os.path.abspath(_target)
+            _ws_real = os.path.realpath(self.workspace_root)
+            if not _abs_target.startswith(_ws_real):
+                return "Failed to execute command: Access denied: changing directory outside the workspace root is locked."
+        elif "cd .." in command or "cd/" in command:
             return "Failed to execute command: Access denied: changing directory outside the workspace root is locked."
 
         from .shell_adapter import ShellAdapter
@@ -1264,6 +1098,10 @@ class AgentSession:
             "type": "terminal_status",
             "status": "running",
             "command": command
+        })
+        await self.send_ws_message({
+            "type": "terminal_stream",
+            "content": f"\r\n\x1b[35m[DevPilot Agent]\x1b[0m $ {command}\r\n"
         })
         
         try:
@@ -1329,6 +1167,9 @@ class AgentSession:
                     subprocess.call(f"taskkill /F /T /PID {process.pid}", shell=True)
                 else:
                     process.kill()
+                # Reap the child process to release the stdout pipe fd.
+                # asyncio.shield ensures the wait is not cancelled by outer cancellation.
+                await asyncio.shield(process.wait())
             except Exception:
                 pass
             await self.send_ws_message({
@@ -1456,13 +1297,29 @@ class AgentSession:
         except Exception as e:
             logger.error(f"Error listing workspace files: {str(e)}")
 
+        pkg_scripts_summary = []
+        for pf in files_list:
+            if pf.endswith("package.json"):
+                try:
+                    full_p = safe_path(self.workspace_root, pf)
+                    if os.path.exists(full_p):
+                        with open(full_p, "r", encoding="utf-8") as f:
+                            pdata = json.load(f)
+                            pkg_scripts_summary.append(f"File '{pf}' scripts: {json.dumps(pdata.get('scripts', {}))}")
+                except Exception:
+                    pass
+
+        pkg_details_str = "\n".join(pkg_scripts_summary) if pkg_scripts_summary else "No package.json scripts detected."
+
         prompt = (
             f"The user wants to run/start the project. User request: '{user_text}'\n"
             f"Workspace files:\n{json.dumps(files_list, indent=2)}\n\n"
-            "Analyze the workspace files and the user request to determine:\n"
+            f"Detected Package Scripts:\n{pkg_details_str}\n\n"
+            "Analyze the workspace files, package scripts, and the user request to determine:\n"
             "1. The project/service type or framework (e.g. 'React (Vite)', 'FastAPI', 'Python Flask', etc.).\n"
             "2. The exact terminal command to run, start, or serve the requested service/project.\n"
-            "Ensure the command is correct for this project structure. If a subdirectory (like 'frontend' or 'backend') has a package.json or main.py and the user specifies it, make sure to include directory navigation or a prefix (e.g. 'npm run dev --prefix frontend' or navigate to it first).\n\n"
+            "Ensure the command is correct for this project structure. If a package.json is in a subdirectory (like 'frontend'), include the prefix (e.g. 'npm run dev --prefix frontend') or correct relative command.\n"
+            "Only suggest 'npm run dev' or 'npm start' if that script actually exists in the package.json scripts!\n\n"
             "Output your response strictly as a JSON object with two fields:\n"
             "- 'framework': a string indicating the framework/language/service name (e.g. 'React (Vite)', 'FastAPI', 'Flask', 'Django', etc.)\n"
             "- 'command': the exact command to run/start/serve the application (e.g. 'npm run dev', 'uvicorn main:app --reload', etc.)\n"
@@ -1486,12 +1343,34 @@ class AgentSession:
         except Exception as e:
             logger.error(f"Failed to parse LLM run command JSON: {str(e)}")
             framework = "Unknown"
-            if "package.json" in files_list:
-                command = "npm run dev"
-            elif "main.py" in files_list:
-                command = "python main.py"
-            else:
-                command = "python -m http.server 8000"
+            # Smart fallback based on package.json scripts
+            command = None
+            if pkg_scripts_summary:
+                for line in pkg_scripts_summary:
+                    if '"dev"' in line:
+                        prefix = " --prefix " + line.split("File '")[1].split("/package.json")[0] if "/package.json" in line else ""
+                        command = f"npm run dev{prefix}"
+                        break
+                    elif '"start"' in line:
+                        prefix = " --prefix " + line.split("File '")[1].split("/package.json")[0] if "/package.json" in line else ""
+                        command = f"npm start{prefix}"
+                        break
+            if not command:
+                if "main.py" in files_list or any(f.endswith("/main.py") for f in files_list):
+                    command = "python main.py"
+                else:
+                    command = "python -m http.server 8000"
+
+        # Auto-adjust npm command to include --prefix if root package.json does not exist
+        if command and command.startswith("npm ") and "--prefix" not in command:
+            root_pkg = safe_path(self.workspace_root, "package.json")
+            if not os.path.exists(root_pkg):
+                for pf in files_list:
+                    if pf.endswith("package.json") and "/" in pf:
+                        sub_folder = pf.rsplit("/package.json", 1)[0]
+                        command = f"{command} --prefix {sub_folder}"
+                        logger.info(f"Auto-adjusted npm command to include prefix: '{command}'")
+                        break
 
         await self.send_ws_message({
             "type": "text_delta",
@@ -1525,7 +1404,12 @@ class AgentSession:
                 "args": {"command": command}
             })
             
-            await event.wait()
+            try:
+                await asyncio.wait_for(event.wait(), timeout=300)
+            except asyncio.TimeoutError:
+                self.pending_confirmations.pop(tc_id, None)
+                await self.send_ws_message({"type": "text_delta", "content": "*Execution timed out: no response from client.*\n"})
+                return
             decision = self.pending_confirmations[tc_id]
             del self.pending_confirmations[tc_id]
             
@@ -1580,7 +1464,13 @@ class AgentSession:
                 "process_name": conflict_name
             })
             
-            await event.wait()
+            try:
+                await asyncio.wait_for(event.wait(), timeout=300)
+            except asyncio.TimeoutError:
+                self.pending_confirmations.pop(tc_id, None)
+                await self.send_ws_message({"type": "text_delta", "content": "*Port conflict resolution timed out.*\n"})
+                await global_process_manager.stop_process(proc.id)
+                return
             action = self.pending_confirmations[tc_id].get("action")
             del self.pending_confirmations[tc_id]
             
@@ -1746,7 +1636,12 @@ class AgentSession:
                     "args": {"command": fix_command}
                 })
                 
-                await event.wait()
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=300)
+                except asyncio.TimeoutError:
+                    self.pending_confirmations.pop(tc_id, None)
+                    await self.send_ws_message({"type": "text_delta", "content": "*Recovery timed out: no response from client.*\n"})
+                    return
                 decision = self.pending_confirmations[tc_id]
                 del self.pending_confirmations[tc_id]
                 

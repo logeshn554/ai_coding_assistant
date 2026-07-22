@@ -9,13 +9,10 @@ import {
   Plus,
   Mic,
   ChevronDown,
-  FileCode,
-  Braces,
-  MessageSquare,
   FileText
 } from 'lucide-react';
 
-import type { ChatMessage } from '../types/chat';
+import type { ChatMessage, AgentState } from '../types/chat';
 import { MessageList } from './chat/MessageList';
 import { AgentStatusBar } from './chat/AgentStatusBar';
 
@@ -30,13 +27,15 @@ interface ChatPanelProps {
   onOpenSettings: () => void;
   onCancelGeneration: () => void;
 
-  // Collaboration States
+  // Collaboration & Agent States
   activeAgent?: string | null;
   activeTask?: string | null;
+  agents?: AgentState[];
   collaborationLog?: string[];
   subtasks?: any[];
   contextTokens?: string;
   contextPercentage?: number;
+  totalCostUsd?: number;
 
   // Background running processes
   activeProcesses?: any[];
@@ -57,8 +56,6 @@ interface ChatPanelProps {
   onSelectFile?: (filePath: any) => any;
 }
 
-
-
 export default function ChatPanel({
   messages,
   onSendMessage,
@@ -70,9 +67,11 @@ export default function ChatPanel({
   onCancelGeneration,
   onConfirmPermission,
   activeAgent = null,
-  activeTask = null,
+  activeTask: _activeTask = null,
+  agents = [],
   contextTokens = '0',
   contextPercentage = 0,
+  totalCostUsd = 0.0,
   activeProcesses = [],
   onConfirmPortConflict,
   onStopProcess,
@@ -88,145 +87,21 @@ export default function ChatPanel({
   const autoApply = false;
   const [hunkDecisions, setHunkDecisions] = useState<Record<string, Record<string, boolean>>>({});
   const isProcessRunning = activeProcesses.some(p => p.status === 'running' || p.status === 'starting');
-  const [activeFeedTab, setActiveFeedTab] = useState<'chat' | 'logs'>('chat');
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto switch to logs feed if there is a pending confirmation that just arrived
-  useEffect(() => {
-    const hasPending = messages.some(m => m.isConfirmPending);
-    if (hasPending) {
-      setActiveFeedTab('logs');
-    }
-  }, [messages]);
+  // Derive current session title
+  const currentSession = sessions.find(s => s.id === activeSessionId);
+  const sessionTitle = currentSession?.title || 'Current Session';
 
-  const getFileIcon = (filename: string) => {
-    const ext = filename.split('.').pop()?.toLowerCase();
-    switch (ext) {
-      case 'py':
-        return {
-          icon: <FileCode className="w-3.5 h-3.5 text-emerald-400 shrink-0" />,
-          className: "text-emerald-400 font-mono bg-emerald-500/5 border border-emerald-500/10 px-1.5 py-0.5 rounded inline-flex items-center gap-1 select-all"
-        };
-      case 'ts':
-      case 'tsx':
-        return {
-          icon: <FileCode className="w-3.5 h-3.5 text-sky-400 shrink-0" />,
-          className: "text-sky-400 font-mono bg-sky-500/5 border border-sky-500/10 px-1.5 py-0.5 rounded inline-flex items-center gap-1 select-all"
-        };
-      case 'js':
-      case 'jsx':
-        return {
-          icon: <FileCode className="w-3.5 h-3.5 text-amber-400 shrink-0" />,
-          className: "text-amber-400 font-mono bg-amber-500/5 border border-amber-500/10 px-1.5 py-0.5 rounded inline-flex items-center gap-1 select-all"
-        };
-      case 'json':
-        return {
-          icon: <Braces className="w-3.5 h-3.5 text-yellow-400 shrink-0" />,
-          className: "text-yellow-400 font-mono bg-yellow-500/5 border border-yellow-500/10 px-1.5 py-0.5 rounded inline-flex items-center gap-1 select-all"
-        };
-      case 'bat':
-      case 'sh':
-        return {
-          icon: <Terminal className="w-3.5 h-3.5 text-rose-400 shrink-0" />,
-          className: "text-rose-455 font-mono bg-rose-500/5 border border-rose-500/10 px-1.5 py-0.5 rounded inline-flex items-center gap-1 select-all"
-        };
-      default:
-        return {
-          icon: null,
-          className: "bg-white/5 font-mono px-1.5 py-0.5 rounded text-gray-300 border border-white/5"
-        };
-    }
-  };
-
-  const renderStyledCode = (code: string, key: any) => {
-    const fileMeta = getFileIcon(code);
-    return (
-      <code key={key} className={fileMeta.className}>
-        {fileMeta.icon}
-        {code}
-      </code>
-    );
-  };
-
-  const renderStyledLink = (text: string, url: string, key: any) => {
-    const isFile = url.startsWith('file://') || url.includes('/file:/');
-    const fileMeta = getFileIcon(text);
-
-    if (isFile) {
-      return (
-        <a
-          key={key}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`${fileMeta.className} hover:bg-white/10 transition-colors cursor-pointer border border-violet-500/30 text-violet-300 gap-1.5 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none`}
-          title={`Open ${text}`}
-        >
-          {fileMeta.icon || <FileCode className="w-3.5 h-3.5 text-violet-400 shrink-0" />}
-          <span>{text}</span>
-        </a>
-      );
-    }
-
-    return (
-      <a
-        key={key}
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-violet-400 hover:text-violet-300 hover:underline transition-all font-semibold focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:outline-none rounded px-0.5"
-      >
-        {text}
-      </a>
-    );
-  };
-
-  const renderMessageContent = (content: string) => {
-    if (!content) return null;
-
-    const lines = content.split('\n');
-
-    return lines.map((line, lineIdx) => {
-      const mdRegex = /(\*\*.*?\*\*|`.*?`|\[.*?\]\(.*?\))/g;
-      const parts = line.split(mdRegex);
-
-      const parsedLine = parts.map((part, partIdx) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-          const boldText = part.slice(2, -2);
-          return <strong key={partIdx} className="font-bold text-white">{boldText}</strong>;
-        }
-
-        if (part.startsWith('`') && part.endsWith('`')) {
-          const codeText = part.slice(1, -1);
-          return renderStyledCode(codeText, partIdx);
-        }
-
-        if (part.startsWith('[') && part.includes('](')) {
-          const linkMatch = part.match(/\[(.*?)\]\((.*?)\)/);
-          if (linkMatch) {
-            const [, text, url] = linkMatch;
-            return renderStyledLink(text, url, partIdx);
-          }
-        }
-
-        return part;
-      });
-
-      return (
-        <div key={lineIdx} className="min-h-[18px]">
-          {parsedLine}
-        </div>
-      );
-    });
-  };
+  // Compute active agent count
+  const activeAgentCount = agents.filter(a => a.status === 'running').length || (activeAgent ? 1 : 0);
 
   useEffect(() => {
-    // Scroll to bottom when messages update
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isGenerating, statusMessage, activeFeedTab]);
+  }, [messages, isGenerating, statusMessage]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -236,13 +111,11 @@ export default function ChatPanel({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if ((e.key === 'Enter' && (e.ctrlKey || e.metaKey)) || (e.key === 'Enter' && !e.shiftKey)) {
       e.preventDefault();
       handleSubmit(e);
     }
   };
-
-
 
   const handleToggleHunk = (msgId: string, hunkId: string, accepted: boolean) => {
     setHunkDecisions(prev => ({
@@ -258,69 +131,78 @@ export default function ChatPanel({
   const showTypingIndicator = isGenerating && (!lastMessage || lastMessage.role === 'user');
 
   return (
-    <div className="h-full flex flex-col bg-[var(--dp-bg-dark)] text-[#cccccc] font-sans relative overflow-hidden">
+    <div className="h-full flex flex-col bg-zinc-950 text-zinc-200 font-sans relative overflow-hidden">
 
-      {/* Header Row - Compact */}
-      <div className="p-2 border-b border-[#2d2d2d] bg-[var(--dp-bg-tertiary)] flex items-center justify-between shrink-0 select-none">
-        <div className="flex items-center gap-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-violet-400 animate-pulse-subtle shrink-0" />
-          <span className="text-xs font-semibold text-white tracking-wide">DevPilot Chat</span>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" title="Agent Ready" />
-        </div>
-        <div className="flex items-center gap-0.5 text-gray-400">
+      {/* 1. TopBar (44px height) */}
+      <div className="h-[44px] px-3 border-b border-zinc-800 bg-zinc-900 flex items-center justify-between shrink-0 select-none shadow-sm z-10">
+        {/* Left: session name + terminal icon */}
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setShowHistoryDropdown(!showHistoryDropdown)}
             type="button"
-            className="p-1 hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
-            title="Chat History"
+            className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100 hover:text-white transition-colors cursor-pointer"
+            title="Switch Session"
           >
-            <MessageSquare className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={onNewSession}
-            type="button"
-            className="p-1 hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
-            title="New Conversation"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={onOpenSettings}
-            type="button"
-            className="p-1 hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
-            title="Settings"
-          >
-            <Settings className="w-3.5 h-3.5" />
+            <Terminal className="w-4 h-4 text-blue-400 shrink-0" />
+            <span className="truncate max-w-[140px] font-mono">{sessionTitle}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
           </button>
         </div>
 
-        {/* Chat History Dropdown */}
+        {/* Right: 3 Inline Badges */}
+        <div className="flex items-center gap-1.5 text-[11px] font-mono">
+          <span className="px-2 py-0.5 rounded-full bg-blue-950/80 text-blue-300 border border-blue-800/60 font-semibold">
+            LangGraph
+          </span>
+          <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
+            {activeAgentCount} agent{activeAgentCount === 1 ? '' : 's'} active
+          </span>
+          <span className="px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-800/60 font-semibold">
+            ${totalCostUsd.toFixed(3)}
+          </span>
+
+          <div className="flex items-center gap-0.5 ml-1 text-zinc-400">
+            <button
+              onClick={onNewSession}
+              type="button"
+              className="p-1 hover:bg-zinc-800 hover:text-zinc-100 rounded transition-colors cursor-pointer"
+              title="New Session"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={onOpenSettings}
+              type="button"
+              className="p-1 hover:bg-zinc-800 hover:text-zinc-100 rounded transition-colors cursor-pointer"
+              title="Settings"
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Session Dropdown Menu */}
         {showHistoryDropdown && (
-          <div className="absolute right-2 top-10 w-72 max-h-[360px] bg-[#181818] border border-[#2d2d2d] shadow-2xl z-50 p-2.5 flex flex-col gap-2 font-sans rounded-none">
-            <div className="flex items-center justify-between border-b border-[#2d2d2d] pb-1.5">
-              <span className="text-xs font-bold text-white">Chat History</span>
+          <div className="absolute left-2 top-11 w-72 max-h-[360px] bg-zinc-900 border border-zinc-800 shadow-2xl z-50 p-2.5 flex flex-col gap-2 font-sans rounded-lg">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-1.5">
+              <span className="text-xs font-bold text-zinc-100">Chat History</span>
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={async () => {
-                    if (confirm("Are you sure you want to clear all chat sessions? This cannot be undone.")) {
+                    if (confirm("Are you sure you want to clear all chat sessions?")) {
                       try {
                         const res = await fetch('/api/chat/sessions', { method: 'DELETE' });
-                        if (res.ok) {
-                          window.location.reload();
-                        }
+                        if (res.ok) window.location.reload();
                       } catch (e) {
                         console.error(e);
                       }
                     }
                   }}
-                  className="text-[9px] bg-red-500/10 hover:bg-red-500/20 text-red-405 border border-red-500/20 px-1.5 py-0.2 rounded-none cursor-pointer transition-colors"
+                  className="text-[10px] bg-red-950 hover:bg-red-900 text-red-300 border border-red-800 px-1.5 py-0.5 rounded cursor-pointer"
                 >
                   Clear All
                 </button>
-                <button
-                  onClick={() => setShowHistoryDropdown(false)}
-                  className="text-gray-400 hover:text-white p-0.5 cursor-pointer"
-                >
+                <button onClick={() => setShowHistoryDropdown(false)} className="text-zinc-400 hover:text-zinc-200 p-0.5">
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -333,10 +215,9 @@ export default function ChatPanel({
                   return (
                     <div
                       key={s.id}
-                      className={`group flex items-center justify-between p-1.5 transition-all text-xs border ${isActive
-                        ? 'bg-violet-500/10 border-violet-500/30 text-white font-medium'
-                        : 'bg-black/10 border-transparent text-gray-400 hover:bg-white/5 hover:text-gray-200'
-                        } rounded-none`}
+                      className={`group flex items-center justify-between p-1.5 transition-all text-xs border rounded-md ${
+                        isActive ? 'bg-blue-950/80 border-blue-500/50 text-white font-medium' : 'bg-zinc-950/40 border-transparent text-zinc-400 hover:bg-zinc-800'
+                      }`}
                     >
                       {isRenaming ? (
                         <div className="flex items-center gap-1 w-full">
@@ -350,7 +231,7 @@ export default function ChatPanel({
                                 setRenamingSessionId(null);
                               }
                             }}
-                            className="bg-[#1e1e1e] border border-[#2d2d2d] px-1.5 py-0.5 text-xs text-white focus:outline-none w-full rounded-none"
+                            className="bg-zinc-950 border border-zinc-800 px-1.5 py-0.5 text-xs text-zinc-100 focus:outline-none w-full rounded"
                             autoFocus
                           />
                           <button
@@ -360,7 +241,7 @@ export default function ChatPanel({
                                 setRenamingSessionId(null);
                               }
                             }}
-                            className="p-0.5 text-emerald-400 hover:bg-white/5 rounded-none"
+                            className="p-0.5 text-green-400 hover:bg-zinc-800 rounded"
                           >
                             <Check className="w-3.5 h-3.5" />
                           </button>
@@ -385,14 +266,14 @@ export default function ChatPanel({
                               setRenamingSessionId(s.id);
                               setRenameText(s.title);
                             }}
-                            className="p-0.5 hover:bg-white/5 text-gray-500 hover:text-white rounded-none"
+                            className="p-0.5 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded"
                             title="Rename"
                           >
                             <FileText className="w-3 h-3" />
                           </button>
                           <button
                             onClick={() => onDeleteSession?.(s.id)}
-                            className="p-0.5 hover:bg-white/5 text-gray-500 hover:text-red-400 rounded-none"
+                            className="p-0.5 hover:bg-zinc-800 text-zinc-400 hover:text-red-400 rounded"
                             title="Delete"
                           >
                             <X className="w-3 h-3" />
@@ -403,9 +284,7 @@ export default function ChatPanel({
                   );
                 })
               ) : (
-                <div className="text-[10px] text-gray-600 text-center py-4">
-                  No saved conversations
-                </div>
+                <div className="text-[11px] text-zinc-500 text-center py-3">No saved conversations</div>
               )}
             </div>
 
@@ -414,42 +293,30 @@ export default function ChatPanel({
                 onNewSession?.();
                 setShowHistoryDropdown(false);
               }}
-              className="mt-1 w-full py-1.5 bg-[#8b5cf6] hover:bg-[#7c4dff] text-white rounded-none text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              className="mt-1 w-full py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" /> New Conversation
+              <Plus className="w-3.5 h-3.5" /> New Session
             </button>
           </div>
         )}
       </div>
 
-      {/* Agent Status Compact Bar */}
-      <div className="px-2 py-1.5 bg-[#141414] border-b border-[#2d2d2d] flex items-center justify-between text-[10px] select-none font-mono text-gray-400 shrink-0">
-        <span className="truncate max-w-[200px]" title={activeTask || 'Ready'}>
-          Active Task: <span className="text-[#cccccc]">{activeTask ? `"${activeTask}"` : 'Listening for instructions'}</span>
-        </span>
-        {activeAgent && (
-          <span className="text-[9px] bg-violet-500/10 text-violet-400 border border-violet-500/20 px-1 rounded-sm uppercase shrink-0 font-bold leading-normal">
-            {activeAgent}
-          </span>
-        )}
-      </div>
-
-      {/* Message & Log Feed Container - Unified Inline Stream */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 bg-[#1e1e1e] scrollbar-thin select-text">
+      {/* 2. Message List Feed */}
+      <div className="flex-1 flex flex-col min-h-0 bg-zinc-950 overflow-hidden">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col justify-center items-center p-6 space-y-4 text-center">
-            <div className="p-3 bg-[#8b5cf6]/10 border border-[#8b5cf6]/20 text-violet-400 shrink-0">
-              <Sparkles className="w-5 h-5 text-violet-400" />
+            <div className="p-3 bg-blue-950/60 border border-blue-800/40 text-blue-400 rounded-xl">
+              <Sparkles className="w-6 h-6 text-blue-400" />
             </div>
-            <h2 className="text-xs font-bold text-white tracking-wide uppercase">AI Assistant Ready</h2>
-            <p className="text-[10px] text-gray-500 max-w-[220px] leading-relaxed font-sans">
-              Enter your instruction below to analyze the codebase, scan for issues, write unit tests, or apply code changes.
+            <h2 className="text-xs font-bold text-zinc-100 tracking-wide uppercase">DevPilot Assistant Ready</h2>
+            <p className="text-[11px] text-zinc-500 max-w-[240px] leading-relaxed font-sans">
+              Ask any question, analyze the codebase, scan for issues, write unit tests, or execute multi-agent workflows.
             </p>
 
-            <div className="grid grid-cols-2 gap-1.5 w-full pt-4">
+            <div className="grid grid-cols-2 gap-2 w-full pt-2 max-w-xs">
               {[
-                { label: "Refactor current file", prompt: "Explain how we can refactor this file to make it cleaner." },
-                { label: "Find errors & bugs", prompt: "Inspect the current file for potential errors or bugs." },
+                { label: "Refactor file", prompt: "Explain how we can refactor this file to make it cleaner." },
+                { label: "Find bugs", prompt: "Inspect the current file for potential errors or bugs." },
                 { label: "Write unit tests", prompt: "Draft unit tests for the functions defined in this file." },
                 { label: "Explain codebase", prompt: "Summarize the layout and relationships in this codebase." }
               ].map((act, i) => (
@@ -457,7 +324,7 @@ export default function ChatPanel({
                   key={i}
                   type="button"
                   onClick={() => setInput(act.prompt)}
-                  className="p-1.5 text-left bg-[#181818] border border-[#2d2d2d] hover:border-[#8b5cf6]/40 rounded-none text-[10px] text-gray-400 hover:text-white transition-all truncate cursor-pointer font-sans"
+                  className="p-2 text-left bg-zinc-900 border border-zinc-800 hover:border-blue-500/50 rounded-md text-[11px] text-zinc-400 hover:text-zinc-100 transition-all truncate cursor-pointer font-sans"
                 >
                   💡 {act.label}
                 </button>
@@ -472,24 +339,24 @@ export default function ChatPanel({
             onConfirmPortConflict={onConfirmPortConflict}
             hunkDecisions={hunkDecisions}
             onToggleHunk={handleToggleHunk}
-            renderMessageContent={renderMessageContent}
+            onRunCommand={(cmd) => setInput(cmd)}
           />
         )}
 
-        {/* Streaming Loader / Thinking indicator inside message feed */}
+        {/* Streaming Thinking Indicator */}
         {showTypingIndicator && (
-          <div className="flex gap-2.5 max-w-[95%] items-start select-none mb-4 animate-fade-in">
-            <div className="w-6 h-6 rounded-md bg-[#8b5cf6]/10 border border-[#8b5cf6]/20 text-violet-400 shrink-0 flex items-center justify-center text-[10px] font-bold">
-              AI
+          <div className="flex gap-2.5 max-w-[95%] items-start select-none px-4 mb-3 animate-slide-up">
+            <div className="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-800 text-blue-400 shrink-0 flex items-center justify-center font-bold">
+              <Sparkles className="w-4 h-4 text-blue-400 animate-pulse" />
             </div>
-            <div className="flex flex-col items-start max-w-[calc(100%-1.75rem)]">
-              <div className="p-2.5 bg-[#141414] border border-[#2d2d2d] rounded-lg flex items-center gap-2 shadow-md">
+            <div className="flex flex-col items-start max-w-[calc(100%-2.25rem)]">
+              <div className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center gap-2 shadow-md">
                 <span className="relative flex h-2 w-2 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                 </span>
-                <span className="text-[11px] text-gray-400 font-medium font-sans animate-pulse">
-                  {statusMessage || 'Thinking...'}
+                <span className="text-[11.5px] text-zinc-400 font-medium font-sans">
+                  {statusMessage || 'Agents executing task...'}
                 </span>
               </div>
             </div>
@@ -499,34 +366,34 @@ export default function ChatPanel({
         <div ref={chatEndRef} />
       </div>
 
-      {/* Input Bar (fixed to bottom) */}
-      <form onSubmit={handleSubmit} className="p-2.5 border-t border-[#2d2d2d] bg-[#131313] shrink-0 font-sans">
-
-        {/* Token Usage Status Bar - Compact */}
+      {/* 3. Input & Agent StatusBar Panel (Fixed to Bottom) */}
+      <div className="p-2.5 border-t border-zinc-800 bg-zinc-900 shrink-0 font-sans space-y-2">
+        {/* Agent StatusBar */}
         <AgentStatusBar
+          agents={agents}
           contextPercentage={contextPercentage}
           contextTokens={contextTokens}
           activeProfileName={activeProfileName}
           onOpenSettings={onOpenSettings}
         />
 
-        {/* Input Text Box Container */}
-        <div className="bg-[#1e1e1e] border border-[#2d2d2d] rounded-none p-2 flex flex-col gap-1.5 focus-within:border-[#8b5cf6]/50">
-
+        {/* Input Box Container */}
+        <form onSubmit={handleSubmit} className="bg-zinc-950 border border-zinc-800 rounded-lg p-2 flex flex-col gap-2 focus-within:border-blue-500/60 shadow-inner">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything, @ to mention, / for actions"
-            className="w-full max-h-24 min-h-[36px] bg-transparent text-xs text-gray-200 focus:outline-none resize-none scrollbar-none font-sans placeholder:text-gray-600 rounded-none p-0.5"
+            placeholder="Ask anything, @ to mention, / for actions (Ctrl+Enter to send)"
+            rows={2}
+            className="w-full max-h-32 min-h-[40px] bg-transparent text-[13px] text-zinc-100 focus:outline-none resize-none font-sans placeholder:text-zinc-600 p-0.5 scrollbar-none"
           />
 
           {/* Action Row */}
-          <div className="flex sm:items-center justify-between pt-1.5 border-t border-[#2d2d2d] select-none gap-2">
-            <div className="flex items-center gap-1">
+          <div className="flex items-center justify-between pt-1 border-t border-zinc-800/80 select-none">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                className="p-1 hover:bg-white/5 text-gray-500 hover:text-white rounded-none cursor-pointer"
+                className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 rounded cursor-pointer transition-colors"
                 title="Attach file context"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -535,20 +402,20 @@ export default function ChatPanel({
               <button
                 type="button"
                 onClick={onOpenSettings}
-                className="flex items-center gap-1 hover:bg-white/5 hover:text-violet-300 text-violet-400 font-medium px-2 py-0.5 bg-violet-500/5 border border-violet-500/10 rounded-none text-[9px] cursor-pointer"
+                className="flex items-center gap-1 hover:bg-zinc-800 text-blue-400 font-medium px-2 py-0.5 bg-blue-950/40 border border-blue-800/40 rounded text-[10.5px] cursor-pointer"
                 title="Active Profile"
               >
                 <span>{activeProfileName}</span>
-                <ChevronDown className="w-2.5 h-2.5 text-violet-400 shrink-0" />
+                <ChevronDown className="w-3 h-3 text-blue-400 shrink-0" />
               </button>
             </div>
 
-            <div className="flex items-center gap-1">
-              {/* Agent Mode Selector */}
+            <div className="flex items-center gap-1.5">
+              {/* Mode Selector */}
               <select
                 value={mode}
                 onChange={(e) => setMode(e.target.value as any)}
-                className="px-1.5 py-0.5 bg-[#181818] border border-[#2d2d2d] rounded-none text-[9px] font-semibold text-white focus:outline-none focus:border-[#8b5cf6] cursor-pointer"
+                className="px-2 py-0.5 bg-zinc-900 border border-zinc-800 rounded text-[11px] font-semibold text-zinc-200 focus:outline-none focus:border-blue-500 cursor-pointer"
               >
                 <option value="Auto">Auto</option>
                 <option value="Ask">Ask</option>
@@ -556,50 +423,47 @@ export default function ChatPanel({
                 <option value="Agent">Agent</option>
               </select>
 
-              {/* Dictation */}
               <button
                 type="button"
-                className="p-1 hover:bg-white/5 text-gray-500 hover:text-white rounded-none cursor-pointer"
+                className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 rounded cursor-pointer transition-colors"
                 title="Voice input"
               >
                 <Mic className="w-3.5 h-3.5" />
               </button>
 
-              {/* Stop or Submit button */}
+              {/* Submit / Cancel Button */}
               {isGenerating ? (
                 <button
                   type="button"
                   onClick={onCancelGeneration}
-                  className="p-1 bg-red-650 hover:bg-red-600 text-white rounded-none cursor-pointer border border-red-500/20"
+                  className="p-1.5 bg-red-600 hover:bg-red-500 text-white rounded-md cursor-pointer transition-colors"
                   title="Stop generating"
                 >
-                  <span className="w-3 h-3 flex items-center justify-center font-bold text-[8px]">■</span>
+                  <span className="w-3.5 h-3.5 flex items-center justify-center font-bold text-[9px]">■</span>
                 </button>
               ) : isProcessRunning ? (
                 <button
                   type="button"
                   onClick={() => onStopProcess?.()}
-                  className="p-1 bg-red-650 hover:bg-red-600 text-white rounded-none cursor-pointer border border-red-500/20"
+                  className="p-1.5 bg-red-600 hover:bg-red-500 text-white rounded-md cursor-pointer transition-colors"
                   title="Stop running process"
                 >
-                  <span className="w-3 h-3 flex items-center justify-center font-bold text-[8px]">■</span>
+                  <span className="w-3.5 h-3.5 flex items-center justify-center font-bold text-[9px]">■</span>
                 </button>
               ) : (
                 <button
                   type="submit"
                   disabled={!input.trim()}
-                  className="p-1 bg-[#8B5CF6] hover:bg-[#7c4dff] disabled:bg-transparent text-white disabled:text-gray-600 border border-violet-500/20 disabled:border-transparent rounded-none cursor-pointer disabled:cursor-not-allowed"
-                  title="Send message"
+                  className="p-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 text-white disabled:text-zinc-600 rounded-md cursor-pointer disabled:cursor-not-allowed transition-colors shadow-sm"
+                  title="Send message (Ctrl+Enter)"
                 >
-                  <Send className="w-3 h-3" />
+                  <Send className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
           </div>
-
-        </div>
-
-      </form>
+        </form>
+      </div>
 
     </div>
   );

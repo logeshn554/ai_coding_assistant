@@ -154,10 +154,19 @@ function TerminalPane({
       } catch (e) {}
     }, 100);
 
+    const handleAgentStream = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        term.write(customEvent.detail.replace(/\r?\n/g, '\r\n'));
+      }
+    };
+    window.addEventListener('devpilot_terminal_stream', handleAgentStream);
+
     return () => {
       clearTimeout(timer);
       disposable.dispose();
       resizeDisposable.dispose();
+      window.removeEventListener('devpilot_terminal_stream', handleAgentStream);
       term.dispose();
       resizeObserver.disconnect();
       if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {

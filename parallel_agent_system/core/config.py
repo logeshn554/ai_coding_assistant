@@ -1,13 +1,24 @@
 from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
+def get_default_model() -> str:
+    try:
+        from backend.app.config import ConfigManager
+        cm = ConfigManager()
+        profile = cm.get_active_profile()
+        if profile and profile.get("model_name"):
+            return profile.get("model_name")
+    except Exception:
+        pass
+    return ""
 
 class SystemConfig(BaseSettings):
     """System configuration parameters loaded from environment variables."""
     
     # LLM configurations
-    llm_model: str = "claude-sonnet-4-6"
-    decomposer_model: str = "claude-haiku-4-5-20251001"  # cheap for decompose
+    llm_model: str = Field(default_factory=get_default_model)
+    decomposer_model: str = Field(default_factory=get_default_model)
 
     # OpenHands condenser configurations
     condenser_max_size: int = 80

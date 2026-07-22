@@ -27,17 +27,6 @@ class ModelRouter:
         url = profile.get("base_url", "")
         model = profile.get("model_name", "")
 
-        if is_agent:
-            agent_models = config.get_agent_models()
-            custom_model = None
-            if task_type and task_type in agent_models:
-                custom_model = agent_models[task_type]
-            if not custom_model:
-                custom_model = config.get_agent_model_name()
-            if custom_model:
-                model = custom_model
-                logger.info(f"ModelRouter: Overriding model for agent '{task_type}' with: {model}")
-
         # 2. Parse provider prefix if formatted as provider/model_name
         if "/" in model:
             parts = model.split("/", 1)

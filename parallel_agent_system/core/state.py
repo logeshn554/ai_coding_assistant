@@ -1,5 +1,5 @@
 import operator
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
 try:
@@ -61,3 +61,5 @@ class GraphState(TypedDict):
     # Evaluator-optimizer: tracks how many refine → re-run cycles have occurred.
     # Capped at SystemConfig.max_refinement_cycles to prevent infinite loops.
     refinement_cycles: int
+    # Session object passed from the main orchestrator for WebSocket I/O.
+    session: Any

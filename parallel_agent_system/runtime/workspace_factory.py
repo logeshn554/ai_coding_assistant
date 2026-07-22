@@ -7,8 +7,15 @@ from parallel_agent_system.core.state import SubTask
 
 
 def find_free_port() -> int:
-    """Finds an available TCP port on the host machine."""
+    """Finds an available TCP port on the host machine.
+
+    Note: There is an inherent TOCTOU window between this function returning and
+    the caller actually binding the port (e.g. Docker startup). The risk is kept
+    minimal by using SO_REUSEADDR so the bind is stable, but callers should handle
+    EADDRINUSE at container-start time and retry with a fresh port if needed.
+    """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(("", 0))
         return s.getsockname()[1]
 

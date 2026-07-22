@@ -366,8 +366,11 @@ async def websocket_chat(
         except Exception:
             pass
             
+    # Snapshot the workspace root at connection time — do NOT re-read workspace_state
+    # on every message, as another tab changing the global state would corrupt this session.
+    session_workspace_root = workspace_state.root
     session = AgentSession(
-        workspace_state.root,
+        session_workspace_root,
         active_profile,
         send_to_client,
         permission_manager,
@@ -378,7 +381,7 @@ async def websocket_chat(
     # Restore context memory from Redis if available
     try:
         from ..state import redis_client
-        workspace_id = os.path.basename(workspace_state.root) or "default"
+        workspace_id = os.path.basename(session_workspace_root) or "default"
         raw = await redis_client.get(f"session:{workspace_id}:ctx")
         if raw:
             session.orchestrator.context.memory = json.loads(raw)
@@ -396,9 +399,17 @@ async def websocket_chat(
                 text = msg.get("text", "")
                 mode = msg.get("mode", "Ask")
                 auto_apply = msg.get("auto_apply", False)
-                session.workspace_root = workspace_state.root
+                # Do NOT update session.workspace_root from the global workspace_state here.
+                # The session workspace was locked at connection open to prevent cross-session bleed.
                 # Enqueue instead of cancel+replace — preserves in-flight work
                 await session.enqueue_message(text, mode, auto_apply)
+
+            elif msg_type == "change_workspace":
+                # Explicit per-session workspace change from the UI
+                new_root = msg.get("workspace_root", "").strip()
+                if new_root and os.path.isdir(new_root):
+                    session.workspace_root = new_root
+                    logger.info(f"Session {session_id}: workspace changed to {new_root}")
                 
             elif msg_type == "confirm_response":
                 tool_call_id = msg.get("tool_call_id")

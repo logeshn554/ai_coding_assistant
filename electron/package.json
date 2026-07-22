@@ -1,0 +1,12 @@
+{
+  "name": "devpilot-electron",
+  "version": "1.0.0",
+  "description": "Electron wrapper for DevPilot – provides native OS folder picker",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^31.0.0"
+  }
+}

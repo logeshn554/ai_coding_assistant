@@ -62,88 +62,126 @@ class OpenAIAdapter(ModelAdapter):
             if openai_tools:
                 kwargs["tools"] = openai_tools
 
-            response = await client.chat.completions.create(**kwargs)
-
             tool_calls_accum = {}  # Index -> tool_call data
 
-            async for chunk in response:
-                if not chunk.choices:
-                    continue
-                
-                delta = chunk.choices[0].delta
-                
-                # Check for content delta
-                if getattr(delta, "content", None) is not None:
-                    yield {"type": "text", "content": delta.content}
-                
-                # Check for tool call delta
-                if getattr(delta, "tool_calls", None) is not None:
-                    for tc_chunk in delta.tool_calls:
-                        idx = tc_chunk.index
-                        
-                        if idx not in tool_calls_accum:
-                            tool_calls_accum[idx] = {
-                                "id": "",
-                                "name": "",
-                                "arguments": "",
+            try:
+                response = await client.chat.completions.create(**kwargs)
+
+                async for chunk in response:
+                    if not chunk.choices:
+                        continue
+                    
+                    delta = chunk.choices[0].delta
+                    
+                    # Check for content delta
+                    if getattr(delta, "content", None) is not None:
+                        yield {"type": "text", "content": delta.content}
+                    
+                    # Check for tool call delta
+                    if getattr(delta, "tool_calls", None) is not None:
+                        for tc_chunk in delta.tool_calls:
+                            idx = tc_chunk.index
+                            
+                            if idx not in tool_calls_accum:
+                                tool_calls_accum[idx] = {
+                                    "id": "",
+                                    "name": "",
+                                    "arguments": "",
+                                    "thought_signature": None
+                                }
+                            
+                            # Populate ID
+                            if getattr(tc_chunk, "id", None) is not None:
+                                tool_calls_accum[idx]["id"] = tc_chunk.id
+                            # Populate Name
+                            if getattr(tc_chunk, "function", None) is not None:
+                                func = tc_chunk.function
+                                if getattr(func, "name", None) is not None:
+                                    tool_calls_accum[idx]["name"] = func.name
+                                if getattr(func, "arguments", None) is not None:
+                                    tool_calls_accum[idx]["arguments"] += func.arguments
+                                    
+                            # Extract thought signature if present (Gemini)
+                            try:
+                                def get_nested_val(obj, *keys):
+                                    for key in keys:
+                                        if obj is None:
+                                            return None
+                                        if isinstance(obj, dict):
+                                            obj = obj.get(key)
+                                        else:
+                                            obj = getattr(obj, key, None)
+                                    return obj
+                                
+                                sig = get_nested_val(tc_chunk, "extra_content", "google", "thought_signature")
+                                if sig:
+                                    tool_calls_accum[idx]["thought_signature"] = sig
+                            except Exception as e:
+                                logger.debug(f"Failed to extract thought_signature: {e}")
+
+                # Yield completed tool calls after streaming terminates
+                for idx, tc in tool_calls_accum.items():
+                    tc_id = tc["id"] or f"call_{idx}"
+                    tc_name = tc["name"]
+                    tc_args = tc["arguments"]
+                    
+                    try:
+                        parsed_input = json.loads(tc_args)
+                    except Exception:
+                        try:
+                            parsed_input = json.loads(tc_args.strip())
+                        except Exception:
+                            parsed_input = {"raw_input": tc_args}
+                            
+                    yield {
+                        "type": "tool_call",
+                        "id": tc_id,
+                        "name": tc_name,
+                        "input": parsed_input,
+                        "thought_signature": tc.get("thought_signature")
+                    }
+
+                stop_reason = "tool_use" if tool_calls_accum else "stop"
+                yield {"type": "done", "stop_reason": stop_reason}
+
+            except Exception as stream_err:
+                # If streaming fails (e.g. Bedrock/LiteLLM nova-micro tool use stream error),
+                # fallback to non-streaming request if tools were provided.
+                if openai_tools:
+                    logger.warning(f"Streaming failed with tools ({stream_err}), falling back to non-streaming request.")
+                    kwargs["stream"] = False
+                    non_stream_resp = await client.chat.completions.create(**kwargs)
+                    if not non_stream_resp.choices:
+                        yield {"type": "done", "stop_reason": "stop"}
+                        return
+
+                    choice = non_stream_resp.choices[0]
+                    msg = choice.message
+                    if getattr(msg, "content", None):
+                        yield {"type": "text", "content": msg.content}
+                    
+                    tcs = getattr(msg, "tool_calls", None)
+                    if tcs:
+                        for idx, tc in enumerate(tcs):
+                            tc_id = tc.id or f"call_{idx}"
+                            tc_name = tc.function.name
+                            tc_args = tc.function.arguments
+                            try:
+                                parsed_input = json.loads(tc_args)
+                            except Exception:
+                                parsed_input = {"raw_input": tc_args}
+                            yield {
+                                "type": "tool_call",
+                                "id": tc_id,
+                                "name": tc_name,
+                                "input": parsed_input,
                                 "thought_signature": None
                             }
-                        
-                        # Populate ID
-                        if getattr(tc_chunk, "id", None) is not None:
-                            tool_calls_accum[idx]["id"] = tc_chunk.id
-                        # Populate Name
-                        if getattr(tc_chunk, "function", None) is not None:
-                            func = tc_chunk.function
-                            if getattr(func, "name", None) is not None:
-                                tool_calls_accum[idx]["name"] = func.name
-                            if getattr(func, "arguments", None) is not None:
-                                tool_calls_accum[idx]["arguments"] += func.arguments
-                                
-                        # Extract thought signature if present (Gemini)
-                        try:
-                            def get_nested_val(obj, *keys):
-                                for key in keys:
-                                    if obj is None:
-                                        return None
-                                    if isinstance(obj, dict):
-                                        obj = obj.get(key)
-                                    else:
-                                        obj = getattr(obj, key, None)
-                                return obj
-                            
-                            sig = get_nested_val(tc_chunk, "extra_content", "google", "thought_signature")
-                            if sig:
-                                tool_calls_accum[idx]["thought_signature"] = sig
-                        except Exception as e:
-                            logger.debug(f"Failed to extract thought_signature: {e}")
-
-            # Yield completed tool calls after streaming terminates
-            for idx, tc in tool_calls_accum.items():
-                # Ensure we have a valid ID (Ollama sometimes misses it in some chunks)
-                tc_id = tc["id"] or f"call_{idx}"
-                tc_name = tc["name"]
-                tc_args = tc["arguments"]
-                
-                try:
-                    parsed_input = json.loads(tc_args)
-                except Exception:
-                    try:
-                        parsed_input = json.loads(tc_args.strip())
-                    except Exception:
-                        parsed_input = {"raw_input": tc_args}
-                        
-                yield {
-                    "type": "tool_call",
-                    "id": tc_id,
-                    "name": tc_name,
-                    "input": parsed_input,
-                    "thought_signature": tc.get("thought_signature")
-                }
-
-            # Return done with stop reason
-            stop_reason = "tool_use" if tool_calls_accum else "stop"
-            yield {"type": "done", "stop_reason": stop_reason}
+                        yield {"type": "done", "stop_reason": "tool_use"}
+                    else:
+                        yield {"type": "done", "stop_reason": choice.finish_reason or "stop"}
+                else:
+                    raise stream_err
 
         except Exception as e:
             logger.error(f"OpenAI API Error: {str(e)}")
