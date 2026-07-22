@@ -511,8 +511,10 @@ class AgentSession:
 
     def _get_adapter(self, is_agent: bool = False):
         from .adapters.router import ModelRouter
+        from .state import config_manager
+        latest_profile = config_manager.get_active_profile() or self.profile
         router = ModelRouter()
-        return router.get_adapter(self.profile, is_agent=is_agent)
+        return router.get_adapter(latest_profile, is_agent=is_agent)
 
     def _get_tools_for_mode(self, mode: str) -> list:
         read_only_tools = {"list_directory", "read_file", "search_codebase"}

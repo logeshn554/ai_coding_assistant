@@ -116,10 +116,13 @@ class ConfigManager:
         config = self._read_raw_config()
         profiles = []
         for p in config.get("profiles", []):
+            decrypted_key = p.get("api_key", "")
             try:
-                decrypted_key = keyring.get_password("devpilot", p["id"]) or ""
+                k_key = keyring.get_password("devpilot", p["id"])
+                if k_key:
+                    decrypted_key = k_key
             except Exception:
-                decrypted_key = ""
+                pass
             
             # Mask key for frontend representation
             key_val = decrypted_key
@@ -133,11 +136,11 @@ class ConfigManager:
 
             profiles.append({
                 "id": p["id"],
-                "name": p["name"],
+                "name": p.get("name", "Unnamed Profile"),
                 "api_key": key_val,
-                "base_url": p["base_url"],
-                "model_name": p["model_name"],
-                "api_format": p["api_format"]
+                "base_url": p.get("base_url", "https://api.openai.com/v1"),
+                "model_name": p.get("model_name", ""),
+                "api_format": p.get("api_format", "openai")
             })
             
         return {
@@ -152,17 +155,20 @@ class ConfigManager:
         config = self._read_raw_config()
         for p in config.get("profiles", []):
             if p["id"] == profile_id:
+                api_key = p.get("api_key", "")
                 try:
-                    api_key = keyring.get_password("devpilot", profile_id) or ""
+                    k_key = keyring.get_password("devpilot", profile_id)
+                    if k_key:
+                        api_key = k_key
                 except Exception:
-                    api_key = ""
+                    pass
                 return {
                     "id": p["id"],
-                    "name": p["name"],
+                    "name": p.get("name", "Unnamed Profile"),
                     "api_key": api_key,
-                    "base_url": p["base_url"],
-                    "model_name": p["model_name"],
-                    "api_format": p["api_format"]
+                    "base_url": p.get("base_url", "https://api.openai.com/v1"),
+                    "model_name": p.get("model_name", ""),
+                    "api_format": p.get("api_format", "openai")
                 }
         return {}
 
@@ -208,17 +214,21 @@ class ConfigManager:
             p_id = str(uuid.uuid4())
             existing_profile = {
                 "id": p_id,
-                "name": profile_data["name"],
-                "base_url": profile_data["base_url"],
-                "model_name": profile_data["model_name"],
+                "name": profile_data.get("name", "New Profile"),
+                "base_url": profile_data.get("base_url", "https://api.openai.com/v1"),
+                "model_name": profile_data.get("model_name", ""),
                 "api_format": profile_data.get("api_format", "openai")
             }
             config.setdefault("profiles", []).append(existing_profile)
             
+        # Always set active_profile_id if not set
+        if not config.get("active_profile_id"):
+            config["active_profile_id"] = p_id
+            
         # Update fields
-        existing_profile["name"] = profile_data["name"]
-        existing_profile["base_url"] = profile_data["base_url"]
-        existing_profile["model_name"] = profile_data["model_name"]
+        existing_profile["name"] = profile_data.get("name", "New Profile")
+        existing_profile["base_url"] = profile_data.get("base_url", "https://api.openai.com/v1")
+        existing_profile["model_name"] = profile_data.get("model_name", "")
         existing_profile["api_format"] = profile_data.get("api_format", "openai")
         
         # Handle API key update (checking if it was masked or is a new plaintext)
@@ -226,10 +236,11 @@ class ConfigManager:
         is_masked = "..." in new_key or "*" in new_key
         
         if not is_masked:
+            existing_profile["api_key"] = new_key
             try:
                 keyring.set_password("devpilot", p_id, new_key)
             except Exception as e:
-                logger.error(f"Failed to set keyring password for {p_id}: {e}")
+                logger.warning(f"Failed to set keyring password for {p_id}: {e}")
 
         self._save_raw_config(config)
         return self.get_profile(p_id)

@@ -74,7 +74,8 @@ class AnthropicAdapter(ModelAdapter):
         if not base_url or "api.anthropic.com" in base_url:
             base_url = None  # Let SDK use its default URL
             
-        client = AsyncAnthropic(api_key=self.api_key, base_url=base_url)
+        api_key = self.api_key if self.api_key else "dummy-key"
+        client = AsyncAnthropic(api_key=api_key, base_url=base_url)
 
         # Convert tools to Anthropic tool schema (they use 'input_schema' instead of 'parameters')
         anthropic_tools = []

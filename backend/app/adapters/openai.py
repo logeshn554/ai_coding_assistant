@@ -36,7 +36,8 @@ class OpenAIAdapter(ModelAdapter):
         # Initialize AsyncOpenAI client
         # This will automatically pick up base_url and api_key
         base_url = self.base_url if self.base_url else None
-        client = AsyncOpenAI(api_key=self.api_key, base_url=base_url)
+        api_key = self.api_key if self.api_key else "dummy-key"
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
 
         # Convert tools to OpenAI format
         openai_tools = []

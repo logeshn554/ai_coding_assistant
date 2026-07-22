@@ -178,10 +178,6 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
 
   const fetchModels = async () => {
     if (!selectedProfile) return;
-    if (!selectedProfile.api_key && !selectedProfile.id) {
-      alert('Please enter an API Key first.');
-      return;
-    }
     setIsFetchingModels(true);
     try {
       const res = await fetch('/api/models/fetch', {
@@ -327,11 +323,21 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         body: JSON.stringify(selectedProfile)
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.profile) {
+        const savedId = data.profile.id;
+        if (savedId) {
+          await fetch('/api/profiles/active', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: savedId })
+          });
+        }
         await loadProfiles();
         setSelectedProfile(data.profile);
         onProfileChanged();
-        alert('Profile saved successfully!');
+        alert('Profile saved & set active successfully!');
+      } else {
+        alert('Failed to save profile: ' + (data.detail || data.message || 'Unknown error'));
       }
     } catch (e) {
       alert('Failed to save profile: ' + e);
