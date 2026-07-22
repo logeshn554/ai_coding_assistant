@@ -1,8 +1,13 @@
 import os
+import time
 import logging
+import subprocess
+from collections import Counter
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from ..state import workspace_state, permission_manager, config_manager
+
+_SERVER_START_TIME = time.time()
 
 logger = logging.getLogger("devpilot.routes.workspace")
 router = APIRouter()
@@ -173,3 +178,102 @@ def select_workspace():
     except Exception as e:
         logger.info(f"Native directory dialog unavailable ({e}).")
         return {"path": None, "dialog_unavailable": True}
+
+
+# ── Extension → language display name map ────────────────────────────────────
+
+_EXT_LANG_MAP = {
+    ".py": "Python", ".ts": "TypeScript", ".tsx": "TypeScript",
+    ".js": "JavaScript", ".jsx": "JavaScript", ".html": "HTML",
+    ".css": "CSS", ".scss": "CSS", ".json": "JSON", ".yaml": "YAML",
+    ".yml": "YAML", ".md": "Markdown", ".sh": "Shell",
+    ".dockerfile": "Docker", ".go": "Go", ".rs": "Rust",
+    ".java": "Java", ".cpp": "C++", ".c": "C", ".cs": "C#",
+    ".rb": "Ruby", ".php": "PHP", ".kt": "Kotlin", ".swift": "Swift",
+}
+
+_SKIP_DIRS = {
+    ".git", "node_modules", "venv", "__pycache__", ".devpilot",
+    "dist", "build", ".next", ".cache", ".pytest_cache",
+}
+
+
+@router.get("/api/workspace/stats")
+def get_workspace_stats():
+    """Returns real workspace statistics: file counts, language breakdown, git commit count."""
+    root = workspace_state.root
+    if not root or not os.path.isdir(root):
+        return {
+            "total_files": 0,
+            "total_lines": 0,
+            "languages": {},
+            "git_commits": 0,
+        }
+
+    lang_counter: Counter = Counter()
+    total_files = 0
+    total_lines = 0
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Prune skip dirs in-place so os.walk won't descend into them
+        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith(".")]
+        for fname in filenames:
+            ext = os.path.splitext(fname)[1].lower()
+            lang = _EXT_LANG_MAP.get(ext)
+            if not lang:
+                continue
+            total_files += 1
+            lang_counter[lang] += 1
+            # Count lines (best-effort, skip binary files)
+            try:
+                fpath = os.path.join(dirpath, fname)
+                with open(fpath, "r", encoding="utf-8", errors="ignore") as fh:
+                    total_lines += sum(1 for _ in fh)
+            except Exception:
+                pass
+
+    # Build percentage map (relative to tracked files only)
+    languages: dict = {}
+    if lang_counter:
+        grand_total = sum(lang_counter.values())
+        languages = {
+            lang: round((count / grand_total) * 100, 1)
+            for lang, count in lang_counter.most_common(8)
+        }
+
+    # Git commit count
+    git_commits = 0
+    try:
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            git_commits = int(result.stdout.strip())
+    except Exception:
+        pass
+
+    return {
+        "total_files": total_files,
+        "total_lines": total_lines,
+        "languages": languages,
+        "git_commits": git_commits,
+    }
+
+
+@router.get("/api/health")
+def get_health():
+    """Returns server health status and uptime."""
+    from pathlib import Path as _Path
+    db_file = _Path.home() / ".devpilot" / "history.db"
+    db_connected = db_file.exists()
+    uptime = round(time.time() - _SERVER_START_TIME, 1)
+    return {
+        "status": "ok",
+        "db_connected": db_connected,
+        "uptime_seconds": uptime,
+    }
+

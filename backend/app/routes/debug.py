@@ -62,7 +62,7 @@ async def api_scan_bugs():
             report = await generate_bug_report_async()
             # Resolve db directory similarly to db.py
             user_home = Path.home()
-            app_data_dir = user_home / ".gemini" / "antigravity-ide"
+            app_data_dir = user_home / ".devpilot"
             db_dir = app_data_dir / "db"
             db_dir.mkdir(parents=True, exist_ok=True)
             bug_report_path = db_dir / "bug_report.txt"

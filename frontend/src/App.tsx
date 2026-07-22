@@ -112,13 +112,13 @@ function EditorShell() {
       <div className="flex-1 flex overflow-hidden">
         <ActivityBar />
 
-        {/* Workspace Central Panels (separated by 8px grid gaps) */}
-        <div className="flex-1 flex gap-2 p-2 overflow-hidden min-w-0 bg-[var(--dp-bg-primary)]">
+        {/* Workspace Central Panels — seamless, no gap */}
+        <div className="flex-1 flex overflow-hidden min-w-0 bg-[var(--dp-bg-primary)]">
           
           {/* Left Sidebar tab selection */}
           {isSidebarOpen && (
             <div style={{ width: `${sidebarWidth}px` }} className="h-full shrink-0 relative flex">
-              <div className="flex-1 h-full min-w-0 border border-[var(--dp-border)] bg-[var(--dp-bg-secondary)] rounded-lg overflow-hidden flex flex-col shadow-lg shadow-black/20">
+              <div className="flex-1 h-full min-w-0 overflow-hidden flex flex-col" style={{ background: 'var(--dp-bg-secondary)', borderRight: '1px solid var(--dp-border)' }}>
                 {sidebarTab === 'explorer' && (
                   <Sidebar
                     onSelectFile={handleSelectFile}
@@ -141,14 +141,14 @@ function EditorShell() {
               </div>
               <div
                 onMouseDown={() => setIsResizingSidebar(true)}
-                className="dp-resize-handle-h absolute -right-1 top-0 bottom-0 w-2 z-50 select-none cursor-col-resize hover:bg-[var(--dp-accent)]/20 transition-colors"
+                className="dp-resize-handle-h absolute right-0 top-0 bottom-0 w-[3px] z-50 select-none cursor-col-resize"
               />
             </div>
           )}
 
           {/* Workspace Central area (Editor & Terminal) */}
-          <div className="flex-1 h-full flex flex-col gap-2 min-w-0">
-            <div className="flex-1 border border-[var(--dp-border)] bg-[var(--dp-bg-secondary)] rounded-lg overflow-hidden relative shadow-lg shadow-black/20">
+          <div className="flex-1 h-full flex flex-col min-w-0" style={{ borderRight: '1px solid var(--dp-border)' }}>
+            <div className="flex-1 overflow-hidden relative">
               <EditorArea
                 activeFilePath={activeFilePath}
                 openFiles={openFiles}
@@ -165,12 +165,12 @@ function EditorShell() {
 
             {/* Resizable Terminal Panel */}
             <div
-              style={{ height: `${terminalHeight}px` }}
-              className="shrink-0 border border-[var(--dp-border)] bg-[var(--dp-bg-secondary)] rounded-lg overflow-hidden flex flex-col relative shadow-lg shadow-black/20"
+              className="shrink-0 overflow-hidden flex flex-col relative"
+              style={{ borderTop: '1px solid var(--dp-border)', height: `${terminalHeight}px` }}
             >
               <div
                 onMouseDown={() => setIsResizingTerminal(true)}
-                className="dp-resize-handle-v absolute -top-1 left-0 right-0 h-2 z-50 select-none cursor-row-resize hover:bg-[var(--dp-accent)]/20 transition-colors"
+                className="dp-resize-handle-v absolute top-0 left-0 right-0 h-[3px] z-50 select-none cursor-row-resize"
               />
               <BottomPanel />
             </div>
@@ -179,12 +179,11 @@ function EditorShell() {
           {/* AI Sidebar panel (width controlled by aiPanelWidth) */}
           {isAiPanelOpen && (
             <div style={{ width: `${aiPanelWidth}px` }} className="h-full shrink-0 relative flex">
-              {/* Horizontal Resize handle for AI Panel */}
               <div
                 onMouseDown={() => setIsResizingAiPanel(true)}
-                className="dp-resize-handle-h absolute -left-1 top-0 bottom-0 w-2 z-50 select-none cursor-col-resize hover:bg-[var(--dp-accent)]/20 transition-colors"
+                className="dp-resize-handle-h absolute left-0 top-0 bottom-0 w-[3px] z-50 select-none cursor-col-resize"
               />
-              <div className="flex-1 h-full min-w-0 border border-[var(--dp-border)] bg-[var(--dp-bg-secondary)] rounded-lg overflow-hidden flex flex-col shadow-lg shadow-black/20">
+              <div className="flex-1 h-full min-w-0 overflow-hidden flex flex-col">
                     <AiWorkspace
                       messages={messages}
                       inputText={chatInputText}
@@ -245,20 +244,25 @@ function EditorShell() {
 
 
       {/* Toast Overlay */}
-      <div className="fixed bottom-8 right-6 z-50 flex flex-col gap-2 pointer-events-none">
+      <div className="fixed bottom-6 right-5 z-50 flex flex-col gap-2 pointer-events-none">
         {toasts.map(t => (
           <div
             key={t.id}
             onClick={() => removeToast(t.id)}
-            className={`pointer-events-auto px-3.5 py-2 text-xs border shadow-lg flex items-center gap-2 select-text cursor-pointer transition-all duration-300 transform translate-y-0 rounded-none animate-slide-in ${
+            className={`pointer-events-auto px-4 py-2.5 text-[12px] shadow-[var(--dp-shadow-float)] flex items-center gap-2.5 select-text cursor-pointer transition-all duration-300 animate-slide-in rounded-xl border backdrop-blur-sm ${
               t.type === 'success'
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                ? 'bg-[var(--dp-success)]/10 text-[var(--dp-success)] border-[var(--dp-success)]/20'
                 : t.type === 'error'
-                ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                ? 'bg-[var(--dp-error)]/10 text-[var(--dp-error)] border-[var(--dp-error)]/20'
+                : 'bg-[var(--dp-info)]/10 text-[var(--dp-info)] border-[var(--dp-info)]/20'
             }`}
           >
-            <span>{t.message}</span>
+            <span className="w-1.5 h-1.5 rounded-full shrink-0 ${
+              t.type === 'success' ? 'bg-[var(--dp-success)]' :
+              t.type === 'error'   ? 'bg-[var(--dp-error)]'   :
+              'bg-[var(--dp-info)]'
+            }" />
+            <span className="font-medium">{t.message}</span>
           </div>
         ))}
       </div>

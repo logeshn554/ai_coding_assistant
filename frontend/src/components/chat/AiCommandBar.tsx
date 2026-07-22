@@ -1,29 +1,36 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Send, Square, Sparkles, FileText, Folder, Terminal, 
-  GitBranch, Code2, Layers, ChevronRight 
+import {
+  Send, Square, Sparkles, FileText, Folder, Terminal,
+  GitBranch, Code2, Layers, ChevronRight, Plus, AtSign
 } from 'lucide-react';
 import type { SlashCommand, ContextMention } from '../../types/chat';
 
 const SLASH_COMMANDS: SlashCommand[] = [
-  { name: '/plan', description: 'Generate a step-by-step implementation plan', example: '/plan Add authentication system' },
-  { name: '/build', description: 'Run build and verify for type errors', example: '/build' },
-  { name: '/fix', description: 'Diagnose and fix runtime or lint errors', example: '/fix Fix broken login state' },
-  { name: '/refactor', description: 'Refactor code for performance and cleanliness', example: '/refactor Clean up state hooks' },
-  { name: '/test', description: 'Generate unit tests for active file', example: '/test Create tests for user.service.ts' },
-  { name: '/document', description: 'Generate JSDoc comments and documentation', example: '/document Add docs to api handler' },
-  { name: '/review', description: 'Perform security & code quality review', example: '/review Scan workspace for bugs' },
-  { name: '/explain', description: 'Explain active selection or file logic', example: '/explain How does routing work?' },
-  { name: '/deploy', description: 'Prepare build bundle for deployment', example: '/deploy Verify production build' },
+  { name: '/plan',      description: 'Generate a step-by-step implementation plan',    example: '/plan Add authentication system' },
+  { name: '/build',     description: 'Run build and verify for type errors',           example: '/build' },
+  { name: '/fix',       description: 'Diagnose and fix runtime or lint errors',        example: '/fix Fix broken login state' },
+  { name: '/refactor',  description: 'Refactor code for performance and cleanliness',  example: '/refactor Clean up state hooks' },
+  { name: '/test',      description: 'Generate unit tests for active file',            example: '/test Create tests for auth.ts' },
+  { name: '/document',  description: 'Generate JSDoc comments and documentation',      example: '/document Add docs to api handler' },
+  { name: '/review',    description: 'Perform security & code quality review',         example: '/review Scan workspace for bugs' },
+  { name: '/explain',   description: 'Explain active selection or file logic',         example: '/explain How does routing work?' },
+  { name: '/deploy',    description: 'Prepare build bundle for deployment',            example: '/deploy Verify production build' },
 ];
 
 const CONTEXT_MENTIONS: ContextMention[] = [
-  { name: '@file', type: 'file', description: 'Reference a specific file from workspace' },
-  { name: '@folder', type: 'folder', description: 'Reference a folder directory' },
-  { name: '@terminal', type: 'terminal', description: 'Attach recent terminal output & logs' },
-  { name: '@git', type: 'git', description: 'Attach git diff and uncommitted changes' },
-  { name: '@selection', type: 'selection', description: 'Attach currently highlighted editor selection' },
-  { name: '@workspace', type: 'workspace', description: 'Attach global workspace index context' },
+  { name: '@file',      type: 'file',      description: 'Reference a specific file' },
+  { name: '@folder',    type: 'folder',    description: 'Reference a folder directory' },
+  { name: '@terminal',  type: 'terminal',  description: 'Attach recent terminal output' },
+  { name: '@git',       type: 'git',       description: 'Attach git diff & changes' },
+  { name: '@selection', type: 'selection', description: 'Attach highlighted editor selection' },
+  { name: '@workspace', type: 'workspace', description: 'Attach global workspace context' },
+];
+
+const SUGGESTED_PROMPTS = [
+  'Build a user authentication flow with JWT',
+  'Add error handling to API endpoints',
+  'Create unit tests for existing functions',
+  'Refactor for better performance',
 ];
 
 interface AiCommandBarProps {
@@ -37,116 +44,82 @@ interface AiCommandBarProps {
 }
 
 export const AiCommandBar: React.FC<AiCommandBarProps> = ({
-  inputText,
-  setInputText,
-  onSend,
-  isGenerating,
-  onCancel,
-  mode,
-  setMode
+  inputText, setInputText, onSend, isGenerating, onCancel, mode, setMode
 }) => {
-  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [showSlashMenu, setShowSlashMenu]     = useState(false);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedIndex, setSelectedIndex]     = useState(0);
+  const [showSuggested, setShowSuggested]     = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    // Detect trigger characters
     const lastWord = inputText.split(/\s+/).pop() || '';
     if (lastWord.startsWith('/')) {
-      setShowSlashMenu(true);
-      setShowMentionMenu(false);
-      setSelectedIndex(0);
+      setShowSlashMenu(true); setShowMentionMenu(false); setSelectedIndex(0);
     } else if (lastWord.startsWith('@')) {
-      setShowMentionMenu(true);
-      setShowSlashMenu(false);
-      setSelectedIndex(0);
+      setShowMentionMenu(true); setShowSlashMenu(false); setSelectedIndex(0);
     } else {
-      setShowSlashMenu(false);
-      setShowMentionMenu(false);
+      setShowSlashMenu(false); setShowMentionMenu(false);
     }
   }, [inputText]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showSlashMenu) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedIndex(prev => (prev + 1) % SLASH_COMMANDS.length);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIndex(prev => (prev - 1 + SLASH_COMMANDS.length) % SLASH_COMMANDS.length);
-        return;
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault();
-        insertSlashCommand(SLASH_COMMANDS[selectedIndex]);
-        return;
-      }
-      if (e.key === 'Escape') {
-        setShowSlashMenu(false);
-        return;
-      }
-    }
+    const menuOpen = showSlashMenu || showMentionMenu;
+    const menuLen  = showSlashMenu ? SLASH_COMMANDS.length : CONTEXT_MENTIONS.length;
 
-    if (showMentionMenu) {
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedIndex(prev => (prev + 1) % CONTEXT_MENTIONS.length);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedIndex(prev => (prev - 1 + CONTEXT_MENTIONS.length) % CONTEXT_MENTIONS.length);
-        return;
-      }
+    if (menuOpen) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedIndex(p => (p + 1) % menuLen); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setSelectedIndex(p => (p - 1 + menuLen) % menuLen); return; }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        insertMention(CONTEXT_MENTIONS[selectedIndex]);
+        if (showSlashMenu) insertSlashCommand(SLASH_COMMANDS[selectedIndex]);
+        else insertMention(CONTEXT_MENTIONS[selectedIndex]);
         return;
       }
-      if (e.key === 'Escape') {
-        setShowMentionMenu(false);
-        return;
-      }
+      if (e.key === 'Escape') { setShowSlashMenu(false); setShowMentionMenu(false); return; }
     }
 
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (isGenerating) {
-        onCancel();
-      } else {
-        onSend();
-      }
+      if (isGenerating) onCancel(); else if (inputText.trim()) onSend();
     }
   };
 
   const insertSlashCommand = (cmd: SlashCommand) => {
     const words = inputText.split(/\s+/);
     words.pop();
-    const newText = [...words, cmd.name].join(' ') + ' ';
-    setInputText(newText);
+    setInputText([...words, cmd.name].join(' ') + ' ');
     setShowSlashMenu(false);
     if (cmd.name === '/plan') setMode('Plan');
+    inputRef.current?.focus();
   };
 
   const insertMention = (mention: ContextMention) => {
     const words = inputText.split(/\s+/);
     words.pop();
-    const newText = [...words, mention.name].join(' ') + ' ';
-    setInputText(newText);
+    setInputText([...words, mention.name].join(' ') + ' ');
     setShowMentionMenu(false);
+    inputRef.current?.focus();
   };
 
+  const modes: Array<{ id: 'Ask' | 'Plan' | 'Agent'; label: string }> = [
+    { id: 'Ask',   label: 'Ask' },
+    { id: 'Plan',  label: 'Plan' },
+    { id: 'Agent', label: 'Agent' },
+  ];
+
   return (
-    <div className="relative flex flex-col bg-[#14171f] border border-white/10 rounded-xl p-2.5 shadow-xl transition-all duration-120 focus-within:border-violet-500/60 focus-within:ring-1 focus-within:ring-violet-500/40">
-      {/* Autocomplete Slash Menu */}
+    <div className="relative flex flex-col gap-2">
+
+      {/* ── Slash Command Menu ── */}
       {showSlashMenu && (
-        <div className="absolute bottom-full left-0 mb-2 w-72 bg-[#1a1d27] border border-white/10 rounded-lg shadow-2xl overflow-hidden z-50">
-          <div className="px-2.5 py-1.5 text-[10px] font-semibold text-violet-400 border-b border-white/5 uppercase tracking-wider flex items-center justify-between">
+        <div
+          className="absolute bottom-full left-0 mb-2 w-72 rounded-xl overflow-hidden z-50 animate-slide-down"
+          style={{ background: 'var(--dp-bg-elevated)', border: '1px solid var(--dp-border-mid)', boxShadow: 'var(--dp-shadow-float)' }}
+        >
+          <div className="px-3 py-2 text-[10px] font-semibold text-[var(--dp-accent)] border-b border-[var(--dp-border)] uppercase tracking-wider flex items-center justify-between">
             <span>Slash Commands</span>
-            <span className="text-gray-500">↑↓ to navigate</span>
+            <span className="text-[var(--dp-text-muted)] normal-case font-normal">↑↓ navigate · Enter select</span>
           </div>
           <div className="max-h-48 overflow-y-auto py-1">
             {SLASH_COMMANDS.map((cmd, idx) => (
@@ -154,26 +127,31 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
                 key={cmd.name}
                 onClick={() => insertSlashCommand(cmd)}
                 className={`px-3 py-2 text-xs cursor-pointer flex items-center justify-between transition-colors ${
-                  idx === selectedIndex ? 'bg-violet-600/20 text-white font-medium' : 'text-gray-300 hover:bg-white/5'
+                  idx === selectedIndex
+                    ? 'bg-[var(--dp-accent-dim)] text-[var(--dp-text-bright)]'
+                    : 'text-[var(--dp-text-secondary)] hover:bg-white/4'
                 }`}
               >
                 <div>
-                  <span className="font-mono text-violet-300 font-bold">{cmd.name}</span>
-                  <p className="text-[10px] text-gray-400">{cmd.description}</p>
+                  <span className="font-mono text-[var(--dp-accent)] font-semibold">{cmd.name}</span>
+                  <p className="text-[10px] text-[var(--dp-text-muted)] mt-0.5">{cmd.description}</p>
                 </div>
-                <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+                <ChevronRight className="w-3.5 h-3.5 text-[var(--dp-text-muted)] shrink-0" />
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Autocomplete Mentions Menu */}
+      {/* ── Mention Menu ── */}
       {showMentionMenu && (
-        <div className="absolute bottom-full left-0 mb-2 w-72 bg-[#1a1d27] border border-white/10 rounded-lg shadow-2xl overflow-hidden z-50">
-          <div className="px-2.5 py-1.5 text-[10px] font-semibold text-blue-400 border-b border-white/5 uppercase tracking-wider flex items-center justify-between">
+        <div
+          className="absolute bottom-full left-0 mb-2 w-72 rounded-xl overflow-hidden z-50 animate-slide-down"
+          style={{ background: 'var(--dp-bg-elevated)', border: '1px solid var(--dp-border-mid)', boxShadow: 'var(--dp-shadow-float)' }}
+        >
+          <div className="px-3 py-2 text-[10px] font-semibold text-[var(--dp-info)] border-b border-[var(--dp-border)] uppercase tracking-wider flex items-center justify-between">
             <span>Context Mentions</span>
-            <span className="text-gray-500">↑↓ to navigate</span>
+            <span className="text-[var(--dp-text-muted)] normal-case font-normal">↑↓ navigate</span>
           </div>
           <div className="max-h-48 overflow-y-auto py-1">
             {CONTEXT_MENTIONS.map((mention, idx) => (
@@ -181,18 +159,20 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
                 key={mention.name}
                 onClick={() => insertMention(mention)}
                 className={`px-3 py-2 text-xs cursor-pointer flex items-center gap-2.5 transition-colors ${
-                  idx === selectedIndex ? 'bg-blue-600/20 text-white font-medium' : 'text-gray-300 hover:bg-white/5'
+                  idx === selectedIndex
+                    ? 'bg-[rgba(96,165,250,0.1)] text-[var(--dp-text-bright)]'
+                    : 'text-[var(--dp-text-secondary)] hover:bg-white/4'
                 }`}
               >
-                {mention.type === 'file' && <FileText className="w-4 h-4 text-blue-400" />}
-                {mention.type === 'folder' && <Folder className="w-4 h-4 text-amber-400" />}
-                {mention.type === 'terminal' && <Terminal className="w-4 h-4 text-green-400" />}
-                {mention.type === 'git' && <GitBranch className="w-4 h-4 text-orange-400" />}
-                {mention.type === 'selection' && <Code2 className="w-4 h-4 text-purple-400" />}
-                {mention.type === 'workspace' && <Layers className="w-4 h-4 text-cyan-400" />}
+                {mention.type === 'file'      && <FileText className="w-3.5 h-3.5 text-[var(--dp-info)] shrink-0" />}
+                {mention.type === 'folder'    && <Folder   className="w-3.5 h-3.5 text-[var(--dp-warning)] shrink-0" />}
+                {mention.type === 'terminal'  && <Terminal  className="w-3.5 h-3.5 text-[var(--dp-success)] shrink-0" />}
+                {mention.type === 'git'       && <GitBranch className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
+                {mention.type === 'selection' && <Code2     className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+                {mention.type === 'workspace' && <Layers    className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
                 <div>
-                  <span className="font-mono text-blue-300 font-bold">{mention.name}</span>
-                  <p className="text-[10px] text-gray-400">{mention.description}</p>
+                  <span className="font-mono text-[var(--dp-info)] font-semibold">{mention.name}</span>
+                  <p className="text-[10px] text-[var(--dp-text-muted)]">{mention.description}</p>
                 </div>
               </div>
             ))}
@@ -200,72 +180,124 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
         </div>
       )}
 
-      {/* Mode Selector & Quick Tags */}
-      <div className="flex items-center justify-between pb-2 mb-1.5 border-b border-white/5 text-[11px]">
-        <div className="flex items-center gap-1.5 bg-[#0e1015] p-0.5 rounded-lg border border-white/5">
-          {(['Agent', 'Plan', 'Ask'] as const).map((m) => (
+      {/* ── Main Input Container ── */}
+      <div
+        className="relative flex flex-col rounded-xl transition-all duration-150 focus-within:shadow-[0_0_0_2px_rgba(124,106,240,0.35)]"
+        style={{
+          background: 'var(--dp-bg-elevated)',
+          border: '1px solid var(--dp-border-mid)',
+        }}
+      >
+        {/* Textarea */}
+        <textarea
+          ref={inputRef}
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => !inputText && setShowSuggested(true)}
+          onBlur={() => setTimeout(() => setShowSuggested(false), 200)}
+          placeholder={
+            mode === 'Agent'
+              ? 'Ask DevPilot anything...'
+              : mode === 'Plan'
+              ? 'Describe feature to plan...'
+              : 'Ask a question...'
+          }
+          rows={3}
+          className="w-full bg-transparent text-[12px] text-[var(--dp-text-primary)] placeholder-[var(--dp-text-muted)] focus:outline-none resize-none leading-relaxed px-3 pt-3 pb-1 font-sans"
+          style={{ minHeight: '70px', maxHeight: '180px' }}
+        />
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-2 pb-2 pt-1">
+          {/* Left: context tools */}
+          <div className="flex items-center gap-0.5">
             <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                mode === m
-                  ? 'bg-violet-600 text-white shadow-sm font-semibold'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'
-              }`}
+              onClick={() => { setInputText(inputText + '@'); inputRef.current?.focus(); }}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
+              title="Mention context (@)"
             >
-              {m === 'Agent' ? '⚡ Autonomous Agent' : m === 'Plan' ? '📋 Architect Plan' : '💬 Ask Advisory'}
+              <AtSign className="w-3.5 h-3.5" />
             </button>
+            <button
+              onClick={() => { setInputText(inputText + '/'); inputRef.current?.focus(); }}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
+              title="Slash command (/)"
+            >
+              <span className="text-[12px] font-bold">/</span>
+            </button>
+            <button
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
+              title="Add file context"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Mode selector */}
+            <div className="ml-1 flex items-center bg-white/4 rounded-lg p-0.5 gap-0.5">
+              {modes.map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setMode(m.id)}
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-all cursor-pointer ${
+                    mode === m.id
+                      ? 'bg-[var(--dp-accent)] text-white shadow-sm'
+                      : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)]'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Right: Send / Stop */}
+          {isGenerating ? (
+            <button
+              onClick={onCancel}
+              className="w-8 h-8 flex items-center justify-center rounded-xl bg-[var(--dp-error)]/15 border border-[var(--dp-error)]/30 text-[var(--dp-error)] hover:bg-[var(--dp-error)]/25 transition-all cursor-pointer"
+              title="Stop generation"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" />
+            </button>
+          ) : (
+            <button
+              onClick={onSend}
+              disabled={!inputText.trim()}
+              className="w-8 h-8 flex items-center justify-center rounded-xl disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all hover:scale-105 active:scale-95"
+              style={{
+                background: 'linear-gradient(135deg, #7c6af0 0%, #4f8df5 100%)',
+                boxShadow: inputText.trim() ? '0 4px 12px rgba(124,106,240,0.4)' : 'none',
+              }}
+              title="Send (Enter)"
+            >
+              <Send className="w-3.5 h-3.5 text-white" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Suggested prompts — only when empty + focused */}
+      {showSuggested && !inputText && (
+        <div className="absolute bottom-full left-0 right-0 mb-2 rounded-xl overflow-hidden z-40 animate-slide-down"
+          style={{ background: 'var(--dp-bg-elevated)', border: '1px solid var(--dp-border)', boxShadow: 'var(--dp-shadow-md)' }}
+        >
+          <div className="px-3 py-2 text-[10px] font-semibold text-[var(--dp-text-muted)] uppercase tracking-wider border-b border-[var(--dp-border)] flex items-center gap-1.5">
+            <Sparkles className="w-3 h-3 text-[var(--dp-accent)]" />
+            Suggested
+          </div>
+          {SUGGESTED_PROMPTS.map((prompt, i) => (
+            <div
+              key={i}
+              onClick={() => { setInputText(prompt); setShowSuggested(false); inputRef.current?.focus(); }}
+              className="px-3 py-2 text-[11px] text-[var(--dp-text-secondary)] hover:bg-white/4 cursor-pointer transition-colors flex items-center gap-2"
+            >
+              <ChevronRight className="w-3 h-3 text-[var(--dp-text-muted)] shrink-0" />
+              {prompt}
+            </div>
           ))}
         </div>
-
-        <div className="flex items-center gap-2 text-gray-400 text-[10px]">
-          <span className="font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/5">Type @ context</span>
-          <span className="font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/5">Type / command</span>
-        </div>
-      </div>
-
-      {/* Text Area */}
-      <textarea
-        ref={inputRef}
-        value={inputText}
-        onChange={(e) => setInputText(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={
-          mode === 'Agent'
-            ? 'Describe task or change (e.g. "Build user login flow with JWT")...'
-            : mode === 'Plan'
-            ? 'Describe architectural feature to plan...'
-            : 'Ask a question or request explanation...'
-        }
-        rows={3}
-        className="w-full bg-transparent text-xs text-white placeholder-gray-500 focus:outline-none resize-none leading-relaxed"
-      />
-
-      {/* Action Footer */}
-      <div className="flex items-center justify-between pt-2 border-t border-white/5">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-gray-500 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-violet-400" /> DevPilot v2.4 Engine
-          </span>
-        </div>
-
-        {isGenerating ? (
-          <button
-            onClick={onCancel}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 text-xs font-semibold transition-all"
-          >
-            <Square className="w-3.5 h-3.5 fill-current" /> Stop Execution
-          </button>
-        ) : (
-          <button
-            onClick={onSend}
-            disabled={!inputText.trim()}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-md shadow-violet-600/20 transition-all cursor-pointer"
-          >
-            <Send className="w-3.5 h-3.5" /> Run Task
-          </button>
-        )}
-      </div>
+      )}
     </div>
   );
 };

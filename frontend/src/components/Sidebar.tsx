@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Folder, FolderOpen, File as FileIcon, Plus, FolderPlus, Trash2,
-  ChevronRight, ChevronDown, Terminal, ChevronsDownUp, ChevronsUpDown,
+  ChevronRight, ChevronDown, Terminal, ChevronsDownUp,
   Eye, EyeOff, Copy, Clipboard, Pencil
 } from 'lucide-react';
 import { listFiles, createFile, deleteFile, getWorkspaceStats } from '../api';
@@ -281,21 +281,8 @@ export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger
     }
   };
 
-  // ── Collapse / Expand All ──
+  // ── Collapse All ──
   const collapseAll = () => setExpandedPaths({});
-  const expandAll = async () => {
-    const expandRecursive = async (items: FileItem[]) => {
-      for (const item of items) {
-        if (item.is_dir) {
-          setExpandedPaths(prev => ({ ...prev, [item.path]: true }));
-          if (!dirContents[item.path]) {
-            await loadDirectory(item.path);
-          }
-        }
-      }
-    };
-    await expandRecursive(rootItems);
-  };
 
   // ── Copy path to clipboard ──
   const copyPath = (path: string, relative = true) => {
@@ -465,12 +452,12 @@ export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger
               onClick={() => (item.is_dir ? handleToggleFolder(item.path) : onSelectFile(item.path))}
               onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item }); }}
               style={{ paddingLeft: `${depth * 14 + 8}px` }}
-              className={`group flex items-center justify-between py-[3px] pr-2 cursor-pointer transition-colors duration-75 border-l-2
+              className={`group flex items-center justify-between py-[3px] pr-2 cursor-pointer transition-all duration-75
                 ${isDragTarget ? 'dp-drag-over' : ''}
                 ${dragItem?.path === item.path ? 'dp-dragging' : ''}
                 ${isSelected
-                  ? 'bg-[#2a2a2b] border-[var(--dp-accent)] text-white'
-                  : 'border-transparent text-gray-400 hover:bg-white/[0.04] hover:text-[#cccccc]'
+                  ? 'bg-[var(--dp-bg-active)] text-[var(--dp-text-bright)]'
+                  : 'text-[var(--dp-text-secondary)] hover:bg-[var(--dp-bg-hover)] hover:text-[var(--dp-text-primary)]'
                 }`}
             >
               <div className="flex items-center gap-1.5 min-w-0 select-none">
@@ -611,43 +598,39 @@ export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger
   );
 
   return (
-    <div className="h-full flex flex-col bg-[var(--dp-bg-secondary)] text-[var(--dp-text-primary)] select-none font-sans">
+    <div className="h-full flex flex-col select-none font-sans" style={{ background: 'var(--dp-bg-secondary)', color: 'var(--dp-text-primary)' }}>
       {/* Explorer Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--dp-border)] bg-[var(--dp-bg-secondary)] shrink-0 select-none">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Explorer</span>
+      <div
+        className="flex items-center justify-between px-3 py-2 shrink-0 select-none"
+        style={{ borderBottom: '1px solid var(--dp-border)' }}
+      >
+        <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--dp-text-muted)]">Explorer</span>
         {workspacePath && (
           <div className="flex items-center gap-0.5">
             <button
               onClick={() => { setCreatingInPath(''); setCreatingType('file'); }}
-              className="p-1 text-gray-400 hover:text-white cursor-pointer rounded hover:bg-white/10 transition-colors"
-              title="New File at Root"
+              className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
+              title="New File"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => { setCreatingInPath(''); setCreatingType('folder'); }}
-              className="p-1 text-gray-400 hover:text-white cursor-pointer rounded hover:bg-white/10 transition-colors"
-              title="New Folder at Root"
+              className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
+              title="New Folder"
             >
               <FolderPlus className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={collapseAll}
-              className="p-1 text-gray-400 hover:text-white cursor-pointer rounded hover:bg-white/10 transition-colors"
+              className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
               title="Collapse All"
             >
               <ChevronsDownUp className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={expandAll}
-              className="p-1 text-gray-400 hover:text-white cursor-pointer rounded hover:bg-white/10 transition-colors"
-              title="Expand All"
-            >
-              <ChevronsUpDown className="w-3.5 h-3.5" />
-            </button>
-            <button
               onClick={() => setShowHidden(!showHidden)}
-              className={`p-1 cursor-pointer rounded hover:bg-white/10 transition-colors ${showHidden ? 'text-[var(--dp-accent)]' : 'text-gray-400 hover:text-white'}`}
+              className={`w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-colors hover:bg-white/6 ${showHidden ? 'text-[var(--dp-accent)]' : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)]'}`}
               title={showHidden ? 'Hide Hidden Files' : 'Show Hidden Files'}
             >
               {showHidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
@@ -657,13 +640,14 @@ export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger
       </div>
 
       {/* Search Filter */}
-      <div className="px-2 py-1.5 border-b border-[var(--dp-border)]">
+      <div className="px-2 py-1.5" style={{ borderBottom: '1px solid var(--dp-border)' }}>
         <input
           type="text"
           placeholder="Filter files..."
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
-          className="w-full px-2 py-1 bg-[var(--dp-bg-tertiary)] border border-[var(--dp-border)] rounded text-xs text-[var(--dp-text-primary)] focus:outline-none focus:border-[var(--dp-border-focus)] transition-colors font-sans placeholder:text-gray-500"
+          className="w-full px-2 py-1 rounded-md text-[11px] font-sans placeholder-[var(--dp-text-muted)] focus:outline-none transition-colors"
+          style={{ background: 'var(--dp-bg-tertiary)', border: '1px solid var(--dp-border)', color: 'var(--dp-text-primary)' }}
         />
       </div>
 
@@ -672,21 +656,27 @@ export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger
 
       {/* File Tree */}
       {!workspacePath ? (
-        <div className="flex-1 flex flex-col justify-center items-center px-4 py-8 text-center text-gray-500 select-none">
-          <FolderOpen className="w-10 h-10 text-gray-600 mb-3" />
-          <p className="text-xs font-semibold mb-1 text-gray-300">No Folder Opened</p>
-          <p className="text-[10px] text-gray-500 mb-4 max-w-[180px] leading-relaxed">
-            Open a workspace folder to view files and start building.
+        <div className="flex-1 flex flex-col justify-center items-center px-4 py-8 text-center">
+          <FolderOpen className="w-10 h-10 text-[var(--dp-text-muted)]/30 mb-3" />
+          <p className="text-[12px] font-semibold mb-1.5 text-[var(--dp-text-secondary)]">No Folder Opened</p>
+          <p className="text-[11px] text-[var(--dp-text-muted)] mb-4 max-w-[180px] leading-relaxed">
+            Open a workspace folder to view and manage files.
           </p>
           <button
             onClick={onOpenFolder}
-            className="px-4 py-1.5 bg-[var(--dp-accent)] hover:bg-[var(--dp-accent-hover)] text-white text-xs font-medium rounded transition-colors w-full max-w-[140px] cursor-pointer"
+            className="px-4 py-1.5 text-white text-[11px] font-semibold rounded-lg transition-all cursor-pointer hover:opacity-90"
+            style={{ background: 'var(--dp-accent-gradient)' }}
           >
             Open Folder
           </button>
         </div>
       ) : (
         <div className="flex-1 flex flex-col min-h-0">
+          {/* Project root label */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--dp-text-muted)]" style={{ borderBottom: '1px solid var(--dp-border)' }}>
+            <Folder className="w-3 h-3" />
+            {workspacePath.replace(/\\/g, '/').split('/').pop() || 'Project'}
+          </div>
           <div className="flex-1 overflow-y-auto py-0.5">
             {/* Root create form */}
             {creatingType && creatingInPath === '' && (

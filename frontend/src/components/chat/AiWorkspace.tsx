@@ -1,30 +1,21 @@
 import React, { useState } from 'react';
-import { 
-  Sparkles, LayoutDashboard, ClipboardList, CheckSquare, Clock, 
-  Users, Wrench, Brain, MessageSquare, Terminal 
+import {
+  Sparkles, MessageSquare, ListChecks, Clock, Brain,
+  FileCode, Check, Circle, Zap, Target,
+  MoreHorizontal
 } from 'lucide-react';
-import type { 
-  ChatMessage, TimelineStep, AgentCardData, ToolExecutionItem, 
-  ProjectContextInfo, ProjectMemoryItem, AiTaskItem 
+import type {
+  ChatMessage,
+  ToolExecutionItem,
+  ProjectContextInfo, ProjectMemoryItem
 } from '../../types/chat';
 import { AiCommandBar } from './AiCommandBar';
 import { ToolExecutionCard } from './ToolExecutionCard';
-import { AiTaskBoard } from './AiTaskBoard';
 import { ProjectContextPanel } from './ProjectContextPanel';
 import { ProjectMemoryPanel } from './ProjectMemoryPanel';
 import { MessageList } from './MessageList';
 
-type AiWorkspaceSection = 
-  | 'overview' 
-  | 'planner' 
-  | 'tasks' 
-  | 'timeline' 
-  | 'agents' 
-  | 'files' 
-  | 'tools' 
-  | 'memory' 
-  | 'chat' 
-  | 'logs';
+type Tab = 'chat' | 'plan' | 'context' | 'timeline';
 
 interface AiWorkspaceProps {
   messages: ChatMessage[];
@@ -42,6 +33,132 @@ interface AiWorkspaceProps {
   contextPercentage?: number | null;
 }
 
+// ── Goal Progress Step ────────────────────────────────────────────
+interface GoalStep {
+  id: string;
+  label: string;
+  status: 'done' | 'active' | 'pending';
+}
+
+// ── File Change Card ──────────────────────────────────────────────
+const FileChangeCard: React.FC<{
+  filename: string;
+  added: number;
+  removed: number;
+}> = ({ filename, added, removed }) => (
+  <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/3 border border-[var(--dp-border)] hover:border-[var(--dp-border-mid)] transition-colors group">
+    <div className="flex items-center gap-2 min-w-0">
+      <FileCode className="w-3.5 h-3.5 text-[var(--dp-accent)] shrink-0" />
+      <span className="text-[11px] font-medium text-[var(--dp-text-primary)] truncate font-mono">{filename}</span>
+      <span className="text-[10px] text-[var(--dp-success)] font-mono font-semibold">+{added}</span>
+      <span className="text-[10px] text-[var(--dp-error)] font-mono font-semibold">−{removed}</span>
+    </div>
+    <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <button className="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-[var(--dp-accent)] text-white hover:opacity-90 cursor-pointer transition-opacity">
+        Review Diff
+      </button>
+      <button className="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-white/8 text-[var(--dp-text-secondary)] hover:bg-white/12 cursor-pointer transition-colors">
+        Open File
+      </button>
+    </div>
+  </div>
+);
+
+
+
+
+// ── Current Goal Card ─────────────────────────────────────────────
+const CurrentGoalCard: React.FC<{
+  goal: string;
+  steps: GoalStep[];
+  isGenerating: boolean;
+  onChangeGoal: () => void;
+}> = ({ goal, steps, isGenerating, onChangeGoal }) => {
+  const completedCount = steps.filter(s => s.status === 'done').length;
+  const progressPct = Math.round((completedCount / steps.length) * 100);
+
+  return (
+    <div className="rounded-xl border border-[var(--dp-border)] overflow-hidden" style={{ background: 'var(--dp-bg-elevated)' }}>
+      {/* Goal header */}
+      <div className="px-3 py-2 border-b border-[var(--dp-border)] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-lg bg-[var(--dp-accent-dim)] flex items-center justify-center">
+            <Target className="w-3.5 h-3.5 text-[var(--dp-accent)]" />
+          </div>
+          <span className="text-[11px] font-semibold text-[var(--dp-text-muted)] uppercase tracking-wider">Current Goal</span>
+        </div>
+        {isGenerating && (
+          <span className="flex items-center gap-1 text-[10px] text-[var(--dp-accent)] animate-pulse-subtle">
+            <span className="w-1.5 h-1.5 rounded-full bg-[var(--dp-accent)]" />
+            Working...
+          </span>
+        )}
+      </div>
+
+      {/* Goal text */}
+      <div className="px-3 pt-2.5 pb-1">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-[12px] font-semibold text-[var(--dp-text-bright)] leading-snug flex-1">{goal}</p>
+          <button
+            onClick={onChangeGoal}
+            className="px-2 py-0.5 text-[10px] font-semibold rounded-md bg-white/6 text-[var(--dp-text-secondary)] hover:bg-white/10 cursor-pointer transition-colors shrink-0"
+          >
+            Change
+          </button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mt-2 mb-2.5">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[9px] text-[var(--dp-text-muted)] font-mono">{completedCount}/{steps.length} steps</span>
+            <span className="text-[9px] text-[var(--dp-accent)] font-mono font-semibold">{progressPct}%</span>
+          </div>
+          <div className="w-full h-1 bg-white/8 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${progressPct}%`,
+                background: 'linear-gradient(90deg, var(--dp-accent) 0%, #60a5fa 100%)',
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Steps */}
+        <div className="space-y-1.5 pb-2.5">
+          {steps.map(step => (
+            <div key={step.id} className="flex items-center gap-2">
+              {step.status === 'done' && (
+                <div className="w-4 h-4 rounded-full bg-[var(--dp-success)]/15 border border-[var(--dp-success)]/30 flex items-center justify-center shrink-0">
+                  <Check className="w-2.5 h-2.5 text-[var(--dp-success)]" />
+                </div>
+              )}
+              {step.status === 'active' && (
+                <div className="w-4 h-4 rounded-full bg-[var(--dp-accent)]/15 border border-[var(--dp-accent)]/40 flex items-center justify-center shrink-0 animate-pulse-subtle">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--dp-accent)]" />
+                </div>
+              )}
+              {step.status === 'pending' && (
+                <div className="w-4 h-4 rounded-full border border-white/10 flex items-center justify-center shrink-0">
+                  <Circle className="w-2.5 h-2.5 text-[var(--dp-text-muted)]" />
+                </div>
+              )}
+              <span className={`text-[11px] ${
+                step.status === 'done'   ? 'text-[var(--dp-text-muted)] line-through' :
+                step.status === 'active' ? 'text-[var(--dp-text-bright)] font-medium' :
+                'text-[var(--dp-text-muted)]'
+              }`}>
+                {step.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Main Component ────────────────────────────────────────────────
 export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
   messages,
   inputText,
@@ -55,151 +172,127 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
   onConfirmPermission,
   statusMessage: _statusMessage,
   contextTokens = 0,
-  contextPercentage: _contextPercentage = 0
 }) => {
-  const [activeTab, setActiveTab] = useState<AiWorkspaceSection>('chat');
+  const [activeTab, setActiveTab] = useState<Tab>('chat');
   const [hunkDecisions, setHunkDecisions] = useState<Record<string, Record<string, boolean>>>({});
+  const [currentGoal] = useState('Build and implement a modern Login screen with validation');
 
   const handleToggleHunk = (msgId: string, hunkId: string, accepted: boolean) => {
     setHunkDecisions(prev => ({
       ...prev,
-      [msgId]: {
-        ...(prev[msgId] || {}),
-        [hunkId]: accepted
-      }
+      [msgId]: { ...(prev[msgId] || {}), [hunkId]: accepted }
     }));
   };
 
-  // Simulated multi-agent telemetry
-  const agents: AgentCardData[] = [
-    { id: '1', name: 'Planner', status: 'idle', currentTask: 'Architecture mapping', progress: 100, cpuUsage: '0.2%', tokensUsed: 4200, lastActivity: '2m ago' },
-    { id: '2', name: 'Coder', status: isGenerating ? 'running' : 'idle', currentTask: isGenerating ? 'Generating code changes' : 'Waiting for prompt', progress: isGenerating ? 65 : 100, cpuUsage: isGenerating ? '3.4%' : '0.1%', tokensUsed: 12400, lastActivity: 'Just now' },
-    { id: '3', name: 'Reviewer', status: 'idle', currentTask: 'Code quality analysis', progress: 100, cpuUsage: '0.1%', tokensUsed: 1800, lastActivity: '5m ago' },
-    { id: '4', name: 'Tester', status: 'idle', currentTask: 'Unit test verification', progress: 100, cpuUsage: '0.1%', tokensUsed: 2100, lastActivity: '8m ago' },
-    { id: '5', name: 'Researcher', status: 'idle', currentTask: 'Dependency search', progress: 100, cpuUsage: '0.0%', tokensUsed: 950, lastActivity: '12m ago' }
+  const goalSteps: GoalStep[] = [
+    { id: '1', label: 'Understand project structure',    status: 'done' },
+    { id: '2', label: 'Review existing components',      status: 'done' },
+    { id: '3', label: 'Create Login component',          status: 'done' },
+    { id: '4', label: 'Add validation logic',            status: isGenerating ? 'active' : 'done' },
+    { id: '5', label: 'Style the UI',                    status: isGenerating ? 'pending' : 'done' },
+    { id: '6', label: 'Test the implementation',         status: 'pending' },
   ];
 
-  // Timeline events feed
-  const timeline: TimelineStep[] = [
-    { id: '1', action: 'Initialized Workspace Session', timestamp: '16:45:00', status: 'completed' },
-    { id: '2', action: 'Indexed Workspace Dependencies (package.json)', timestamp: '16:45:02', status: 'completed' },
-    { id: '3', action: 'Analyzed System Architecture & Routes', timestamp: '16:45:05', status: 'completed' }
-  ];
-
-  // Sample tasks for Kanban board
-  const tasks: AiTaskItem[] = [
-    { id: 't1', title: 'Parse request and build architecture plan', phase: 'planning', status: 'completed', progress: 100, owner: 'Planner', estimatedTime: '5s' },
-    { id: 't2', title: 'Generate & edit core application components', phase: 'coding', status: isGenerating ? 'in_progress' : 'completed', progress: isGenerating ? 70 : 100, owner: 'Coder', estimatedTime: '15s' },
-    { id: 't3', title: 'Verify TypeScript types and syntax', phase: 'testing', status: 'pending', progress: 0, owner: 'Tester', estimatedTime: '8s' },
-    { id: 't4', title: 'Security and code quality review', phase: 'review', status: 'pending', progress: 0, owner: 'Reviewer', estimatedTime: '10s' },
-    { id: 't5', title: 'Deploy production bundle', phase: 'deployment', status: 'pending', progress: 0, owner: 'Coder', estimatedTime: '12s' }
-  ];
-
-  // Sample tool calls
   const tools: ToolExecutionItem[] = [
-    { id: 'tc1', tool: 'file_read', name: 'Read file package.json', params: { path: 'package.json' }, status: 'success', durationMs: 120, output: '{\n  "name": "devpilot",\n  "version": "2.4.0"\n}' },
-    { id: 'tc2', tool: 'search', name: 'Search codebase for "useAI"', params: { query: 'useAI' }, status: 'success', durationMs: 340, output: 'Found 14 occurrences in 6 files.' }
+    { id: 'tc1', tool: 'file_read', name: 'Read package.json',        params: { path: 'package.json' }, status: 'success', durationMs: 120 },
+    { id: 'tc2', tool: 'search',    name: 'Search for useAuth hook',  params: { query: 'useAuth' },     status: 'success', durationMs: 340 },
   ];
 
-  // Project context state
   const contextInfo: ProjectContextInfo = {
-    indexedFiles: 142,
-    totalFiles: 156,
-    architecture: 'Modular React + FastAPI',
-    framework: 'React / Vite / Tailwind',
-    language: 'TypeScript / Python',
-    database: 'SQLite / Redis',
-    activeBranch: 'main',
-    tokenUsage: contextTokens || 14200,
-    tokenBudget: 128000
+    indexedFiles:  142,
+    totalFiles:    156,
+    architecture:  'Modular React + FastAPI',
+    framework:     'React / Vite',
+    language:      'TypeScript / Python',
+    database:      'SQLite / Redis',
+    activeBranch:  'main',
+    tokenUsage:    contextTokens || 14200,
+    tokenBudget:   128000,
   };
 
-  // Persistent Project Memories
   const [memories, setMemories] = useState<ProjectMemoryItem[]>([
-    { id: 'm1', category: 'convention', title: 'Dark-first 8px Spacing System', content: 'Always use 8px grid spacing (p-2, p-4, p-6), 120ms transitions, and sleek dark background tokens.', enabled: true },
-    { id: 'm2', category: 'architecture', title: 'Strict Component Modularization', content: 'Keep component files clean and focused under 300 lines; extract UI subpanels.', enabled: true }
+    { id: 'm1', category: 'convention', title: '8px Spacing Grid', content: 'Always use 8px multiples for spacing.', enabled: true },
+    { id: 'm2', category: 'architecture', title: 'Component Modularity', content: 'Keep components under 300 lines.', enabled: true },
   ]);
 
-  const handleAddMemory = (item: Omit<ProjectMemoryItem, 'id'>) => {
-    const newItem: ProjectMemoryItem = {
-      ...item,
-      id: `m_${Date.now()}`
-    };
-    setMemories(prev => [newItem, ...prev]);
-  };
-
-  const handleToggleMemory = (id: string) => {
-    setMemories(prev => prev.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m));
-  };
-
-  const handleDeleteMemory = (id: string) => {
-    setMemories(prev => prev.filter(m => m.id !== id));
-  };
-
-  const tabs: Array<{ id: AiWorkspaceSection; label: string; icon: any }> = [
-    { id: 'chat', label: 'Chat', icon: MessageSquare },
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'planner', label: 'Plan', icon: ClipboardList },
-    { id: 'tasks', label: 'Tasks', icon: CheckSquare },
+  const tabs: Array<{ id: Tab; label: string; icon: any }> = [
+    { id: 'chat',     label: 'Chat',     icon: MessageSquare },
+    { id: 'plan',     label: 'Plan',     icon: ListChecks },
+    { id: 'context',  label: 'Context',  icon: Brain },
     { id: 'timeline', label: 'Timeline', icon: Clock },
-    { id: 'agents', label: 'Agents', icon: Users },
-    { id: 'tools', label: 'Tool Calls', icon: Wrench },
-    { id: 'memory', label: 'Memory', icon: Brain },
-    { id: 'logs', label: 'Logs', icon: Terminal },
   ];
 
   return (
-    <div className="h-full flex flex-col bg-[#0d0f15] text-[var(--dp-text-primary)] font-sans border-l border-white/10 select-none overflow-hidden">
-      {/* Top Header & Navigation Bar */}
-      <div className="bg-[#12141d] border-b border-white/10 px-3 py-2 shrink-0">
-        <div className="flex items-center justify-between mb-2">
+    <div
+      className="h-full flex flex-col font-sans select-none overflow-hidden"
+      style={{ background: 'var(--dp-bg-secondary)', borderLeft: '1px solid var(--dp-border)' }}
+    >
+
+      {/* ── Top Header ── */}
+      <div
+        className="px-3 pt-2.5 pb-0 shrink-0"
+        style={{ borderBottom: '1px solid var(--dp-border)' }}
+      >
+        {/* Title row */}
+        <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-violet-600/20">
-              <Sparkles className="w-3.5 h-3.5" />
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-[#7c6af0] to-[#4f8df5] flex items-center justify-center shadow-[0_0_10px_rgba(124,106,240,0.3)]">
+              <Sparkles className="w-3.5 h-3.5 text-white" />
             </div>
-            <span className="font-bold text-white text-xs tracking-tight">AI Workspace</span>
+            <span className="text-[12px] font-bold text-[var(--dp-text-bright)] tracking-tight">AI Assistant</span>
+            <span className="text-[8px] font-semibold text-[var(--dp-text-muted)] bg-white/6 px-1.5 py-0.5 rounded uppercase tracking-widest">BETA</span>
             {isGenerating && (
-              <span className="flex items-center gap-1 text-[10px] text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-full border border-violet-500/20 font-medium animate-pulse">
-                <span className="w-1.5 h-1.5 rounded-full bg-violet-400"></span> Active Execution
+              <span className="flex items-center gap-1 text-[10px] text-[var(--dp-accent)] bg-[var(--dp-accent-dim)] px-2 py-0.5 rounded-full border border-[var(--dp-accent)]/20 font-medium animate-pulse">
+                <Zap className="w-2.5 h-2.5" /> Active
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-gray-400 font-mono bg-white/5 px-2 py-0.5 rounded border border-white/5">
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] text-[var(--dp-text-muted)] font-mono bg-white/4 px-1.5 py-0.5 rounded border border-[var(--dp-border)]">
               {(contextTokens || 0).toLocaleString()} tokens
             </span>
+            <button className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5 cursor-pointer transition-colors">
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
-        {/* Section Navigation Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pt-1">
-          {tabs.map((t) => {
+        {/* Tab bar */}
+        <div className="flex items-center gap-0.5">
+          {tabs.map(t => {
             const Icon = t.icon;
             const isActive = activeTab === t.id;
             return (
               <button
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all shrink-0 cursor-pointer ${
-                  isActive 
-                    ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30 font-semibold' 
-                    : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
-                }`}
+                className={`
+                  relative flex items-center gap-1.5 px-3 py-2 text-[11px] font-medium transition-all cursor-pointer
+                  ${isActive
+                    ? 'text-[var(--dp-text-bright)]'
+                    : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)]'
+                  }
+                `}
               >
-                <Icon className="w-3 h-3" />
-                <span>{t.label}</span>
+                {isActive && (
+                  <span className="absolute bottom-0 left-1 right-1 h-[2px] bg-[var(--dp-accent)] rounded-t-full" />
+                )}
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-[var(--dp-accent)]' : ''}`} />
+                {t.label}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Main Content Area per Tab */}
-      <div className="flex-1 overflow-y-auto p-3 min-h-0 space-y-3">
-        {/* Chat Section */}
+      {/* ── Content ── */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+
+        {/* ── CHAT TAB ── */}
         {activeTab === 'chat' && (
-          <div className="h-full flex flex-col justify-between space-y-3">
+          <div className="h-full flex flex-col">
+            {/* Scrollable messages */}
             <div className="flex-1 overflow-y-auto min-h-0">
               <MessageList
                 messages={messages}
@@ -209,7 +302,21 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
                 onToggleHunk={handleToggleHunk}
               />
             </div>
-            <div className="shrink-0 pt-2">
+
+            {/* Sticky bottom area */}
+            <div className="shrink-0 p-3 space-y-2" style={{ borderTop: '1px solid var(--dp-border)' }}>
+
+              {/* Current Goal card — only when Agent mode is actively generating */}
+              {isGenerating && mode === 'Agent' && (
+                <CurrentGoalCard
+                  goal={currentGoal}
+                  steps={goalSteps}
+                  isGenerating={isGenerating}
+                  onChangeGoal={() => {}}
+                />
+              )}
+
+              {/* Command Bar */}
               <AiCommandBar
                 inputText={inputText}
                 setInputText={setInputText}
@@ -223,106 +330,77 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
           </div>
         )}
 
-        {/* Overview Section */}
-        {activeTab === 'overview' && (
-          <div className="space-y-3">
+        {/* ── PLAN TAB ── */}
+        {activeTab === 'plan' && (
+          <div className="p-3 space-y-3">
+            <CurrentGoalCard
+              goal={currentGoal}
+              steps={goalSteps}
+              isGenerating={isGenerating}
+              onChangeGoal={() => {}}
+            />
+
+            {/* File changes section */}
+            <div>
+              <p className="text-[10px] font-semibold text-[var(--dp-text-muted)] uppercase tracking-wider mb-2">File Changes</p>
+              <div className="space-y-1.5">
+                <FileChangeCard filename="Login.jsx" added={156} removed={2} />
+                <FileChangeCard filename="App.jsx" added={3} removed={1} />
+              </div>
+            </div>
+
+            {/* Tool calls */}
+            <div>
+              <p className="text-[10px] font-semibold text-[var(--dp-text-muted)] uppercase tracking-wider mb-2">Tool Calls</p>
+              <div className="space-y-1.5">
+                {tools.map(t => <ToolExecutionCard key={t.id} toolItem={t} />)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── CONTEXT TAB ── */}
+        {activeTab === 'context' && (
+          <div className="p-3 space-y-3">
             <ProjectContextPanel contextInfo={contextInfo} />
             <ProjectMemoryPanel
               memories={memories}
-              onAddMemory={handleAddMemory}
-              onToggleMemory={handleToggleMemory}
-              onDeleteMemory={handleDeleteMemory}
+              onAddMemory={(item) => setMemories(prev => [{ ...item, id: `m_${Date.now()}` }, ...prev])}
+              onToggleMemory={(id) => setMemories(prev => prev.map(m => m.id === id ? { ...m, enabled: !m.enabled } : m))}
+              onDeleteMemory={(id) => setMemories(prev => prev.filter(m => m.id !== id))}
             />
           </div>
         )}
 
-        {/* Tasks Section (Kanban) */}
-        {activeTab === 'tasks' && (
-          <div className="h-full min-h-[350px]">
-            <AiTaskBoard tasks={tasks} />
-          </div>
-        )}
-
-        {/* Timeline Section */}
+        {/* ── TIMELINE TAB ── */}
         {activeTab === 'timeline' && (
-          <div className="bg-[#12141c] border border-white/10 rounded-xl p-3 text-xs space-y-3 shadow-md">
-            <h4 className="font-bold text-white text-xs flex items-center gap-1.5 border-b border-white/5 pb-2">
-              <Clock className="w-4 h-4 text-violet-400" /> Action Execution Timeline
-            </h4>
-            <div className="space-y-2 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-white/10 pl-6">
-              {timeline.map((step) => (
-                <div key={step.id} className="relative flex items-center justify-between p-2 rounded-lg bg-black/20 border border-white/5">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span className="font-medium text-white text-[11px]">{step.action}</span>
-                  </div>
-                  <span className="text-[9px] text-gray-500 font-mono">{step.timestamp}</span>
+          <div className="p-3">
+            <div className="relative pl-6 space-y-2 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-[2px] before:bg-gradient-to-b before:from-[var(--dp-accent)] before:to-transparent">
+              {[
+                { label: 'Initialized AI Workspace Session',          time: '16:45:00', status: 'done' },
+                { label: 'Indexed project dependencies (package.json)', time: '16:45:02', status: 'done' },
+                { label: 'Analyzed component architecture',             time: '16:45:05', status: 'done' },
+                { label: 'Generating Login component',                 time: '16:45:08', status: isGenerating ? 'active' : 'done' },
+              ].map((step, i) => (
+                <div key={i} className="relative flex items-center justify-between p-2.5 rounded-lg bg-white/3 border border-[var(--dp-border)] hover:border-[var(--dp-border-mid)] transition-colors">
+                  {/* Timeline dot */}
+                  <span
+                    className={`absolute -left-[22px] w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                      step.status === 'done'
+                        ? 'border-[var(--dp-success)] bg-[var(--dp-success)]/10'
+                        : 'border-[var(--dp-accent)] bg-[var(--dp-accent)]/10 animate-pulse-subtle'
+                    }`}
+                  >
+                    {step.status === 'done'
+                      ? <Check className="w-2 h-2 text-[var(--dp-success)]" />
+                      : <span className="w-1.5 h-1.5 rounded-full bg-[var(--dp-accent)]" />
+                    }
+                  </span>
+                  <span className="text-[11px] text-[var(--dp-text-primary)] font-medium">{step.label}</span>
+                  <span className="text-[9px] text-[var(--dp-text-muted)] font-mono">{step.time}</span>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Agents Section */}
-        {activeTab === 'agents' && (
-          <div className="space-y-2">
-            <h4 className="font-bold text-white text-xs flex items-center gap-1.5 mb-2">
-              <Users className="w-4 h-4 text-indigo-400" /> Multi-Agent Swarm Telemetry
-            </h4>
-            <div className="grid grid-cols-1 gap-2.5">
-              {agents.map((agent) => (
-                <div key={agent.id} className="bg-[#141722] border border-white/10 rounded-xl p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-white text-xs">{agent.name} Agent</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                      agent.status === 'running' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-800 text-gray-400'
-                    }`}>
-                      {agent.status.toUpperCase()}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-gray-400 font-mono">{agent.currentTask}</p>
-                  <div className="w-full bg-black/40 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-indigo-500 h-full" style={{ width: `${agent.progress}%` }} />
-                  </div>
-                  <div className="flex justify-between text-[9px] text-gray-500 font-mono pt-1 border-t border-white/5">
-                    <span>CPU: {agent.cpuUsage}</span>
-                    <span>Tokens: {agent.tokensUsed?.toLocaleString()}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Tools Section */}
-        {activeTab === 'tools' && (
-          <div className="space-y-2">
-            <h4 className="font-bold text-white text-xs flex items-center gap-1.5 mb-2">
-              <Wrench className="w-4 h-4 text-amber-400" /> Tool Execution Calls
-            </h4>
-            {tools.map((t) => (
-              <ToolExecutionCard key={t.id} toolItem={t} />
-            ))}
-          </div>
-        )}
-
-        {/* Memory Section */}
-        {activeTab === 'memory' && (
-          <ProjectMemoryPanel
-            memories={memories}
-            onAddMemory={handleAddMemory}
-            onToggleMemory={handleToggleMemory}
-            onDeleteMemory={handleDeleteMemory}
-          />
-        )}
-
-        {/* Logs Section */}
-        {activeTab === 'logs' && (
-          <div className="bg-black/80 border border-white/10 rounded-xl p-3 font-mono text-[10px] text-emerald-400 h-64 overflow-y-auto space-y-1">
-            <div className="text-gray-500">[SYSTEM] DevPilot AI Engine v2.4 initialized</div>
-            <div className="text-gray-500">[LOG] Loaded workspace state & memory rules</div>
-            <div className="text-blue-400">[ROUTER] Active model router initialized with profile</div>
-            <div className="text-emerald-400">[EXEC] Agent pipeline ready</div>
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GitBranch, Globe, AlertCircle, AlertTriangle, Zap, Cpu, CheckCircle2 } from 'lucide-react';
+import { GitBranch, AlertCircle, AlertTriangle, Zap, Cpu, CheckCircle2, Globe, Wifi } from 'lucide-react';
 import { useWorkspace } from '../../core/workspace/WorkspaceContext';
 import { useGit } from '../../core/git/GitContext';
 import { useSettings } from '../../core/settings/SettingsContext';
@@ -16,148 +16,151 @@ export const StatusBar: React.FC = () => {
   const [cursorInfo, setCursorInfo] = useState({ line: 1, column: 1 });
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
 
-  // Listen for Monaco cursor position updates
   useEffect(() => {
     const handler = (e: CustomEvent) => {
-      if (e.detail) {
-        setCursorInfo({ line: e.detail.line || 1, column: e.detail.column || 1 });
-      }
+      if (e.detail) setCursorInfo({ line: e.detail.line || 1, column: e.detail.column || 1 });
     };
     window.addEventListener('editor-cursor-change' as any, handler);
     return () => window.removeEventListener('editor-cursor-change' as any, handler);
   }, []);
 
-  // Listen for diagnostics updates
   useEffect(() => {
     const handler = (e: CustomEvent) => {
-      if (e.detail) {
-        setDiagnostics({ errors: e.detail.errors || 0, warnings: e.detail.warnings || 0 });
-      }
+      if (e.detail) setDiagnostics({ errors: e.detail.errors || 0, warnings: e.detail.warnings || 0 });
     };
     window.addEventListener('editor-diagnostics' as any, handler);
     return () => window.removeEventListener('editor-diagnostics' as any, handler);
   }, []);
 
-  const getWorkspaceFolderBasename = () => {
+  const getWorkspaceName = () => {
     if (!workspacePath) return 'No Folder';
-    const normalized = workspacePath.replace(/\\/g, '/');
-    return normalized.split('/').pop() || normalized;
+    return workspacePath.replace(/\\/g, '/').split('/').pop() || workspacePath;
   };
 
   const getFileLanguage = () => {
     if (!activeFilePath) return '';
     const ext = activeFilePath.split('.').pop()?.toLowerCase();
     const map: Record<string, string> = {
-      py: 'Python', ts: 'TypeScript', tsx: 'TypeScript React',
-      js: 'JavaScript', jsx: 'JavaScript React', json: 'JSON',
+      py: 'Python', ts: 'TypeScript', tsx: 'TypeScript JSX',
+      js: 'JavaScript', jsx: 'JavaScript JSX', json: 'JSON',
       html: 'HTML', css: 'CSS', scss: 'SCSS', md: 'Markdown',
       yml: 'YAML', yaml: 'YAML', toml: 'TOML', sh: 'Shell',
-      bat: 'Batch', sql: 'SQL', rs: 'Rust', go: 'Go',
-      java: 'Java', c: 'C', cpp: 'C++', rb: 'Ruby', php: 'PHP',
-      xml: 'XML', svg: 'SVG', graphql: 'GraphQL',
+      sql: 'SQL', rs: 'Rust', go: 'Go', java: 'Java',
+      c: 'C', cpp: 'C++', rb: 'Ruby', php: 'PHP', xml: 'XML',
     };
     return ext ? (map[ext] || ext.toUpperCase()) : '';
   };
 
   return (
-    <div className="h-[24px] border-t border-[var(--dp-border)] bg-[var(--dp-bg-secondary)] px-3 flex items-center justify-between text-[11px] text-gray-400 shrink-0 select-none font-sans z-30">
-      {/* Left Section */}
+    <div
+      className="h-[26px] flex items-center justify-between px-3 shrink-0 select-none font-sans z-30 text-[11px]"
+      style={{
+        background: 'linear-gradient(90deg, #12082e 0%, #080e20 50%, #0a0e1a 100%)',
+        borderTop: '1px solid rgba(124,106,240,0.18)',
+      }}
+    >
+      {/* ── Left ── */}
       <div className="flex items-center gap-3">
-        {/* Workspace name */}
+
+        {/* Workspace */}
         {workspacePath && (
-          <div className="flex items-center gap-1.5 hover:bg-white/5 px-1 py-0.5 rounded cursor-default transition-colors" title="Active workspace">
-            <Globe className="w-3 h-3 text-[var(--dp-accent)]/80" />
-            <span className="font-mono text-gray-300 text-[10px]">{getWorkspaceFolderBasename()}</span>
+          <div className="flex items-center gap-1.5 text-violet-300/70 hover:text-violet-200 cursor-default transition-colors" title="Workspace">
+            <Globe className="w-3 h-3" />
+            <span className="font-mono text-[10px]">{getWorkspaceName()}</span>
           </div>
         )}
 
-        {/* Git branch */}
-        {workspacePath && (
-          <div className="flex items-center gap-1 hover:bg-white/5 px-1 py-0.5 rounded cursor-pointer transition-colors" title="Git Branch">
+        {/* Git Branch */}
+        {workspacePath && statusBarBranch && (
+          <div className="flex items-center gap-1 text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] cursor-pointer transition-colors" title="Git Branch">
             <GitBranch className="w-3 h-3" />
-            <span className="text-[10px]">{statusBarBranch}</span>
+            <span className="text-[10px] font-mono">{statusBarBranch}</span>
           </div>
         )}
 
         {/* Diagnostics */}
         <div className="flex items-center gap-2">
-          <div className={`flex items-center gap-0.5 ${diagnostics.errors > 0 ? 'text-[var(--dp-error)]' : 'text-gray-500'}`} title={`${diagnostics.errors} Error(s)`}>
+          <div
+            className={`flex items-center gap-0.5 ${diagnostics.errors > 0 ? 'text-[var(--dp-error)]' : 'text-[var(--dp-text-muted)]'}`}
+            title={`${diagnostics.errors} Error(s)`}
+          >
             <AlertCircle className="w-3 h-3" />
             <span className="text-[10px] font-mono">{diagnostics.errors}</span>
           </div>
-          <div className={`flex items-center gap-0.5 ${diagnostics.warnings > 0 ? 'text-[var(--dp-warning)]' : 'text-gray-500'}`} title={`${diagnostics.warnings} Warning(s)`}>
+          <div
+            className={`flex items-center gap-0.5 ${diagnostics.warnings > 0 ? 'text-[var(--dp-warning)]' : 'text-[var(--dp-text-muted)]'}`}
+            title={`${diagnostics.warnings} Warning(s)`}
+          >
             <AlertTriangle className="w-3 h-3" />
             <span className="text-[10px] font-mono">{diagnostics.warnings}</span>
           </div>
         </div>
+
+        {/* Run status */}
+        {statusBarDebug === 'Running' && (
+          <div className="flex items-center gap-1 text-[var(--dp-success)]">
+            <CheckCircle2 className="w-3 h-3" />
+            <span className="text-[10px] font-semibold">Running</span>
+          </div>
+        )}
       </div>
 
-      {/* Right Section */}
+      {/* ── Right ── */}
       <div className="flex items-center gap-3">
-        {/* WebSocket Connection Status */}
+
+        {/* WS disconnected */}
         {!isWsConnected && (
-          <div className="flex items-center gap-1 text-[var(--dp-error)] animate-pulse" title="WebSocket disconnected. Retrying...">
+          <div className="flex items-center gap-1 text-[var(--dp-error)] animate-pulse" title="Disconnected">
             <AlertCircle className="w-3 h-3" />
             <span className="text-[10px] font-semibold">Disconnected</span>
           </div>
         )}
 
-        {/* Model Fallback Warning */}
+        {/* Model fallback */}
         {isModelFallback && (
-          <div className="flex items-center gap-1 text-[var(--dp-warning)] font-semibold" title="Primary model failed. Fallback to local llama3 active.">
-            <AlertTriangle className="w-3 h-3 text-[var(--dp-warning)]" />
-            <span className="text-[10px]">Fallback: llama3</span>
+          <div className="flex items-center gap-1 text-[var(--dp-warning)]">
+            <AlertTriangle className="w-3 h-3" />
+            <span className="text-[10px] font-semibold">Fallback</span>
           </div>
         )}
 
         {/* AI Status */}
         {isGenerating ? (
-          <div className="flex items-center gap-1.5 text-[var(--dp-accent)] animate-pulse-subtle">
-            <Zap className="w-3 h-3" />
-            <span className="text-[10px] font-medium">AI Generating...</span>
+          <div className="flex items-center gap-1.5 animate-pulse-subtle">
+            <Zap className="w-3 h-3 text-[var(--dp-accent)]" />
+            <span className="text-[10px] font-medium animate-shimmer">AI Generating...</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1 text-gray-500 hover:text-gray-300 transition-colors" title="AI Model">
+          <div className="flex items-center gap-1 text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] transition-colors cursor-default" title="Active Model">
             <Cpu className="w-3 h-3" />
             <span className="text-[10px]">{activeProfileName || 'No Model'}</span>
           </div>
         )}
 
-        {/* Run status */}
-        {statusBarDebug === 'Running' && (
-          <div className="flex items-center gap-1 text-[var(--dp-success)] font-semibold">
-            <CheckCircle2 className="w-3 h-3" />
-            <span className="text-[10px]">Running</span>
-          </div>
-        )}
+        {/* Connectivity */}
+        <div className="flex items-center gap-1 text-[var(--dp-text-muted)]">
+          <Wifi className="w-3 h-3 text-[var(--dp-success)]" />
+        </div>
 
         {/* Cursor position */}
         {activeFilePath && (
-          <span className="text-[10px] font-mono text-gray-500 hover:text-gray-300 cursor-default transition-colors" title="Cursor Position">
+          <span className="text-[10px] font-mono text-[var(--dp-text-muted)] cursor-default" title="Cursor Position">
             Ln {cursorInfo.line}, Col {cursorInfo.column}
           </span>
         )}
 
         {/* Language */}
         {getFileLanguage() && (
-          <span className="text-[10px] font-mono text-gray-400 hover:text-gray-200 cursor-pointer transition-colors" title="File Language">
+          <span className="text-[10px] font-mono text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] cursor-pointer transition-colors">
             {getFileLanguage()}
           </span>
         )}
 
-        {/* AI Tokens & Context Info */}
-        <span className="text-[10px] font-mono text-violet-400 bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/20" title="Active Context Tokens">
-          14.2K Tokens
-        </span>
+        {/* Encoding */}
+        <span className="text-[10px] text-[var(--dp-text-muted)]">UTF-8</span>
 
-        {/* Indexed Files */}
-        <span className="text-[10px] font-mono text-gray-400" title="Indexed Workspace Files">
-          142 Files Indexed
-        </span>
-
-        {/* Encoding & Indentation */}
-        <span className="text-[10px] text-gray-500">UTF-8</span>
-        <span className="text-[10px] text-gray-500">Spaces: 2</span>
+        {/* Spaces */}
+        <span className="text-[10px] text-[var(--dp-text-muted)]">Spaces: 2</span>
       </div>
     </div>
   );

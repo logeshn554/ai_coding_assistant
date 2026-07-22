@@ -138,8 +138,8 @@ coding_prompt_template = PromptTemplate.from_template(
     "You are the Coding Agent — a senior software engineer. Implement the required changes "
     "precisely and completely.\n\n"
     "Task: {task_description}\n"
-    "Target files from shared_memory: {target_files}\n"
-    "File contents from shared_memory: {file_contents}\n\n"
+    "Target file: {path}\n"
+    "Original content:\n{original}\n\n"
     "RULES:\n"
     "1. Read the file contents above BEFORE making any changes.\n"
     "2. Use edit_file for targeted changes to existing files.\n"
@@ -148,8 +148,7 @@ coding_prompt_template = PromptTemplate.from_template(
     "5. NEVER use placeholder comments like '# TODO' or '... rest of code'.\n"
     "6. Add type hints to every function you write.\n"
     "7. Follow the existing code style in each file.\n"
-    "8. After changes, run the appropriate build/lint command to verify.\n\n"
-    "Shared memory context:\n{shared_memory}"
+    "8. After changes, run the appropriate build/lint command to verify."
 )
 
 terminal_prompt_template = PromptTemplate.from_template(
@@ -281,8 +280,8 @@ architect_prompt_template = PromptTemplate.from_template(
 frontend_dev_prompt_template = PromptTemplate.from_template(
     "You are the Frontend Developer Agent — a senior React/TypeScript engineer.\n\n"
     "Task: {task_description}\n"
-    "Target files: {target_files}\n"
-    "File contents: {file_contents}\n\n"
+    "Target file: {path}\n"
+    "Original content:\n{original}\n\n"
     "REQUIREMENTS:\n"
     "1. Strict TypeScript — zero `any` types. Use `unknown` + type guards where needed.\n"
     "2. Semantic HTML5 with aria-* attributes on every interactive element.\n"
@@ -292,15 +291,14 @@ frontend_dev_prompt_template = PromptTemplate.from_template(
     "6. Components ≤ 200 lines. Split growing components proactively.\n"
     "7. Read existing components to match the project's patterns before writing new ones.\n"
     "8. Output COMPLETE file contents. Never truncate with '...' or placeholders.\n\n"
-    "After implementing, run: tsc --noEmit to verify TypeScript compiles.\n\n"
-    "Shared memory context:\n{shared_memory}"
+    "After implementing, run: tsc --noEmit to verify TypeScript compiles."
 )
 
 backend_dev_prompt_template = PromptTemplate.from_template(
     "You are the Backend Developer Agent — a senior Python/FastAPI engineer.\n\n"
     "Task: {task_description}\n"
-    "Target files: {target_files}\n"
-    "File contents: {file_contents}\n\n"
+    "Target file: {path}\n"
+    "Original content:\n{original}\n\n"
     "REQUIREMENTS:\n"
     "1. Type hints on every function. Pydantic v2 models for all request/response schemas.\n"
     "2. Architecture: Controllers → Services → Repositories. No business logic in routes.\n"
@@ -310,8 +308,7 @@ backend_dev_prompt_template = PromptTemplate.from_template(
     "6. No hardcoded secrets. All credentials via settings / env vars.\n"
     "7. Read existing routes/services first to match existing patterns.\n"
     "8. Output COMPLETE file contents. Never truncate with '...' or placeholders.\n\n"
-    "After implementing, run: python -c 'import app' or the relevant test command.\n\n"
-    "Shared memory context:\n{shared_memory}"
+    "After implementing, run: python -c 'import app' or the relevant test command."
 )
 
 database_prompt_template = PromptTemplate.from_template(
@@ -2036,58 +2033,58 @@ class AgentOrchestrator:
                 return  # parallel path complete; skip sequential
 
         # Fallback to default sequential routing workflow
-            # Initialize graph state
-            initial_state: AgentState = {
-                "task_description": task_description,
-                "collaboration_log": self.context.collaboration_log,
-                "memory": self.context.memory,
-                "subtasks": self.context.subtasks,
-                "active_agent": "Orchestrator",
-                "active_task": "Deciding next agent...",
-                "next_agents": ["Orchestrator"],
-                "agent_tasks": {},
-                "session": session,
-                "task_id_counter": 1,
-                "step_count": 0,
-                "orchestrator": self
+        # Initialize graph state
+        initial_state: AgentState = {
+            "task_description": task_description,
+            "collaboration_log": self.context.collaboration_log,
+            "memory": self.context.memory,
+            "subtasks": self.context.subtasks,
+            "active_agent": "Orchestrator",
+            "active_task": "Deciding next agent...",
+            "next_agents": ["Orchestrator"],
+            "agent_tasks": {},
+            "session": session,
+            "task_id_counter": 1,
+            "step_count": 0,
+            "orchestrator": self
+        }
+        
+        # Compile graph
+        workflow = StateGraph(AgentState)
+        workflow.add_node("Orchestrator", orchestrator_node)
+        for name in self.agents:
+            workflow.add_node(name, make_agent_node(name))
+            
+        workflow.add_edge(START, "Orchestrator")
+        workflow.add_conditional_edges(
+            "Orchestrator",
+            route_next,
+            {
+                "end": END,
+                **{name: name for name in self.agents}
             }
+        )
+        for name in self.agents:
+            workflow.add_edge(name, "Orchestrator")
             
-            # Compile graph
-            workflow = StateGraph(AgentState)
-            workflow.add_node("Orchestrator", orchestrator_node)
-            for name in self.agents:
-                workflow.add_node(name, make_agent_node(name))
-                
-            workflow.add_edge(START, "Orchestrator")
-            workflow.add_conditional_edges(
-                "Orchestrator",
-                route_next,
-                {
-                    "end": END,
-                    **{name: name for name in self.agents}
-                }
-            )
-            for name in self.agents:
-                workflow.add_edge(name, "Orchestrator")
-                
-            compiled_graph = workflow.compile()
-            final_state = await compiled_graph.ainvoke(initial_state)
-            
-            # Update our context from final state
-            self.context.collaboration_log = final_state["collaboration_log"]
-            self.context.memory = final_state["memory"]
-            self.context.subtasks = final_state["subtasks"]
-            
-            self.context.active_agent = "Orchestrator"
-            await self.context.log("Orchestrator: Dynamic routing session finished.")
-            
-            await session.send_ws_message({
-                "type": "agent_state",
-                "active_agent": "Orchestrator",
-                "active_task": "All tasks completed",
-                "subtasks": self.context.subtasks,
-                "collaboration_log": self.context.collaboration_log
-            })
+        compiled_graph = workflow.compile()
+        final_state = await compiled_graph.ainvoke(initial_state)
+        
+        # Update our context from final state
+        self.context.collaboration_log = final_state["collaboration_log"]
+        self.context.memory = final_state["memory"]
+        self.context.subtasks = final_state["subtasks"]
+        
+        self.context.active_agent = "Orchestrator"
+        await self.context.log("Orchestrator: Dynamic routing session finished.")
+        
+        await session.send_ws_message({
+            "type": "agent_state",
+            "active_agent": "Orchestrator",
+            "active_task": "All tasks completed",
+            "subtasks": self.context.subtasks,
+            "collaboration_log": self.context.collaboration_log
+        })
             
         final_history_summary = "\n".join(self.context.collaboration_log)
         chat_prompt = ChatPromptTemplate.from_messages([

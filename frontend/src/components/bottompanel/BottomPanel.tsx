@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertCircle, Code, Terminal as TerminalIcon, Globe, Activity, ListTodo } from 'lucide-react';
+import { AlertCircle, Code, Terminal as TerminalIcon, Globe, Activity, ListTodo, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { useWorkspace } from '../../core/workspace/WorkspaceContext';
 import { useTerminal } from '../../core/terminal/TerminalContext';
 import { useGit } from '../../core/git/GitContext';
@@ -9,58 +9,63 @@ import TerminalArea from '../TerminalArea';
 export const BottomPanel: React.FC = () => {
   const { workspacePath } = useWorkspace();
   const {
-    bottomTab,
-    setBottomTab,
-    terminalHeight,
-    setTerminalHeight,
-    consoleLogs,
-    activeProcesses,
-    activeTerminalCommand,
-    activeTerminalStatus,
-    activeTerminalExitCode,
-    activeTerminalElapsed
+    bottomTab, setBottomTab,
+    terminalHeight, setTerminalHeight,
+    consoleLogs, activeProcesses,
+    activeTerminalCommand, activeTerminalStatus,
+    activeTerminalExitCode, activeTerminalElapsed
   } = useTerminal();
   const { gitChangesList } = useGit();
   const { handleKillProcess } = useAI();
 
   const tabs = [
-    { id: 'problems', label: 'Problems', icon: AlertCircle },
-    { id: 'output', label: 'Output', icon: Code },
-    { id: 'terminal', label: 'Terminal', icon: TerminalIcon },
-    { id: 'ports', label: 'Ports', icon: Globe },
+    { id: 'terminal',     label: 'Terminal',      icon: TerminalIcon },
+    { id: 'problems',     label: 'Problems',      icon: AlertCircle },
+    { id: 'output',       label: 'Output',        icon: Code },
+    { id: 'ports',        label: 'Ports',         icon: Globe },
     { id: 'debugConsole', label: 'Debug Console', icon: Activity },
-    { id: 'tasks', label: 'Tasks', icon: ListTodo }
+    { id: 'tasks',        label: 'Tasks',         icon: ListTodo },
   ];
 
+  const problemCount = gitChangesList.length;
+  const portCount    = activeProcesses.length;
+
   return (
-    <div
-      style={{ height: `${terminalHeight}px` }}
-      className="border-t border-[#2d2d2d] bg-[#181818] flex flex-col shrink-0 min-h-[50px] relative overflow-hidden"
-    >
-      {/* Panel Tabs Header */}
-      <div className="h-[35px] border-b border-[#2d2d2d] flex items-center justify-between px-3 shrink-0 select-none bg-[#131313]">
-        <div className="flex items-center gap-1.5 h-full text-xs">
+    <div className="flex flex-col h-full overflow-hidden" style={{ background: 'var(--dp-bg-primary)' }}>
+
+      {/* ── Panel Tab Header ── */}
+      <div
+        className="h-[34px] flex items-center justify-between px-3 shrink-0 select-none"
+        style={{ background: 'var(--dp-bg-tertiary)', borderBottom: '1px solid var(--dp-border)' }}
+      >
+        {/* Tabs */}
+        <div className="flex items-center gap-0.5 h-full">
           {tabs.map(t => {
+            const Icon = t.icon;
             const isActive = bottomTab === t.id;
+            const badge = t.id === 'problems' ? problemCount : t.id === 'ports' ? portCount : 0;
+
             return (
               <button
                 key={t.id}
                 onClick={() => setBottomTab(t.id as any)}
-                className={`px-3 py-1 cursor-pointer font-medium flex items-center gap-1.5 rounded transition-all font-sans text-[11px] ${
-                  isActive
-                    ? 'bg-white/10 text-white font-semibold'
-                    : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
-                }`}
+                className={`
+                  relative h-full px-3 flex items-center gap-1.5 text-[11px] font-medium transition-all cursor-pointer
+                  ${isActive
+                    ? 'text-[var(--dp-text-bright)]'
+                    : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)]'
+                  }
+                `}
               >
-                <span>{t.label}</span>
-                {t.id === 'problems' && gitChangesList.length > 0 && (
-                  <span className="bg-[#007acc] text-white font-bold rounded-full text-[9px] font-mono w-4 h-4 flex items-center justify-center shrink-0">
-                    {gitChangesList.length}
-                  </span>
+                {/* Active underline */}
+                {isActive && (
+                  <span className="absolute bottom-0 left-1 right-1 h-[2px] bg-[var(--dp-accent)] rounded-t-full" />
                 )}
-                {t.id === 'ports' && activeProcesses.length > 0 && (
-                  <span className="bg-[#8b5cf6]/20 text-violet-400 font-bold px-1.5 py-0.5 rounded-full text-[9px] font-mono shrink-0">
-                    {activeProcesses.length}
+                <Icon className={`w-3 h-3 ${isActive ? 'text-[var(--dp-accent)]' : ''}`} />
+                <span>{t.label}</span>
+                {badge > 0 && (
+                  <span className={`dp-badge ${t.id === 'problems' ? 'dp-badge-error' : 'dp-badge-accent'}`}>
+                    {badge}
                   </span>
                 )}
               </button>
@@ -69,26 +74,35 @@ export const BottomPanel: React.FC = () => {
         </div>
 
         {/* Panel Actions */}
-        <div className="flex items-center gap-2 text-gray-550 px-3 shrink-0">
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => setTerminalHeight(100)}
-            className="hover:text-white transition-colors cursor-pointer text-[10px]"
-            title="Minimize Panel"
+            onClick={() => setTerminalHeight(Math.max(80, terminalHeight - 60))}
+            className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5 transition-colors cursor-pointer"
+            title="Decrease Panel Height"
           >
-            —
+            <ChevronDown className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={() => setTerminalHeight(350)}
-            className="hover:text-white transition-colors cursor-pointer text-[10px]"
-            title="Maximize Panel"
+            onClick={() => setTerminalHeight(terminalHeight + 60)}
+            className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5 transition-colors cursor-pointer"
+            title="Increase Panel Height"
           >
-            🗖
+            <ChevronUp className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => setTerminalHeight(100)}
+            className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5 transition-colors cursor-pointer"
+            title="Minimize Panel"
+          >
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Bottom Tab Contents */}
-      <div className="flex-1 overflow-hidden flex bg-[#1e1e1e]">
+      {/* ── Panel Content ── */}
+      <div className="flex-1 overflow-hidden flex" style={{ background: '#111218' }}>
+
+        {/* Terminal */}
         {bottomTab === 'terminal' && (
           <TerminalArea
             workspacePath={workspacePath}
@@ -98,59 +112,75 @@ export const BottomPanel: React.FC = () => {
             activeTerminalElapsed={activeTerminalElapsed}
           />
         )}
+
+        {/* Problems */}
         {bottomTab === 'problems' && (
-          <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] space-y-1 bg-[#1e1e1e] select-text scrollbar-thin">
+          <div className="flex-1 overflow-y-auto p-3 space-y-1 select-text">
             {gitChangesList.length === 0 ? (
-              <div className="text-gray-500 italic p-1 font-sans">No problems have been detected in the workspace.</div>
+              <div className="flex flex-col items-center justify-center h-24 gap-2">
+                <AlertCircle className="w-8 h-8 text-[var(--dp-text-muted)]/30" />
+                <p className="text-[11px] text-[var(--dp-text-muted)] italic">No problems detected in workspace.</p>
+              </div>
             ) : (
               gitChangesList.map((file, i) => (
-                <div key={i} className="flex items-start gap-2 text-yellow-500 py-0.5 hover:bg-white/5 px-2 rounded-none cursor-pointer">
-                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <div key={i} className="flex items-start gap-2 text-[11px] py-1 px-2 rounded-md hover:bg-white/4 cursor-pointer transition-colors">
+                  <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--dp-warning)]" />
                   <div>
-                    <div className="font-semibold font-mono">{file.path.split('/').pop()} <span className="text-[10px] text-gray-500 font-normal font-mono">({file.path})</span></div>
-                    <div className="text-gray-400 text-[10px] font-sans">Unsaved AI proposed edits detected. Review recommended before compile.</div>
+                    <span className="font-semibold text-[var(--dp-text-primary)] font-mono">{file.path.split('/').pop()}</span>
+                    <span className="text-[var(--dp-text-muted)] ml-2">({file.path})</span>
+                    <p className="text-[var(--dp-text-muted)] text-[10px] mt-0.5">Unsaved AI proposed edits. Review recommended.</p>
                   </div>
                 </div>
               ))
             )}
           </div>
         )}
+
+        {/* Output */}
         {bottomTab === 'output' && (
-          <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] text-[#cccccc] bg-[#1e1e1e] select-text scrollbar-thin">
+          <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] text-[#a0aabb] select-text space-y-0.5">
             {consoleLogs.length === 0 ? (
-              <div className="text-gray-550 italic p-1 font-sans">No build output or debug console logs.</div>
+              <div className="flex items-center gap-2 text-[var(--dp-text-muted)] italic p-1">
+                <Code className="w-4 h-4 opacity-30" />
+                <span>No build output or console logs.</span>
+              </div>
             ) : (
               consoleLogs.map((log, i) => (
-                <div key={i} className="py-0.5 leading-normal border-l border-white/5 pl-2 select-text whitespace-pre-wrap truncate font-mono">
+                <div key={i} className="py-0.5 leading-normal pl-2 border-l border-white/5 whitespace-pre-wrap break-all">
                   {log}
                 </div>
               ))
             )}
           </div>
         )}
+
+        {/* Ports */}
         {bottomTab === 'ports' && (
-          <div className="flex-1 overflow-y-auto p-3 font-sans text-xs space-y-2 bg-[#1e1e1e] text-[#cccccc] select-text scrollbar-thin">
+          <div className="flex-1 overflow-y-auto p-3 text-[11px] select-text">
             {activeProcesses.length === 0 ? (
-              <div className="text-gray-555 italic p-1">No active network ports or processes launched by DevPilot.</div>
+              <div className="flex flex-col items-center justify-center h-24 gap-2">
+                <Globe className="w-8 h-8 text-[var(--dp-text-muted)]/30" />
+                <p className="text-[11px] text-[var(--dp-text-muted)] italic">No active ports or processes.</p>
+              </div>
             ) : (
-              <div className="divide-y divide-[#2d2d2d] pr-2">
+              <div className="space-y-2">
                 {activeProcesses.map((proc, i) => (
-                  <div key={i} className="flex items-center justify-between py-2 text-[11px]">
+                  <div key={i} className="flex items-center justify-between py-2 px-3 rounded-lg bg-white/3 border border-[var(--dp-border)] hover:border-[var(--dp-border-mid)] transition-colors">
                     <div>
-                      <div className="font-semibold text-white font-mono">{proc.name}</div>
-                      <div className="text-[10px] text-gray-550 font-mono">PID: {proc.pid} | Command: {proc.command || 'N/A'}</div>
+                      <div className="font-semibold text-[var(--dp-text-bright)] font-mono text-[11px]">{proc.name}</div>
+                      <div className="text-[10px] text-[var(--dp-text-muted)] font-mono">PID: {proc.pid} · {proc.command || 'N/A'}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       {proc.port && (
-                        <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold rounded-none font-mono text-[9px]">
+                        <span className="px-2 py-0.5 bg-[var(--dp-success)]/10 text-[var(--dp-success)] border border-[var(--dp-success)]/20 font-bold rounded-full font-mono text-[9px]">
                           :{proc.port}
                         </span>
                       )}
                       <button
                         onClick={() => handleKillProcess(proc.id)}
-                        className="px-2 py-0.5 bg-red-650/15 text-red-400 hover:bg-red-655/35 text-[9px] rounded-none border border-red-500/20 font-bold cursor-pointer font-sans"
+                        className="px-2.5 py-1 bg-[var(--dp-error)]/10 text-[var(--dp-error)] hover:bg-[var(--dp-error)]/20 text-[9px] rounded-lg border border-[var(--dp-error)]/20 font-semibold cursor-pointer transition-colors"
                       >
-                        Kill Process
+                        Kill
                       </button>
                     </div>
                   </div>
@@ -159,14 +189,20 @@ export const BottomPanel: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* Debug Console */}
         {bottomTab === 'debugConsole' && (
-          <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] text-[#cccccc] bg-[#1e1e1e] select-text scrollbar-thin">
-            <div className="text-gray-550 italic p-1 font-sans">Debug console is idle. Run agent or diagnostics to stream outputs.</div>
+          <div className="flex-1 p-3 font-mono text-[11px] text-[var(--dp-text-muted)] flex items-center gap-2 italic">
+            <Activity className="w-4 h-4 opacity-30" />
+            Debug console is idle. Run agent or diagnostics to stream outputs.
           </div>
         )}
+
+        {/* Tasks */}
         {bottomTab === 'tasks' && (
-          <div className="flex-1 overflow-y-auto p-3 font-sans text-xs bg-[#1e1e1e] text-[#cccccc] select-text scrollbar-thin">
-            <div className="text-gray-555 italic p-1">No active compiler background tasks executing.</div>
+          <div className="flex-1 p-3 text-[11px] text-[var(--dp-text-muted)] flex items-center gap-2 italic">
+            <ListTodo className="w-4 h-4 opacity-30" />
+            No active background tasks.
           </div>
         )}
       </div>

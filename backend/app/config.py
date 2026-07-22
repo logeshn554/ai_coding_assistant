@@ -7,10 +7,12 @@ import keyring
 
 from keyring.backend import KeyringBackend
 
+from cryptography.fernet import Fernet
+
 class DevPilotFileKeyring(KeyringBackend):
     """
-    A simple file-based keyring backend that persists keys/passwords in a JSON file
-    under the user's config directory. Useful in headless/Docker environments.
+    An encrypted file-based keyring backend that persists keys/passwords securely using Fernet encryption
+    under the user's config directory (~/.devpilot/.keyring.json). Useful in headless/Docker environments.
     """
     priority = 1
 
@@ -19,12 +21,37 @@ class DevPilotFileKeyring(KeyringBackend):
             self.filepath = Path.home() / ".devpilot" / ".keyring.json"
         else:
             self.filepath = Path(filepath)
+        self.key_filepath = self.filepath.parent / ".keyring.key"
+
+    def _get_fernet(self) -> Fernet:
+        self.key_filepath.parent.mkdir(parents=True, exist_ok=True)
+        if not self.key_filepath.exists():
+            key = Fernet.generate_key()
+            self.key_filepath.write_bytes(key)
+            try:
+                os.chmod(self.key_filepath, 0o600)
+            except Exception:
+                pass
+        else:
+            key = self.key_filepath.read_bytes()
+        return Fernet(key)
 
     def _load_data(self) -> dict:
         try:
             if self.filepath.exists():
-                with open(self.filepath, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                raw = self.filepath.read_bytes()
+                if not raw:
+                    return {}
+                try:
+                    fernet = self._get_fernet()
+                    decrypted = fernet.decrypt(raw).decode("utf-8")
+                    return json.loads(decrypted)
+                except Exception:
+                    # Backward compatibility fallback for unencrypted legacy format
+                    try:
+                        return json.loads(raw.decode("utf-8"))
+                    except Exception:
+                        return {}
         except Exception:
             pass
         return {}
@@ -32,8 +59,14 @@ class DevPilotFileKeyring(KeyringBackend):
     def _save_data(self, data: dict):
         try:
             self.filepath.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.filepath, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4)
+            fernet = self._get_fernet()
+            payload = json.dumps(data, indent=4).encode("utf-8")
+            encrypted = fernet.encrypt(payload)
+            self.filepath.write_bytes(encrypted)
+            try:
+                os.chmod(self.filepath, 0o600)
+            except Exception:
+                pass
         except Exception:
             pass
 

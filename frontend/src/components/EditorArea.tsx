@@ -9,7 +9,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Editor, { DiffEditor, type OnMount } from '@monaco-editor/react';
-import { X, Save, FileCode, RotateCcw } from 'lucide-react';
+import { X, Save, RotateCcw } from 'lucide-react';
 import { useLSP } from '../core/lsp/LSPContext';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -565,10 +565,13 @@ export default function EditorArea({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="h-full flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden" style={{ background: '#12131a', color: '#c8ccd8' }}>
 
       {/* ── Tabs bar ── */}
-      <div className="flex bg-[#181818] border-b border-[#2d2d2d] overflow-x-auto min-h-[35px] max-h-[35px] select-none scrollbar-none shrink-0">
+      <div
+        className="flex overflow-x-auto min-h-[36px] max-h-[36px] select-none no-scrollbar shrink-0"
+        style={{ background: 'var(--dp-bg-tertiary)', borderBottom: '1px solid var(--dp-border)' }}
+      >
         {tabs.map((tab) => {
           const isActive = activeTab?.path === tab.path;
           return (
@@ -576,25 +579,36 @@ export default function EditorArea({
               key={tab.path}
               onClick={() => onFileSelect(tab.path)}
               title={tab.path}
-              className={`group flex items-center gap-1.5 px-3 h-full border-r border-[#2d2d2d] cursor-pointer text-xs shrink-0 transition-colors ${
-                isActive
-                  ? 'bg-[#1e1e1e] text-white font-medium border-t-2 border-t-[#8b5cf6]'
-                  : 'bg-[#181818] text-gray-400 hover:bg-[#1f1f1f] hover:text-[#cccccc]'
-              }`}
+              className={`
+                group relative flex items-center gap-1.5 px-3.5 h-full cursor-pointer text-[11px] shrink-0 transition-all duration-100 border-r border-[var(--dp-border)]
+                ${isActive
+                  ? 'text-[var(--dp-text-bright)] font-medium'
+                  : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] hover:bg-white/3'
+                }
+              `}
             >
-              <span className="font-sans">{tab.name}</span>
-              {tab.isDirty && (
-                <span
-                  className="w-1.5 h-1.5 rounded-full bg-[#8b5cf6] shrink-0 font-sans"
-                  title="Unsaved changes — press Ctrl+S to save"
-                />
+              {/* Active top border */}
+              {isActive && (
+                <span className="absolute top-0 left-0 right-0 h-[2px] bg-[var(--dp-accent)] rounded-b-full" />
               )}
+              {/* Active bottom fill */}
+              {isActive && (
+                <span className="absolute inset-0 bg-[var(--dp-bg-secondary)]" style={{ zIndex: -1 }} />
+              )}
+
+              <span className="font-sans truncate max-w-[120px]">{tab.name}</span>
+
+              {/* Git status chip */}
+              {tab.isDirty && (
+                <span className="dp-git-chip dp-git-chip-M" title="Modified (unsaved)">
+                  M
+                </span>
+              )}
+
+              {/* Close button */}
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onFileClose(tab.path);
-                }}
-                className="opacity-0 group-hover:opacity-100 p-0.5 rounded-none hover:bg-white/5 text-gray-500 hover:text-white cursor-pointer font-sans"
+                onClick={(e) => { e.stopPropagation(); onFileClose(tab.path); }}
+                className="opacity-0 group-hover:opacity-100 w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 text-[var(--dp-text-muted)] hover:text-white cursor-pointer transition-all shrink-0"
                 title="Close tab"
               >
                 <X className="w-3 h-3" />
@@ -602,6 +616,10 @@ export default function EditorArea({
             </div>
           );
         })}
+        {/* New tab (+) button */}
+        <button className="h-full px-3 text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] hover:bg-white/3 cursor-pointer transition-colors shrink-0 flex items-center">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+        </button>
       </div>
 
       {/* ── Editor main area ── */}
@@ -616,13 +634,19 @@ export default function EditorArea({
           <div className="h-full flex flex-col">
 
             {/* ── Breadcrumbs bar ── */}
-            <div className="flex items-center justify-between px-4 py-1.5 bg-[#12141c] text-[11px] text-gray-500 border-b border-white/5 select-none font-mono">
-              <div className="flex items-center gap-1 min-w-0">
-                <FileCode className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                {activeTab.path.split('/').map((seg, idx, arr) => (
+            <div
+              className="flex items-center justify-between px-3 py-1 text-[11px] select-none"
+              style={{ background: 'var(--dp-bg-secondary)', borderBottom: '1px solid var(--dp-border)', minHeight: '28px' }}
+            >
+              <div className="flex items-center gap-1 min-w-0 font-mono">
+                {activeTab.path.replace(/\\/g, '/').split('/').map((seg, idx, arr) => (
                   <span key={idx} className="flex items-center gap-1 min-w-0">
-                    {idx > 0 && <span className="text-gray-600 font-bold shrink-0">&gt;</span>}
-                    <span className={`${idx === arr.length - 1 ? 'text-gray-300 font-medium' : 'hover:text-gray-300 cursor-pointer'} truncate`}>
+                    {idx > 0 && <span className="text-[var(--dp-text-muted)] shrink-0">›</span>}
+                    <span className={`truncate ${
+                      idx === arr.length - 1
+                        ? 'text-[var(--dp-text-primary)] font-medium'
+                        : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] cursor-pointer'
+                    }`}>
                       {seg}
                     </span>
                   </span>

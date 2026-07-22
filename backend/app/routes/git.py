@@ -145,19 +145,19 @@ async def perform_git_action(req: GitActionRequest):
         raise HTTPException(status_code=400, detail="No workspace open.")
     try:
         if req.action == "stage":
-            await run_cmd_async(f"git add {req.path}", workspace_state.root)
+            await run_cmd_async(["git", "add", req.path], workspace_state.root)
         elif req.action == "unstage":
-            await run_cmd_async(f"git restore --staged {req.path}", workspace_state.root)
+            await run_cmd_async(["git", "restore", "--staged", req.path], workspace_state.root)
         elif req.action == "commit":
-            await run_cmd_async(f'git commit -m "{req.message}"', workspace_state.root)
+            await run_cmd_async(["git", "commit", "-m", req.message], workspace_state.root)
         elif req.action == "push":
-            await run_cmd_async("git push", workspace_state.root)
+            await run_cmd_async(["git", "push"], workspace_state.root)
         elif req.action == "pull":
-            await run_cmd_async("git pull", workspace_state.root)
+            await run_cmd_async(["git", "pull"], workspace_state.root)
         elif req.action == "checkout":
-            await run_cmd_async(f"git checkout {req.branch}", workspace_state.root)
+            await run_cmd_async(["git", "checkout", req.branch], workspace_state.root)
         elif req.action == "discard_file":
-            status_out = await run_cmd_async(f"git status --porcelain {req.path}", workspace_state.root)
+            status_out = await run_cmd_async(["git", "status", "--porcelain", req.path], workspace_state.root)
             is_untracked = False
             for line in status_out.splitlines():
                 if line.strip().startswith("??"):
@@ -171,16 +171,16 @@ async def perform_git_action(req: GitActionRequest):
                     else:
                         os.remove(abs_p)
             else:
-                await run_cmd_async(f"git restore --staged {req.path}", workspace_state.root)
-                await run_cmd_async(f"git restore {req.path}", workspace_state.root)
+                await run_cmd_async(["git", "restore", "--staged", req.path], workspace_state.root)
+                await run_cmd_async(["git", "restore", req.path], workspace_state.root)
         elif req.action == "discard_all":
-            await run_cmd_async("git restore --staged .", workspace_state.root)
-            await run_cmd_async("git restore .", workspace_state.root)
-            await run_cmd_async("git clean -fd", workspace_state.root)
+            await run_cmd_async(["git", "restore", "--staged", "."], workspace_state.root)
+            await run_cmd_async(["git", "restore", "."], workspace_state.root)
+            await run_cmd_async(["git", "clean", "-fd"], workspace_state.root)
         elif req.action == "accept_file":
-            await run_cmd_async(f"git add {req.path}", workspace_state.root)
+            await run_cmd_async(["git", "add", req.path], workspace_state.root)
         elif req.action == "accept_all":
-            await run_cmd_async("git add .", workspace_state.root)
+            await run_cmd_async(["git", "add", "."], workspace_state.root)
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
