@@ -75,11 +75,12 @@ def fetch_available_models(req: ModelsFetchRequest):
     try:
         url = req.base_url.strip()
         
-        if req.api_format == "openai":
+        if req.api_format == "anthropic":
             if not url.endswith("/models"):
                 url = url.rstrip("/") + "/models"
             headers = {
-                "Authorization": f"Bearer {api_key}",
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json",
                 "User-Agent": "Mozilla/5.0"
             }
@@ -103,15 +104,15 @@ def fetch_available_models(req: ModelsFetchRequest):
                     "Content-Type": "application/json",
                     "User-Agent": "Mozilla/5.0"
                 }
-        else:  # anthropic
+        else:  # openai, other, custom, or any generic OpenAI-compatible provider
             if not url.endswith("/models"):
                 url = url.rstrip("/") + "/models"
             headers = {
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json",
                 "User-Agent": "Mozilla/5.0"
             }
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
 
         request = urllib.request.Request(url, headers=headers, method="GET")
         try:

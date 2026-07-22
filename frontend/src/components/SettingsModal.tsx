@@ -75,7 +75,7 @@ interface Profile {
   api_key: string;
   base_url: string;
   model_name: string;
-  api_format: 'openai' | 'anthropic' | 'google';
+  api_format: 'openai' | 'anthropic' | 'google' | 'other';
 }
 
 interface SettingsModalProps {
@@ -546,14 +546,16 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                       <select
                         value={selectedProfile.api_format}
                         onChange={(e) => {
-                          const fmt = e.target.value as 'openai' | 'anthropic' | 'google';
+                          const fmt = e.target.value as 'openai' | 'anthropic' | 'google' | 'other';
                           let defaultUrl = selectedProfile.base_url;
                           if (fmt === 'google') {
                             defaultUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/';
                           } else if (fmt === 'anthropic') {
                             defaultUrl = 'https://api.anthropic.com/v1';
-                          } else {
+                          } else if (fmt === 'openai') {
                             defaultUrl = 'https://api.openai.com/v1';
+                          } else if (fmt === 'other') {
+                            defaultUrl = selectedProfile.base_url || 'https://api.openai.com/v1';
                           }
                           setSelectedProfile({
                             ...selectedProfile,
@@ -569,6 +571,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                         <option value="openai">OpenAI Compatible</option>
                         <option value="anthropic">Anthropic Messages</option>
                         <option value="google">Google Gemini</option>
+                        <option value="other">Other / Custom Provider (OpenAI Compatible Base URL)</option>
                       </select>
                     </div>
                   </div>
