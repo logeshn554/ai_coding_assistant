@@ -75,7 +75,6 @@ interface Profile {
   api_key: string;
   base_url: string;
   model_name: string;
-  api_format: 'openai' | 'anthropic' | 'google' | 'other';
 }
 
 interface SettingsModalProps {
@@ -191,8 +190,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         body: JSON.stringify({
           profile_id: selectedProfile.id,
           api_key: selectedProfile.api_key,
-          base_url: selectedProfile.base_url,
-          api_format: selectedProfile.api_format
+          base_url: selectedProfile.base_url
         })
       });
       const data = await res.json();
@@ -296,8 +294,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
       name: 'New Custom Profile',
       api_key: '',
       base_url: 'https://api.openai.com/v1',
-      model_name: '',
-      api_format: 'openai'
+      model_name: ''
     };
     setSelectedProfile(newProfile);
     setTestResult(null);
@@ -528,52 +525,16 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     {selectedProfile.id ? 'Edit Profile' : 'Configure New Profile'}
                   </h3>
 
-                  {/* Profile Name & API Format */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-semibold text-gray-400">Profile Name</label>
-                      <input
-                        type="text"
-                        value={selectedProfile.name}
-                        onChange={(e) => setSelectedProfile({ ...selectedProfile, name: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
-                        placeholder="e.g. My Anthropic Profile"
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-semibold text-gray-400">API Format</label>
-                      <select
-                        value={selectedProfile.api_format}
-                        onChange={(e) => {
-                          const fmt = e.target.value as 'openai' | 'anthropic' | 'google' | 'other';
-                          let defaultUrl = selectedProfile.base_url;
-                          if (fmt === 'google') {
-                            defaultUrl = 'https://generativelanguage.googleapis.com/v1beta/openai/';
-                          } else if (fmt === 'anthropic') {
-                            defaultUrl = 'https://api.anthropic.com/v1';
-                          } else if (fmt === 'openai') {
-                            defaultUrl = 'https://api.openai.com/v1';
-                          } else if (fmt === 'other') {
-                            defaultUrl = selectedProfile.base_url || 'https://api.openai.com/v1';
-                          }
-                          setSelectedProfile({
-                            ...selectedProfile,
-                            api_format: fmt,
-                            base_url: defaultUrl,
-                            model_name: ''
-                          });
-                          setHasFetchedModels(false);
-                          setModelOptions([]);
-                        }}
-                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500"
-                      >
-                        <option value="openai">OpenAI Compatible</option>
-                        <option value="anthropic">Anthropic Messages</option>
-                        <option value="google">Google Gemini</option>
-                        <option value="other">Other / Custom Provider (OpenAI Compatible Base URL)</option>
-                      </select>
-                    </div>
+                  {/* Profile Name */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-gray-400">Profile Name</label>
+                    <input
+                      type="text"
+                      value={selectedProfile.name}
+                      onChange={(e) => setSelectedProfile({ ...selectedProfile, name: e.target.value })}
+                      className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                      placeholder="e.g. My Custom LLM Profile"
+                    />
                   </div>
 
                   {/* Base URL & API Key */}

@@ -6,7 +6,7 @@ interface ProfileItem {
   id: string;
   name: string;
   model_name: string;
-  api_format: string;
+  base_url?: string;
 }
 
 export default function ProfileSidebar() {
@@ -116,7 +116,7 @@ export default function ProfileSidebar() {
                           {p.name}
                         </div>
                         <div className="text-[9px] text-gray-500 truncate font-mono">
-                          {p.model_name || p.api_format}
+                          {p.model_name || p.base_url || 'Custom API'}
                         </div>
                       </div>
                     </div>

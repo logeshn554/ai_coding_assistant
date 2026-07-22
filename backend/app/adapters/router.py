@@ -22,13 +22,15 @@ class ModelRouter:
         from ..config import ConfigManager
         config = ConfigManager()
         
-        fmt = profile.get("api_format", "openai")
         key = profile.get("api_key", "")
         url = profile.get("base_url", "")
         model = profile.get("model_name", "")
 
-        # 2. Parse provider prefix if formatted as provider/model_name
-        if "/" in model:
+        url_l = (url or "").lower()
+        model_l = (model or "").lower()
+
+        # Parse provider prefix if formatted as provider/model_name
+        if "/" in model and not model.startswith("models/"):
             parts = model.split("/", 1)
             provider = parts[0].lower()
             model_name = parts[1]
@@ -36,28 +38,21 @@ class ModelRouter:
             
             if provider == "anthropic" or "claude" in model_name.lower():
                 return AnthropicAdapter(key, url, model_name)
-            elif provider == "openai":
-                if model_name.lower().startswith("gpt-oss"):
-                    return OpenAIAdapter(key, url, model)
-                else:
-                    return OpenAIAdapter(key, url, model_name)
             elif provider in ("google", "models") or "gemini" in model.lower():
-                if not url or "openai" not in url.lower():
+                if not url or "openai" not in url_l:
                     url = "https://generativelanguage.googleapis.com/v1beta/openai/"
-                # The Google OpenAI endpoint expects the 'models/...' prefix for API Studio models
-                if provider == "models":
-                    return OpenAIAdapter(key, url, model)
-                return OpenAIAdapter(key, url, model_name)
+                return OpenAIAdapter(key, url, model)
             else:
                 return OpenAIAdapter(key, url, model)
 
-        # 3. Standard fallback based on format properties
-        if fmt == "anthropic" or "claude" in model.lower():
+        # Standard routing based on base_url or model name
+        if "anthropic.com" in url_l or "claude" in model_l:
             return AnthropicAdapter(key, url, model)
-        elif fmt == "google" or "gemini" in model.lower():
-            if not url or "openai" not in url.lower():
+        elif "generativelanguage.googleapis.com" in url_l:
+            if "openai" not in url_l:
                 url = "https://generativelanguage.googleapis.com/v1beta/openai/"
             return OpenAIAdapter(key, url, model)
+
         return OpenAIAdapter(key, url, model)
 
     _fallback_listeners = []

@@ -211,7 +211,7 @@ class ConfigManager:
                 "name": profile_data["name"],
                 "base_url": profile_data["base_url"],
                 "model_name": profile_data["model_name"],
-                "api_format": profile_data["api_format"]
+                "api_format": profile_data.get("api_format", "openai")
             }
             config.setdefault("profiles", []).append(existing_profile)
             
@@ -219,7 +219,7 @@ class ConfigManager:
         existing_profile["name"] = profile_data["name"]
         existing_profile["base_url"] = profile_data["base_url"]
         existing_profile["model_name"] = profile_data["model_name"]
-        existing_profile["api_format"] = profile_data["api_format"]
+        existing_profile["api_format"] = profile_data.get("api_format", "openai")
         
         # Handle API key update (checking if it was masked or is a new plaintext)
         new_key = profile_data.get("api_key", "")
