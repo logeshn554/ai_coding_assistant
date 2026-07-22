@@ -6,6 +6,7 @@ import {
   Rocket, Network, Search, ChevronDown, ChevronRight,
   Activity, Clock
 } from 'lucide-react';
+import { useAI } from '../core/ai/AIContext';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -214,9 +215,10 @@ export default function AgentsSidebar() {
   });
   const [showLog, setShowLog] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
 
-  // Listen to global WebSocket for agent_state messages
+  // Listen to global WebSocket for agent_state messages (via AIContext wsRef)
+  const { wsRef } = useAI();
+
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       try {
@@ -234,22 +236,11 @@ export default function AgentsSidebar() {
       }
     };
 
-    // Attach to any open WebSocket on window
-    const attachToWS = () => {
-      const ws = (window as any).__devpilotWS as WebSocket | undefined;
-      if (ws && ws !== wsRef.current) {
-        wsRef.current = ws;
-        ws.addEventListener('message', handleMessage);
-      }
-    };
-
-    attachToWS();
-    const interval = setInterval(attachToWS, 1000);
-    return () => {
-      clearInterval(interval);
-      wsRef.current?.removeEventListener('message', handleMessage);
-    };
-  }, []);
+    const ws = wsRef.current;
+    if (!ws) return;
+    ws.addEventListener('message', handleMessage);
+    return () => ws.removeEventListener('message', handleMessage);
+  }, [wsRef.current]);
 
   // Auto-scroll log
   useEffect(() => {

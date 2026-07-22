@@ -46,7 +46,11 @@ class InMemoryFallbackRedis:
 
     def __init__(self, redis_url: str):
         self.url = redis_url
-        self.client = None
+        # Create the client once with a fixed pool; don't recreate on every request.
+        try:
+            self.client = aioredis.from_url(self.url, decode_responses=True, max_connections=10)
+        except Exception:
+            self.client = None
         self.fallback_db: dict[str, str] = {}
         self._fallback_expiry: dict[str, float] = {}  # key → unix expiry time
         self.use_fallback = False
@@ -66,17 +70,28 @@ class InMemoryFallbackRedis:
         import time as _time
         return _time.monotonic() - self._last_failure_time >= self.RECONNECT_COOLDOWN
 
+    async def _probe_redis(self) -> bool:
+        """Ping Redis to check if it has come back online."""
+        try:
+            if self.client is None:
+                self.client = aioredis.from_url(self.url, decode_responses=True, max_connections=10)
+            await self.client.ping()
+            self.use_fallback = False
+            return True
+        except Exception:
+            return False
+
     async def get(self, key: str):
         self._evict_expired()
         if self.use_fallback and not self._should_retry_redis():
             return self.fallback_db.get(key)
+        if self.use_fallback and self._should_retry_redis():
+            await self._probe_redis()
+        if self.use_fallback:
+            return self.fallback_db.get(key)
         try:
-            if self.use_fallback:
-                # Probe for reconnection
-                self.client = aioredis.from_url(self.url, decode_responses=True)
-                self.use_fallback = False
             if self.client is None:
-                self.client = aioredis.from_url(self.url, decode_responses=True)
+                self.client = aioredis.from_url(self.url, decode_responses=True, max_connections=10)
             return await self.client.get(key)
         except Exception:
             import time as _time
@@ -93,12 +108,17 @@ class InMemoryFallbackRedis:
             if ex is not None:
                 self._fallback_expiry[key] = _time.monotonic() + ex
             return True
+        if self.use_fallback and self._should_retry_redis():
+            await self._probe_redis()
+        if self.use_fallback:
+            import time as _time
+            self.fallback_db[key] = value
+            if ex is not None:
+                self._fallback_expiry[key] = _time.monotonic() + ex
+            return True
         try:
-            if self.use_fallback:
-                self.client = aioredis.from_url(self.url, decode_responses=True)
-                self.use_fallback = False
             if self.client is None:
-                self.client = aioredis.from_url(self.url, decode_responses=True)
+                self.client = aioredis.from_url(self.url, decode_responses=True, max_connections=10)
             return await self.client.set(key, value, ex=ex)
         except Exception:
             import time as _time
@@ -130,5 +150,22 @@ workspace_state = WorkspaceState(INITIAL_WORKSPACE_ROOT)
 permission_manager = PermissionManager(config_manager, workspace_state.root)
 
 async def verify_token(request: Request = None):
-    # Authentication bypassed
-    return
+    """
+    Validate the session token from Authorization header or ?token= query param.
+    Set DEVPILOT_NO_AUTH=true to bypass for local development.
+    """
+    # Allow bypass for local dev via env var
+    if os.environ.get("DEVPILOT_NO_AUTH", "").lower() in ("1", "true", "yes"):
+        return
+    if request is None:
+        return
+    # Extract token from Bearer header or query param
+    auth_header = request.headers.get("Authorization", "")
+    token = ""
+    if auth_header.startswith("Bearer "):
+        token = auth_header[len("Bearer "):].strip()
+    if not token:
+        token = request.query_params.get("token", "")
+    # Constant-time compare to prevent timing attacks
+    if not token or not secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+        raise HTTPException(status_code=401, detail="Unauthorized")

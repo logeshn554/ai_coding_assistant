@@ -21,7 +21,7 @@ export interface DiffHunk {
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
-  content?: string | any;
+  content?: string | Record<string, unknown>;
   tool_calls?: ToolCall[];
   diff?: { filename: string; hunks: DiffHunk[] };
   cost_usd?: number;
@@ -32,12 +32,12 @@ export interface ChatMessage {
   name?: string;
   status?: 'success' | 'error';
   isConfirmPending?: boolean;
-  confirmArgs?: any;
+  confirmArgs?: Record<string, unknown>;
   confirmDiff?: {
     path: string;
     original: string;
     proposed: string;
-    hunks?: any[];
+    hunks?: DiffHunk[];
   };
 
   // Permission Request Fields
@@ -53,4 +53,29 @@ export interface ChatMessage {
   portConflictPid?: number;
   portConflictProcessName?: string;
   thinkingSteps?: string[];
+}
+
+// ── Entity interfaces replacing any[] ──────────────────────────────────────
+
+export interface Session {
+  id: string;
+  title: string;
+  updated_at?: string;
+}
+
+export interface ProcessEntry {
+  id: string;
+  command: string;
+  status: 'starting' | 'running' | 'stopped' | 'error';
+  pid?: number;
+  port?: number;
+}
+
+export interface SubTask {
+  id: number;
+  agent: string;
+  description: string;
+  status: 'pending' | 'running' | 'done' | 'error';
+  dependencies: number[];
+  output?: string;
 }

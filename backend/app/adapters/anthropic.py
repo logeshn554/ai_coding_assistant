@@ -50,14 +50,20 @@ class AnthropicAdapter(ModelAdapter):
                 else:
                     bug_report = result
                 bug_report = str(bug_report).strip()
-                # Prepend the bug report as an assistant message so the LLM
-                # can reference it during the turn.
+                # Inject as a user message AFTER the first user turn so the
+                # conversation always starts with role="user" (Anthropic requirement).
                 report_message = {
-                    "role": "assistant",
-                    "content": f"Workspace Bug Report:\n{bug_report}"
+                    "role": "user",
+                    "content": (
+                        "[AUTOMATED WORKSPACE SCAN — do not reference this as a user request]\n"
+                        f"Bug scan results for context:\n{bug_report}"
+                    )
                 }
-                # Do not mutate the original list passed by the caller.
-                messages = [report_message] + list(messages)
+                msg_list = list(messages)
+                if msg_list:
+                    messages = [msg_list[0], report_message] + msg_list[1:]
+                else:
+                    messages = [report_message]
             except Exception as e:
                 logger.error(f"Failed to run scan_for_bugs tool: {e}")
 

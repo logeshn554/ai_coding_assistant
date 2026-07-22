@@ -5,6 +5,11 @@ import uuid
 import time
 import re
 import os
+import importlib.util
+
+# Feature flag: set to False if parallel_agent_system package is absent.
+# This prevents a hard ImportError from crashing every multi-agent task.
+PARALLEL_AGENTS_AVAILABLE = importlib.util.find_spec("parallel_agent_system") is not None
 from typing import List, Dict, Any, TypedDict, Optional
 from pydantic import BaseModel, Field, ValidationError
 from langgraph.graph import StateGraph, START, END
@@ -1904,139 +1909,133 @@ class AgentOrchestrator:
 
         await self.context.log("Orchestrator: Initializing dynamic agent router session plan...")
         self.context.subtasks = []
+        global PARALLEL_AGENTS_AVAILABLE  # allow fallback assignment inside try/except
         
         # 1. Run Planner Agent first to plan subtasks
         planner = self.agents["Planner Agent"]
         await planner.execute(task_description, session, task_id=0)
         
-        if len(self.context.subtasks) > 1:
+        if len(self.context.subtasks) > 1 and PARALLEL_AGENTS_AVAILABLE:
             await self.context.log("Orchestrator: Multiple independent subtasks planned. Delegating to LangGraph supervisor...")
-            
-            from parallel_agent_system.core.state import SubTask as ParallelSubTask, GraphState as ParallelGraphState
-            from parallel_agent_system.graph.supervisor import build_supervisor_graph
-            from parallel_agent_system.core.config import SystemConfig
-            from parallel_agent_system.runtime.secret_registry import SecretRegistry
-            import uuid
-            
-            # Map backend agent names to parallel agent_types (SubTask.agent_type literals)
-            def map_agent_name(name: str) -> str:
-                name_l = name.lower()
-                if "security" in name_l:
-                    return "security"
-                elif "performance" in name_l:
-                    return "performance"
-                elif "debug" in name_l:
-                    return "debug"
-                elif "database" in name_l or "db" in name_l:
-                    return "database"
-                elif "api" in name_l:
-                    return "api"
-                elif "integration" in name_l:
-                    return "integration"
-                elif "devops" in name_l or "docker" in name_l:
-                    return "devops"
-                elif "release" in name_l:
-                    return "release"
-                elif "git" in name_l:
-                    return "git"
-                elif "terminal" in name_l:
-                    return "terminal"
-                elif "planner" in name_l or "architect" in name_l:
-                    return "architect"
-                elif "requirement" in name_l:
-                    return "requirement"
-                elif "test" in name_l:
-                    return "test"
-                elif "doc" in name_l:
-                    return "docs"
-                elif "review" in name_l:
-                    return "review"
-                elif "frontend" in name_l:
-                    return "frontend"
-                elif "backend" in name_l:
-                    return "backend"
-                return "code"
+            _parallel_ok = False
+            try:
+                from parallel_agent_system.core.state import SubTask as ParallelSubTask, GraphState as ParallelGraphState
+                from parallel_agent_system.graph.supervisor import build_supervisor_graph
+                from parallel_agent_system.core.config import SystemConfig
+                from parallel_agent_system.runtime.secret_registry import SecretRegistry
+                _parallel_ok = True
+            except ImportError:
+                PARALLEL_AGENTS_AVAILABLE = False
+                await self.context.log("Orchestrator: parallel_agent_system unavailable - falling back to sequential routing.")
 
-            # Map old integer task IDs to new UUID string IDs
-            id_map = {}
-            for st in self.context.subtasks:
-                id_map[st["id"]] = f"task_{uuid.uuid4().hex[:8]}"
+            if _parallel_ok:
+                def map_agent_name(name: str) -> str:
+                    name_l = name.lower()
+                    if "security" in name_l:
+                        return "security"
+                    elif "performance" in name_l:
+                        return "performance"
+                    elif "debug" in name_l:
+                        return "debug"
+                    elif "database" in name_l or "db" in name_l:
+                        return "database"
+                    elif "api" in name_l:
+                        return "api"
+                    elif "integration" in name_l:
+                        return "integration"
+                    elif "devops" in name_l or "docker" in name_l:
+                        return "devops"
+                    elif "release" in name_l:
+                        return "release"
+                    elif "git" in name_l:
+                        return "git"
+                    elif "terminal" in name_l:
+                        return "terminal"
+                    elif "planner" in name_l or "architect" in name_l:
+                        return "architect"
+                    elif "requirement" in name_l:
+                        return "requirement"
+                    elif "test" in name_l:
+                        return "test"
+                    elif "doc" in name_l:
+                        return "docs"
+                    elif "review" in name_l:
+                        return "review"
+                    elif "frontend" in name_l:
+                        return "frontend"
+                    elif "backend" in name_l:
+                        return "backend"
+                    return "code"
 
-            parallel_subtasks = []
-            for st in self.context.subtasks:
-                new_id = id_map[st["id"]]
-                depends_on_list = []
-                for dep_id in st.get("dependencies", []):
-                    if dep_id in id_map:
-                        depends_on_list.append(id_map[dep_id])
-                
-                p_task = ParallelSubTask(
-                    id=new_id,
-                    agent_type=map_agent_name(st["agent"]),
-                    description=st["description"],
-                    workspace_dir=f"./workspace/agent-{new_id[:8]}",
-                    depends_on=depends_on_list
-                )
-                parallel_subtasks.append(p_task)
+                id_map = {}
+                for st in self.context.subtasks:
+                    id_map[st["id"]] = f"task_{uuid.uuid4().hex[:8]}"
 
-            # Set up LLM key
-            api_key = session.profile.get("api_key") or ""
-            SecretRegistry.register("LLM_API_KEY", api_key)
-            
-            config = SystemConfig()
-            graph = build_supervisor_graph(config)
-            
-            initial_state: ParallelGraphState = {
-                "run_id": f"run_{uuid.uuid4().hex[:8]}",
-                "goal": task_description,
-                "subtasks": parallel_subtasks,
-                "results": [],
-                "global_cost_usd": 0.0,
-                "iteration": 1,
-                "status": "pending",
-                "human_confirmation_required": False,
-                "messages": [],
-                "session": session
-            }
-            
-            session.parallel_subtasks = []
-            for st in parallel_subtasks:
-                session.parallel_subtasks.append({
-                    "id": st.id,
-                    "agent": st.agent_type.capitalize() + " Agent",
-                    "description": st.description,
+                parallel_subtasks = []
+                for st in self.context.subtasks:
+                    new_id = id_map[st["id"]]
+                    depends_on_list = []
+                    for dep_id in st.get("dependencies", []):
+                        if dep_id in id_map:
+                            depends_on_list.append(id_map[dep_id])
+                    p_task = ParallelSubTask(
+                        id=new_id,
+                        agent_type=map_agent_name(st["agent"]),
+                        description=st["description"],
+                        workspace_dir=f"./workspace/agent-{new_id[:8]}",
+                        depends_on=depends_on_list
+                    )
+                    parallel_subtasks.append(p_task)
+
+                api_key = session.profile.get("api_key") or ""
+                SecretRegistry.register("LLM_API_KEY", api_key)
+                config = SystemConfig()
+                graph = build_supervisor_graph(config)
+                initial_state: ParallelGraphState = {
+                    "run_id": f"run_{uuid.uuid4().hex[:8]}",
+                    "goal": task_description,
+                    "subtasks": parallel_subtasks,
+                    "results": [],
+                    "global_cost_usd": 0.0,
+                    "iteration": 1,
                     "status": "pending",
-                    "progress": 0
+                    "human_confirmation_required": False,
+                    "messages": [],
+                    "session": session
+                }
+                session.parallel_subtasks = []
+                for st in parallel_subtasks:
+                    session.parallel_subtasks.append({
+                        "id": st.id,
+                        "agent": st.agent_type.capitalize() + " Agent",
+                        "description": st.description,
+                        "status": "pending",
+                        "progress": 0
+                    })
+                await session.send_ws_message({
+                    "type": "agent_state",
+                    "active_agent": "Orchestrator Agent",
+                    "active_task": "Starting parallel graph execution...",
+                    "subtasks": session.parallel_subtasks,
+                    "collaboration_log": session.collaboration_log
                 })
-                
-            await session.send_ws_message({
-                "type": "agent_state",
-                "active_agent": "Orchestrator Agent",
-                "active_task": "Starting parallel graph execution...",
-                "subtasks": session.parallel_subtasks,
-                "collaboration_log": session.collaboration_log
-            })
-            
-            thread_id = f"thread_{uuid.uuid4().hex[:8]}"
-            final_state = await graph.ainvoke(
-                initial_state,
-                config={"configurable": {"thread_id": thread_id}}
-            )
-            
-            # Map results back to orchestrator context
-            self.context.subtasks = session.parallel_subtasks
-            self.context.collaboration_log = session.collaboration_log
-            
-            await session.send_ws_message({
-                "type": "agent_state",
-                "active_agent": "Orchestrator",
-                "active_task": "All parallel tasks completed",
-                "subtasks": self.context.subtasks,
-                "collaboration_log": self.context.collaboration_log
-            })
-            
-        else:
-            # Fallback to default sequential routing workflow
+                thread_id = f"thread_{uuid.uuid4().hex[:8]}"
+                final_state = await graph.ainvoke(
+                    initial_state,
+                    config={"configurable": {"thread_id": thread_id}}
+                )
+                self.context.subtasks = session.parallel_subtasks
+                self.context.collaboration_log = session.collaboration_log
+                await session.send_ws_message({
+                    "type": "agent_state",
+                    "active_agent": "Orchestrator",
+                    "active_task": "All parallel tasks completed",
+                    "subtasks": self.context.subtasks,
+                    "collaboration_log": self.context.collaboration_log
+                })
+                return  # parallel path complete; skip sequential
+
+        # Fallback to default sequential routing workflow
             # Initialize graph state
             initial_state: AgentState = {
                 "task_description": task_description,

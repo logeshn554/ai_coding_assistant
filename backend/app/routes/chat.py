@@ -52,6 +52,7 @@ async def tokenize_chat_context(req: TokenizeRequest):
                 content = json.dumps(content)
             total_chars += len(str(content))
             
+        file_contents = []
         for rel_path in req.open_files:
             if not workspace_state.root:
                 continue
@@ -60,11 +61,30 @@ async def tokenize_chat_context(req: TokenizeRequest):
                 abs_path = safe_path(rel_path, workspace_state.root)
                 if os.path.isfile(abs_path):
                     with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
-                        total_chars += len(f.read())
+                        fc = f.read()
+                        total_chars += len(fc)
+                        file_contents.append(fc)
             except Exception:
                 pass
-                
-        tokens = max(120, total_chars // 4)
+
+        # Try real Anthropic token counting; fall back to approximation
+        try:
+            from anthropic import Anthropic
+            combined = " ".join(
+                str(msg.get("content", "")) for msg in req.messages
+            ) + " " + " ".join(file_contents)
+            client = Anthropic()
+            response = client.beta.messages.count_tokens(
+                model="claude-opus-4-5",
+                messages=[{"role": "user", "content": combined}]
+            )
+            tokens = response.input_tokens
+        except Exception:
+            # Fall back to approximation (chars/3 is more accurate for code than /4)
+            tokens = max(120, total_chars // 3)
+
+        # Add 15% safety buffer so the UI warns before actual context overflow
+        tokens = int(tokens * 1.15)
         return {"tokens": tokens}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -6,7 +6,7 @@ import { useTerminal } from '../terminal/TerminalContext';
 import { useGit } from '../git/GitContext';
 import { useToast } from '../toast/ToastContext';
 
-import type { ChatMessage } from '../../types/chat';
+import type { ChatMessage, Session, ProcessEntry, SubTask } from '../../types/chat';
 
 interface AIContextType {
   messages: ChatMessage[];
@@ -15,13 +15,14 @@ interface AIContextType {
   activeAgent: string | null;
   activeTask: string | null;
   collaborationLog: string[];
-  subtasks: any[];
-  sessions: any[];
+  subtasks: SubTask[];
+  sessions: Session[];
   activeSessionId: string;
   isWsConnected: boolean;
   isModelFallback: boolean;
   contextTokens: string;
   contextPercentage: number;
+  wsRef: React.RefObject<WebSocket | null>;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   handleSendMessage: (text: string, mode: 'Ask' | 'Plan' | 'Agent/Write', autoApply: boolean) => void;
   handleConfirmTool: (toolCallId: string, approved: boolean, scope: string, hunkDecisions?: any) => void;
@@ -44,8 +45,8 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<string | null>(null);
   const [collaborationLog, setCollaborationLog] = useState<string[]>([]);
-  const [subtasks, setSubtasks] = useState<any[]>([]);
-  const [sessions, setSessions] = useState<any[]>([]);
+  const [subtasks, setSubtasks] = useState<SubTask[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState('default-session');
   
   const [isWsConnected, setIsWsConnected] = useState(false);
@@ -87,7 +88,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
           const data = await res.json();
           const tokens = data.tokens || 0;
           setContextTokens(tokens >= 1000 ? (tokens / 1000).toFixed(1) + 'K' : tokens.toString());
-          setContextPercentage(Math.min(100, Math.round((tokens / 128000) * 100)));
+          setContextPercentage(Math.min(100, Math.round((tokens / 200000) * 100)));
         }
       } catch (e) {
         console.error('Failed to tokenize chat context:', e);
@@ -204,7 +205,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const wsUrl = `${protocol}//${window.location.host}/ws/chat?session_id=${activeSessionId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
-    (window as any).__devpilotWS = ws;
+    // Note: wsRef is exposed in context; do not assign to window globals.
 
     ws.onopen = () => {
       logger.info("Chat socket connected.");
@@ -557,6 +558,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         isModelFallback,
         contextTokens,
         contextPercentage,
+        wsRef,
         setMessages,
         handleSendMessage,
         handleConfirmTool,

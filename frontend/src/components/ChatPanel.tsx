@@ -12,7 +12,7 @@ import {
   FileText
 } from 'lucide-react';
 
-import type { ChatMessage, AgentState } from '../types/chat';
+import type { ChatMessage, AgentState, Session, ProcessEntry } from '../types/chat';
 import { MessageList } from './chat/MessageList';
 import { AgentStatusBar } from './chat/AgentStatusBar';
 
@@ -38,12 +38,12 @@ interface ChatPanelProps {
   totalCostUsd?: number;
 
   // Background running processes
-  activeProcesses?: any[];
+  activeProcesses?: ProcessEntry[];
   onConfirmPortConflict?: (toolCallId: string, action: 'stop' | 'next_port' | 'cancel') => void;
   onStopProcess?: (processId?: string) => void;
 
   // Sessions / Chat History
-  sessions?: any[];
+  sessions?: Session[];
   activeSessionId?: string;
   onSelectSession?: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => void;
@@ -157,9 +157,11 @@ export default function ChatPanel({
           <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
             {activeAgentCount} agent{activeAgentCount === 1 ? '' : 's'} active
           </span>
-          <span className="px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-800/60 font-semibold">
-            ${totalCostUsd.toFixed(3)}
-          </span>
+          {totalCostUsd > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-800/60 font-semibold">
+              ${totalCostUsd.toFixed(3)}
+            </span>
+          )}
 
           <div className="flex items-center gap-0.5 ml-1 text-zinc-400">
             <button
@@ -192,7 +194,10 @@ export default function ChatPanel({
                     if (confirm("Are you sure you want to clear all chat sessions?")) {
                       try {
                         const res = await fetch('/api/chat/sessions', { method: 'DELETE' });
-                        if (res.ok) window.location.reload();
+                        if (res.ok) {
+                          setShowHistoryDropdown(false);
+                          onNewSession?.();
+                        }
                       } catch (e) {
                         console.error(e);
                       }
@@ -425,8 +430,9 @@ export default function ChatPanel({
 
               <button
                 type="button"
-                className="p-1 hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 rounded cursor-pointer transition-colors"
-                title="Voice input"
+                disabled
+                className="p-1 text-zinc-600 rounded cursor-not-allowed opacity-40"
+                title="Voice input — coming soon"
               >
                 <Mic className="w-3.5 h-3.5" />
               </button>

@@ -8,6 +8,7 @@ import { listFiles, createFile, deleteFile, getWorkspaceStats } from '../api';
 import { LoadingSpinner } from './LoadingSpinner';
 import { ContextMenu } from './ContextMenu';
 import type { ContextMenuEntry } from './ContextMenu';
+import { useTerminal } from '../core/terminal/TerminalContext';
 
 interface FileItem {
   name: string;
@@ -129,6 +130,7 @@ function GitBadge({ status }: { status: string }) {
 }
 
 export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger, workspacePath, onOpenFolder, gitChanges }: SidebarProps) {
+  const { setBottomTab, setActiveTerminalCommand } = useTerminal();
   const [rootItems, setRootItems] = useState<FileItem[]>([]);
   const [dirContents, setDirContents] = useState<Record<string, FileItem[]>>({});
   const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
@@ -322,7 +324,16 @@ export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger
     if (item.is_dir) {
       entries.push(
         { type: 'divider' as const },
-        { label: 'Reveal in Terminal', icon: <Terminal className="w-3.5 h-3.5" />, onClick: () => { /* TODO: open terminal at path */ } },
+        { label: 'Reveal in Terminal', icon: <Terminal className="w-3.5 h-3.5" />, onClick: () => {
+          // Navigate terminal to the directory containing this file/folder
+          const dir = item.is_dir
+            ? item.path
+            : item.path.includes('/') || item.path.includes('\\')
+              ? item.path.substring(0, Math.max(item.path.lastIndexOf('/'), item.path.lastIndexOf('\\')))
+              : '';
+          setBottomTab('terminal');
+          if (dir) setActiveTerminalCommand(`cd "${dir}"`);
+        } },
       );
     }
 
