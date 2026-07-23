@@ -1,8 +1,10 @@
-export type AgentStatus = 'idle' | 'running' | 'done' | 'error' | 'waiting';
+export type AgentStatus = 'idle' | 'running' | 'done' | 'error' | 'waiting' | 'stuck';
 
 export interface AgentState {
   agent_type: string;
   status: AgentStatus;
+  cost_usd?: number;
+  taskId?: number | string;
 }
 
 export interface AgentCardData {
@@ -145,7 +147,12 @@ export interface ChatMessage {
 export interface Session {
   id: string;
   title: string;
-  updated_at?: string;
+  updated_at?: string | number;
+  created_at?: string | number;
+  workspace_root?: string;
+  mode?: string;
+  message_count?: number;
+  first_user_message?: string;
 }
 
 export interface ProcessEntry {
@@ -157,11 +164,14 @@ export interface ProcessEntry {
   port?: number;
 }
 
+export type ChatMode = 'Ask' | 'Plan' | 'Agent' | 'Auto';
+
 export interface SubTask {
   id: number;
   agent: string;
   description: string;
-  status: 'pending' | 'running' | 'done' | 'error';
+  status: 'pending' | 'running' | 'done' | 'error' | 'stuck';
   dependencies: number[];
   output?: string;
 }
+

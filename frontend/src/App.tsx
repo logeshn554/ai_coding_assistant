@@ -101,7 +101,9 @@ function EditorShell() {
     statusMessage,
     handleCancelGeneration,
     contextTokens,
-    contextPercentage
+    contextPercentage,
+    activeSessionId,
+    handleSelectSession,
   } = useAI();
 
   return (
@@ -206,6 +208,8 @@ function EditorShell() {
                       statusMessage={statusMessage ?? undefined}
                       contextTokens={typeof contextTokens === 'number' ? contextTokens : undefined}
                       contextPercentage={typeof contextPercentage === 'number' ? contextPercentage : undefined}
+                      activeSessionId={activeSessionId}
+                      onResumeSession={handleSelectSession}
                     />
               </div>
             </div>

@@ -3,6 +3,12 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+// Restore saved theme immediately to prevent flash-of-wrong-theme
+const savedTheme = localStorage.getItem('devpilot_theme') || 'dark';
+if (savedTheme && savedTheme !== 'dark') {
+  document.documentElement.setAttribute('data-theme', savedTheme);
+}
+
 let sessionToken = ""
 
 // Global fetch interceptor

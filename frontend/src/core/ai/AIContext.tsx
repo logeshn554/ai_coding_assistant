@@ -6,7 +6,7 @@ import { useTerminal } from '../terminal/TerminalContext';
 import { useGit } from '../git/GitContext';
 import { useToast } from '../toast/ToastContext';
 
-import type { ChatMessage, Session, SubTask } from '../../types/chat';
+import type { ChatMessage, Session, SubTask, ChatMode } from '../../types/chat';
 
 interface AIContextType {
   messages: ChatMessage[];
@@ -22,9 +22,11 @@ interface AIContextType {
   isModelFallback: boolean;
   contextTokens: string;
   contextPercentage: number;
+  contextTokensRaw: number;
+  contextTokensMax: number;
   wsRef: React.RefObject<WebSocket | null>;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  handleSendMessage: (text: string, mode: 'Ask' | 'Plan' | 'Agent/Write', autoApply: boolean) => void;
+  handleSendMessage: (text: string, mode: ChatMode, autoApply: boolean) => void;
   handleConfirmTool: (toolCallId: string, approved: boolean, scope: string, hunkDecisions?: any) => void;
   handleConfirmPermission: (toolCallId: string, approved: boolean, scope: string, command?: string) => void;
   handleConfirmPortConflict: (toolCallId: string, action: 'stop' | 'next_port' | 'cancel') => void;
@@ -53,6 +55,8 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isModelFallback, setIsModelFallback] = useState(false);
   const [contextTokens, setContextTokens] = useState('0');
   const [contextPercentage, setContextPercentage] = useState(0);
+  const [contextTokensRaw, setContextTokensRaw] = useState(0);
+  const [contextTokensMax, setContextTokensMax] = useState(200000);
 
   const { workspacePath, triggerRefresh } = useWorkspace();
   const { setProposedDiff, handleSelectFile, openFiles } = useEditor();
@@ -400,6 +404,32 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
             }
           ]);
           break;
+        case 'context_update':
+          if (typeof data.tokens_used === 'number' && typeof data.tokens_max === 'number') {
+            const used: number = data.tokens_used;
+            const max: number = data.tokens_max;
+            const pct: number = data.percentage ?? Math.min(100, Math.round((used / max) * 100));
+            setContextTokensRaw(used);
+            setContextTokensMax(max);
+            setContextTokens(used >= 1000 ? (used / 1000).toFixed(1) + 'K' : String(used));
+            setContextPercentage(pct);
+          }
+          break;
+        case 'context_compressed':
+          if (data.summary) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `ctx_compressed_${Date.now()}`,
+                role: 'system' as const,
+                content: `🗜️ Context compressed: ${data.summary}`,
+                isContextCompressed: true,
+                timestamp: Math.floor(Date.now() / 1000)
+              }
+            ]);
+            showToast('Context compressed — oldest messages summarized to save space.', 'info');
+          }
+          break;
         case 'model_fallback':
           setIsModelFallback(true);
           showToast(`⚠️ Configured model failed! Fallback to local Ollama llama3. Error: ${data.error}`, 'error');
@@ -419,7 +449,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     };
   };
 
-  const handleSendMessage = (text: string, mode: 'Ask' | 'Plan' | 'Agent/Write', autoApply: boolean) => {
+  const handleSendMessage = (text: string, mode: ChatMode, autoApply: boolean) => {
     if (!text.trim() || isGenerating) return;
 
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -440,11 +470,14 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     setIsGenerating(true);
     setStatusMessage('Analyzing workspace...');
 
+    // Map 'Auto' to ask-mode behavior (direct LLM call, no orchestrator)
+    const effectiveMode = mode === 'Auto' ? 'Ask' : mode;
+
     wsRef.current.send(
       JSON.stringify({
         type: 'user_message',
         text,
-        mode,
+        mode: effectiveMode,
         auto_apply: autoApply
       })
     );
@@ -558,6 +591,8 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         isModelFallback,
         contextTokens,
         contextPercentage,
+        contextTokensRaw,
+        contextTokensMax,
         wsRef,
         setMessages,
         handleSendMessage,

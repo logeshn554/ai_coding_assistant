@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Sparkles, MessageSquare, ListChecks, Clock, Brain,
   FileCode, Check, Circle, Zap, Target,
-  MoreHorizontal
+  MoreHorizontal, History
 } from 'lucide-react';
 import type {
   ChatMessage,
@@ -14,8 +14,9 @@ import { ToolExecutionCard } from './ToolExecutionCard';
 import { ProjectContextPanel } from './ProjectContextPanel';
 import { ProjectMemoryPanel } from './ProjectMemoryPanel';
 import { MessageList } from './MessageList';
+import { SessionHistoryPanel } from './SessionHistoryPanel';
 
-type Tab = 'chat' | 'plan' | 'context' | 'timeline';
+type Tab = 'chat' | 'plan' | 'context' | 'timeline' | 'history';
 
 interface AiWorkspaceProps {
   messages: ChatMessage[];
@@ -31,6 +32,8 @@ interface AiWorkspaceProps {
   statusMessage?: string;
   contextTokens?: number | null;
   contextPercentage?: number | null;
+  activeSessionId?: string;
+  onResumeSession?: (sessionId: string) => Promise<void>;
 }
 
 // ── Goal Progress Step ────────────────────────────────────────────
@@ -171,8 +174,13 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
   onConfirmTool,
   onConfirmPermission,
   statusMessage: _statusMessage,
-  contextTokens = 0,
+  contextTokens: rawTokens = 0,
+  contextPercentage: rawPercentage = 0,
+  activeSessionId,
+  onResumeSession,
 }) => {
+  const contextTokens = rawTokens ?? 0;
+  const contextPercentage = rawPercentage ?? 0;
   const [activeTab, setActiveTab] = useState<Tab>('chat');
   const [hunkDecisions, setHunkDecisions] = useState<Record<string, Record<string, boolean>>>({});
   const [currentGoal] = useState('Build and implement a modern Login screen with validation');
@@ -215,9 +223,10 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
     { id: 'm2', category: 'architecture', title: 'Component Modularity', content: 'Keep components under 300 lines.', enabled: true },
   ]);
 
-  const tabs: Array<{ id: Tab; label: string; icon: any }> = [
+  const tabs: Array<{ id: Tab; label: string; icon: typeof MessageSquare }> = [
     { id: 'chat',     label: 'Chat',     icon: MessageSquare },
     { id: 'plan',     label: 'Plan',     icon: ListChecks },
+    { id: 'history',  label: 'History',  icon: History },
     { id: 'context',  label: 'Context',  icon: Brain },
     { id: 'timeline', label: 'Timeline', icon: Clock },
   ];
@@ -249,9 +258,33 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
           </div>
 
           <div className="flex items-center gap-1">
-            <span className="text-[9px] text-[var(--dp-text-muted)] font-mono bg-white/4 px-1.5 py-0.5 rounded border border-[var(--dp-border)]">
-              {(contextTokens || 0).toLocaleString()} tokens
-            </span>
+            {/* Context bar pill */}
+            <button
+              title={`${typeof contextTokens === 'number' ? contextTokens.toLocaleString() : contextTokens} tokens used (${contextPercentage}%)`}
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9px] font-mono transition-colors cursor-default"
+              style={{
+                background: contextPercentage >= 80
+                  ? 'rgba(248,113,113,0.08)'
+                  : contextPercentage >= 60
+                  ? 'rgba(251,191,36,0.08)'
+                  : 'rgba(255,255,255,0.04)',
+                borderColor: contextPercentage >= 80
+                  ? 'rgba(248,113,113,0.25)'
+                  : contextPercentage >= 60
+                  ? 'rgba(251,191,36,0.25)'
+                  : 'var(--dp-border)',
+                color: contextPercentage >= 80
+                  ? 'var(--dp-error)'
+                  : contextPercentage >= 60
+                  ? 'var(--dp-warning)'
+                  : 'var(--dp-text-muted)',
+              }}
+            >
+              {typeof contextTokens === 'number' && contextTokens >= 1000
+                ? `${(contextTokens / 1000).toFixed(1)}K`
+                : String(contextTokens)} tokens
+              {contextPercentage > 0 && <span className="opacity-60">({contextPercentage}%)</span>}
+            </button>
             <button className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5 cursor-pointer transition-colors">
               <MoreHorizontal className="w-3.5 h-3.5" />
             </button>
@@ -326,6 +359,36 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
                 mode={mode}
                 setMode={setMode}
               />
+
+              {/* Context Window Progress Bar */}
+              {contextPercentage > 0 && (
+                <div className="space-y-1">
+                  <div className="relative h-1 bg-white/6 rounded-full overflow-hidden">
+                    <div
+                      className="absolute left-0 top-0 h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${Math.min(100, contextPercentage)}%`,
+                        background: contextPercentage >= 80
+                          ? 'linear-gradient(90deg, #f87171 0%, #ef4444 100%)'
+                          : contextPercentage >= 60
+                          ? 'linear-gradient(90deg, #fbbf24 0%, #f59e0b 100%)'
+                          : 'linear-gradient(90deg, var(--dp-accent) 0%, #60a5fa 100%)',
+                        boxShadow: contextPercentage >= 80
+                          ? '0 0 8px rgba(248,113,113,0.5)'
+                          : contextPercentage >= 60
+                          ? '0 0 8px rgba(251,191,36,0.4)'
+                          : '0 0 8px rgba(124,106,240,0.4)',
+                      }}
+                    />
+                  </div>
+                  {contextPercentage >= 80 && (
+                    <p className="text-[9px] text-[var(--dp-error)] font-medium flex items-center gap-1">
+                      <span>⚠</span>
+                      Context filling up — agent will auto-summarize soon.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -357,6 +420,14 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
               </div>
             </div>
           </div>
+        )}
+
+        {/* ── SESSION HISTORY TAB ── */}
+        {activeTab === 'history' && (
+          <SessionHistoryPanel
+            activeSessionId={activeSessionId}
+            onResume={onResumeSession || (async () => undefined)}
+          />
         )}
 
         {/* ── CONTEXT TAB ── */}

@@ -20,8 +20,10 @@ export default function ProfileSidebar() {
       const res = await fetch('/api/profiles');
       if (res.ok) {
         const data = await res.json();
-        setProfiles(data.profiles || []);
-        setActiveId(data.active_profile_id || '');
+        const profs = data.profiles || [];
+        setProfiles(profs);
+        const resolvedId = data.active_profile_id || profs.find((p: any) => p.isActive)?.id || (profs[0]?.id || '');
+        setActiveId(resolvedId);
       }
     } catch (e) {
       console.error('Error fetching profiles in ProfileSidebar:', e);
@@ -30,7 +32,7 @@ export default function ProfileSidebar() {
 
   useEffect(() => {
     loadProfiles();
-  }, []);
+  }, [activeProfileName]);
 
   const handleSwitchActive = async (id: string) => {
     try {

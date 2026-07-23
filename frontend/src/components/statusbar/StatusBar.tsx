@@ -4,6 +4,7 @@ import { useWorkspace } from '../../core/workspace/WorkspaceContext';
 import { useGit } from '../../core/git/GitContext';
 import { useSettings } from '../../core/settings/SettingsContext';
 import { useAI } from '../../core/ai/AIContext';
+import { useUI } from '../../core/ui/UIContext';
 import { useEditor } from '../../core/editor/EditorContext';
 
 export const StatusBar: React.FC = () => {
@@ -12,6 +13,7 @@ export const StatusBar: React.FC = () => {
   const { activeProfileName } = useSettings();
   const { isGenerating, isWsConnected, isModelFallback } = useAI();
   const { activeFilePath } = useEditor();
+  const { setSidebarTab, setIsSidebarOpen } = useUI();
 
   const [cursorInfo, setCursorInfo] = useState({ line: 1, column: 1 });
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
@@ -131,7 +133,11 @@ export const StatusBar: React.FC = () => {
             <span className="text-[10px] font-medium animate-shimmer">AI Generating...</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1 text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] transition-colors cursor-default" title="Active Model">
+          <div
+            onClick={() => { setSidebarTab('profile'); setIsSidebarOpen(true); }}
+            className="flex items-center gap-1 text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] transition-colors cursor-pointer"
+            title="Active Model (Click to open Developer Profile)"
+          >
             <Cpu className="w-3 h-3" />
             <span className="text-[10px]">{activeProfileName || 'No Model'}</span>
           </div>

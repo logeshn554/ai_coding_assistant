@@ -6,6 +6,14 @@ import { useGit } from '../../core/git/GitContext';
 import { useAI } from '../../core/ai/AIContext';
 import TerminalArea from '../TerminalArea';
 
+export interface ProblemItem {
+  file: string;
+  line: number;
+  column: number;
+  message: string;
+  severity: 'error' | 'warning' | 'info';
+}
+
 export const BottomPanel: React.FC = () => {
   const { workspacePath } = useWorkspace();
   const {
@@ -18,6 +26,19 @@ export const BottomPanel: React.FC = () => {
   const { gitChangesList } = useGit();
   const { handleKillProcess } = useAI();
 
+  const [diagnostics, setDiagnostics] = React.useState<{ errors: number; warnings: number }>({ errors: 0, warnings: 0 });
+
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ errors: number; warnings: number }>).detail;
+      if (detail) {
+        setDiagnostics(detail);
+      }
+    };
+    window.addEventListener('editor-diagnostics', handler);
+    return () => window.removeEventListener('editor-diagnostics', handler);
+  }, []);
+
   const tabs = [
     { id: 'terminal',     label: 'Terminal',      icon: TerminalIcon },
     { id: 'problems',     label: 'Problems',      icon: AlertCircle },
@@ -27,7 +48,7 @@ export const BottomPanel: React.FC = () => {
     { id: 'tasks',        label: 'Tasks',         icon: ListTodo },
   ];
 
-  const problemCount = gitChangesList.length;
+  const problemCount = diagnostics.errors + diagnostics.warnings || gitChangesList.length;
   const portCount    = activeProcesses.length;
 
   return (
@@ -115,13 +136,28 @@ export const BottomPanel: React.FC = () => {
 
         {/* Problems */}
         {bottomTab === 'problems' && (
-          <div className="flex-1 overflow-y-auto p-3 space-y-1 select-text">
-            {gitChangesList.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-24 gap-2">
-                <AlertCircle className="w-8 h-8 text-[var(--dp-text-muted)]/30" />
-                <p className="text-[11px] text-[var(--dp-text-muted)] italic">No problems detected in workspace.</p>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 select-text">
+            {diagnostics.errors > 0 || diagnostics.warnings > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 text-xs border-b border-white/5 pb-2">
+                  {diagnostics.errors > 0 && (
+                    <span className="flex items-center gap-1 text-[var(--dp-error)] font-semibold">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      {diagnostics.errors} {diagnostics.errors === 1 ? 'Error' : 'Errors'}
+                    </span>
+                  )}
+                  {diagnostics.warnings > 0 && (
+                    <span className="flex items-center gap-1 text-[var(--dp-warning)] font-semibold">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      {diagnostics.warnings} {diagnostics.warnings === 1 ? 'Warning' : 'Warnings'}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-[var(--dp-text-muted)] italic">
+                  LSP and Monaco language services are active. Select error lines directly in the active editor pane to jump to definition or auto-fix.
+                </p>
               </div>
-            ) : (
+            ) : gitChangesList.length > 0 ? (
               gitChangesList.map((file, i) => (
                 <div key={i} className="flex items-start gap-2 text-[11px] py-1 px-2 rounded-md hover:bg-white/4 cursor-pointer transition-colors">
                   <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--dp-warning)]" />
@@ -132,6 +168,11 @@ export const BottomPanel: React.FC = () => {
                   </div>
                 </div>
               ))
+            ) : (
+              <div className="flex flex-col items-center justify-center h-24 gap-2">
+                <AlertCircle className="w-8 h-8 text-[var(--dp-text-muted)]/30" />
+                <p className="text-[11px] text-[var(--dp-text-muted)] italic">No problems detected in workspace.</p>
+              </div>
             )}
           </div>
         )}

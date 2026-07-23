@@ -40,7 +40,10 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 # Initialize shared Redis client
 import redis.asyncio as aioredis
 
+
 class InMemoryFallbackRedis:
+    """Redis client wrapper that falls back to in-process storage on failure."""
+
     # Seconds to wait before re-attempting a Redis connection after a failure.
     RECONNECT_COOLDOWN = 60
 
@@ -49,10 +52,12 @@ class InMemoryFallbackRedis:
         # Create the client once with a fixed pool; don't recreate on every request.
         try:
             self.client = aioredis.from_url(self.url, decode_responses=True, max_connections=10)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to create Redis client at init: %s", exc)
             self.client = None
         self.fallback_db: dict[str, str] = {}
         self._fallback_expiry: dict[str, float] = {}  # key → unix expiry time
+        self._fallback_hashes: dict[str, dict[str, str]] = {}
         self.use_fallback = False
         self._last_failure_time: float = 0.0
 
@@ -70,69 +75,217 @@ class InMemoryFallbackRedis:
         import time as _time
         return _time.monotonic() - self._last_failure_time >= self.RECONNECT_COOLDOWN
 
+    def _enter_fallback(self, operation: str, exc: Exception) -> None:
+        """Mark Redis as offline and log a WARNING."""
+        import time as _time
+        self.use_fallback = True
+        self._last_failure_time = _time.monotonic()
+        logger.warning(
+            "Redis is offline or not configured during %s (%s). "
+            "Using in-memory fallback for session context storage.",
+            operation,
+            exc,
+        )
+
+    async def _ensure_client(self):
+        """Lazily (re)create the underlying Redis client if needed."""
+        if self.client is None:
+            self.client = aioredis.from_url(self.url, decode_responses=True, max_connections=10)
+        return self.client
+
     async def _probe_redis(self) -> bool:
         """Ping Redis to check if it has come back online."""
         try:
-            if self.client is None:
-                self.client = aioredis.from_url(self.url, decode_responses=True, max_connections=10)
-            await self.client.ping()
+            client = await self._ensure_client()
+            await client.ping()
             self.use_fallback = False
             return True
-        except Exception:
+        except Exception as exc:
+            logger.debug("Redis probe failed: %s", exc)
             return False
 
-    async def get(self, key: str):
-        self._evict_expired()
-        if self.use_fallback and not self._should_retry_redis():
-            return self.fallback_db.get(key)
-        if self.use_fallback and self._should_retry_redis():
+    async def _maybe_recover(self) -> bool:
+        """Attempt recovery from fallback mode when cooldown has elapsed.
+
+        Returns:
+            True if Redis is usable (not in fallback), False otherwise.
+        """
+        if not self.use_fallback:
+            return True
+        if self._should_retry_redis():
             await self._probe_redis()
-        if self.use_fallback:
+        return not self.use_fallback
+
+    async def get(self, key: str):
+        """Get a string value by key, with in-memory fallback."""
+        self._evict_expired()
+        if not await self._maybe_recover():
             return self.fallback_db.get(key)
         try:
-            if self.client is None:
-                self.client = aioredis.from_url(self.url, decode_responses=True, max_connections=10)
-            return await self.client.get(key)
-        except Exception:
-            import time as _time
-            self.use_fallback = True
-            self._last_failure_time = _time.monotonic()
-            logger.info("Redis is offline or not configured. Using in-memory fallback for session context storage.")
+            client = await self._ensure_client()
+            return await client.get(key)
+        except Exception as exc:
+            self._enter_fallback("get", exc)
             return self.fallback_db.get(key)
 
     async def set(self, key: str, value: str, ex: int = None):
+        """Set a string value by key, with optional TTL and in-memory fallback."""
         self._evict_expired()
-        if self.use_fallback and not self._should_retry_redis():
+
+        def _store_local():
             import time as _time
             self.fallback_db[key] = value
             if ex is not None:
                 self._fallback_expiry[key] = _time.monotonic() + ex
             return True
-        if self.use_fallback and self._should_retry_redis():
-            await self._probe_redis()
-        if self.use_fallback:
-            import time as _time
-            self.fallback_db[key] = value
-            if ex is not None:
-                self._fallback_expiry[key] = _time.monotonic() + ex
-            return True
+
+        if not await self._maybe_recover():
+            return _store_local()
         try:
-            if self.client is None:
-                self.client = aioredis.from_url(self.url, decode_responses=True, max_connections=10)
-            return await self.client.set(key, value, ex=ex)
-        except Exception:
-            import time as _time
-            self.use_fallback = True
-            self._last_failure_time = _time.monotonic()
-            logger.info("Redis is offline or not configured. Using in-memory fallback for session context storage.")
-            self.fallback_db[key] = value
-            if ex is not None:
-                self._fallback_expiry[key] = _time.monotonic() + ex
+            client = await self._ensure_client()
+            return await client.set(key, value, ex=ex)
+        except Exception as exc:
+            self._enter_fallback("set", exc)
+            return _store_local()
+
+    async def hset(self, name: str, key: str = None, value: str = None, mapping: dict = None):
+        """Set hash field(s), with in-memory fallback.
+
+        Args:
+            name: Hash key name.
+            key: Single field name (used with ``value``).
+            value: Single field value.
+            mapping: Optional multi-field mapping.
+
+        Returns:
+            Number of fields added (best-effort under fallback).
+        """
+        fields: dict[str, str] = {}
+        if mapping:
+            fields.update({str(k): str(v) for k, v in mapping.items()})
+        if key is not None and value is not None:
+            fields[str(key)] = str(value)
+
+        if not fields:
+            return 0
+
+        def _store_local() -> int:
+            bucket = self._fallback_hashes.setdefault(name, {})
+            added = 0
+            for field, val in fields.items():
+                if field not in bucket:
+                    added += 1
+                bucket[field] = val
+            return added
+
+        if not await self._maybe_recover():
+            return _store_local()
+        try:
+            client = await self._ensure_client()
+            if mapping and (key is None or value is None):
+                return await client.hset(name, mapping=fields)
+            if len(fields) == 1 and key is not None:
+                return await client.hset(name, key, value)
+            return await client.hset(name, mapping=fields)
+        except Exception as exc:
+            self._enter_fallback("hset", exc)
+            return _store_local()
+
+    async def hget(self, name: str, key: str):
+        """Get a single hash field, with in-memory fallback."""
+        if not await self._maybe_recover():
+            return self._fallback_hashes.get(name, {}).get(key)
+        try:
+            client = await self._ensure_client()
+            return await client.hget(name, key)
+        except Exception as exc:
+            self._enter_fallback("hget", exc)
+            return self._fallback_hashes.get(name, {}).get(key)
+
+    async def hgetall(self, name: str) -> dict:
+        """Get all fields of a hash, with in-memory fallback."""
+        if not await self._maybe_recover():
+            return dict(self._fallback_hashes.get(name, {}))
+        try:
+            client = await self._ensure_client()
+            result = await client.hgetall(name)
+            return dict(result) if result else {}
+        except Exception as exc:
+            self._enter_fallback("hgetall", exc)
+            return dict(self._fallback_hashes.get(name, {}))
+
+    async def delete(self, *names: str) -> int:
+        """Delete one or more keys (strings or hashes), with in-memory fallback."""
+        if not names:
+            return 0
+
+        def _store_local() -> int:
+            removed = 0
+            for name in names:
+                if name in self.fallback_db:
+                    del self.fallback_db[name]
+                    self._fallback_expiry.pop(name, None)
+                    removed += 1
+                if name in self._fallback_hashes:
+                    del self._fallback_hashes[name]
+                    removed += 1
+            return removed
+
+        if not await self._maybe_recover():
+            return _store_local()
+        try:
+            client = await self._ensure_client()
+            return await client.delete(*names)
+        except Exception as exc:
+            self._enter_fallback("delete", exc)
+            return _store_local()
+
+    async def ping(self) -> bool:
+        """Ping Redis and return True if reachable.
+
+        On failure, enters fallback mode and returns False.
+        """
+        try:
+            client = await self._ensure_client()
+            await client.ping()
+            self.use_fallback = False
             return True
+        except Exception as exc:
+            self._enter_fallback("ping", exc)
+            return False
 
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 redis_client = InMemoryFallbackRedis(REDIS_URL)
+
+
+async def check_redis_at_startup() -> bool:
+    """Probe Redis connectivity at application startup.
+
+    Logs a WARNING when Redis is unavailable so operators notice early.
+    The app continues with the in-memory fallback either way.
+
+    Returns:
+        True if Redis responded to ping, False otherwise.
+    """
+    try:
+        ok = await redis_client.ping()
+        if ok:
+            logger.info("Redis connectivity check succeeded (%s).", REDIS_URL)
+            return True
+        logger.warning(
+            "Redis unavailable at startup (%s). Using in-memory fallback.",
+            REDIS_URL,
+        )
+        return False
+    except Exception as exc:
+        logger.warning(
+            "Redis startup check failed (%s): %s. Using in-memory fallback.",
+            REDIS_URL,
+            exc,
+        )
+        return False
+
 
 # Initialize Config Manager
 config_manager = ConfigManager()

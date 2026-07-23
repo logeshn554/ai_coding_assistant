@@ -772,13 +772,23 @@ class DebuggingAgent(BaseAgent):
         await self.orchestrator.context.log(f"Debugging Agent: Scanning workspace for errors and warnings...")
         await self.orchestrator.update_task_progress(task_id, 30, session)
         
-        history_summary = "\n".join(self.orchestrator.context.collaboration_log)
+        build_error = "\n".join(self.orchestrator.context.collaboration_log[-5:])
+        recent_commits = self.orchestrator.context.memory.get("git_log", "N/A")
+        file_contents = str(self.orchestrator.context.memory.get("file_contents", ""))[:3000]
+        other_mem = {k: v for k, v in self.orchestrator.context.memory.items() if k != "file_contents"}
+        shared_memory = json.dumps(other_mem, default=str)[:2000]
         
         chat_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a senior debugging engineer. Analyze the output and suggest fixes."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = debugging_prompt_template.format(history_summary=history_summary)
+        prompt_content = debugging_prompt_template.format(
+            task_description=task_description,
+            build_error=build_error,
+            recent_commits=recent_commits,
+            file_contents=file_contents,
+            shared_memory=shared_memory
+        )
         
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
@@ -1215,8 +1225,12 @@ class SecurityAgent(BaseAgent):
                 ("system", "You are a senior application security engineer. Perform thorough OWASP-based security audits."),
                 ("human", "{prompt_content}")
             ])
+            other_mem = {k: v for k, v in self.orchestrator.context.memory.items() if k != "file_contents"}
+            shared_memory = json.dumps(other_mem, default=str)[:1500]
             prompt_content = security_prompt_template.format(
-                task_description=task_description, codebase_text=chunk
+                task_description=task_description,
+                file_contents=chunk,
+                shared_memory=shared_memory
             )
             chain = chat_prompt | llm
             response_msg = await chain.ainvoke({"prompt_content": prompt_content})
@@ -1710,12 +1724,15 @@ async def orchestrator_node(state: AgentState) -> AgentState:
     if not is_mock:
         try:
             from .state import redis_client
+            from .shared_memory import sm_replace_all
             if session and hasattr(session, "workspace_root"):
                 workspace_id = os.path.basename(session.workspace_root) or "default"
+                run_id = getattr(session, "session_id", None) or workspace_id
                 await redis_client.set(f"session:{workspace_id}:ctx", json.dumps(state["memory"]), ex=3600)
+                await sm_replace_all(run_id, state["memory"] or {})
         except Exception as e:
             logger.error(f"Failed to persist context to Redis in orchestrator_node: {e}")
-            
+
     return state
 
 def make_agent_node(agent_name: str):
@@ -1786,12 +1803,15 @@ def make_agent_node(agent_name: str):
         if not is_mock:
             try:
                 from .state import redis_client
+                from .shared_memory import sm_replace_all
                 if session and hasattr(session, "workspace_root"):
                     workspace_id = os.path.basename(session.workspace_root) or "default"
+                    run_id = getattr(session, "session_id", None) or workspace_id
                     await redis_client.set(f"session:{workspace_id}:ctx", json.dumps(state["memory"]), ex=3600)
+                    await sm_replace_all(run_id, state["memory"] or {})
             except Exception as e:
                 logger.error(f"Failed to persist context to Redis in agent turn: {e}")
-                
+
         return state
     return node
 

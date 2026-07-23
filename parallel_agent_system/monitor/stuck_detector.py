@@ -127,3 +127,32 @@ class AgentMonitor:
         return hashlib.sha256(
             json.dumps(dump, sort_keys=True, default=str).encode()
         ).hexdigest()[:16]
+
+
+class StuckDetector:
+    """
+    Evaluates subtasks and execution results to detect stuck, stalled, or looping agents.
+    """
+
+    def __init__(self, config: SystemConfig | None = None):
+        self.config = config or SystemConfig()
+
+    def check(self, subtasks: list[Any], results: list[Any]) -> list[str]:
+        """
+        Checks subtasks and results for stuck states.
+        Returns a list of stuck subtask IDs.
+        """
+        stuck_ids = []
+        for r in results:
+            status = getattr(r, "status", "")
+            subtask_id = getattr(r, "subtask_id", None)
+            if not subtask_id:
+                continue
+            if status == "stuck":
+                stuck_ids.append(subtask_id)
+            else:
+                output = getattr(r, "output", "") or ""
+                if any(kw in output.lower() for kw in ("stuck", "stuckerror", "loop detected")):
+                    stuck_ids.append(subtask_id)
+        return stuck_ids
+

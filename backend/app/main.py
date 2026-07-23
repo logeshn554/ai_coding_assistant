@@ -14,10 +14,15 @@ from .routes import all_routers
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from .db import init_db
+    from .state import check_redis_at_startup
     try:
         await init_db()
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
+    try:
+        await check_redis_at_startup()
+    except Exception as e:
+        logger.warning(f"Redis startup check raised unexpectedly: {e}")
     yield
 
 # Instantiate FastAPI app with lifespan context manager and global authentication check

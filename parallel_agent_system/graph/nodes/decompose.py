@@ -48,7 +48,7 @@ async def decompose_task_node(state: GraphState) -> dict:
     Converts descriptive dependencies into unique UUID strings.
     """
     if state.get("subtasks"):
-        return {"status": "running"}
+        return {"status": "running", "results": state.get("results", [])}
 
     config = SystemConfig()
     api_key = SecretRegistry.get("LLM_API_KEY")

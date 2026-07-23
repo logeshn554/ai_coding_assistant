@@ -27,6 +27,9 @@ export const SettingsProvider: React.FC<{ children: ReactNode }> = ({ children }
         const active = data.profiles?.find((p: any) => p.id === activeId);
         if (active) {
           setActiveProfileName(active.name);
+        } else if (data.profiles && data.profiles.length > 0) {
+          const firstActive = data.profiles.find((p: any) => p.isActive) || data.profiles[0];
+          setActiveProfileName(firstActive.name);
         } else {
           setActiveProfileName('No Profile Connected');
         }

@@ -1,0 +1,17 @@
+{
+  "name": "devpilot-node-backend",
+  "version": "1.0.0",
+  "description": "Express microservice backend for DevPilot IDE",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.3.1",
+    "ws": "^8.16.0"
+  }
+}

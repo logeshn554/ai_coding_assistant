@@ -22,9 +22,13 @@ let inMemoryProfiles = [
 router.get('/api/profiles', async (req, res) => {
   try {
     const dbProfiles = await Profile.find().lean();
-    if (dbProfiles.length > 0) return res.json({ profiles: dbProfiles });
+    if (dbProfiles.length > 0) {
+      const activeProf = dbProfiles.find((p) => p.isActive) || dbProfiles[0];
+      return res.json({ profiles: dbProfiles, active_profile_id: activeProf?.id || '' });
+    }
   } catch {}
-  res.json({ profiles: inMemoryProfiles });
+  const activeProf = inMemoryProfiles.find((p) => p.isActive) || inMemoryProfiles[0];
+  res.json({ profiles: inMemoryProfiles, active_profile_id: activeProf?.id || '' });
 });
 
 // POST /api/profiles

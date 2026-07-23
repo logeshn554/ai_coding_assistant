@@ -12,13 +12,13 @@ import {
   FileText
 } from 'lucide-react';
 
-import type { ChatMessage, AgentState, Session, ProcessEntry } from '../types/chat';
+import type { ChatMessage, AgentState, Session, ProcessEntry, ChatMode } from '../types/chat';
 import { MessageList } from './chat/MessageList';
 import { AgentStatusBar } from './chat/AgentStatusBar';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
-  onSendMessage: (text: string, mode: 'Auto' | 'Ask' | 'Plan' | 'Agent', autoApply: boolean) => void;
+  onSendMessage: (text: string, mode: ChatMode, autoApply: boolean) => void;
   onConfirmTool: (toolCallId: string, approved: boolean, hunkDecisions?: Record<string, boolean>) => void;
   onConfirmPermission?: (toolCallId: string, approved: boolean, scope: 'once' | 'session' | 'project', command: string) => void;
   isGenerating: boolean;

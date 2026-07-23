@@ -11,16 +11,31 @@ services:
       - ALLOW_REMOTE=true
       - HOST=0.0.0.0
       - PORT=8000
-      - INITIAL_WORKSPACE_ROOT=
+      - INITIAL_WORKSPACE_ROOT=${WORKSPACE_ROOT:-/workspace}
       # Override config/profile key-value settings if needed
       # - CORS_ORIGINS=http://localhost:8000
     volumes:
       # Persists configurations and API keys (e.g. Anthropic, OpenAI, etc.)
       - devpilot-config:/root/.devpilot
-      # Mount Windows drives so the folder browser can see your laptop's disk
-      - C:/:/host/c
-      - D:/:/host/d
-      - E:/:/host/e
+      # Cross-platform workspace root mount
+      - ${WORKSPACE_ROOT:-./workspace}:/workspace
+      # Windows users: uncomment the lines below to mount host drives for local filesystem access
+      # - C:/:/host/c
+      # - D:/:/host/d
+      # - E:/:/host/e
+    restart: unless-stopped
+
+  node_backend:
+    build:
+      context: ./node_backend
+      dockerfile: Dockerfile
+    container_name: devpilot-node
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+      - MONGO_URI=${MONGO_URI:-mongodb://localhost:27017/devpilot}
+      - SESSION_TOKEN=${SESSION_TOKEN:-devpilot-session-token-change-me}
     restart: unless-stopped
 
 volumes:

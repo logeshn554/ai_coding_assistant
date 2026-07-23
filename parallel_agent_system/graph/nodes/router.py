@@ -3,6 +3,7 @@ from typing import Any
 
 from parallel_agent_system.core.state import SubTask, AgentResult, GraphState
 from parallel_agent_system.core.config import SystemConfig
+from parallel_agent_system.monitor.stuck_detector import StuckDetector
 
 
 # --- Dependency Resolution Helper ---
@@ -75,6 +76,8 @@ async def run_agents_parallel_node(state: GraphState) -> dict:
                 event_log_key=f"events:mock:{subtask.id}"
             )
 
+    stuck_detector = StuckDetector(config=config)
+
     # Dependency resolution loop
     while True:
         # Identify subtasks that are not completed and have all dependencies met
@@ -89,10 +92,17 @@ async def run_agents_parallel_node(state: GraphState) -> dict:
             break
 
         # Execute the entire pending batch concurrently
-        batch_results = await asyncio.gather(
+        batch_results = list(await asyncio.gather(
             *[run_one(t) for t in pending_batch],
             return_exceptions=False
-        )
+        ))
+
+        # Check for stuck tasks using StuckDetector
+        stuck_task_ids = stuck_detector.check(subtasks, batch_results)
+        if stuck_task_ids:
+            for r in batch_results:
+                if r.subtask_id in stuck_task_ids:
+                    r.status = "stuck"
 
         # Accumulate results for dependency tracking in the next iteration
         current_results.extend(batch_results)

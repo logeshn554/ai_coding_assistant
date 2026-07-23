@@ -331,6 +331,89 @@ export default function EditorArea({
           updateDiagnostics();
         }
       });
+
+      // ── AI Inline Completions (ghost text) ──────────────────────────────────
+      let completionDebounce: ReturnType<typeof setTimeout> | null = null;
+
+      monaco.languages.registerInlineCompletionsProvider(
+        { pattern: '**' }, // all files
+        {
+          provideInlineCompletions: async (
+            model: any,
+            position: any,
+            _context: any,
+            token: any
+          ) => {
+            // Debounce: cancel any pending request
+            if (completionDebounce !== null) {
+              clearTimeout(completionDebounce);
+              completionDebounce = null;
+            }
+
+            // Check user setting (stored in localStorage)
+            const inlineEnabled =
+              localStorage.getItem('devpilot_ai_inline_completions') !== 'false';
+            if (!inlineEnabled) return { items: [] };
+
+            // Build prefix/suffix
+            const offset = model.getOffsetAt(position);
+            const text: string = model.getValue();
+            const prefix = text.slice(0, offset);
+            const suffix = text.slice(offset);
+            if (!prefix.trim()) return { items: [] };
+
+            return new Promise((resolve) => {
+              completionDebounce = setTimeout(async () => {
+                if (token.isCancellationRequested) {
+                  resolve({ items: [] });
+                  return;
+                }
+                try {
+                  const language = model.getLanguageId() || '';
+                  const filePath = model.uri?.path || '';
+                  const res = await fetch('/api/completions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      prefix,
+                      suffix,
+                      language,
+                      file_path: filePath,
+                      max_tokens: 128,
+                    }),
+                  });
+                  if (!res.ok) { resolve({ items: [] }); return; }
+                  const data: { completion: string } = await res.json();
+                  const completion = (data.completion || '').trimEnd();
+                  if (!completion) { resolve({ items: [] }); return; }
+
+                  resolve({
+                    items: [
+                      {
+                        insertText: completion,
+                        range: {
+                          startLineNumber: position.lineNumber,
+                          startColumn: position.column,
+                          endLineNumber: position.lineNumber,
+                          endColumn: position.column,
+                        },
+                      },
+                    ],
+                  });
+                } catch {
+                  resolve({ items: [] });
+                }
+              }, 400);
+            });
+          },
+          freeInlineCompletions: () => {
+            if (completionDebounce !== null) {
+              clearTimeout(completionDebounce);
+              completionDebounce = null;
+            }
+          },
+        }
+      );
     },
     [activeFilePath, onEditorRef]
   );
@@ -387,6 +470,21 @@ export default function EditorArea({
       activeFilePath
     );
   }, [tabs, activeFilePath]);
+
+  // ── Listen for editor settings changes from SettingsModal ────────────────
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ fontSize?: number }>).detail;
+      if (editorRef.current && detail?.fontSize) {
+        try {
+          editorRef.current.updateOptions({ fontSize: detail.fontSize });
+        } catch {}
+      }
+    };
+    window.addEventListener('devpilot_editor_settings', handler);
+    return () => window.removeEventListener('devpilot_editor_settings', handler);
+  }, []);
 
   // ── Set active tab ───────────────────────────────────────────────────────
 

@@ -265,15 +265,26 @@ def get_workspace_stats():
 
 
 @router.get("/api/health")
-def get_health():
-    """Returns server health status and uptime."""
+async def get_health():
+    """Returns server health status, uptime, and Redis connectivity."""
     from pathlib import Path as _Path
+    from ..state import redis_client
+
     db_file = _Path.home() / ".devpilot" / "history.db"
     db_connected = db_file.exists()
     uptime = round(time.time() - _SERVER_START_TIME, 1)
+
+    redis_connected = False
+    try:
+        redis_connected = bool(await redis_client.ping())
+    except Exception as exc:
+        logger.warning("Health Redis probe failed: %s", exc)
+        redis_connected = False
+
     return {
         "status": "ok",
         "db_connected": db_connected,
+        "redis_connected": redis_connected,
         "uptime_seconds": uptime,
     }
 

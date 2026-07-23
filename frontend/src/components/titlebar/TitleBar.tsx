@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Play, Circle, MessageSquare, Cpu, Bell, ChevronDown, GitBranch, Zap } from 'lucide-react';
+import { Search, Play, Cpu, Zap, MessageSquare } from 'lucide-react';
 import { useWorkspace } from '../../core/workspace/WorkspaceContext';
 import { useEditor } from '../../core/editor/EditorContext';
 import { useUI } from '../../core/ui/UIContext';
@@ -8,6 +8,7 @@ import { useTerminal } from '../../core/terminal/TerminalContext';
 import { useAI } from '../../core/ai/AIContext';
 import { useCommand } from '../../core/command/CommandContext';
 import { useSettings } from '../../core/settings/SettingsContext';
+import { NotificationBell, NotificationCenter } from '../NotificationCenter';
 
 interface MenuItem {
   label: string;
@@ -44,13 +45,14 @@ export const TitleBar: React.FC = () => {
   const { workspacePath, handleOpenWorkspaceFolder, changeWorkspacePath, triggerRefresh } = useWorkspace();
   const { activeFilePath } = useEditor();
   const { activeMenu, setActiveMenu, setSidebarTab, setIsSidebarOpen, isAiPanelOpen, setIsAiPanelOpen } = useUI();
-  const { statusBarBranch, statusBarDebug, updateStatusBarInfo } = useGit();
+  const { statusBarDebug, updateStatusBarInfo } = useGit();
   const { setBottomTab } = useTerminal();
   const { handleSendMessage, isGenerating, isWsConnected } = useAI();
   const { setIsCommandPaletteOpen } = useCommand();
   const { activeProfileName } = useSettings();
 
   const [latency] = useState(4);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
 
   const getWorkspaceName = () => {
     if (!workspacePath) return 'DevPilot';
@@ -90,7 +92,8 @@ export const TitleBar: React.FC = () => {
       { label: 'Search', shortcut: 'Ctrl+Shift+F', action: () => { setSidebarTab('search'); setIsSidebarOpen(true); } },
       { label: 'Source Control', shortcut: 'Ctrl+Shift+G', action: () => { setSidebarTab('git'); setIsSidebarOpen(true); } },
       { label: 'Run & Debug', shortcut: 'Ctrl+Shift+D', action: () => { setSidebarTab('debug'); setIsSidebarOpen(true); } },
-      { label: 'Extensions', shortcut: 'Ctrl+Shift+X', action: () => { setSidebarTab('extensions'); setIsSidebarOpen(true); }, dividerAfter: true },
+      { label: 'Extensions', shortcut: 'Ctrl+Shift+X', action: () => { setSidebarTab('extensions'); setIsSidebarOpen(true); } },
+      { label: 'Developer Profile', shortcut: 'Ctrl+Shift+P', action: () => { setSidebarTab('profile'); setIsSidebarOpen(true); }, dividerAfter: true },
       { label: 'Terminal', shortcut: 'Ctrl+`', action: () => setBottomTab('terminal') },
       { label: 'Problems', shortcut: 'Ctrl+Shift+M', action: () => setBottomTab('problems') },
     ],
@@ -124,41 +127,16 @@ export const TitleBar: React.FC = () => {
   );
 
   return (
-    <div className="h-[38px] bg-[var(--dp-bg-tertiary)] border-b border-[var(--dp-border)] flex items-center px-3 justify-between shrink-0 select-none z-30 font-sans">
+    <div className="h-9 bg-[var(--dp-bg-secondary)] border-b border-[var(--dp-border)] flex items-center justify-between px-3 select-none shrink-0 z-30 font-sans">
 
-      {/* ── Left: Logo + Workspace + Branch + Menus ── */}
-      <div className="flex items-center gap-1.5 min-w-0">
-        {/* Logo */}
-        <div className="flex items-center gap-1.5 mr-2 shrink-0">
-          <div className="w-[22px] h-[22px] rounded-lg bg-gradient-to-br from-[#7c6af0] to-[#4f8df5] flex items-center justify-center text-[9px] font-black text-white shadow-[0_0_12px_rgba(124,106,240,0.4)] shrink-0">
-            DP
-          </div>
-          <span className="text-[12px] font-bold text-[var(--dp-text-bright)] tracking-tight">DevPilot</span>
-          <span className="text-[9px] font-semibold text-[var(--dp-accent)] bg-[var(--dp-accent-dim)] px-1.5 py-0.5 rounded-full uppercase tracking-wider">AI</span>
+      {/* ── Left: Branding + Menus ── */}
+      <div className="flex items-center gap-2">
+        {/* DevPilot Logo Icon */}
+        <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-[#7C6AF0] to-[#50E3C2] flex items-center justify-center text-white text-[10px] font-bold shadow-sm shadow-[#7C6AF0]/30 shrink-0">
+          DP
         </div>
 
-        {/* Workspace selector */}
-        {workspacePath && (
-          <button
-            onClick={() => handleOpenWorkspaceFolder()}
-            className="flex items-center gap-1 px-2 py-1 rounded-md bg-white/4 hover:bg-white/6 border border-transparent hover:border-[var(--dp-border)] text-[11px] text-[var(--dp-text-primary)] transition-all cursor-pointer shrink-0"
-            title={workspacePath}
-          >
-            <span className="max-w-[100px] truncate font-medium">{getWorkspaceName()}</span>
-            <ChevronDown className="w-3 h-3 text-[var(--dp-text-muted)]" />
-          </button>
-        )}
-
-        {/* Git branch */}
-        {workspacePath && statusBarBranch && (
-          <div className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] text-[var(--dp-text-secondary)] cursor-default shrink-0">
-            <GitBranch className="w-3 h-3" />
-            <span className="font-mono">{statusBarBranch}</span>
-            <Circle className="w-1.5 h-1.5 fill-[var(--dp-success)] stroke-none" />
-          </div>
-        )}
-
-        {/* Menu bar */}
+        {/* Menu Items */}
         <div className="flex items-center gap-0.5 ml-1">
           {renderMenu('file', 'File')}
           {renderMenu('edit', 'Edit')}
@@ -168,14 +146,14 @@ export const TitleBar: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Center: Omnibar ── */}
+      {/* ── Center: Search / Command Trigger Bar ── */}
       <div
         onClick={() => setIsCommandPaletteOpen(true)}
-        className="flex items-center gap-2 px-3 py-1.5 bg-white/4 border border-[var(--dp-border)] rounded-lg w-[360px] text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] hover:border-[var(--dp-border-mid)] hover:bg-white/6 cursor-pointer text-[11px] transition-all justify-between"
+        className="flex items-center justify-between w-96 max-w-md h-6 px-2.5 bg-[var(--dp-bg-tertiary)] hover:bg-white/[0.06] border border-[var(--dp-border)] rounded-md text-xs text-[var(--dp-text-muted)] cursor-pointer transition-colors"
       >
-        <div className="flex items-center gap-2 min-w-0 flex-1">
+        <div className="flex items-center gap-2 truncate">
           <Search className="w-3.5 h-3.5 text-[var(--dp-text-muted)] shrink-0" />
-          <span className="truncate text-left">
+          <span className="truncate text-[11px]">
             {activeFilePath
               ? `${getWorkspaceName()} › ${activeFilePath.replace(/\\/g, '/').split('/').pop()}`
               : 'Search files, symbols, commands...'
@@ -191,7 +169,14 @@ export const TitleBar: React.FC = () => {
       <div className="flex items-center gap-2 shrink-0">
 
         {/* Model badge */}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--dp-accent-dim)] border border-[var(--dp-accent)]/20 text-[11px] cursor-pointer hover:bg-[var(--dp-accent-dim)]/80 transition-colors">
+        <div
+          onClick={() => {
+            setSidebarTab('profile');
+            setIsSidebarOpen(true);
+          }}
+          title="Click to view & switch AI Profile"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--dp-accent-dim)] border border-[var(--dp-accent)]/20 text-[11px] cursor-pointer hover:bg-[var(--dp-accent-dim)]/80 transition-colors"
+        >
           <Cpu className="w-3 h-3 text-[var(--dp-accent)]" />
           <span className="font-semibold text-[var(--dp-accent)]">{activeProfileName || 'GPT-5.5'}</span>
         </div>
@@ -219,11 +204,17 @@ export const TitleBar: React.FC = () => {
           )
         )}
 
-        {/* Bell */}
-        <button className="relative p-1.5 rounded-md hover:bg-white/5 transition-colors text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] cursor-pointer">
-          <Bell className="w-3.5 h-3.5" />
-          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--dp-accent)]" />
-        </button>
+        {/* Bell + Notification Center */}
+        <div className="relative">
+          <NotificationBell
+            onClick={() => setIsNotifOpen((v) => !v)}
+            isOpen={isNotifOpen}
+          />
+          <NotificationCenter
+            isOpen={isNotifOpen}
+            onClose={() => setIsNotifOpen(false)}
+          />
+        </div>
 
         {/* Play / Stop */}
         <button

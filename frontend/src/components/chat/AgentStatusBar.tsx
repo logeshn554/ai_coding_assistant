@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Check, AlertCircle } from 'lucide-react';
+import { Settings, Check, AlertCircle, AlertTriangle, RotateCcw } from 'lucide-react';
 import type { AgentState } from '../../types/chat';
 
 interface AgentStatusBarProps {
@@ -7,7 +7,9 @@ interface AgentStatusBarProps {
   contextPercentage?: number;
   contextTokens?: string;
   activeProfileName?: string;
+  totalCostUsd?: number;
   onOpenSettings?: () => void;
+  onRetryAgent?: (agentType: string, taskId?: number | string) => void;
 }
 
 export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
@@ -15,7 +17,9 @@ export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
   contextPercentage = 0,
   contextTokens = '0',
   activeProfileName = 'Default',
+  totalCostUsd = 0.0,
   onOpenSettings,
+  onRetryAgent,
 }) => {
   return (
     <div className="flex flex-col gap-2 pb-2 px-1 border-t border-zinc-800 pt-2 font-sans select-none bg-zinc-950">
@@ -30,6 +34,10 @@ export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
               const isRunning = ag.status === 'running';
               const isDone = ag.status === 'done';
               const isError = ag.status === 'error';
+              const isStuck = ag.status === 'stuck';
+              const costDisplay = typeof ag.cost_usd === 'number' && ag.cost_usd > 0
+                ? ` · $${ag.cost_usd.toFixed(3)}`
+                : '';
 
               return (
                 <div
@@ -39,6 +47,8 @@ export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
                       ? 'bg-blue-950/80 border-blue-500/50 text-blue-300 shadow-sm shadow-blue-500/10'
                       : isDone
                       ? 'bg-green-950/80 border-green-500/40 text-green-300'
+                      : isStuck
+                      ? 'bg-amber-950/80 border-amber-500/60 text-amber-300 shadow-sm shadow-amber-500/10'
                       : isError
                       ? 'bg-red-950/80 border-red-500/40 text-red-300'
                       : 'bg-zinc-900 border-zinc-800 text-zinc-400'
@@ -48,8 +58,22 @@ export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0" />
                   )}
                   {isDone && <Check className="w-3 h-3 text-green-400 shrink-0" />}
+                  {isStuck && <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />}
                   {isError && <AlertCircle className="w-3 h-3 text-red-400 shrink-0" />}
-                  <span className="truncate max-w-[110px]">{ag.agent_type}</span>
+                  <span className="truncate max-w-[150px]">
+                    {ag.agent_type}{costDisplay}
+                  </span>
+                  {isStuck && onRetryAgent && (
+                    <button
+                      type="button"
+                      onClick={() => onRetryAgent(ag.agent_type, ag.taskId)}
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-900/80 hover:bg-amber-800 text-amber-200 text-[10px] rounded cursor-pointer transition-colors"
+                      title="Retry Agent"
+                    >
+                      <RotateCcw className="w-2.5 h-2.5" />
+                      <span>Retry</span>
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -75,6 +99,11 @@ export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
           <span className="text-zinc-400 truncate max-w-[130px]" title={`Profile: ${activeProfileName}`}>
             Profile: {activeProfileName}
           </span>
+          {totalCostUsd > 0 && (
+            <span className="text-emerald-400 font-semibold text-[10.5px]">
+              ${totalCostUsd.toFixed(3)}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span>Tokens: {contextTokens}</span>

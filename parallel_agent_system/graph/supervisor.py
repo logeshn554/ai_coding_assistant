@@ -19,6 +19,7 @@ except (ImportError, ModuleNotFoundError):
 
 from parallel_agent_system.core.config import SystemConfig
 from parallel_agent_system.core.state import GraphState, SubTask, AgentResult
+from parallel_agent_system.monitor.stuck_detector import StuckDetector
 
 
 # --- Import Real Nodes ---

@@ -163,20 +163,39 @@ async def save_chat_history(req: ChatHistoryRequest, request: Request, session_i
 
 @router.get("/api/chat/sessions")
 async def get_chat_sessions(request: Request):
+    from ..db import first_user_preview
     async with async_session() as db:
         stmt = select(SessionModel).order_by(SessionModel.updated_at.desc())
         res = await db.execute(stmt)
         sessions = res.scalars().all()
-        
+
+        root = (workspace_state.root or "").strip()
+        if root:
+            scoped = [s for s in sessions if (s.workspace_root or "") == root]
+            if scoped:
+                sessions = scoped
+
         sessions_list = []
         for s in sessions:
+            payloads = []
+            for m in (s.messages or []):
+                content = m.content
+                try:
+                    content = json.loads(m.content)
+                except Exception:
+                    pass
+                payloads.append({"role": m.role, "content": content})
             sessions_list.append({
                 "id": s.id,
                 "title": s.title,
+                "workspace_root": s.workspace_root or "",
+                "mode": s.mode or "Ask",
                 "created_at": int(s.created_at.timestamp()),
-                "updated_at": int(s.updated_at.timestamp())
+                "updated_at": int(s.updated_at.timestamp()),
+                "message_count": len(s.messages or []),
+                "first_user_message": first_user_preview(payloads, 60),
             })
-        
+
         active_id = await resolve_session_id(request)
         return {
             "sessions": sessions_list,
@@ -190,18 +209,25 @@ async def create_chat_session(req: ChatSessionCreateRequest):
         async with async_session() as db:
             new_session = SessionModel(
                 id=new_id,
-                title=req.title.strip() or "New Chat"
+                title=req.title.strip() or "New Chat",
+                workspace_root=workspace_state.root or "",
+                mode="Ask",
+                messages_json="[]",
             )
             db.add(new_session)
             await db.commit()
-            
+
             return {
-                "success": True, 
+                "success": True,
                 "session": {
                     "id": new_id,
                     "title": new_session.title,
+                    "workspace_root": new_session.workspace_root or "",
+                    "mode": new_session.mode or "Ask",
                     "created_at": int(new_session.created_at.timestamp()),
                     "updated_at": int(new_session.updated_at.timestamp()),
+                    "message_count": 0,
+                    "first_user_message": "",
                     "messages": []
                 }
             }
@@ -389,22 +415,45 @@ async def websocket_chat(
     # Snapshot the workspace root at connection time — do NOT re-read workspace_state
     # on every message, as another tab changing the global state would corrupt this session.
     session_workspace_root = workspace_state.root
+
+    # If no session_id provided, resume the last session for this workspace.
+    resolved_session_id = session_id
+    if not resolved_session_id and session_workspace_root:
+        from ..db import get_fallback_session_id
+        resolved_session_id = await get_fallback_session_id(session_workspace_root)
+
     session = AgentSession(
         session_workspace_root,
         active_profile,
         send_to_client,
         permission_manager,
-        session_id=session_id
+        session_id=resolved_session_id
     )
     await session.load_history_from_db()
-    
-    # Restore context memory from Redis if available
+
+    # Announce which session was resumed so the frontend can sync.
+    await send_to_client({
+        "type": "session_loaded",
+        "session_id": session.session_id,
+        "workspace_root": session_workspace_root,
+        "message_count": len(session.conversation_history),
+    })
+
+    # Restore context memory from Redis / shared_memory if available
     try:
         from ..state import redis_client
+        from ..shared_memory import sm_get_all
         workspace_id = os.path.basename(session_workspace_root) or "default"
+        run_id = session.session_id or workspace_id
         raw = await redis_client.get(f"session:{workspace_id}:ctx")
         if raw:
             session.orchestrator.context.memory = json.loads(raw)
+        else:
+            mem = await sm_get_all(run_id)
+            if not mem:
+                mem = await sm_get_all(workspace_id)
+            if mem:
+                session.orchestrator.context.memory = mem
     except Exception as e:
         logger.error(f"Failed to restore context from Redis: {e}")
     
@@ -419,6 +468,13 @@ async def websocket_chat(
                 text = msg.get("text", "")
                 mode = msg.get("mode", "Ask")
                 auto_apply = msg.get("auto_apply", False)
+                # Optional editor context for skills.md section selection.
+                open_languages = msg.get("open_languages") or []
+                open_files = msg.get("open_files") or []
+                if isinstance(open_languages, list):
+                    session.open_languages = [str(x) for x in open_languages if x]
+                if isinstance(open_files, list):
+                    session.open_files = [str(x) for x in open_files if x]
                 # Do NOT update session.workspace_root from the global workspace_state here.
                 # The session workspace was locked at connection open to prevent cross-session bleed.
                 # Enqueue instead of cancel+replace — preserves in-flight work

@@ -124,6 +124,23 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   const [termFontSize, setTermFontSize] = useState<number>(13);
   const [termScrollback, setTermScrollback] = useState<number>(5000);
 
+  // Theme + editor state
+  const [activeTheme, setActiveTheme] = useState<string>(() =>
+    localStorage.getItem('devpilot_theme') || 'dark'
+  );
+  const [editorFontSize, setEditorFontSize] = useState<number>(() =>
+    parseInt(localStorage.getItem('devpilot_editor_font_size') || '13', 10)
+  );
+  const [aiInlineEnabled, setAiInlineEnabled] = useState<boolean>(() =>
+    localStorage.getItem('devpilot_ai_inline_completions') !== 'false'
+  );
+
+  const applyTheme = (theme: string) => {
+    document.documentElement.setAttribute('data-theme', theme === 'dark' ? '' : theme);
+    localStorage.setItem('devpilot_theme', theme);
+    setActiveTheme(theme);
+  };
+
   const loadPreferences = async () => {
     try {
       const res = await fetch('/api/config/settings');
@@ -982,6 +999,87 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   {bugReport}
                 </pre>
               )}
+            </div>
+
+            {/* ── Theme Picker ── */}
+            <div className="space-y-3 border-t border-white/5 pt-5">
+              <label className="text-xs font-semibold text-gray-400 block">Color Theme</label>
+              <div className="grid grid-cols-5 gap-2">
+                {([
+                  { id: 'dark', label: 'DevPilot Dark', bg: '#0d0e14', accent: '#7c6af0', text: '#c8ccd8' },
+                  { id: 'light', label: 'DevPilot Light', bg: '#f0f0f5', accent: '#6b54e8', text: '#1a1b26' },
+                  { id: 'monokai', label: 'Monokai', bg: '#272822', accent: '#f92672', text: '#f8f8f2' },
+                  { id: 'solarized', label: 'Solarized Dark', bg: '#002b36', accent: '#268bd2', text: '#839496' },
+                  { id: 'high-contrast', label: 'High Contrast', bg: '#000000', accent: '#00ffff', text: '#ffffff' },
+                ] as const).map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => applyTheme(t.id)}
+                    title={t.label}
+                    className="flex flex-col items-center gap-1.5 p-2 rounded-xl border-2 cursor-pointer transition-all"
+                    style={{
+                      background: t.bg,
+                      borderColor: activeTheme === t.id ? t.accent : 'rgba(255,255,255,0.08)',
+                      boxShadow: activeTheme === t.id ? `0 0 12px ${t.accent}55` : 'none',
+                    }}
+                  >
+                    <div className="w-8 h-5 rounded-md" style={{ background: t.accent, opacity: 0.9 }} />
+                    <span className="text-[9px] font-medium leading-tight text-center" style={{ color: t.text }}>
+                      {t.label}
+                    </span>
+                    {activeTheme === t.id && (
+                      <div className="w-2 h-2 rounded-full" style={{ background: t.accent }} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── AI Inline Completions ── */}
+            <div className="flex items-start gap-3 bg-white/2 border border-white/5 rounded-xl p-4">
+              <input
+                type="checkbox"
+                id="ai-inline-completions"
+                checked={aiInlineEnabled}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setAiInlineEnabled(val);
+                  localStorage.setItem('devpilot_ai_inline_completions', val ? 'true' : 'false');
+                }}
+                className="accent-violet-500 mt-1 cursor-pointer w-4 h-4 rounded"
+              />
+              <div className="flex flex-col gap-1">
+                <label htmlFor="ai-inline-completions" className="text-xs font-semibold text-white cursor-pointer select-none">
+                  AI Inline Completions (Ghost Text)
+                </label>
+                <span className="text-[10px] text-gray-500">
+                  Show AI-powered ghost text suggestions in the editor as you type. Press Tab to accept, Escape to dismiss.
+                </span>
+              </div>
+            </div>
+
+            {/* ── Editor Font Size ── */}
+            <div className="space-y-2 border-t border-white/5 pt-5">
+              <label className="text-xs font-semibold text-gray-400">
+                Editor Font Size — <span className="text-violet-400 font-mono">{editorFontSize}px</span>
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={10}
+                  max={28}
+                  step={1}
+                  value={editorFontSize}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    setEditorFontSize(val);
+                    localStorage.setItem('devpilot_editor_font_size', String(val));
+                    window.dispatchEvent(new CustomEvent('devpilot_editor_settings', { detail: { fontSize: val } }));
+                  }}
+                  className="accent-violet-500 w-48 cursor-pointer"
+                />
+                <span className="text-[10px] text-gray-500 w-6">{editorFontSize}</span>
+              </div>
             </div>
 
           </div>

@@ -57,6 +57,7 @@ export const CommandPalette: React.FC = () => {
     { label: 'View: Open Git Control Sidebar', action: () => { setIsCommandPaletteOpen(false); setSidebarTab('git'); setIsSidebarOpen(true); } },
     { label: 'View: Open Run/Debug Sidebar', action: () => { setIsCommandPaletteOpen(false); setSidebarTab('debug'); setIsSidebarOpen(true); } },
     { label: 'View: Open Extensions Sidebar', action: () => { setIsCommandPaletteOpen(false); setSidebarTab('extensions'); setIsSidebarOpen(true); } },
+    { label: 'View: Open Developer Profile Sidebar', action: () => { setIsCommandPaletteOpen(false); setSidebarTab('profile'); setIsSidebarOpen(true); } },
     { label: 'View: Open Testing Explorer', action: () => { setIsCommandPaletteOpen(false); setSidebarTab('testing'); setIsSidebarOpen(true); } },
     { label: 'View: Open Dependencies manager', action: () => { setIsCommandPaletteOpen(false); setSidebarTab('packages'); setIsSidebarOpen(true); } },
     { label: 'Tools: Scan for Bugs in Workspace', action: () => { setIsCommandPaletteOpen(false); handleScanForBugs(); } }

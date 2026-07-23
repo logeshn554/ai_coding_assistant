@@ -9,6 +9,7 @@ import { GitProvider } from './git/GitContext';
 import { CommandProvider } from './command/CommandContext';
 import { UIProvider } from './ui/UIContext';
 import { AIProvider } from './ai/AIContext';
+import { NotificationProvider } from './notifications/NotificationContext';
 
 interface CoreProviderProps {
   children: ReactNode;
@@ -16,24 +17,26 @@ interface CoreProviderProps {
 
 export const CoreProvider: React.FC<CoreProviderProps> = ({ children }) => {
   return (
-    <ToastProvider>
-      <WorkspaceProvider>
-        <EditorProvider>
-          <TerminalProvider>
-            <SettingsProvider>
-              <GitProvider>
-                <CommandProvider>
-                  <UIProvider>
-                    <AIProvider>
-                      {children}
-                    </AIProvider>
-                  </UIProvider>
-                </CommandProvider>
-              </GitProvider>
-            </SettingsProvider>
-          </TerminalProvider>
-        </EditorProvider>
-      </WorkspaceProvider>
-    </ToastProvider>
+    <NotificationProvider>
+      <ToastProvider>
+        <WorkspaceProvider>
+          <EditorProvider>
+            <TerminalProvider>
+              <SettingsProvider>
+                <GitProvider>
+                  <CommandProvider>
+                    <UIProvider>
+                      <AIProvider>
+                        {children}
+                      </AIProvider>
+                    </UIProvider>
+                  </CommandProvider>
+                </GitProvider>
+              </SettingsProvider>
+            </TerminalProvider>
+          </EditorProvider>
+        </WorkspaceProvider>
+      </ToastProvider>
+    </NotificationProvider>
   );
 };
