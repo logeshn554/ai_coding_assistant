@@ -236,7 +236,7 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
   };
 
   // Build real-time goal steps from tool calls
-  const goalSteps: GoalStep[] = liveToolCalls.map((tc, i) => ({
+  const goalSteps: GoalStep[] = liveToolCalls.map((tc) => ({
     id: tc.id,
     label: tc.name + (tc.params?.path ? ` — ${String(tc.params.path).split(/[\\/]/).pop()}` : ''),
     status: tc.status === 'success' ? 'done' : tc.status === 'running' ? 'active' : 'pending'
