@@ -548,22 +548,13 @@ class AgentSession:
                         mode = "Ask"
                 logger.info(f"Auto-routed query '{text}' using LLM to mode: '{mode}'")
 
-            # Trigger multi-agent collaboration flow
-            if mode == "Agent":
-                try:
-                    max_steps = self.profile.get("max_orchestrator_steps") or self.profile.get("max_steps") or 30
-                    self.orchestrator.max_steps = int(max_steps)
-                    await self.orchestrator.run_task(text, self)
-                except Exception as e:
-                    logger.error(f"Orchestrator run failed: {str(e)}")
-                    await self.send_ws_message({
-                        "type": "text_delta",
-                        "content": f"\n[Orchestrator Error: {str(e)}]\n"
-                    })
-                await self.send_ws_message({"type": "session_done"})
-                return
-
-            adapter = self._get_adapter()
+            # Direct tool-calling loop for all modes (Ask/Plan/Agent)
+            # The multi-agent orchestrator is bypassed because it requires
+            # pre-populated shared memory (target_files / file_contents) and
+            # produces no output for ad-hoc requests like "run this" or "what
+            # is the localhost URL?".  The direct loop lets the LLM call any
+            # available tool itself, which is the correct behavior.
+            adapter = self._get_adapter(is_agent=(mode == "Agent"))
             system_prompt = self._get_system_prompt(mode)
             tools = self._get_tools_for_mode(mode)
 
@@ -696,6 +687,12 @@ class AgentSession:
                     "type": "text_delta",
                     "content": "\n\n[Warning: Agent reached the maximum limit of 25 turns.]"
                 })
+            try:
+                from ..project_detector import detect_project_metadata
+                detect_project_metadata(self.workspace_root)
+            except Exception as pe:
+                logger.debug(f"Failed auto project detection: {pe}")
+
             await self.send_ws_message({"type": "session_done"})
 
         except asyncio.CancelledError:

@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Send, Square, Sparkles, FileText, Folder, Terminal,
+  Send, Square, FileText, Folder, Terminal,
   GitBranch, Code2, Layers, ChevronRight, Plus, AtSign
 } from 'lucide-react';
-import type { SlashCommand, ContextMention } from '../../types/chat';
+import type { SlashCommand, ContextMention, ChatMode } from '../../types/chat';
 
 const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/plan',      description: 'Generate a step-by-step implementation plan',    example: '/plan Add authentication system' },
@@ -26,21 +26,14 @@ const CONTEXT_MENTIONS: ContextMention[] = [
   { name: '@workspace', type: 'workspace', description: 'Attach global workspace context' },
 ];
 
-const SUGGESTED_PROMPTS = [
-  'Build a user authentication flow with JWT',
-  'Add error handling to API endpoints',
-  'Create unit tests for existing functions',
-  'Refactor for better performance',
-];
-
 interface AiCommandBarProps {
   inputText: string;
   setInputText: (text: string) => void;
   onSend: () => void;
   isGenerating: boolean;
   onCancel: () => void;
-  mode: 'Ask' | 'Plan' | 'Agent';
-  setMode: (mode: 'Ask' | 'Plan' | 'Agent') => void;
+  mode: ChatMode;
+  setMode: (mode: ChatMode) => void;
 }
 
 export const AiCommandBar: React.FC<AiCommandBarProps> = ({
@@ -49,7 +42,6 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
   const [showSlashMenu, setShowSlashMenu]     = useState(false);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [selectedIndex, setSelectedIndex]     = useState(0);
-  const [showSuggested, setShowSuggested]     = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -102,7 +94,7 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
     inputRef.current?.focus();
   };
 
-  const modes: Array<{ id: 'Ask' | 'Plan' | 'Agent'; label: string }> = [
+  const modes: Array<{ id: ChatMode; label: string }> = [
     { id: 'Ask',   label: 'Ask' },
     { id: 'Plan',  label: 'Plan' },
     { id: 'Agent', label: 'Agent' },
@@ -194,8 +186,6 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={handleKeyDown}
-          onFocus={() => !inputText && setShowSuggested(true)}
-          onBlur={() => setTimeout(() => setShowSuggested(false), 200)}
           placeholder={
             mode === 'Agent'
               ? 'Ask DevPilot anything...'
@@ -276,28 +266,6 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
           )}
         </div>
       </div>
-
-      {/* Suggested prompts — only when empty + focused */}
-      {showSuggested && !inputText && (
-        <div className="absolute bottom-full left-0 right-0 mb-2 rounded-xl overflow-hidden z-40 animate-slide-down"
-          style={{ background: 'var(--dp-bg-elevated)', border: '1px solid var(--dp-border)', boxShadow: 'var(--dp-shadow-md)' }}
-        >
-          <div className="px-3 py-2 text-[10px] font-semibold text-[var(--dp-text-muted)] uppercase tracking-wider border-b border-[var(--dp-border)] flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3 text-[var(--dp-accent)]" />
-            Suggested
-          </div>
-          {SUGGESTED_PROMPTS.map((prompt, i) => (
-            <div
-              key={i}
-              onClick={() => { setInputText(prompt); setShowSuggested(false); inputRef.current?.focus(); }}
-              className="px-3 py-2 text-[11px] text-[var(--dp-text-secondary)] hover:bg-white/4 cursor-pointer transition-colors flex items-center gap-2"
-            >
-              <ChevronRight className="w-3 h-3 text-[var(--dp-text-muted)] shrink-0" />
-              {prompt}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };

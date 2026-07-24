@@ -103,13 +103,15 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     return () => clearTimeout(timer);
   }, [messages, openFiles]);
 
-  const fetchSessions = async () => {
+  const fetchSessions = async (syncActive: boolean = false) => {
     try {
       const res = await fetch('/api/chat/sessions');
       if (res.ok) {
         const data = await res.json();
         setSessions(data.sessions || []);
-        setActiveSessionId(data.active_session_id || 'default-session');
+        if (syncActive && data.active_session_id) {
+          setActiveSessionId(data.active_session_id);
+        }
       }
     } catch (e) {
       console.error('Failed to fetch sessions:', e);
@@ -123,7 +125,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         const data = await res.json();
         setMessages(data.messages || []);
       }
-      await fetchSessions();
+      await fetchSessions(true);
     } catch (e) {
       console.error('Failed to load chat history:', e);
     }
@@ -136,6 +138,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         const data = await res.json();
         setActiveSessionId(sessionId);
         setMessages(data.session?.messages || []);
+        await fetchSessions(false);
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: 'change_profile' }));
         }

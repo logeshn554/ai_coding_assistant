@@ -7,7 +7,8 @@ import {
 import type {
   ChatMessage,
   ToolExecutionItem,
-  ProjectContextInfo, ProjectMemoryItem
+  ProjectContextInfo, ProjectMemoryItem,
+  ChatMode
 } from '../../types/chat';
 import { AiCommandBar } from './AiCommandBar';
 import { ToolExecutionCard } from './ToolExecutionCard';
@@ -25,8 +26,8 @@ interface AiWorkspaceProps {
   onSendMessage: () => void;
   isGenerating: boolean;
   onCancelGeneration: () => void;
-  mode: 'Ask' | 'Plan' | 'Agent';
-  setMode: (mode: 'Ask' | 'Plan' | 'Agent') => void;
+  mode: ChatMode;
+  setMode: (mode: ChatMode) => void;
   onConfirmTool?: (toolCallId: string, approved: boolean, hunkDecisions?: Record<string, boolean>) => void;
   onConfirmPermission?: (toolCallId: string, approved: boolean, scope: 'once' | 'session' | 'project', command: string) => void;
   statusMessage?: string;
@@ -433,7 +434,7 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
         {/* ── CONTEXT TAB ── */}
         {activeTab === 'context' && (
           <div className="p-3 space-y-3">
-            <ProjectContextPanel contextInfo={contextInfo} />
+            <ProjectContextPanel contextInfo={contextInfo} activeSessionId={activeSessionId} />
             <ProjectMemoryPanel
               memories={memories}
               onAddMemory={(item) => setMemories(prev => [{ ...item, id: `m_${Date.now()}` }, ...prev])}

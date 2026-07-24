@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+
+// Context Providers & Hooks
 import { CoreProvider } from './core/CoreProvider';
 import { useWorkspace } from './core/workspace/WorkspaceContext';
 import { useEditor } from './core/editor/EditorContext';
@@ -9,12 +11,14 @@ import { useSettings } from './core/settings/SettingsContext';
 import { useToast } from './core/toast/ToastContext';
 import { LSPProvider } from './core/lsp/LSPContext';
 
-// Import subpanels
+// Layout Components
 import { TitleBar } from './components/titlebar/TitleBar';
 import { ActivityBar } from './components/activitybar/ActivityBar';
 import { BottomPanel } from './components/bottompanel/BottomPanel';
 import { StatusBar } from './components/statusbar/StatusBar';
 import { CommandPalette } from './components/commandpalette/CommandPalette';
+
+// Sidebars
 import Sidebar from './components/Sidebar';
 import SearchSidebar from './components/SearchSidebar';
 import GitSidebar from './components/GitSidebar';
@@ -25,26 +29,29 @@ import PackagesSidebar from './components/PackagesSidebar';
 import AgentsSidebar from './components/AgentsSidebar';
 import WorkspaceSidebar from './components/WorkspaceSidebar';
 import ProfileSidebar from './components/ProfileSidebar';
+
+// Editor & AI Components
 import EditorArea from './components/EditorArea';
 import { AiWorkspace } from './components/chat/AiWorkspace';
 import SettingsModal from './components/SettingsModal';
 import QuickOpen from './components/QuickOpen';
 import GoToSymbol from './components/GoToSymbol';
 
-// Custom Hooks and standalone components
+// Custom Hooks & Types
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useResizeManager } from './hooks/useResizeManager';
+import type { ChatMode } from './types/chat';
 
 function EditorShell() {
   const [chatInputText, setChatInputText] = useState('');
-  const [chatMode, setChatMode] = useState<'Ask' | 'Plan' | 'Agent'>('Agent');
+  const [chatMode, setChatMode] = useState<ChatMode>('Agent');
   const { toasts, removeToast } = useToast();
 
   const {
     isQuickOpenOpen,
     setIsQuickOpenOpen,
     isGoToSymbolOpen,
-    setIsGoToSymbolOpen
+    setIsGoToSymbolOpen,
   } = useKeyboardShortcuts();
 
   const {
@@ -53,14 +60,14 @@ function EditorShell() {
     aiPanelWidth,
     setIsResizingSidebar,
     setIsResizingTerminal,
-    setIsResizingAiPanel
+    setIsResizingAiPanel,
   } = useResizeManager();
 
   // Live Monaco editor instance forwarded from EditorArea
   const editorInstanceRef = useRef<any>(null);
 
   // Reveal a line in Monaco when Go to Symbol selects a result
-  const handleRevealLine = (line: number, col: number = 1) => {
+  const handleRevealLine = useCallback((line: number, col: number = 1) => {
     const editor = editorInstanceRef.current;
     if (!editor) return;
     try {
@@ -68,11 +75,12 @@ function EditorShell() {
       editor.setPosition({ lineNumber: line, column: col });
       editor.focus();
     } catch {}
-  };
+  }, []);
+
   const {
     workspacePath,
     handleOpenWorkspaceFolder,
-    refreshTrigger
+    refreshTrigger,
   } = useWorkspace();
 
   const {
@@ -80,13 +88,13 @@ function EditorShell() {
     activeFilePath,
     proposedDiff,
     handleCloseFile,
-    handleSelectFile
+    handleSelectFile,
   } = useEditor();
 
   const {
     isSidebarOpen,
     sidebarTab,
-    isAiPanelOpen
+    isAiPanelOpen,
   } = useUI();
 
   const { gitChanges } = useGit();
@@ -100,11 +108,26 @@ function EditorShell() {
     isGenerating,
     statusMessage,
     handleCancelGeneration,
-    contextTokens,
+    contextTokensRaw,
     contextPercentage,
     activeSessionId,
     handleSelectSession,
   } = useAI();
+
+  // Handle sending message with clear input logic
+  const handleSend = useCallback(() => {
+    if (!chatInputText.trim() || isGenerating) return;
+    handleSendMessage(chatInputText, chatMode, false);
+    setChatInputText('');
+  }, [chatInputText, isGenerating, handleSendMessage, chatMode]);
+
+  // Bridge callback for tool confirmation scope
+  const handleConfirmToolBridge = useCallback(
+    (toolCallId: string, approved: boolean, hunkDecisions?: Record<string, boolean>) => {
+      handleConfirmTool(toolCallId, approved, 'once', hunkDecisions);
+    },
+    [handleConfirmTool]
+  );
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[var(--dp-bg-primary)] text-[var(--dp-text-primary)] overflow-hidden font-sans select-none">
@@ -186,31 +209,23 @@ function EditorShell() {
                 className="dp-resize-handle-h absolute left-0 top-0 bottom-0 w-[3px] z-50 select-none cursor-col-resize"
               />
               <div className="flex-1 h-full min-w-0 overflow-hidden flex flex-col">
-                    <AiWorkspace
-                      messages={messages}
-                      inputText={chatInputText}
-                      setInputText={setChatInputText}
-                      onSendMessage={() =>
-                        handleSendMessage(
-                          chatInputText,
-                          chatMode === 'Plan' ? 'Plan' : chatMode === 'Ask' ? 'Ask' : 'Agent/Write',
-                          false
-                        )
-                      }
-                      isGenerating={isGenerating}
-                      onCancelGeneration={handleCancelGeneration}
-                      mode={chatMode}
-                      setMode={setChatMode}
-                      onConfirmTool={(toolCallId, approved, hunkDecisions) =>
-                        handleConfirmTool(toolCallId, approved, 'once', hunkDecisions)
-                      }
-                      onConfirmPermission={handleConfirmPermission}
-                      statusMessage={statusMessage ?? undefined}
-                      contextTokens={typeof contextTokens === 'number' ? contextTokens : undefined}
-                      contextPercentage={typeof contextPercentage === 'number' ? contextPercentage : undefined}
-                      activeSessionId={activeSessionId}
-                      onResumeSession={handleSelectSession}
-                    />
+                <AiWorkspace
+                  messages={messages}
+                  inputText={chatInputText}
+                  setInputText={setChatInputText}
+                  onSendMessage={handleSend}
+                  isGenerating={isGenerating}
+                  onCancelGeneration={handleCancelGeneration}
+                  mode={chatMode}
+                  setMode={setChatMode}
+                  onConfirmTool={handleConfirmToolBridge}
+                  onConfirmPermission={handleConfirmPermission}
+                  statusMessage={statusMessage ?? undefined}
+                  contextTokens={contextTokensRaw}
+                  contextPercentage={typeof contextPercentage === 'number' ? contextPercentage : undefined}
+                  activeSessionId={activeSessionId}
+                  onResumeSession={handleSelectSession}
+                />
               </div>
             </div>
           )}
@@ -245,30 +260,29 @@ function EditorShell() {
         onProfileChanged={handleSettingsChanged}
       />
 
-
-
       {/* Toast Overlay */}
-      <div className="fixed bottom-6 right-5 z-50 flex flex-col gap-2 pointer-events-none">
-        {toasts.map(t => (
-          <div
-            key={t.id}
-            onClick={() => removeToast(t.id)}
-            className={`pointer-events-auto px-4 py-2.5 text-[12px] shadow-[var(--dp-shadow-float)] flex items-center gap-2.5 select-text cursor-pointer transition-all duration-300 animate-slide-in rounded-xl border backdrop-blur-sm ${
-              t.type === 'success'
-                ? 'bg-[var(--dp-success)]/10 text-[var(--dp-success)] border-[var(--dp-success)]/20'
-                : t.type === 'error'
-                ? 'bg-[var(--dp-error)]/10 text-[var(--dp-error)] border-[var(--dp-error)]/20'
-                : 'bg-[var(--dp-info)]/10 text-[var(--dp-info)] border-[var(--dp-info)]/20'
-            }`}
-          >
-            <span className="w-1.5 h-1.5 rounded-full shrink-0 ${
-              t.type === 'success' ? 'bg-[var(--dp-success)]' :
-              t.type === 'error'   ? 'bg-[var(--dp-error)]'   :
-              'bg-[var(--dp-info)]'
-            }" />
-            <span className="font-medium">{t.message}</span>
-          </div>
-        ))}
+      <div className="fixed bottom-6 right-5 z-50 flex flex-col gap-2 pointer-events-none" role="status" aria-live="polite">
+        {toasts.map((t) => {
+          const dotColor =
+            t.type === 'success' ? 'bg-[var(--dp-success)]' :
+            t.type === 'error'   ? 'bg-[var(--dp-error)]'   :
+            'bg-[var(--dp-info)]';
+          const toastColor =
+            t.type === 'success' ? 'bg-[var(--dp-success)]/10 text-[var(--dp-success)] border-[var(--dp-success)]/20' :
+            t.type === 'error'   ? 'bg-[var(--dp-error)]/10 text-[var(--dp-error)] border-[var(--dp-error)]/20' :
+            'bg-[var(--dp-info)]/10 text-[var(--dp-info)] border-[var(--dp-info)]/20';
+
+          return (
+            <div
+              key={t.id}
+              onClick={() => removeToast(t.id)}
+              className={`pointer-events-auto px-4 py-2.5 text-[12px] shadow-[var(--dp-shadow-float)] flex items-center gap-2.5 select-text cursor-pointer transition-all duration-300 animate-slide-in rounded-xl border backdrop-blur-sm ${toastColor}`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
+              <span className="font-medium">{t.message}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

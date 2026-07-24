@@ -45,7 +45,7 @@ export const TitleBar: React.FC = () => {
   const { workspacePath, handleOpenWorkspaceFolder, changeWorkspacePath, triggerRefresh } = useWorkspace();
   const { activeFilePath } = useEditor();
   const { activeMenu, setActiveMenu, setSidebarTab, setIsSidebarOpen, isAiPanelOpen, setIsAiPanelOpen } = useUI();
-  const { statusBarDebug, updateStatusBarInfo } = useGit();
+  const { statusBarDebug } = useGit();
   const { setBottomTab } = useTerminal();
   const { handleSendMessage, isGenerating, isWsConnected } = useAI();
   const { setIsCommandPaletteOpen } = useCommand();
@@ -61,10 +61,16 @@ export const TitleBar: React.FC = () => {
   };
 
   const handleStartStopDebug = async () => {
-    const method = statusBarDebug === 'Running' ? 'stop' : 'start';
-    await fetch(`/api/debug/${method}`, { method: 'POST' });
-    await updateStatusBarInfo();
-    setBottomTab('output');
+    setBottomTab('terminal');
+    try {
+      const res = await fetch('/api/project/run', { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.detail || 'Failed to launch project run command.');
+      }
+    } catch (e) {
+      console.error('Failed to run project from TitleBar:', e);
+    }
   };
 
   useEffect(() => {

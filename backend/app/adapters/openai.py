@@ -198,7 +198,19 @@ class OpenAIAdapter(ModelAdapter):
         # Add system prompt first
         if system_prompt:
             openai_msgs.append({"role": "system", "content": system_prompt})
-            
+
+        pending_tool_call_ids = []
+
+        def flush_pending_tools():
+            nonlocal pending_tool_call_ids
+            while pending_tool_call_ids:
+                tc_id = pending_tool_call_ids.pop(0)
+                openai_msgs.append({
+                    "role": "tool",
+                    "tool_call_id": tc_id,
+                    "content": "Tool execution completed."
+                })
+
         for msg in internal_messages:
             role = msg["role"]
             
@@ -206,14 +218,24 @@ class OpenAIAdapter(ModelAdapter):
                 # System prompt is handled separately or is already prepended
                 continue
             elif role == "user":
+                flush_pending_tools()
                 openai_msgs.append({"role": "user", "content": msg["content"]})
             elif role == "tool":
+                tc_id = msg.get("tool_call_id") or msg.get("id")
+                if (not tc_id or tc_id == "legacy_tool") and pending_tool_call_ids:
+                    tc_id = pending_tool_call_ids.pop(0)
+                elif tc_id and tc_id in pending_tool_call_ids:
+                    pending_tool_call_ids.remove(tc_id)
+                elif not tc_id:
+                    tc_id = "legacy_tool"
+
                 openai_msgs.append({
                     "role": "tool",
-                    "tool_call_id": msg.get("tool_call_id", "legacy_tool"),
+                    "tool_call_id": tc_id,
                     "content": str(msg.get("content", ""))
                 })
             elif role == "assistant":
+                flush_pending_tools()
                 content = msg.get("content")
                 tool_calls = msg.get("tool_calls")
 
@@ -234,12 +256,14 @@ class OpenAIAdapter(ModelAdapter):
                 if tool_calls:
                     tcs = []
                     for tc in tool_calls:
+                        tc_id = tc.get("id", f"call_{len(tcs)}")
+                        pending_tool_call_ids.append(tc_id)
                         tc_item = {
-                            "id": tc.get("id", f"call_{len(tcs)}"),
+                            "id": tc_id,
                             "type": "function",
                             "function": {
                                 "name": tc.get("name", "unknown"),
-                                "arguments": json.dumps(tc.get("input", {}))
+                                "arguments": json.dumps(tc.get("input", {})) if isinstance(tc.get("input"), dict) else str(tc.get("input", ""))
                             }
                         }
                         if tc.get("thought_signature"):
@@ -253,6 +277,7 @@ class OpenAIAdapter(ModelAdapter):
 
                 openai_msgs.append(item)
                 
+        flush_pending_tools()
         return openai_msgs
 
     async def generate_bug_report(self) -> str:
