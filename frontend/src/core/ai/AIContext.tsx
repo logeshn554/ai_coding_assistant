@@ -6,7 +6,9 @@ import { useTerminal } from '../terminal/TerminalContext';
 import { useGit } from '../git/GitContext';
 import { useToast } from '../toast/ToastContext';
 
-import type { ChatMessage, Session, SubTask, ChatMode } from '../../types/chat';
+import type { ChatMessage, Session, SubTask, ChatMode, ToolExecutionItem } from '../../types/chat';
+
+interface LiveFileChange { path: string; added: number; removed: number; }
 
 interface AIContextType {
   messages: ChatMessage[];
@@ -25,6 +27,9 @@ interface AIContextType {
   contextTokensRaw: number;
   contextTokensMax: number;
   wsRef: React.RefObject<WebSocket | null>;
+  liveToolCalls: ToolExecutionItem[];
+  liveFileChanges: LiveFileChange[];
+  currentGoal: string;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   handleSendMessage: (text: string, mode: ChatMode, autoApply: boolean) => void;
   handleConfirmTool: (toolCallId: string, approved: boolean, scope: string, hunkDecisions?: any) => void;
@@ -50,6 +55,10 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [subtasks, setSubtasks] = useState<SubTask[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState('default-session');
+  const [liveToolCalls, setLiveToolCalls] = useState<ToolExecutionItem[]>([]);
+  const [liveFileChanges, setLiveFileChanges] = useState<LiveFileChange[]>([]);
+  const [currentGoal, setCurrentGoal] = useState('');
+  const toolStartTimesRef = useRef<Record<string, number>>({});
   
   const [isWsConnected, setIsWsConnected] = useState(false);
   const [isModelFallback, setIsModelFallback] = useState(false);
@@ -290,9 +299,46 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
           break;
         case 'status':
           setStatusMessage(data.message);
+          if (data.status === 'tool_executing' && data.tool_call?.name) {
+            const tc = data.tool_call;
+            toolStartTimesRef.current[tc.id] = Date.now();
+            const toolType = (): ToolExecutionItem['tool'] => {
+              const n = (tc.name || '').toLowerCase();
+              if (n.includes('terminal') || n.includes('command')) return 'terminal';
+              if (n.includes('read')) return 'file_read';
+              if (n.includes('edit') || n.includes('write')) return 'file_edit';
+              if (n.includes('search')) return 'search';
+              if (n.includes('git')) return 'git';
+              return 'other';
+            };
+            const displayName = tc.name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+            const paramLabel = tc.args?.path || tc.args?.query || tc.args?.command || '';
+            setLiveToolCalls(prev => [
+              ...prev,
+              { id: tc.id, tool: toolType(), name: displayName, params: { path: paramLabel }, status: 'running' }
+            ]);
+          }
           break;
-        case 'tool_result':
+        case 'tool_result': {
           const isSuccess = data.status === 'success';
+          const elapsed = toolStartTimesRef.current[data.tool_call_id]
+            ? Date.now() - toolStartTimesRef.current[data.tool_call_id]
+            : undefined;
+          delete toolStartTimesRef.current[data.tool_call_id];
+          setLiveToolCalls(prev => prev.map(t =>
+            t.id === data.tool_call_id
+              ? { ...t, status: isSuccess ? 'success' : 'error', durationMs: elapsed, output: String(data.result || '').slice(0, 200) }
+              : t
+          ));
+          // Track file write/edit operations for the live file changes list
+          if (data.name === 'write_file' || data.name === 'edit_file') {
+            const filePath: string = String(data.result || '').match(/([^\s]+(?:\.\w+))/)?.[1] || 'unknown';
+            setLiveFileChanges(prev => {
+              const existing = prev.find(f => f.path === filePath);
+              if (existing) return prev;
+              return [...prev, { path: filePath, added: 0, removed: 0 }];
+            });
+          }
           setMessages((prev) => [
             ...prev,
             {
@@ -307,6 +353,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
           triggerRefresh();
           updateStatusBarInfo();
           break;
+        }
         case 'confirm_request':
           setStatusMessage(null);
           if (data.diff) {
@@ -472,6 +519,10 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     lastAssistantMsgIdRef.current = assistantMsgId;
     setIsGenerating(true);
     setStatusMessage('Analyzing workspace...');
+    // Reset plan tab state for new message
+    setLiveToolCalls([]);
+    setLiveFileChanges([]);
+    setCurrentGoal(text.slice(0, 100));
 
     // Map 'Auto' to ask-mode behavior (direct LLM call, no orchestrator)
     const effectiveMode = mode === 'Auto' ? 'Ask' : mode;
@@ -597,6 +648,9 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         contextTokensRaw,
         contextTokensMax,
         wsRef,
+        liveToolCalls,
+        liveFileChanges,
+        currentGoal,
         setMessages,
         handleSendMessage,
         handleConfirmTool,

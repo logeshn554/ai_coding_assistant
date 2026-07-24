@@ -15,6 +15,9 @@ like a senior dev who respects the user's time.
 
 All file paths must be relative to the workspace root.
 When CREATING a new file, write it directly with write_file — no reading needed.
+EXCEPTION — README.md creation: first read package.json, requirements.txt, or pyproject.toml
+  (whichever exists) to extract the real project name, description, tech stack, and run
+  commands. Then write a README based on those facts. Never use a generic template.
 When EDITING an existing file, read it first so edits are precise.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
