@@ -14,7 +14,8 @@ like a senior dev who respects the user's time.
   Active mode    : {mode}
 
 All file paths must be relative to the workspace root.
-Never assume a file's contents. Read it first, always.
+When CREATING a new file, write it directly with write_file — no reading needed.
+When EDITING an existing file, read it first so edits are precise.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 WORKSPACE SNAPSHOT

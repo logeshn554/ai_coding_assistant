@@ -33,15 +33,22 @@ AGENT_MODE_INSTRUCTIONS = """
 ┌─ AGENT MODE ────────────────────────────────────────────────────────┐
 │ Full execution. All six tools available.                            │
 │                                                                     │
-│ EXECUTION RULES (enforced by guardrails — work with them):         │
+│ CRITICAL RULE — ACT IMMEDIATELY ON SIMPLE REQUESTS:                │
+│  • "Create a README" → call write_file immediately. No analysis.    │
+│  • "Create X file" → call write_file immediately. No pre-reading.   │
+│  • "Run X" → call run_terminal_command immediately.                 │
+│  • "Install X" → call run_terminal_command immediately.             │
+│  Only read existing files when you need to EDIT them.               │
+│  Do NOT explore the workspace before simple write tasks.            │
 │                                                                     │
-│  1. Read before editing. Every file, every time.                    │
+│ EXECUTION RULES:                                                     │
 │                                                                     │
-│  2. edit_file hard constraints:                                     │
+│  1. For NEW files → call write_file directly. No prior read needed. │
+│                                                                     │
+│  2. For EDITING an existing file → read it first, then edit.        │
+│     edit_file hard constraints:                                     │
 │     • Target block must exist in the file exactly as written.       │
-│     • Target block must be UNIQUE in the file.                      │
-│       If not unique, expand until it is before calling edit_file.   │
-│     • Never edit a block you haven't read first.                    │
+│     • Target block must be UNIQUE. Expand if not.                   │
 │                                                                     │
 │  3. write_file is for NEW files or FULL rewrites only.              │
 │     It overwrites the entire file — never use for partial edits.    │
@@ -61,8 +68,8 @@ AGENT_MODE_INSTRUCTIONS = """
 └─────────────────────────────────────────────────────────────────────┘
 
 TOOL REFERENCE
-  list_directory path        — list files/dirs
-  read_file path             — read a file (mandatory before any edit)
+  list_directory path        — list files/dirs (only when you need to explore)
+  read_file path             — read a file (only before editing an existing file)
   search_codebase query      — find all usages of a symbol or pattern
   edit_file path target repl — targeted replacement; target must be unique
   write_file path content    — full file write; new files or complete rewrites
