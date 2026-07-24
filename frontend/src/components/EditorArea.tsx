@@ -11,6 +11,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import Editor, { DiffEditor, type OnMount } from '@monaco-editor/react';
 import { X, Save, RotateCcw } from 'lucide-react';
 import { useLSP } from '../core/lsp/LSPContext';
+import { InlineChatPopover } from './editor/InlineChatPopover';
+import { BreadcrumbBar } from './editor/BreadcrumbBar';
+import { useAI } from '../core/ai/AIContext';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -252,6 +255,20 @@ export default function EditorArea({
 
   // ── Editor mount handler ─────────────────────────────────────────────────
 
+  const [inlineChatState, setInlineChatState] = useState<{
+    isOpen: boolean;
+    position: { top: number; left: number };
+    lineNumber: number;
+    selectedText: string;
+  }>({
+    isOpen: false,
+    position: { top: 100, left: 300 },
+    lineNumber: 1,
+    selectedText: '',
+  });
+
+  const { handleSendMessage } = useAI();
+
   const handleEditorMount: OnMount = useCallback(
     (editor, monaco) => {
       editorRef.current = editor;
@@ -259,6 +276,23 @@ export default function EditorArea({
 
       // Forward ref to parent (for GoToSymbol)
       onEditorRef?.(editor);
+
+      // Register Ctrl+I for Inline Chat
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => {
+        const pos = editor.getPosition();
+        const coords = editor.getScrolledVisiblePosition(pos);
+        const domNode = editor.getDomNode();
+        const rect = domNode?.getBoundingClientRect();
+        const top = (rect?.top || 100) + (coords?.top || 50);
+        const left = (rect?.left || 200) + (coords?.left || 100);
+        const sel = editor.getModel()?.getValueInRange(editor.getSelection());
+        setInlineChatState({
+          isOpen: true,
+          position: { top, left },
+          lineNumber: pos?.lineNumber || 1,
+          selectedText: sel || '',
+        });
+      });
 
       // Restore cursor & scroll position
       if (pendingRestoreRef.current) {
@@ -820,6 +854,12 @@ export default function EditorArea({
               </div>
             </div>
 
+            {/* ── Breadcrumbs bar ── */}
+            <BreadcrumbBar
+              filePath={activeTab.path}
+              onSelectPathSegment={(seg) => console.log('Selected path segment:', seg)}
+            />
+
             {/* ── Monaco Editor / Diff Editor ── */}
             <div className="flex-1 overflow-hidden flex flex-col relative">
               {showDiff && proposedDiff && (
@@ -1015,7 +1055,22 @@ export default function EditorArea({
             </div>
           </div>
         )}
-      </div>
+
+      {/* Inline AI Edit Popover */}
+      <InlineChatPopover
+        isOpen={inlineChatState.isOpen}
+        onClose={() => setInlineChatState((prev) => ({ ...prev, isOpen: false }))}
+        position={inlineChatState.position}
+        lineNumber={inlineChatState.lineNumber}
+        selectedText={inlineChatState.selectedText}
+        filePath={activeTab?.path || ''}
+        onApplyInlineEdit={async (prompt, mode) => {
+          const fullPrompt = `In file ${activeTab?.path || ''} at line ${inlineChatState.lineNumber}:${
+            inlineChatState.selectedText ? ` (selection: "${inlineChatState.selectedText}")` : ''
+          }\n${prompt}`;
+          handleSendMessage(fullPrompt, mode, true);
+        }}
+      />
     </div>
   );
 }

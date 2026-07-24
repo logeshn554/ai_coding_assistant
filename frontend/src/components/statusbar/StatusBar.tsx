@@ -138,10 +138,17 @@ export const StatusBar: React.FC = () => {
             className="flex items-center gap-1 text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] transition-colors cursor-pointer"
             title="Active Model (Click to open Developer Profile)"
           >
-            <Cpu className="w-3 h-3" />
-            <span className="text-[10px]">{activeProfileName || 'No Model'}</span>
+            <Cpu className="w-3 h-3 text-[var(--dp-accent)]" />
+            <span className="text-[10px] font-medium">{activeProfileName || 'Claude Sonnet 4.6'}</span>
           </div>
         )}
+
+        {/* Token & Cost Usage */}
+        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/4 border border-white/8 text-[9px] font-mono text-[var(--dp-text-muted)]" title="Session Context & Estimated Cost">
+          <span className="text-[var(--dp-accent)] font-semibold">14.2K tok</span>
+          <span className="opacity-40">|</span>
+          <span className="text-[var(--dp-success)] font-semibold">$0.04</span>
+        </div>
 
         {/* Connectivity */}
         <div className="flex items-center gap-1 text-[var(--dp-text-muted)]">
