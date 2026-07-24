@@ -112,6 +112,17 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     return () => clearTimeout(timer);
   }, [messages, openFiles]);
 
+  useEffect(() => {
+    const handleExplainError = (e: Event) => {
+      const detail = (e as CustomEvent)?.detail;
+      if (detail?.prompt) {
+        handleSendMessage(detail.prompt, 'Agent', true);
+      }
+    };
+    window.addEventListener('devpilot_explain_error', handleExplainError);
+    return () => window.removeEventListener('devpilot_explain_error', handleExplainError);
+  }, [isGenerating]);
+
   const fetchSessions = async (syncActive: boolean = false) => {
     try {
       const res = await fetch('/api/chat/sessions');

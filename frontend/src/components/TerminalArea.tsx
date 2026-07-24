@@ -345,11 +345,25 @@ export default function TerminalArea({
             </span>
           )}
           {activeTerminalStatus === 'completed' && (
-            <span className={`ml-2 px-1.5 py-0.5 rounded font-mono text-[9px] truncate ${
-              activeTerminalExitCode === 0 ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/25 text-red-400 border border-red-500/20'
-            }`}>
-              Exit {activeTerminalExitCode} ({activeTerminalElapsed}s)
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className={`px-1.5 py-0.5 rounded font-mono text-[9px] truncate ${
+                activeTerminalExitCode === 0 ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/25 text-red-400 border border-red-500/20'
+              }`}>
+                Exit {activeTerminalExitCode} ({activeTerminalElapsed}s)
+              </span>
+              {activeTerminalExitCode !== 0 && activeTerminalExitCode != null && (
+                <button
+                  onClick={() => {
+                    const prompt = `Diagnose and fix this terminal command error:\nCommand: \`${activeTerminalCommand || 'terminal process'}\` (exit code: ${activeTerminalExitCode})`;
+                    window.dispatchEvent(new CustomEvent('devpilot_explain_error', { detail: { prompt } }));
+                  }}
+                  className="px-2 py-0.5 rounded bg-violet-500/20 hover:bg-violet-500/40 text-violet-300 border border-violet-500/30 text-[9px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
+                  title="Ask AI to diagnose and fix this terminal error"
+                >
+                  ✨ Explain with AI
+                </button>
+              )}
+            </div>
           )}
         </div>
 
