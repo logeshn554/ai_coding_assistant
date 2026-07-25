@@ -1,5 +1,5 @@
 import React from 'react';
-import { Folder, Search, Settings, GitBranch, Play, Puzzle, Bot, LayoutGrid, User, FlaskConical } from 'lucide-react';
+import { Folder, Search, Settings, GitBranch, Play, Puzzle, Bot, LayoutGrid, User, FlaskConical, Sparkles } from 'lucide-react';
 import { useUI } from '../../core/ui/UIContext';
 import { useSettings } from '../../core/settings/SettingsContext';
 import { useGit } from '../../core/git/GitContext';
@@ -14,11 +14,13 @@ export const ActivityBar: React.FC = () => {
     { id: 'search',     icon: Search,      label: 'Search' },
     { id: 'git',        icon: GitBranch,   label: 'Source Control', badge: gitChangesList?.length || 0 },
     { id: 'debug',      icon: Play,        label: 'Run & Debug' },
+    { id: 'artifacts',  icon: Sparkles,    label: 'Artifacts & Plans' },
     { id: 'extensions', icon: Puzzle,      label: 'Extensions' },
     { id: 'testing',    icon: FlaskConical,label: 'Testing' },
     { id: 'agents',     icon: Bot,         label: 'AI Agents' },
     { id: 'workspace',  icon: LayoutGrid,  label: 'Workspace' },
   ];
+
 
   const handleTabClick = (tabId: string) => {
     if (isSidebarOpen && sidebarTab === tabId) {

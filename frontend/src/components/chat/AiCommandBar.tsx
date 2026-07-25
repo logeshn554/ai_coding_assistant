@@ -7,6 +7,10 @@ import type { SlashCommand, ContextMention, ChatMode } from '../../types/chat';
 
 const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/plan',      description: 'Generate a step-by-step implementation plan',    example: '/plan Add authentication system' },
+  { name: '/goal',      description: 'Autonomous goal mode. Solves complex tasks continuously.', example: '/goal Build complete user auth with JWT' },
+  { name: '/grill-me',  description: 'Interactive planning interview to resolve design decisions', example: '/grill-me Clarify database schema' },
+  { name: '/learn',     description: 'Extract workspace patterns into Agent Memory & KIs', example: '/learn Save code convention rules' },
+  { name: '/schedule',  description: 'Set background timers or recurring monitors',      example: '/schedule Check build every 5 min' },
   { name: '/build',     description: 'Run build and verify for type errors',           example: '/build' },
   { name: '/fix',       description: 'Diagnose and fix runtime or lint errors',        example: '/fix Fix broken login state' },
   { name: '/refactor',  description: 'Refactor code for performance and cleanliness',  example: '/refactor Clean up state hooks' },
@@ -14,8 +18,8 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/document',  description: 'Generate JSDoc comments and documentation',      example: '/document Add docs to api handler' },
   { name: '/review',    description: 'Perform security & code quality review',         example: '/review Scan workspace for bugs' },
   { name: '/explain',   description: 'Explain active selection or file logic',         example: '/explain How does routing work?' },
-  { name: '/deploy',    description: 'Prepare build bundle for deployment',            example: '/deploy Verify production build' },
 ];
+
 
 const CONTEXT_MENTIONS: ContextMention[] = [
   { name: '@file',      type: 'file',      description: 'Reference a specific file' },
@@ -83,6 +87,7 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
     setInputText([...words, cmd.name].join(' ') + ' ');
     setShowSlashMenu(false);
     if (cmd.name === '/plan') setMode('Plan');
+    if (cmd.name === '/goal') setMode('Goal');
     inputRef.current?.focus();
   };
 
@@ -98,7 +103,9 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
     { id: 'Ask',   label: 'Ask' },
     { id: 'Plan',  label: 'Plan' },
     { id: 'Agent', label: 'Agent' },
+    { id: 'Goal',  label: 'Goal' },
   ];
+
 
   return (
     <div className="relative flex flex-col gap-2">

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, Check, AlertCircle, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Settings, Check, AlertCircle, AlertTriangle, RotateCcw, Sparkles } from 'lucide-react';
 import type { AgentState } from '../../types/chat';
 
 interface AgentStatusBarProps {
@@ -22,12 +22,14 @@ export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
   onRetryAgent,
 }) => {
   return (
-    <div className="flex flex-col gap-2 pb-2 px-1 border-t border-zinc-800 pt-2 font-sans select-none bg-zinc-950">
+    <div className="flex flex-col gap-2 pb-2 px-1 border-t border-[var(--dp-border)] pt-2 font-sans select-none bg-[var(--dp-bg-tertiary)]">
       {/* Header Label & Agent Pills Row */}
-      <div className="flex items-center gap-2">
-        <span className="text-[11px] font-semibold tracking-wider text-zinc-500 uppercase shrink-0">
-          Agent Status
-        </span>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[var(--dp-accent-dim)] border border-[var(--dp-accent)]/30 text-[var(--dp-accent-hover)] text-[10px] font-bold tracking-wider uppercase">
+          <Sparkles className="w-3 h-3 animate-pulse" />
+          <span>Antigravity Engine</span>
+        </div>
+
         {agents.length > 0 ? (
           <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 max-w-full">
             {agents.map((ag, idx) => {

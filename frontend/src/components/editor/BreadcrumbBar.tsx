@@ -1,5 +1,5 @@
-import React from 'react';
-import { ChevronRight, FileCode, Folder, Code2, Box } from 'lucide-react';
+import React, { Fragment } from 'react';
+import { ChevronRight, FileCode, Folder, Box } from 'lucide-react';
 
 interface BreadcrumbBarProps {
   filePath: string | null;
@@ -31,7 +31,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
       {parts.map((part, idx) => {
         const segPath = parts.slice(0, idx + 1).join('/');
         return (
-          <React.Fragment key={segPath}>
+          <Fragment key={segPath}>
             <button
               onClick={() => onSelectPathSegment?.(segPath)}
               className="hover:text-[var(--dp-text-bright)] transition-colors cursor-pointer truncate max-w-[120px]"
@@ -39,9 +39,10 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
               {part}
             </button>
             <ChevronRight className="w-3 h-3 text-[var(--dp-text-muted)] opacity-50 shrink-0" />
-          </React.Fragment>
+          </Fragment>
         );
       })}
+
 
       <div className="flex items-center gap-1 font-semibold text-[var(--dp-text-bright)] shrink-0">
         <FileCode className="w-3.5 h-3.5 text-blue-400 shrink-0" />

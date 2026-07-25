@@ -29,6 +29,7 @@ interface AIContextType {
   wsRef: React.RefObject<WebSocket | null>;
   liveToolCalls: ToolExecutionItem[];
   liveFileChanges: LiveFileChange[];
+  pendingFileChanges: string[];
   currentGoal: string;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   handleSendMessage: (text: string, mode: ChatMode, autoApply: boolean) => void;
@@ -41,6 +42,8 @@ interface AIContextType {
   handleNewSession: () => Promise<void>;
   handleDeleteSession: (sessionId: string) => Promise<void>;
   handleRenameSession: (sessionId: string, newTitle: string) => Promise<void>;
+  handleApplyAllChanges: () => void;
+  handleDiscardAllChanges: () => Promise<void>;
 }
 
 const AIContext = createContext<AIContextType | undefined>(undefined);
@@ -57,6 +60,8 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [activeSessionId, setActiveSessionId] = useState('default-session');
   const [liveToolCalls, setLiveToolCalls] = useState<ToolExecutionItem[]>([]);
   const [liveFileChanges, setLiveFileChanges] = useState<LiveFileChange[]>([]);
+  const [pendingFileChanges, setPendingFileChanges] = useState<string[]>([]);
+
   const [currentGoal, setCurrentGoal] = useState('');
   const toolStartTimesRef = useRef<Record<string, number>>({});
   
@@ -341,15 +346,22 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
               ? { ...t, status: isSuccess ? 'success' : 'error', durationMs: elapsed, output: String(data.result || '').slice(0, 200) }
               : t
           ));
-          // Track file write/edit operations for the live file changes list
-          if (data.name === 'write_file' || data.name === 'edit_file') {
-            const filePath: string = String(data.result || '').match(/([^\s]+(?:\.\w+))/)?.[1] || 'unknown';
-            setLiveFileChanges(prev => {
-              const existing = prev.find(f => f.path === filePath);
-              if (existing) return prev;
-              return [...prev, { path: filePath, added: 0, removed: 0 }];
-            });
+          // Track file write/edit operations for the live file changes list and pending changes review bar
+          if (data.name === 'write_file' || data.name === 'edit_file' || (data.name && data.name.includes('file'))) {
+            const rawPath: string = data.args?.path || String(data.result || '').match(/([^\s]+\.\w+)/)?.[1] || '';
+            if (rawPath && rawPath !== 'unknown') {
+              setLiveFileChanges(prev => {
+                const existing = prev.find(f => f.path === rawPath);
+                if (existing) return prev;
+                return [...prev, { path: rawPath, added: 0, removed: 0 }];
+              });
+              setPendingFileChanges(prev => {
+                if (prev.includes(rawPath)) return prev;
+                return [...prev, rawPath];
+              });
+            }
           }
+
           setMessages((prev) => [
             ...prev,
             {
@@ -640,6 +652,31 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     }
   }, [workspacePath]);
 
+  const handleApplyAllChanges = () => {
+    setPendingFileChanges([]);
+    setLiveFileChanges([]);
+    triggerRefresh();
+    showToast('All file changes applied successfully!', 'success');
+  };
+
+  const handleDiscardAllChanges = async () => {
+    for (const filePath of pendingFileChanges) {
+      try {
+        await fetch('/api/rollback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: filePath })
+        });
+      } catch (e) {
+        console.error(`Failed to rollback ${filePath}:`, e);
+      }
+    }
+    setPendingFileChanges([]);
+    setLiveFileChanges([]);
+    triggerRefresh();
+    showToast('File changes discarded and reverted to original state.', 'info');
+  };
+
   return (
     <AIContext.Provider
       value={{
@@ -661,6 +698,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         wsRef,
         liveToolCalls,
         liveFileChanges,
+        pendingFileChanges,
         currentGoal,
         setMessages,
         handleSendMessage,
@@ -672,9 +710,12 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         handleSelectSession,
         handleNewSession,
         handleDeleteSession,
-        handleRenameSession
+        handleRenameSession,
+        handleApplyAllChanges,
+        handleDiscardAllChanges
       }}
     >
+
       {children}
     </AIContext.Provider>
   );

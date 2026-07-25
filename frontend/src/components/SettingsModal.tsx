@@ -98,7 +98,7 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose, onProfileChanged }: SettingsModalProps) {
-  const [activeSettingsTab, setActiveSettingsTab] = useState<'profiles' | 'permissions' | 'preferences' | 'terminal'>('profiles');
+  const [activeSettingsTab, setActiveSettingsTab] = useState<'profiles' | 'agent_behavior' | 'permissions' | 'preferences' | 'terminal'>('profiles');
   const [permissions, setPermissions] = useState<{ project: string[]; session: string[] }>({ project: [], session: [] });
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeId, setActiveId] = useState<string>('');
@@ -114,6 +114,17 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(true);
   const [agentModelName, setAgentModelName] = useState<string>('');
   const [agentModels, setAgentModels] = useState<Record<string, string>>({});
+
+  // Agent Behavior & Local Permissions State
+  const [artifactReviewPolicy, setArtifactReviewPolicy] = useState<string>('Always Ask');
+  const [fileAccessRules, setFileAccessRules] = useState<any[]>([]);
+  const [networkAccessRules, setNetworkAccessRules] = useState<any[]>([]);
+  const [terminalCommandRules, setTerminalCommandRules] = useState<any[]>([]);
+  const [unsandboxedCommandRules, setUnsandboxedCommandRules] = useState<any[]>([]);
+  const [mcpToolRules, setMcpToolRules] = useState<any[]>([]);
+  const [activeRuleModal, setActiveRuleModal] = useState<'file' | 'network' | 'terminal' | 'unsandboxed' | 'mcp' | null>(null);
+  const [newRuleInput, setNewRuleInput] = useState('');
+  const [newRuleType, setNewRuleType] = useState('allow');
 
   // New state for bug scanning
   const [bugReport, setBugReport] = useState<string>('');
@@ -154,6 +165,13 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         setDefaultShell(data?.default_shell || '');
         if (data?.terminal_font_size) setTermFontSize(data.terminal_font_size);
         if (data?.terminal_scrollback) setTermScrollback(data.terminal_scrollback);
+        // Agent Behavior & Local Permissions
+        if (data?.artifact_review_policy) setArtifactReviewPolicy(data.artifact_review_policy);
+        setFileAccessRules(Array.isArray(data?.file_access_rules) ? data.file_access_rules : []);
+        setNetworkAccessRules(Array.isArray(data?.network_access_rules) ? data.network_access_rules : []);
+        setTerminalCommandRules(Array.isArray(data?.terminal_command_rules) ? data.terminal_command_rules : []);
+        setUnsandboxedCommandRules(Array.isArray(data?.unsandboxed_command_rules) ? data.unsandboxed_command_rules : []);
+        setMcpToolRules(Array.isArray(data?.mcp_tool_rules) ? data.mcp_tool_rules : []);
       }
     } catch (e) {
       console.error('Error loading preferences:', e);
@@ -164,7 +182,13 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     newExclusions: string[],
     newBackup: boolean,
     newAgentModel?: string,
-    newAgentModels?: Record<string, string>
+    newAgentModels?: Record<string, string>,
+    policyOverride?: string,
+    fileRulesOverride?: any[],
+    netRulesOverride?: any[],
+    termRulesOverride?: any[],
+    unsandboxedRulesOverride?: any[],
+    mcpRulesOverride?: any[]
   ) => {
     try {
       await fetch('/api/config/settings', {
@@ -175,10 +199,15 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           auto_backup_enabled: newBackup,
           agent_model_name: newAgentModel !== undefined ? newAgentModel : agentModelName,
           agent_models: newAgentModels !== undefined ? newAgentModels : agentModels,
-          // Always include terminal prefs so they aren't reset by other saves
           default_shell: defaultShell,
           terminal_font_size: termFontSize,
           terminal_scrollback: termScrollback,
+          artifact_review_policy: policyOverride !== undefined ? policyOverride : artifactReviewPolicy,
+          file_access_rules: fileRulesOverride !== undefined ? fileRulesOverride : fileAccessRules,
+          network_access_rules: netRulesOverride !== undefined ? netRulesOverride : networkAccessRules,
+          terminal_command_rules: termRulesOverride !== undefined ? termRulesOverride : terminalCommandRules,
+          unsandboxed_command_rules: unsandboxedRulesOverride !== undefined ? unsandboxedRulesOverride : unsandboxedCommandRules,
+          mcp_tool_rules: mcpRulesOverride !== undefined ? mcpRulesOverride : mcpToolRules,
         })
       });
       onProfileChanged();
@@ -200,12 +229,19 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           default_shell: shell,
           terminal_font_size: fontSize,
           terminal_scrollback: scrollback,
+          artifact_review_policy: artifactReviewPolicy,
+          file_access_rules: fileAccessRules,
+          network_access_rules: networkAccessRules,
+          terminal_command_rules: terminalCommandRules,
+          unsandboxed_command_rules: unsandboxedCommandRules,
+          mcp_tool_rules: mcpToolRules,
         })
       });
     } catch (e) {
       console.error('Error saving terminal preferences:', e);
     }
   };
+
 
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem('session_token') || '';
@@ -493,10 +529,10 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         </div>
 
         {/* Subheader Switcher tabs */}
-        <div className="flex bg-[#14171f] px-6 border-b border-white/5 gap-4">
+        <div className="flex bg-[#14171f] px-6 border-b border-white/5 gap-4 overflow-x-auto">
           <button
             onClick={() => setActiveSettingsTab('profiles')}
-            className={`py-2 text-xs font-semibold border-b-2 transition-all ${
+            className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
               activeSettingsTab === 'profiles' 
                 ? 'border-violet-500 text-white' 
                 : 'border-transparent text-gray-400 hover:text-gray-200'
@@ -505,8 +541,18 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             Provider Profiles
           </button>
           <button
+            onClick={() => setActiveSettingsTab('agent_behavior')}
+            className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
+              activeSettingsTab === 'agent_behavior' 
+                ? 'border-violet-500 text-white' 
+                : 'border-transparent text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Agent & Local Permissions
+          </button>
+          <button
             onClick={() => setActiveSettingsTab('permissions')}
-            className={`py-2 text-xs font-semibold border-b-2 transition-all ${
+            className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
               activeSettingsTab === 'permissions' 
                 ? 'border-violet-500 text-white' 
                 : 'border-transparent text-gray-400 hover:text-gray-200'
@@ -516,7 +562,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           </button>
           <button
             onClick={() => setActiveSettingsTab('preferences')}
-            className={`py-2 text-xs font-semibold border-b-2 transition-all ${
+            className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
               activeSettingsTab === 'preferences' 
                 ? 'border-violet-500 text-white' 
                 : 'border-transparent text-gray-400 hover:text-gray-200'
@@ -526,7 +572,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           </button>
           <button
             onClick={() => setActiveSettingsTab('terminal')}
-            className={`py-2 text-xs font-semibold border-b-2 transition-all ${
+            className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
               activeSettingsTab === 'terminal'
                 ? 'border-violet-500 text-white'
                 : 'border-transparent text-gray-400 hover:text-gray-200'
@@ -535,6 +581,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             Terminal
           </button>
         </div>
+
 
         {/* Content */}
         {activeSettingsTab === 'profiles' && (
@@ -807,6 +854,123 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
               )}
             </div>
             
+          </div>
+        )}
+        {activeSettingsTab === 'agent_behavior' && (
+          <div className="flex-1 bg-[#111318] p-6 overflow-y-auto space-y-6">
+            
+            {/* Agent Behavior */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-white border-b border-white/5 pb-2">
+                Agent Behavior
+              </h3>
+              <div className="p-4 bg-[#171922] border border-white/5 rounded-xl flex items-center justify-between shadow-sm">
+                <div className="flex flex-col gap-1 max-w-[70%]">
+                  <span className="text-xs font-semibold text-gray-200">Artifact Review Policy</span>
+                  <span className="text-[11px] text-gray-400 leading-normal">
+                    Specifies Agent's behavior when asking for review on artifacts, which are documents it creates to enable a richer conversation experience.
+                  </span>
+                </div>
+                <select
+                  value={artifactReviewPolicy}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setArtifactReviewPolicy(val);
+                    savePreferences(excludeList, autoBackupEnabled, undefined, undefined, val);
+                  }}
+                  className="px-3 py-1.5 bg-[#0d0e14] border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-violet-500 cursor-pointer min-w-[130px]"
+                >
+                  <option value="Always Ask">Always Ask</option>
+                  <option value="On Demand">On Demand</option>
+                  <option value="Never Ask">Never Ask</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Local Permissions */}
+            <div className="space-y-3 pt-2">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-sm font-semibold text-white border-b border-white/5 pb-2">
+                  Local Permissions
+                </h3>
+                <p className="text-[11px] text-gray-400">
+                  Inherits from <span className="text-violet-400 cursor-pointer hover:underline">global settings</span>. Local permissions have higher priority. <span className="text-violet-400 cursor-pointer hover:underline">Learn more</span>.
+                </p>
+              </div>
+
+              <div className="border border-white/5 rounded-xl overflow-hidden divide-y divide-white/5 bg-[#171922]/60">
+                {/* Card 1: File Access Rules */}
+                <div className="p-4 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+                  <div className="flex flex-col gap-0.5 max-w-[75%]">
+                    <span className="text-xs font-semibold text-gray-200">File Access Rules</span>
+                    <span className="text-[11px] text-gray-400">Configure allowed and denied paths for file reads and writes.</span>
+                  </div>
+                  <button
+                    onClick={() => { setNewRuleInput(''); setNewRuleType('allow'); setActiveRuleModal('file'); }}
+                    className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-gray-200 font-medium transition-all cursor-pointer"
+                  >
+                    Open
+                  </button>
+                </div>
+
+                {/* Card 2: Network Access Rules */}
+                <div className="p-4 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+                  <div className="flex flex-col gap-0.5 max-w-[75%]">
+                    <span className="text-xs font-semibold text-gray-200">Network Access Rules</span>
+                    <span className="text-[11px] text-gray-400">Configure allowed and denied URLs for reading.</span>
+                  </div>
+                  <button
+                    onClick={() => { setNewRuleInput(''); setNewRuleType('allow'); setActiveRuleModal('network'); }}
+                    className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-gray-200 font-medium transition-all cursor-pointer"
+                  >
+                    Open
+                  </button>
+                </div>
+
+                {/* Card 3: Terminal Commands */}
+                <div className="p-4 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+                  <div className="flex flex-col gap-0.5 max-w-[75%]">
+                    <span className="text-xs font-semibold text-gray-200">Terminal Commands</span>
+                    <span className="text-[11px] text-gray-400">Configure allowed terminal commands.</span>
+                  </div>
+                  <button
+                    onClick={() => { setNewRuleInput(''); setNewRuleType('allow'); setActiveRuleModal('terminal'); }}
+                    className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-gray-200 font-medium transition-all cursor-pointer"
+                  >
+                    Open
+                  </button>
+                </div>
+
+                {/* Card 4: Commands Outside Sandbox */}
+                <div className="p-4 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+                  <div className="flex flex-col gap-0.5 max-w-[75%]">
+                    <span className="text-xs font-semibold text-gray-200">Commands Outside Sandbox</span>
+                    <span className="text-[11px] text-gray-400">Configure allowed commands outside the sandbox.</span>
+                  </div>
+                  <button
+                    onClick={() => { setNewRuleInput(''); setNewRuleType('allow'); setActiveRuleModal('unsandboxed'); }}
+                    className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-gray-200 font-medium transition-all cursor-pointer"
+                  >
+                    Open
+                  </button>
+                </div>
+
+                {/* Card 5: MCP Tools */}
+                <div className="p-4 flex items-center justify-between hover:bg-white/[0.02] transition-colors">
+                  <div className="flex flex-col gap-0.5 max-w-[75%]">
+                    <span className="text-xs font-semibold text-gray-200">MCP Tools</span>
+                    <span className="text-[11px] text-gray-400">Configure external tools via Model Context Protocol.</span>
+                  </div>
+                  <button
+                    onClick={() => { setNewRuleInput(''); setNewRuleType('allow'); setActiveRuleModal('mcp'); }}
+                    className="px-4 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-gray-200 font-medium transition-all cursor-pointer"
+                  >
+                    Open
+                  </button>
+                </div>
+              </div>
+            </div>
+
           </div>
         )}
         {activeSettingsTab === 'permissions' && (
@@ -1171,7 +1335,142 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             </div>
           </div>
         )}
+
+        {/* Sub-modal Rule Editor Overlay */}
+        {activeRuleModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md">
+            <div className="w-[520px] bg-[#14171f] border border-white/10 rounded-xl shadow-2xl overflow-hidden p-6 flex flex-col gap-4">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <h3 className="text-sm font-semibold text-white">
+                  {activeRuleModal === 'file' && 'File Access Rules'}
+                  {activeRuleModal === 'network' && 'Network Access Rules'}
+                  {activeRuleModal === 'terminal' && 'Terminal Command Rules'}
+                  {activeRuleModal === 'unsandboxed' && 'Commands Outside Sandbox Rules'}
+                  {activeRuleModal === 'mcp' && 'MCP Tool Rules'}
+                </h3>
+                <button onClick={() => setActiveRuleModal(null)} className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  value={newRuleInput}
+                  onChange={(e) => setNewRuleInput(e.target.value)}
+                  placeholder={
+                    activeRuleModal === 'file' ? 'e.g. ./src/** or /etc/config' :
+                    activeRuleModal === 'network' ? 'e.g. api.openai.com or *.github.com' :
+                    activeRuleModal === 'terminal' ? 'e.g. npm install or git commit' :
+                    activeRuleModal === 'unsandboxed' ? 'e.g. docker run or systemctl' : 'e.g. sqlite/read_query'
+                  }
+                  className="flex-1 px-3 py-1.5 bg-[#0d0e14] border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-violet-500 font-mono"
+                />
+                <select
+                  value={newRuleType}
+                  onChange={(e) => setNewRuleType(e.target.value)}
+                  className="px-2.5 py-1.5 bg-[#0d0e14] border border-white/10 rounded-lg text-xs text-white focus:outline-none cursor-pointer"
+                >
+                  <option value="allow">Allow</option>
+                  <option value="deny">Deny</option>
+                </select>
+                <button
+                  onClick={() => {
+                    if (!newRuleInput.trim()) return;
+                    const newRule = { id: String(Date.now()), target: newRuleInput.trim(), type: newRuleType };
+                    if (activeRuleModal === 'file') {
+                      const updated = [...fileAccessRules, newRule];
+                      setFileAccessRules(updated);
+                      savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, updated);
+                    } else if (activeRuleModal === 'network') {
+                      const updated = [...networkAccessRules, newRule];
+                      setNetworkAccessRules(updated);
+                      savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, updated);
+                    } else if (activeRuleModal === 'terminal') {
+                      const updated = [...terminalCommandRules, newRule];
+                      setTerminalCommandRules(updated);
+                      savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, updated);
+                    } else if (activeRuleModal === 'unsandboxed') {
+                      const updated = [...unsandboxedCommandRules, newRule];
+                      setUnsandboxedCommandRules(updated);
+                      savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, updated);
+                    } else if (activeRuleModal === 'mcp') {
+                      const updated = [...mcpToolRules, newRule];
+                      setMcpToolRules(updated);
+                      savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, updated);
+                    }
+                    setNewRuleInput('');
+                  }}
+                  className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  Add Rule
+                </button>
+              </div>
+
+              <div className="max-h-56 overflow-y-auto space-y-2 border border-white/5 rounded-lg p-2 bg-[#0d0e14]">
+                {((activeRuleModal === 'file' ? fileAccessRules :
+                   activeRuleModal === 'network' ? networkAccessRules :
+                   activeRuleModal === 'terminal' ? terminalCommandRules :
+                   activeRuleModal === 'unsandboxed' ? unsandboxedCommandRules : mcpToolRules) || []).length === 0 ? (
+                  <div className="text-center text-xs text-gray-500 py-4">No custom rules added yet.</div>
+                ) : (
+                  ((activeRuleModal === 'file' ? fileAccessRules :
+                    activeRuleModal === 'network' ? networkAccessRules :
+                    activeRuleModal === 'terminal' ? terminalCommandRules :
+                    activeRuleModal === 'unsandboxed' ? unsandboxedCommandRules : mcpToolRules) || []).map((r, idx) => (
+                    <div key={r.id || idx} className="flex justify-between items-center p-2 bg-white/5 rounded text-xs">
+                      <div className="flex items-center gap-2 font-mono text-[11px] text-gray-200">
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${r.type === 'allow' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+                          {r.type ? r.type.toUpperCase() : 'ALLOW'}
+                        </span>
+                        <span>{r.target || String(r)}</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (activeRuleModal === 'file') {
+                            const updated = fileAccessRules.filter((_, i) => i !== idx);
+                            setFileAccessRules(updated);
+                            savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, updated);
+                          } else if (activeRuleModal === 'network') {
+                            const updated = networkAccessRules.filter((_, i) => i !== idx);
+                            setNetworkAccessRules(updated);
+                            savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, updated);
+                          } else if (activeRuleModal === 'terminal') {
+                            const updated = terminalCommandRules.filter((_, i) => i !== idx);
+                            setTerminalCommandRules(updated);
+                            savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, updated);
+                          } else if (activeRuleModal === 'unsandboxed') {
+                            const updated = unsandboxedCommandRules.filter((_, i) => i !== idx);
+                            setUnsandboxedCommandRules(updated);
+                            savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, updated);
+                          } else if (activeRuleModal === 'mcp') {
+                            const updated = mcpToolRules.filter((_, i) => i !== idx);
+                            setMcpToolRules(updated);
+                            savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, updated);
+                          }
+                        }}
+                        className="p-1 hover:bg-red-500/20 text-gray-400 hover:text-red-400 rounded transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-white/10">
+                <button
+                  onClick={() => setActiveRuleModal(null)}
+                  className="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-lg cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
+
 }

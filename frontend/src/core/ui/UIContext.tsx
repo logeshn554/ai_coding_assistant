@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
-type SidebarTabType = 'explorer' | 'search' | 'git' | 'debug' | 'extensions' | 'testing' | 'packages' | 'agents' | 'workspace' | 'profile';
+type SidebarTabType = 'explorer' | 'search' | 'git' | 'debug' | 'artifacts' | 'extensions' | 'testing' | 'packages' | 'agents' | 'workspace' | 'profile';
+
 type ActiveMenuType = 'file' | 'edit' | 'view' | 'terminal' | 'help' | null;
 
 interface UIContextType {

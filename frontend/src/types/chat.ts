@@ -164,7 +164,8 @@ export interface ProcessEntry {
   port?: number;
 }
 
-export type ChatMode = 'Ask' | 'Plan' | 'Agent' | 'Auto';
+export type ChatMode = 'Ask' | 'Plan' | 'Agent' | 'Goal' | 'Auto';
+
 
 export interface SubTask {
   id: number;

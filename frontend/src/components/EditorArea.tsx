@@ -14,6 +14,8 @@ import { useLSP } from '../core/lsp/LSPContext';
 import { InlineChatPopover } from './editor/InlineChatPopover';
 import { BreadcrumbBar } from './editor/BreadcrumbBar';
 import { useAI } from '../core/ai/AIContext';
+import { FileChangesReviewBar } from './chat/FileChangesReviewBar';
+
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -252,19 +254,23 @@ export default function EditorArea({
   const pendingRestoreRef = useRef<{ line: number; col: number; scroll: number } | null>(null);
 
   const { connect: connectLSP, isReady: lspReady, error: lspError } = useLSP();
+  const { pendingFileChanges, handleApplyAllChanges, handleDiscardAllChanges } = useAI();
 
   // ── Editor mount handler ─────────────────────────────────────────────────
+
 
   const [inlineChatState, setInlineChatState] = useState<{
     isOpen: boolean;
     position: { top: number; left: number };
     lineNumber: number;
     selectedText: string;
+    selectionRange: { startLine: number; startCol: number; endLine: number; endCol: number } | null;
   }>({
     isOpen: false,
     position: { top: 100, left: 300 },
     lineNumber: 1,
     selectedText: '',
+    selectionRange: null,
   });
 
   const { handleSendMessage } = useAI();
@@ -277,21 +283,36 @@ export default function EditorArea({
       // Forward ref to parent (for GoToSymbol)
       onEditorRef?.(editor);
 
-      // Register Ctrl+I for Inline Chat
-      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => {
-        const pos = editor.getPosition();
-        const coords = editor.getScrolledVisiblePosition(pos);
-        const domNode = editor.getDomNode();
-        const rect = domNode?.getBoundingClientRect();
-        const top = (rect?.top || 100) + (coords?.top || 50);
-        const left = (rect?.left || 200) + (coords?.left || 100);
-        const sel = editor.getModel()?.getValueInRange(editor.getSelection());
-        setInlineChatState({
-          isOpen: true,
-          position: { top, left },
-          lineNumber: pos?.lineNumber || 1,
-          selectedText: sel || '',
-        });
+      // Register Ctrl+I for Inline Chat via addAction (shows in command palette)
+      editor.addAction({
+        id: 'devpilot.inlineChat',
+        label: 'DevPilot: Inline AI Edit (Ctrl+I)',
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI],
+        contextMenuGroupId: 'devpilot',
+        run: () => {
+          const pos = editor.getPosition();
+          const selection = editor.getSelection();
+          const domNode = editor.getDomNode();
+          const rect = domNode?.getBoundingClientRect() ?? { top: 0, left: 0 };
+          // Use scrolledVisiblePosition for cursor pixel coords
+          const coords = pos ? editor.getScrolledVisiblePosition(pos) : null;
+          const top = Math.max(80, rect.top + (coords?.top ?? 60) + 20);
+          const left = Math.max(200, rect.left + (coords?.left ?? 100));
+          const sel = selection && editor.getModel()?.getValueInRange(selection);
+          const range = selection ? {
+            startLine: selection.startLineNumber,
+            startCol: selection.startColumn,
+            endLine: selection.endLineNumber,
+            endCol: selection.endColumn,
+          } : null;
+          setInlineChatState({
+            isOpen: true,
+            position: { top, left },
+            lineNumber: pos?.lineNumber || 1,
+            selectedText: sel || '',
+            selectionRange: range,
+          });
+        },
       });
 
       // Restore cursor & scroll position
@@ -699,7 +720,16 @@ export default function EditorArea({
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: '#12131a', color: '#c8ccd8' }}>
 
+      {/* ── Agent File Changes Pending Review Bar ── */}
+      <FileChangesReviewBar
+        pendingFiles={pendingFileChanges}
+        onApplyChanges={handleApplyAllChanges}
+        onDiscardChanges={handleDiscardAllChanges}
+        onReviewFileDiff={(filePath) => onFileSelect(filePath)}
+      />
+
       {/* ── Tabs bar ── */}
+
       <div
         className="flex overflow-x-auto min-h-[36px] max-h-[36px] select-none no-scrollbar shrink-0"
         style={{ background: 'var(--dp-bg-tertiary)', borderBottom: '1px solid var(--dp-border)' }}
@@ -1055,6 +1085,7 @@ export default function EditorArea({
             </div>
           </div>
         )}
+      </div>
 
       {/* Inline AI Edit Popover */}
       <InlineChatPopover
@@ -1069,6 +1100,21 @@ export default function EditorArea({
             inlineChatState.selectedText ? ` (selection: "${inlineChatState.selectedText}")` : ''
           }\n${prompt}`;
           handleSendMessage(fullPrompt, mode, true);
+        }}
+        onAcceptEdit={(suggestion: string) => {
+          const range = inlineChatState.selectionRange;
+          if (!editorRef.current || !range) return;
+          editorRef.current.executeEdits('inline-chat', [{
+            range: {
+              startLineNumber: range.startLine,
+              startColumn: range.startCol,
+              endLineNumber: range.endLine,
+              endColumn: range.endCol,
+            },
+            text: suggestion,
+            forceMoveMarkers: true,
+          }]);
+          setInlineChatState((prev) => ({ ...prev, isOpen: false }));
         }}
       />
     </div>

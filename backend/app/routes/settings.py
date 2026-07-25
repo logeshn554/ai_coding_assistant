@@ -18,6 +18,13 @@ class SettingsUpdateRequest(BaseModel):
     default_shell: Optional[str] = ""
     terminal_font_size: Optional[int] = Field(default=13, ge=8, le=32)
     terminal_scrollback: Optional[int] = Field(default=5000, ge=500, le=100000)
+    # Agent Behavior & Local Permissions
+    artifact_review_policy: Optional[str] = "Always Ask"
+    file_access_rules: Optional[list] = None
+    network_access_rules: Optional[list] = None
+    terminal_command_rules: Optional[list] = None
+    unsandboxed_command_rules: Optional[list] = None
+    mcp_tool_rules: Optional[list] = None
 
 
 @router.get("/api/config/settings")
@@ -31,6 +38,13 @@ def get_settings():
         "default_shell": config_manager.get_default_shell(),
         "terminal_font_size": config_manager.get_terminal_font_size(),
         "terminal_scrollback": config_manager.get_terminal_scrollback(),
+        # Agent Behavior & Local Permissions
+        "artifact_review_policy": config_manager.get_artifact_review_policy(),
+        "file_access_rules": config_manager.get_file_access_rules(),
+        "network_access_rules": config_manager.get_network_access_rules(),
+        "terminal_command_rules": config_manager.get_terminal_command_rules(),
+        "unsandboxed_command_rules": config_manager.get_unsandboxed_command_rules(),
+        "mcp_tool_rules": config_manager.get_mcp_tool_rules(),
     }
 
 
@@ -54,9 +68,23 @@ def save_settings(req: SettingsUpdateRequest):
             config_manager.set_terminal_font_size(req.terminal_font_size)
         if req.terminal_scrollback is not None:
             config_manager.set_terminal_scrollback(req.terminal_scrollback)
+        # Agent Behavior & Local Permissions
+        if req.artifact_review_policy is not None:
+            config_manager.set_artifact_review_policy(req.artifact_review_policy)
+        if req.file_access_rules is not None:
+            config_manager.set_file_access_rules(req.file_access_rules)
+        if req.network_access_rules is not None:
+            config_manager.set_network_access_rules(req.network_access_rules)
+        if req.terminal_command_rules is not None:
+            config_manager.set_terminal_command_rules(req.terminal_command_rules)
+        if req.unsandboxed_command_rules is not None:
+            config_manager.set_unsandboxed_command_rules(req.unsandboxed_command_rules)
+        if req.mcp_tool_rules is not None:
+            config_manager.set_mcp_tool_rules(req.mcp_tool_rules)
         return {"success": True}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 

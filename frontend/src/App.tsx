@@ -30,8 +30,11 @@ import AgentsSidebar from './components/AgentsSidebar';
 import WorkspaceSidebar from './components/WorkspaceSidebar';
 import ProfileSidebar from './components/ProfileSidebar';
 
+import { ArtifactViewer } from './components/chat/ArtifactViewer';
+
 // Editor & AI Components
 import EditorArea from './components/EditorArea';
+
 import { AiWorkspace } from './components/chat/AiWorkspace';
 import SettingsModal from './components/SettingsModal';
 import QuickOpen from './components/QuickOpen';
@@ -157,7 +160,15 @@ function EditorShell() {
                 {sidebarTab === 'search' && <SearchSidebar onSelectFile={handleSelectFile} />}
                 {sidebarTab === 'git' && <GitSidebar />}
                 {sidebarTab === 'debug' && <RunDebugSidebar />}
+                {sidebarTab === 'artifacts' && (
+                  <ArtifactViewer
+                    workspacePath={workspacePath}
+                    onOpenFile={handleSelectFile}
+                    onSendMessage={(msg) => handleSendMessage(msg, chatMode, false)}
+                  />
+                )}
                 {sidebarTab === 'extensions' && <ExtensionsSidebar />}
+
                 {sidebarTab === 'testing' && <TestingSidebar />}
                 {sidebarTab === 'packages' && <PackagesSidebar />}
                 {sidebarTab === 'agents' && <AgentsSidebar />}

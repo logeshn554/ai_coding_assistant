@@ -19,6 +19,7 @@ from .health import router as health_router
 from .completions import router as completions_router
 from .memory import router as memory_router
 from .project import router as project_router
+from .artifacts import router as artifacts_router
 
 all_routers = [
     auth_router,
@@ -42,4 +43,6 @@ all_routers = [
     completions_router,
     memory_router,
     project_router,
+    artifacts_router,
 ]
+

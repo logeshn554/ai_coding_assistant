@@ -409,4 +409,63 @@ class ConfigManager:
             return generate_bug_report_sync()
         except Exception as e:
             logger.error(f"Bug scanning failed: {e}")
-            return f"Bug scanning failed: {e}"
+            return f"Bug scanning failed: {e}"
+
+    # ------------------------------------------------------------------
+    # Agent Behavior & Local Permissions Settings
+    # ------------------------------------------------------------------
+
+    def get_artifact_review_policy(self) -> str:
+        config = self._read_raw_config()
+        return config.get("artifact_review_policy", "Always Ask")
+
+    def set_artifact_review_policy(self, policy: str):
+        config = self._read_raw_config()
+        config["artifact_review_policy"] = policy
+        self._save_raw_config(config)
+
+    def get_file_access_rules(self) -> list:
+        config = self._read_raw_config()
+        return config.get("file_access_rules", [])
+
+    def set_file_access_rules(self, rules: list):
+        config = self._read_raw_config()
+        config["file_access_rules"] = rules
+        self._save_raw_config(config)
+
+    def get_network_access_rules(self) -> list:
+        config = self._read_raw_config()
+        return config.get("network_access_rules", [])
+
+    def set_network_access_rules(self, rules: list):
+        config = self._read_raw_config()
+        config["network_access_rules"] = rules
+        self._save_raw_config(config)
+
+    def get_terminal_command_rules(self) -> list:
+        config = self._read_raw_config()
+        return config.get("terminal_command_rules", [])
+
+    def set_terminal_command_rules(self, rules: list):
+        config = self._read_raw_config()
+        config["terminal_command_rules"] = rules
+        self._save_raw_config(config)
+
+    def get_unsandboxed_command_rules(self) -> list:
+        config = self._read_raw_config()
+        return config.get("unsandboxed_command_rules", [])
+
+    def set_unsandboxed_command_rules(self, rules: list):
+        config = self._read_raw_config()
+        config["unsandboxed_command_rules"] = rules
+        self._save_raw_config(config)
+
+    def get_mcp_tool_rules(self) -> list:
+        config = self._read_raw_config()
+        return config.get("mcp_tool_rules", [])
+
+    def set_mcp_tool_rules(self, rules: list):
+        config = self._read_raw_config()
+        config["mcp_tool_rules"] = rules
+        self._save_raw_config(config)
+
