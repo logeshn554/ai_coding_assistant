@@ -14,6 +14,7 @@ import { useLSP } from '../core/lsp/LSPContext';
 import { InlineChatPopover } from './editor/InlineChatPopover';
 import { BreadcrumbBar } from './editor/BreadcrumbBar';
 import { useAI } from '../core/ai/AIContext';
+import { useEditor } from '../core/editor/EditorContext';
 import { FileChangesReviewBar } from './chat/FileChangesReviewBar';
 
 
@@ -254,7 +255,73 @@ export default function EditorArea({
   const pendingRestoreRef = useRef<{ line: number; col: number; scroll: number } | null>(null);
 
   const { connect: connectLSP, isReady: lspReady, error: lspError } = useLSP();
-  const { pendingFileChanges, handleApplyAllChanges, handleDiscardAllChanges } = useAI();
+  const { setProposedDiff } = useEditor();
+  const {
+    messages,
+    handleSendMessage,
+    handleConfirmTool,
+    pendingFileChanges,
+    handleApplyAllChanges,
+    handleDiscardAllChanges,
+  } = useAI();
+
+  // ── AI Proposed Diff Action Handlers ─────────────────────────────────────
+
+  const handleAcceptDiff = async () => {
+    if (!proposedDiff) return;
+    const path = proposedDiff.path;
+    const newContent = proposedDiff.proposed;
+
+    try {
+      const res = await fetch('/api/files/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, content: newContent }),
+      });
+      if (res.ok) {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.path === path ? { ...t, content: newContent, savedContent: newContent, isDirty: false } : t
+          )
+        );
+      }
+    } catch (err) {
+      console.error('Failed to save accepted diff:', err);
+    }
+
+    const pendingMsg = messages.find((m) => m.isConfirmPending && m.tool_call_id);
+    if (pendingMsg?.tool_call_id) {
+      handleConfirmTool(pendingMsg.tool_call_id, true, 'session');
+    }
+
+    setProposedDiff(null);
+    onRefreshWorkspace();
+  };
+
+  const handleRejectDiff = () => {
+    if (!proposedDiff) return;
+
+    const pendingMsg = messages.find((m) => m.isConfirmPending && m.tool_call_id);
+    if (pendingMsg?.tool_call_id) {
+      handleConfirmTool(pendingMsg.tool_call_id, false, 'session');
+    }
+
+    setProposedDiff(null);
+    onRefreshWorkspace();
+  };
+
+  const handleExplainDiff = () => {
+    if (!proposedDiff) return;
+    const prompt = `Please explain the proposed changes for ${proposedDiff.path}:\n\`\`\`\n${proposedDiff.proposed.slice(0, 1500)}\n\`\`\``;
+    handleSendMessage(prompt, 'Ask', false);
+  };
+
+  const handleRegenerateDiff = () => {
+    if (!proposedDiff) return;
+    const path = proposedDiff.path;
+    handleRejectDiff();
+    handleSendMessage(`Please regenerate the proposed changes for ${path}.`, 'Agent', false);
+  };
 
   // ── Editor mount handler ─────────────────────────────────────────────────
 
@@ -273,7 +340,6 @@ export default function EditorArea({
     selectionRange: null,
   });
 
-  const { handleSendMessage } = useAI();
 
   const handleEditorMount: OnMount = useCallback(
     (editor, monaco) => {
@@ -903,33 +969,26 @@ export default function EditorArea({
                   </div>
                   <div className="flex items-center gap-2">
                     <button 
-                      onClick={() => {
-                        handleSaveActiveFile();
-                        onRefreshWorkspace();
-                      }}
+                      onClick={handleAcceptDiff}
                       className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow transition-colors flex items-center gap-1 cursor-pointer"
                     >
                       ✓ Accept Changes
                     </button>
                     <button 
-                      onClick={() => onRefreshWorkspace()}
+                      onClick={handleRejectDiff}
                       className="px-3 py-1 bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 border border-rose-500/30 rounded text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
                     >
                       ✕ Reject
                     </button>
                     <button 
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent('devpilot-explain-diff', { detail: proposedDiff }));
-                      }}
-                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-gray-300 rounded text-xs font-medium transition-colors"
+                      onClick={handleExplainDiff}
+                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-gray-300 rounded text-xs font-medium transition-colors cursor-pointer"
                     >
                       💡 Explain
                     </button>
                     <button 
-                      onClick={() => {
-                        window.dispatchEvent(new CustomEvent('devpilot-regenerate-diff', { detail: proposedDiff }));
-                      }}
-                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-violet-300 rounded text-xs font-medium transition-colors"
+                      onClick={handleRegenerateDiff}
+                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-violet-300 rounded text-xs font-medium transition-colors cursor-pointer"
                     >
                       🔄 Regenerate
                     </button>

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Send, Square, FileText, Folder, Terminal,
-  GitBranch, Code2, Layers, ChevronRight, Plus, AtSign
+  GitBranch, Code2, Layers, ChevronRight, AtSign
 } from 'lucide-react';
 import type { SlashCommand, ContextMention, ChatMode } from '../../types/chat';
 
@@ -99,12 +99,7 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
     inputRef.current?.focus();
   };
 
-  const modes: Array<{ id: ChatMode; label: string }> = [
-    { id: 'Ask',   label: 'Ask' },
-    { id: 'Plan',  label: 'Plan' },
-    { id: 'Agent', label: 'Agent' },
-    { id: 'Goal',  label: 'Goal' },
-  ];
+
 
 
   return (
@@ -227,25 +222,7 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
               className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
               title="Add file context"
             >
-              <Plus className="w-3.5 h-3.5" />
             </button>
-
-            {/* Mode selector */}
-            <div className="ml-1 flex items-center bg-white/4 rounded-lg p-0.5 gap-0.5">
-              {modes.map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => setMode(m.id)}
-                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-all cursor-pointer ${
-                    mode === m.id
-                      ? 'bg-[var(--dp-accent)] text-white shadow-sm'
-                      : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)]'
-                  }`}
-                >
-                  {m.label}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Right: Send / Stop */}
