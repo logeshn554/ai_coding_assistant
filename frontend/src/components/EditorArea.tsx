@@ -362,8 +362,11 @@ export default function EditorArea({
       // Register Ctrl+I for Inline Chat via addAction (shows in command palette)
       editor.addAction({
         id: 'devpilot.inlineChat',
-        label: 'DevPilot: Inline AI Edit (Ctrl+I)',
-        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI],
+        label: 'DevPilot: Inline AI Edit (Ctrl+I / Ctrl+K)',
+        keybindings: [
+          monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI,
+          monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK
+        ],
         contextMenuGroupId: 'devpilot',
         run: () => {
           const pos = editor.getPosition();
@@ -1018,6 +1021,7 @@ export default function EditorArea({
               <div className="flex-1 overflow-hidden">
                 {showDiff ? (
                   <DiffEditor
+                    key={`diff-${proposedDiff.path}-${proposedDiff.proposed.length}`}
                     original={proposedDiff.original}
                     modified={proposedDiff.proposed}
                     language={getLanguage(activeTab.path)}

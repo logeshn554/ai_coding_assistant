@@ -3,7 +3,7 @@ import {
   Sparkles, MessageSquare, ListChecks, Brain,
   FileCode, Check, Circle, Zap, Target,
   MoreHorizontal, History, CheckCircle2, Loader2, XCircle,
-  Terminal, Search, GitBranch, FileEdit
+  Terminal, Search, GitBranch, FileEdit, Plus, Trash2
 } from 'lucide-react';
 import type {
   ChatMessage,
@@ -17,6 +17,7 @@ import { ProjectMemoryPanel } from './ProjectMemoryPanel';
 import { MessageList } from './MessageList';
 import { SessionHistoryPanel } from './SessionHistoryPanel';
 import { useAI } from '../../core/ai/AIContext';
+import { ReasoningTimeline, toolItemsToTimelineRows } from './ReasoningTimeline';
 
 type Tab = 'chat' | 'plan' | 'context' | 'history';
 
@@ -223,6 +224,7 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
   const contextTokens = rawTokens ?? 0;
   const contextPercentage = rawPercentage ?? 0;
   const [activeTab, setActiveTab] = useState<Tab>('chat');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hunkDecisions, setHunkDecisions] = useState<Record<string, Record<string, boolean>>>({});
 
   // Pull live data from AIContext
@@ -236,7 +238,8 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
     onDeleteSession,
     onNewSession,
     onRenameSession,
-    totalCostUsd
+    totalCostUsd,
+    setMessages
   } = useAI();
 
   const handleToggleHunk = (msgId: string, hunkId: string, accepted: boolean) => {
@@ -303,7 +306,7 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 relative">
             <button
               title={`${typeof contextTokens === 'number' ? contextTokens.toLocaleString() : contextTokens} tokens used (${contextPercentage}%)`}
               className="flex items-center gap-1.5 px-2 py-0.5 rounded border text-[9px] font-mono transition-colors cursor-default"
@@ -330,9 +333,70 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
                 : String(contextTokens)} tokens
               {contextPercentage > 0 && <span className="opacity-60">({contextPercentage}%)</span>}
             </button>
-            <button className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5 cursor-pointer transition-colors">
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className={`w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-colors ${
+                isMenuOpen
+                  ? 'text-[var(--dp-text-bright)] bg-white/10'
+                  : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5'
+              }`}
+              title="More Actions"
+            >
               <MoreHorizontal className="w-3.5 h-3.5" />
             </button>
+
+            {isMenuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsMenuOpen(false)}
+                />
+                <div className="absolute right-0 top-full mt-1.5 z-50 w-44 bg-[var(--dp-bg-elevated)] border border-[var(--dp-border-mid)] shadow-[var(--dp-shadow-float)] py-1 rounded-xl text-xs text-[var(--dp-text-primary)] animate-fade-in space-y-0.5">
+                  <button
+                    onClick={async () => {
+                      setIsMenuOpen(false);
+                      await onNewSession();
+                      setActiveTab('chat');
+                    }}
+                    className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-[var(--dp-bg-active)] hover:text-[var(--dp-text-bright)] transition-colors cursor-pointer font-medium"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-violet-400" />
+                    <span>New Chat</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setActiveTab('history');
+                    }}
+                    className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-[var(--dp-bg-active)] hover:text-[var(--dp-text-bright)] transition-colors cursor-pointer font-medium"
+                  >
+                    <History className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Chat History</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setActiveTab('context');
+                    }}
+                    className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-[var(--dp-bg-active)] hover:text-[var(--dp-text-bright)] transition-colors cursor-pointer font-medium"
+                  >
+                    <Brain className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Project Context</span>
+                  </button>
+                  <div className="border-t border-[var(--dp-border)] my-1 mx-2" />
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setMessages([]);
+                    }}
+                    className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-red-500/10 hover:text-red-400 transition-colors cursor-pointer font-medium"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                    <span>Clear View</span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -387,21 +451,12 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
             {/* Sticky bottom area */}
             <div className="shrink-0 p-3 space-y-2" style={{ borderTop: '1px solid var(--dp-border)' }}>
 
-              {/* Live tool calls strip — shows while agent is running */}
-              {isGenerating && liveToolCalls.length > 0 && (
-                <div className="space-y-1">
-                  {liveToolCalls.slice(-3).map(tc => (
-                    <div key={tc.id} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-white/3 border border-[var(--dp-border)]">
-                      <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${toolBgColor(tc.tool)}`}>
-                        <ToolIcon type={tc.tool} />
-                      </div>
-                      <span className="text-[10px] text-[var(--dp-text-primary)] truncate flex-1">{tc.name}</span>
-                      {tc.status === 'running' && <Loader2 className="w-3 h-3 text-[var(--dp-accent)] animate-spin shrink-0" />}
-                      {tc.status === 'success' && <CheckCircle2 className="w-3 h-3 text-[var(--dp-success)] shrink-0" />}
-                      {tc.status === 'error' && <XCircle className="w-3 h-3 text-[var(--dp-error)] shrink-0" />}
-                    </div>
-                  ))}
-                </div>
+              {/* Live reasoning timeline — shows while agent is running */}
+              {(isGenerating || liveToolCalls.length > 0) && (
+                <ReasoningTimeline
+                  rows={toolItemsToTimelineRows(liveToolCalls)}
+                  isGenerating={isGenerating}
+                />
               )}
 
               {/* File changes strip — shown once agent finishes */}

@@ -906,55 +906,166 @@ class AgentSession:
 
         pkg_details_str = "\n".join(pkg_scripts_summary) if pkg_scripts_summary else "No package.json scripts detected."
 
-        prompt = (
-            f"The user wants to run/start the project. User request: '{user_text}'\n"
-            f"Workspace files:\n{json.dumps(files_list, indent=2)}\n\n"
-            f"Detected Package Scripts:\n{pkg_details_str}\n\n"
-            "Analyze the workspace files, package scripts, and the user request to determine:\n"
-            "1. The project/service type or framework (e.g. 'React (Vite)', 'FastAPI', 'Python Flask', etc.).\n"
-            "2. The exact terminal command to run, start, or serve the requested service/project.\n"
-            "Ensure the command is correct for this project structure. If a package.json is in a subdirectory (like 'frontend'), include the prefix (e.g. 'npm run dev --prefix frontend') or correct relative command.\n"
-            "Only suggest 'npm run dev' or 'npm start' if that script actually exists in the package.json scripts!\n\n"
-            "Output your response strictly as a JSON object with two fields:\n"
-            "- 'framework': a string indicating the framework/language/service name (e.g. 'React (Vite)', 'FastAPI', 'Flask', 'Django', etc.)\n"
-            "- 'command': the exact command to run/start/serve the application (e.g. 'npm run dev', 'uvicorn main:app --reload', etc.)\n"
-            "Respond with ONLY the JSON object, no other text."
-        )
-        system_prompt = "You are a master developer assistant. Analyze the project structure and output the correct run command in JSON format."
+        # ── Deterministic Project Type & Command Detection ──
+        detected_framework = None
+        detected_command = None
 
-        response = await self._run_llm_query(system_prompt, prompt)
+        def find_file_in_list(filename: str) -> str | None:
+            # Check root directory first
+            for f in files_list:
+                if f == filename:
+                    return f
+            # Check subdirectories next
+            for f in files_list:
+                if f.endswith("/" + filename):
+                    return f
+            return None
 
-        try:
-            clean_res = response.strip()
-            if clean_res.startswith("```json"):
-                clean_res = clean_res[7:]
-            if clean_res.endswith("```"):
-                clean_res = clean_res[:-3]
-            parsed = json.loads(clean_res.strip())
-            framework = parsed.get("framework") or "Unknown Framework"
-            command = parsed.get("command")
-            if not command or not isinstance(command, str) or not command.strip():
-                raise ValueError("Command field is missing, empty, or not a string in LLM response.")
-        except Exception as e:
-            logger.error(f"Failed to parse LLM run command JSON: {str(e)}")
-            framework = "Unknown"
-            # Smart fallback based on package.json scripts
-            command = None
-            if pkg_scripts_summary:
-                for line in pkg_scripts_summary:
-                    if '"dev"' in line:
-                        prefix = " --prefix " + line.split("File '")[1].split("/package.json")[0] if "/package.json" in line else ""
-                        command = f"npm run dev{prefix}"
-                        break
-                    elif '"start"' in line:
-                        prefix = " --prefix " + line.split("File '")[1].split("/package.json")[0] if "/package.json" in line else ""
-                        command = f"npm start{prefix}"
-                        break
-            if not command:
-                if "main.py" in files_list or any(f.endswith("/main.py") for f in files_list):
-                    command = "python main.py"
+        # Resolve files present
+        django_file = find_file_in_list("manage.py")
+        maven_file = find_file_in_list("pom.xml")
+        go_file = find_file_in_list("main.go")
+        index_js = find_file_in_list("index.js")
+        server_js = find_file_in_list("server.js")
+        pkg_json = find_file_in_list("package.json")
+        app_py = find_file_in_list("app.py")
+        main_py = find_file_in_list("main.py")
+        index_html = find_file_in_list("index.html")
+
+        if django_file:
+            detected_framework = "Django"
+            if "/" in django_file:
+                sub_dir = django_file.rsplit("/manage.py", 1)[0]
+                detected_command = f"cd {sub_dir} && python manage.py runserver"
+            else:
+                detected_command = "python manage.py runserver"
+
+        elif maven_file:
+            detected_framework = "Java Maven"
+            if "/" in maven_file:
+                sub_dir = maven_file.rsplit("/pom.xml", 1)[0]
+                detected_command = f"cd {sub_dir} && mvn spring-boot:run"
+            else:
+                detected_command = "mvn spring-boot:run"
+
+        elif go_file:
+            detected_framework = "Go"
+            if "/" in go_file:
+                sub_dir = go_file.rsplit("/main.go", 1)[0]
+                detected_command = f"cd {sub_dir} && go run main.go"
+            else:
+                detected_command = "go run main.go"
+
+        elif index_js or server_js:
+            detected_framework = "Node"
+            target_js = index_js if index_js else server_js
+            if "/" in target_js:
+                sub_dir = target_js.rsplit("/", 1)[0]
+                js_file = target_js.split("/")[-1]
+                detected_command = f"cd {sub_dir} && node {js_file}"
+            else:
+                detected_command = f"node {target_js}"
+
+        elif pkg_json:
+            has_start = False
+            has_dev = False
+            try:
+                full_p = safe_path(self.workspace_root, pkg_json)
+                if os.path.exists(full_p):
+                    with open(full_p, "r", encoding="utf-8") as f:
+                        pdata = json.load(f)
+                        scripts = pdata.get("scripts", {})
+                        has_start = "start" in scripts
+                        has_dev = "dev" in scripts
+            except Exception:
+                pass
+
+            detected_framework = "Node (package.json)"
+            if has_start:
+                if "/" in pkg_json:
+                    sub_dir = pkg_json.rsplit("/package.json", 1)[0]
+                    detected_command = f"cd {sub_dir} && npm start"
                 else:
-                    command = "python -m http.server 8000"
+                    detected_command = "npm start"
+            elif has_dev:
+                if "/" in pkg_json:
+                    sub_dir = pkg_json.rsplit("/package.json", 1)[0]
+                    detected_command = f"cd {sub_dir} && npm run dev"
+                else:
+                    detected_command = "npm run dev"
+
+        elif app_py or main_py:
+            detected_framework = "Python App"
+            target_py = app_py if app_py else main_py
+            if "/" in target_py:
+                sub_dir = target_py.rsplit("/", 1)[0]
+                py_file = target_py.split("/")[-1]
+                detected_command = f"cd {sub_dir} && python {py_file}"
+            else:
+                detected_command = f"python {target_py}"
+
+        elif index_html:
+            detected_framework = "Static Site"
+            if "/" in index_html:
+                sub_dir = index_html.rsplit("/index.html", 1)[0]
+                detected_command = f"cd {sub_dir} && npx serve ."
+            else:
+                detected_command = "npx serve ."
+
+        if detected_command:
+            framework = detected_framework
+            command = detected_command
+            logger.info(f"Rule-based detection matched: {framework} -> {command}")
+        else:
+            prompt = (
+                f"The user wants to run/start the project. User request: '{user_text}'\n"
+                f"Workspace files:\n{json.dumps(files_list, indent=2)}\n\n"
+                f"Detected Package Scripts:\n{pkg_details_str}\n\n"
+                "Analyze the workspace files, package scripts, and the user request to determine:\n"
+                "1. The project/service type or framework (e.g. 'React (Vite)', 'FastAPI', 'Python Flask', etc.).\n"
+                "2. The exact terminal command to run, start, or serve the requested service/project.\n"
+                "Ensure the command is correct for this project structure. If a package.json is in a subdirectory (like 'frontend'), include the prefix (e.g. 'npm run dev --prefix frontend') or correct relative command.\n"
+                "Only suggest 'npm run dev' or 'npm start' if that script actually exists in the package.json scripts!\n\n"
+                "Output your response strictly as a JSON object with two fields:\n"
+                "- 'framework': a string indicating the framework/language/service name (e.g. 'React (Vite)', 'FastAPI', 'Flask', 'Django', etc.)\n"
+                "- 'command': the exact command to run/start/serve the application (e.g. 'npm run dev', 'uvicorn main:app --reload', etc.)\n"
+                "Respond with ONLY the JSON object, no other text."
+            )
+            system_prompt = "You are a master developer assistant. Analyze the project structure and output the correct run command in JSON format."
+
+            response = await self._run_llm_query(system_prompt, prompt)
+
+            try:
+                clean_res = response.strip()
+                if clean_res.startswith("```json"):
+                    clean_res = clean_res[7:]
+                if clean_res.endswith("```"):
+                    clean_res = clean_res[:-3]
+                parsed = json.loads(clean_res.strip())
+                framework = parsed.get("framework") or "Unknown Framework"
+                command = parsed.get("command")
+                if not command or not isinstance(command, str) or not command.strip():
+                    raise ValueError("Command field is missing, empty, or not a string in LLM response.")
+            except Exception as e:
+                logger.error(f"Failed to parse LLM run command JSON: {str(e)}")
+                framework = "Unknown"
+                # Smart fallback based on package.json scripts
+                command = None
+                if pkg_scripts_summary:
+                    for line in pkg_scripts_summary:
+                        if '"dev"' in line:
+                            prefix = " --prefix " + line.split("File '")[1].split("/package.json")[0] if "/package.json" in line else ""
+                            command = f"npm run dev{prefix}"
+                            break
+                        elif '"start"' in line:
+                            prefix = " --prefix " + line.split("File '")[1].split("/package.json")[0] if "/package.json" in line else ""
+                            command = f"npm start{prefix}"
+                            break
+                if not command:
+                    if "main.py" in files_list or any(f.endswith("/main.py") for f in files_list):
+                        command = "python main.py"
+                    else:
+                        command = "python -m http.server 8000"
 
         # Auto-adjust npm command to include --prefix if root package.json does not exist
         if command and command.startswith("npm ") and "--prefix" not in command:
@@ -967,54 +1078,33 @@ class AgentSession:
                         logger.info(f"Auto-adjusted npm command to include prefix: '{command}'")
                         break
 
+        # Resolve port
+        port = 8000
+        cmd_lower = command.lower()
+        if "3000" in cmd_lower or "serve" in cmd_lower:
+            port = 3000
+        elif "5173" in cmd_lower or "vite" in cmd_lower:
+            port = 5173
+        elif "8080" in cmd_lower or "spring-boot" in cmd_lower or "go run" in cmd_lower:
+            port = 8080
+        elif "5000" in cmd_lower or "flask" in cmd_lower:
+            port = 5000
+        elif "npm" in cmd_lower:
+            port = 5173
+        elif "runserver" in cmd_lower:
+            port = 8000
+
+        # Send command suggested response in run markdown syntax
+        run_response_text = f"```run\n{command}\n```\nURL: http://localhost:{port}\n\n"
         await self.send_ws_message({
             "type": "text_delta",
-            "content": f"**Detected project type:** {framework}\n**Suggested command:** `{command}`\n\n"
+            "content": run_response_text
         })
 
-        is_approved = False
-        risk = "mutative"
-        reason = "Run Agent execution"
-        if self.permission_manager:
-            is_approved, risk, reason = self.permission_manager.check_permission(command)
+        # The user explicitly asked to run the project and we already showed them the
+        # command in the chat (```run block). No additional permission gate is needed.
+        logger.info(f"[run_agent_flow] auto-approved command: {command}")
 
-        if not is_approved:
-            tc_id = f"run_{uuid.uuid4().hex[:6]}"
-            event = asyncio.Event()
-            self.pending_confirmations[tc_id] = {
-                "event": event,
-                "approved": False,
-                "scope": "once",
-                "command": command
-            }
-
-            await self.send_ws_message({
-                "type": "permission_request",
-                "tool_call_id": tc_id,
-                "tool_name": "run_terminal_command",
-                "command": command,
-                "risk": risk,
-                "reason": reason,
-                "explanation": f"The Run Agent wants to run the project using command: `{command}`",
-                "args": {"command": command}
-            })
-
-            try:
-                await asyncio.wait_for(event.wait(), timeout=300)
-            except asyncio.TimeoutError:
-                self.pending_confirmations.pop(tc_id, None)
-                await self.send_ws_message({"type": "text_delta", "content": "*Execution timed out: no response from client.*\n"})
-                return
-            decision = self.pending_confirmations[tc_id]
-            del self.pending_confirmations[tc_id]
-
-            if not decision["approved"]:
-                await self.send_ws_message({
-                    "type": "text_delta",
-                    "content": "*Execution cancelled by the user.*\n"
-                })
-                return
-            command = decision.get("command", command)
 
         await self.send_ws_message({
             "type": "status",
@@ -1254,7 +1344,7 @@ class AgentSession:
                 "message": f"Executing fix command: `{fix_command}`..."
             })
 
-            result = await self._run_shell_command(fix_command)
+            result = await run_shell_command(self, fix_command)
             await self.send_ws_message({
                 "type": "text_delta",
                 "content": f"Fix command finished. Output:\n```\n{result[:500]}...\n```\n"

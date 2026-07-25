@@ -35,7 +35,7 @@ import { ArtifactViewer } from './components/chat/ArtifactViewer';
 // Editor & AI Components
 import EditorArea from './components/EditorArea';
 
-import { AiWorkspace } from './components/chat/AiWorkspace';
+import { SecondarySidebar } from './components/secondarysidebar/SecondarySidebar';
 import SettingsModal from './components/SettingsModal';
 import QuickOpen from './components/QuickOpen';
 import GoToSymbol from './components/GoToSymbol';
@@ -212,7 +212,7 @@ function EditorShell() {
             </div>
           </div>
 
-          {/* AI Sidebar panel (width controlled by aiPanelWidth) */}
+          {/* Secondary Side Bar (width controlled by aiPanelWidth) */}
           {isAiPanelOpen && (
             <div style={{ width: `${aiPanelWidth}px` }} className="h-full shrink-0 relative flex">
               <div
@@ -220,7 +220,7 @@ function EditorShell() {
                 className="dp-resize-handle-h absolute left-0 top-0 bottom-0 w-[3px] z-50 select-none cursor-col-resize"
               />
               <div className="flex-1 h-full min-w-0 overflow-hidden flex flex-col">
-                <AiWorkspace
+                <SecondarySidebar
                   messages={messages}
                   inputText={chatInputText}
                   setInputText={setChatInputText}
@@ -236,6 +236,7 @@ function EditorShell() {
                   contextPercentage={typeof contextPercentage === 'number' ? contextPercentage : undefined}
                   activeSessionId={activeSessionId}
                   onResumeSession={handleSelectSession}
+                  onRevealLine={handleRevealLine}
                 />
               </div>
             </div>

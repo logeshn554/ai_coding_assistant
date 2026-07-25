@@ -262,14 +262,33 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     }
   };
 
-  const connectChatSocket = () => {
+  const connectChatSocket = (guard?: { cancelled: boolean }) => {
+    // Tear down any previously open/connecting socket
+    if (wsRef.current) {
+      const oldWs = wsRef.current;
+      wsRef.current = null;
+      oldWs.onopen = null;
+      oldWs.onclose = null;
+      oldWs.onerror = null;
+      oldWs.onmessage = null;
+      if (oldWs.readyState === WebSocket.OPEN) {
+        oldWs.close();
+      } else if (oldWs.readyState === WebSocket.CONNECTING) {
+        oldWs.onopen = () => { try { oldWs.close(); } catch {} };
+      }
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/chat?session_id=${activeSessionId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
-    // Note: wsRef is exposed in context; do not assign to window globals.
 
     ws.onopen = () => {
+      // React StrictMode unmounts then remounts — if cleanup ran first, abort
+      if (guard?.cancelled) {
+        try { ws.close(); } catch {}
+        return;
+      }
       logger.info("Chat socket connected.");
       setIsWsConnected(true);
       reconnectDelayRef.current = 1000;
@@ -285,6 +304,12 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
               prev.map((msg) => {
                 if (msg.id !== currentAssistantId) return msg;
                 const newContent = (msg.content || '') + data.content;
+                
+                // Parse run command blocks and store in localStorage
+                const runMatch = newContent.match(/```run\s*\n([\s\S]*?)\n```/);
+                if (runMatch) {
+                  localStorage.setItem('devpilot_detected_run_command', runMatch[1].trim());
+                }
                 
                 // Filter out raw JSON or reasoning objects
                 const trimmed = newContent.trim();
@@ -579,6 +604,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     setLiveToolCalls([]);
     setLiveFileChanges([]);
     setCurrentGoal(text.slice(0, 100));
+    localStorage.removeItem('devpilot_detected_run_command');
 
     // Map 'Auto' to ask-mode behavior (direct LLM call, no orchestrator)
     const effectiveMode = mode === 'Auto' ? 'Ask' : mode;
@@ -667,13 +693,24 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   // Reconnect socket and load history when activeSessionId changes
   useEffect(() => {
-    connectChatSocket();
+    const guard = { cancelled: false };
+    connectChatSocket(guard);
     fetchChatHistory();
     setIsModelFallback(false); // Reset fallback warnings on session change
     return () => {
+      guard.cancelled = true;
       if (wsRef.current) {
-        wsRef.current.onclose = null;
-        wsRef.current.close();
+        const socket = wsRef.current;
+        wsRef.current = null;
+        socket.onopen = null;
+        socket.onclose = null;
+        socket.onerror = null;
+        socket.onmessage = null;
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.close();
+        } else if (socket.readyState === WebSocket.CONNECTING) {
+          // Don't call close() — onopen handler checks guard.cancelled
+        }
       }
     };
   }, [activeSessionId]);

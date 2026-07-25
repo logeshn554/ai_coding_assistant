@@ -20,6 +20,8 @@ from .completions import router as completions_router
 from .memory import router as memory_router
 from .project import router as project_router
 from .artifacts import router as artifacts_router
+from .graph_route import router as graph_router
+from .review_route import router as review_router
 
 all_routers = [
     auth_router,
@@ -44,5 +46,6 @@ all_routers = [
     memory_router,
     project_router,
     artifacts_router,
+    graph_router,
+    review_router,
 ]
-

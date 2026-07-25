@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Play, Cpu, Zap, MessageSquare } from 'lucide-react';
+import { Search, Play, Cpu, Zap, PanelRight, PanelLeft } from 'lucide-react';
 import { useWorkspace } from '../../core/workspace/WorkspaceContext';
 import { useEditor } from '../../core/editor/EditorContext';
 import { useUI } from '../../core/ui/UIContext';
@@ -8,7 +8,7 @@ import { useTerminal } from '../../core/terminal/TerminalContext';
 import { useAI } from '../../core/ai/AIContext';
 import { useCommand } from '../../core/command/CommandContext';
 import { useSettings } from '../../core/settings/SettingsContext';
-import { getExecutableCommandForFile } from '../../utils/executableCommand';
+
 import { NotificationBell, NotificationCenter } from '../NotificationCenter';
 
 interface MenuItem {
@@ -45,7 +45,7 @@ const MenuDropdown: React.FC<{ items: MenuItem[]; onClose: () => void }> = ({ it
 export const TitleBar: React.FC = () => {
   const { workspacePath, handleOpenWorkspaceFolder, changeWorkspacePath, triggerRefresh } = useWorkspace();
   const { activeFilePath } = useEditor();
-  const { activeMenu, setActiveMenu, setSidebarTab, setIsSidebarOpen, isAiPanelOpen, setIsAiPanelOpen } = useUI();
+  const { activeMenu, setActiveMenu, setSidebarTab, isSidebarOpen, setIsSidebarOpen, isAiPanelOpen, setIsAiPanelOpen } = useUI();
   const { statusBarDebug } = useGit();
   const { setBottomTab } = useTerminal();
   const { handleSendMessage, isGenerating, isWsConnected } = useAI();
@@ -62,9 +62,17 @@ export const TitleBar: React.FC = () => {
   };
 
   const handleStartStopDebug = async () => {
-    setBottomTab('terminal');
-    const cmd = getExecutableCommandForFile(activeFilePath || '');
-    window.dispatchEvent(new CustomEvent('devpilot-run-terminal-command', { detail: { command: cmd } }));
+    // If the AI already surfaced a run command (from a previous chat response), inject it immediately.
+    const storedCmd = localStorage.getItem('devpilot_detected_run_command');
+    if (storedCmd) {
+      setBottomTab('terminal');
+      window.dispatchEvent(new CustomEvent('devpilot-run-terminal-command', { detail: { command: storedCmd } }));
+      return;
+    }
+
+    // Otherwise open the AI panel and ask the run agent to analyse the workspace and start the project.
+    setIsAiPanelOpen(true);
+    handleSendMessage('run the project', 'Agent', true);
   };
 
   useEffect(() => {
@@ -226,14 +234,24 @@ export const TitleBar: React.FC = () => {
           <Play className="w-3.5 h-3.5" />
         </button>
 
-        {/* AI Panel toggle */}
+        {/* Primary Sidebar toggle */}
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className={`p-1.5 hover:bg-white/5 rounded-md transition-colors cursor-pointer
+            ${isSidebarOpen ? 'text-[var(--dp-text-bright)] bg-white/5' : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)]'}`}
+          title={isSidebarOpen ? 'Toggle Primary Side Bar (Hide)' : 'Toggle Primary Side Bar (Show)'}
+        >
+          <PanelLeft className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Secondary Sidebar toggle */}
         <button
           onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}
           className={`p-1.5 hover:bg-white/5 rounded-md transition-colors cursor-pointer
             ${isAiPanelOpen ? 'text-[var(--dp-accent)] bg-[var(--dp-accent-dim)]' : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)]'}`}
-          title={isAiPanelOpen ? 'Hide AI Panel' : 'Show AI Panel'}
+          title={isAiPanelOpen ? 'Toggle Secondary Side Bar (Hide)' : 'Toggle Secondary Side Bar (Show)'}
         >
-          <MessageSquare className="w-3.5 h-3.5" />
+          <PanelRight className="w-3.5 h-3.5" />
         </button>
 
         {/* User avatar */}

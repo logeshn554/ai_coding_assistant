@@ -4,10 +4,10 @@ import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '../../types/chat';
 import { Sparkles, Check, User } from 'lucide-react';
 import { ConfirmDialog } from './ConfirmDialog';
-import { ToolCallView } from './ToolCallView';
 import { DiffView } from './DiffView';
 import { ThinkingPill } from './ThinkingPill';
 import { CodeBlock } from './CodeBlock';
+import { ReasoningTimeline, toolMessagesToTimelineRows } from './ReasoningTimeline';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -125,6 +125,41 @@ const EmptyState: React.FC = () => (
   </div>
 );
 
+// ── Group messages into render units ────────────────────────────────────────
+// Each unit is either a non-tool message, or a block of consecutive tool
+// messages that will be rendered as a single ReasoningTimeline.
+interface ToolGroup {
+  kind: 'tool_group';
+  id: string;
+  toolMessages: ChatMessage[];
+}
+interface SingleMsg {
+  kind: 'msg';
+  msg: ChatMessage;
+}
+type RenderUnit = ToolGroup | SingleMsg;
+
+function groupMessages(messages: ChatMessage[]): RenderUnit[] {
+  const units: RenderUnit[] = [];
+  let i = 0;
+  while (i < messages.length) {
+    const m = messages[i];
+    if (m.role === 'tool') {
+      // Gather consecutive tool messages
+      const batch: ChatMessage[] = [];
+      while (i < messages.length && messages[i].role === 'tool') {
+        batch.push(messages[i]);
+        i++;
+      }
+      units.push({ kind: 'tool_group', id: batch[0].id, toolMessages: batch });
+    } else {
+      units.push({ kind: 'msg', msg: m });
+      i++;
+    }
+  }
+  return units;
+}
+
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
   onConfirmTool,
@@ -152,14 +187,27 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   if (messages.length === 0) return <EmptyState />;
 
+  const units = groupMessages(messages);
+
   return (
     <div
       className="flex-1 overflow-y-auto select-text"
       style={{ padding: '24px 20px', scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}
     >
       {/* Centered content wrapper — max 840px */}
-      <div className="mx-auto space-y-6" style={{ maxWidth: '840px' }}>
-        {messages.map((msg) => {
+      <div className="mx-auto space-y-3" style={{ maxWidth: '840px' }}>
+        {units.map((unit) => {
+          // ── TOOL GROUP → ReasoningTimeline ────────────────────
+          if (unit.kind === 'tool_group') {
+            const rows = toolMessagesToTimelineRows(unit.toolMessages);
+            return (
+              <div key={unit.id} className="animate-slide-up">
+                <ReasoningTimeline rows={rows} isGenerating={false} />
+              </div>
+            );
+          }
+
+          const msg = unit.msg;
           const isUser = msg.role === 'user';
 
           // ── 1. USER MESSAGE ───────────────────────────────────
@@ -191,14 +239,7 @@ export const MessageList: React.FC<MessageListProps> = ({
             );
           }
 
-          // ── 2. TOOL RESULT (role: tool) ───────────────────────
-          if (msg.role === 'tool') {
-            return (
-              <div key={msg.id} className="animate-slide-up pl-3">
-                <ToolCallView msg={msg} />
-              </div>
-            );
-          }
+          // role === 'tool' is handled above in the tool_group branch — never reached here.
 
           // ── 3. PENDING CONFIRMATION ───────────────────────────
           if (msg.isConfirmPending || (msg.role === 'assistant' && msg.isConfirmPending)) {
@@ -311,8 +352,8 @@ export const MessageList: React.FC<MessageListProps> = ({
                           ),
                           ul: ({ children }) => (
                             <ul className="my-2.5 space-y-1.5 pl-0" style={{ listStyle: 'none' }}>
-                              {React.Children.map(children, (child) => (
-                                <span className="flex items-start gap-2.5">
+                              {React.Children.map(children, (child, i) => (
+                                <span key={i} className="flex items-start gap-2.5">
                                   <span className="mt-[7px] w-1.5 h-1.5 rounded-full shrink-0" style={{ background: '#4f8cff', opacity: 0.7 }} />
                                   {child}
                                 </span>
@@ -379,10 +420,10 @@ export const MessageList: React.FC<MessageListProps> = ({
                         {visible}
                       </ReactMarkdown>
 
-                      {/* Inline tool call cards (assistant function_call output) */}
+                      {/* Inline tool call summary — shown if assistant message includes structured tool_calls */}
                       {hasToolCalls && (
-                        <div className="mt-3">
-                          <ToolCallView tool_calls={msg.tool_calls} />
+                        <div className="mt-2 text-[11px]" style={{ color: '#4B5563', fontFamily: 'Inter, sans-serif' }}>
+                          {msg.tool_calls!.length} tool call{msg.tool_calls!.length > 1 ? 's' : ''} executed
                         </div>
                       )}
 
@@ -398,12 +439,9 @@ export const MessageList: React.FC<MessageListProps> = ({
                     </div>
                   )}
 
-                  {/* If no visible text but has tools/diff still show them */}
-                  {!visible && (hasToolCalls || hasDiff) && (
-                    <div className="space-y-2">
-                      {hasToolCalls && <ToolCallView tool_calls={msg.tool_calls} />}
-                      {hasDiff && msg.diff && <DiffView filename={msg.diff.filename} hunks={msg.diff.hunks} />}
-                    </div>
+                  {/* If no visible text but has diff, show it */}
+                  {!visible && hasDiff && msg.diff && (
+                    <DiffView filename={msg.diff.filename} hunks={msg.diff.hunks} />
                   )}
                 </div>
               </div>

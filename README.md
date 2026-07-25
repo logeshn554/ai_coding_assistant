@@ -1,139 +1,14 @@
-# DevPilot: AI-Powered Code Editor ("Mini Cursor / Claude Code Clone")
+# My Project
 
-DevPilot is an AI-powered desktop/web-based code editor that functions like VS Code combined with an AI coding agent. It features a file explorer, multi-tab Monaco editor, live integrated PowerShell terminal, and a three-mode AI Agent panel.
+This is a brief description of my project.
 
-## Features
-- **File Explorer Sidebar**: Browse, create, and delete files/folders in your workspace dynamically.
-- **Monaco Code Editor**: Syntax highlighting, tabbed editing, and custom scrollbars.
-- **In-editor Diff Previews**: Inspect agent file proposals side-by-side inside the Monaco Diff Editor before committing them to disk.
-- **Integrated Terminal**: Live interactive Windows PowerShell terminal running inside the workspace.
-- **Three Agent Modes**:
-  - `Ask`: Read-only queries about the codebase (mutating tools are physically hidden from the model).
-  - `Plan`: Prompts the model to output a structured plan without making edits.
-  - `Agent/Write`: Model executes steps by calling files and terminal tools with interactive diff approval overlays.
-- **Provider-Agnostic Settings**: Support for Anthropic, OpenAI, and local compatible endpoints (Ollama, LM Studio, vLLM, Groq).
-- **Secure Storage**: Connection profiles and API keys are stored encrypted on disk (`~/.devpilot/config.json`).
+## Installation
 
----
+To install this project, follow these simple steps:
 
-## Getting Started
+1. Clone the repository
+2. Install dependencies
 
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
+## Usage
 
-### Setup Instructions
-
-1. **Clone/Open the workspace** inside the project folder.
-2. **Backend Setup**:
-   The installer script already set up a virtual environment and installed dependencies. To verify or manually run:
-   ```bash
-   # Create virtual environment
-   python -m venv venv
-   # Activate virtual environment
-   .\venv\Scripts\activate
-   # Install dependencies
-   pip install -r backend/requirements.txt
-   ```
-3. **Frontend Setup**:
-   Dependencies are already installed. To verify or reinstall:
-   ```bash
-   cd frontend
-   npm install
-   ```
-
----
-
-## Running the Application
-
-For the application to run, you need to launch both the **FastAPI Backend** and the **Vite Frontend Dev Server**.
-
-### 1. Start the FastAPI Backend
-From the workspace root, run:
-```bash
-.\venv\Scripts\python backend/run.py
-```
-*The backend starts on [http://127.0.0.1:8000](http://127.0.0.1:8000).*
-
-### 2. Start the Vite Frontend
-From the `frontend/` folder, run:
-```bash
-cd frontend
-npm run dev
-```
-*The frontend starts on [http://localhost:5173](http://localhost:5173) and will proxy API & WebSocket requests to port 8000.*
-
-Open **[http://localhost:5173](http://localhost:5173)** in your browser to begin editing!
-
----
-
-## Model Configuration (Settings Modal)
-
-Click the **Gear Icon** in the top-right of the AI panel to add profiles:
-
-### 1. Anthropic Claude
-- **API Format**: `Anthropic Messages`
-- **Model Name**: `claude-3-5-sonnet-20241022`
-- **Base URL**: `https://api.anthropic.com/v1`
-- **API Key**: `your-anthropic-key`
-
-### 2. Local Ollama (e.g. Llama 3)
-- Ensure Ollama is running (`ollama run llama3`).
-- **API Format**: `OpenAI Compatible`
-- **Model Name**: `llama3`
-- **Base URL**: `http://localhost:11434/v1`
-- **API Key**: `ollama` (or any string)
-
-### 3. OpenAI GPT-4o
-- **API Format**: `OpenAI Compatible`
-- **Model Name**: `gpt-4o`
-- **Base URL**: `https://api.openai.com/v1`
-- **API Key**: `your-openai-key`
-
-Click **"Test Connection"** to verify connection settings. Once succeeded, click **"Save Configuration"** and hit **"Use"** on your profile.
-
----
-
-## Safety Guardrails
-- **Sandboxing**: Path operations are restricted to the workspace folder; any path escaping the root throws an immediate `PermissionError`.
-- **Interactive Edits**: The AI agent proposes changes; they are loaded in Monaco Diff and require clicking **Accept** in the chat panel to save to the workspace.
-- **Dangerous Terminal Warnings**: Destructive commands (like `rm`, `del`, `git push --force`) are intercepted and require explicit confirmation.
-
----
-
-## Dual Backend Architecture
-
-DevPilot uses a dual-backend microservice structure:
-- **FastAPI Core Backend** (`http://127.0.0.1:8000`): Serves `/api/*` and `/ws/*`. Manages multi-agent orchestration, LangGraph parallel execution graph, SQLite database persistence, and LLM adapters.
-- **Node.js Express Backend** (`http://127.0.0.1:8001`): Serves `/node-api/*`. Provides complementary microservices including MongoDB user models (`User`), JWT authentication (`auth.js`), settings, and standalone chat history socket listeners.
-
----
-
-## Docker Deployment (Cross-Platform)
-
-DevPilot includes a multi-container `docker-compose.yml` for containerized environments.
-
-### Linux / macOS Users
-Start the stack with default volume mapping:
-```bash
-docker-compose up --build
-```
-By default, workspace files are mounted to `./workspace`. You can specify a custom workspace directory:
-```bash
-WORKSPACE_ROOT=/path/to/my/project docker-compose up --build
-```
-
-### Windows Users
-To allow DevPilot to inspect and operate on local Windows drives (`C:`, `D:`, `E:`), open `docker-compose.yml` and uncomment the host drive volume mappings:
-```yaml
-volumes:
-  - C:/:/host/c
-  - D:/:/host/d
-  - E:/:/host/e
-```
-Then launch Docker Compose:
-```cmd
-set WORKSPACE_ROOT=C:\path\to\my\project
-docker-compose up --build
-```
-#   a i _ c o d i n g _ a s s i s t a n t
+Instructions on how to use the project.

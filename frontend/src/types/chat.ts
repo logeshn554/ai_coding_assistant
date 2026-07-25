@@ -30,7 +30,7 @@ export interface TimelineStep {
 
 export interface ToolExecutionItem {
   id: string;
-  tool: 'terminal' | 'file_read' | 'file_edit' | 'git' | 'search' | 'other';
+  tool: 'terminal' | 'file_read' | 'file_edit' | 'file_write' | 'git' | 'search' | 'other';
   name: string;
   params?: Record<string, any>;
   status: 'running' | 'success' | 'error';

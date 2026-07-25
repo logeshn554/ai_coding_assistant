@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 
 type SidebarTabType = 'explorer' | 'search' | 'git' | 'debug' | 'artifacts' | 'extensions' | 'testing' | 'packages' | 'agents' | 'workspace' | 'profile';
 
+export type SecondaryTabType = 'ai' | 'outline' | 'timeline' | 'docs' | 'graph' | 'review' | 'queue';
+
 type ActiveMenuType = 'file' | 'edit' | 'view' | 'terminal' | 'help' | null;
 
 interface UIContextType {
@@ -11,16 +13,20 @@ interface UIContextType {
   aiPanelWidth: number;
   isResizingAiPanel: boolean;
   sidebarTab: SidebarTabType;
+  secondarySidebarTab: SecondaryTabType;
   isSidebarOpen: boolean;
+  isSecondarySidebarOpen: boolean;
   activeMenu: ActiveMenuType;
   setSidebarWidth: (width: number) => void;
   setIsResizingSidebar: (resizing: boolean) => void;
   setAiPanelWidth: (width: number) => void;
   setIsResizingAiPanel: (resizing: boolean) => void;
   setSidebarTab: (tab: SidebarTabType) => void;
+  setSecondarySidebarTab: (tab: SecondaryTabType) => void;
   setIsSidebarOpen: (open: boolean) => void;
   isAiPanelOpen: boolean;
   setIsAiPanelOpen: (open: boolean) => void;
+  setIsSecondarySidebarOpen: (open: boolean) => void;
   setActiveMenu: (menu: ActiveMenuType) => void;
 }
 
@@ -32,6 +38,7 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [aiPanelWidth, setAiPanelWidth] = useState(380);
   const [isResizingAiPanel, setIsResizingAiPanel] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<SidebarTabType>('explorer');
+  const [secondarySidebarTab, setSecondarySidebarTab] = useState<SecondaryTabType>('ai');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(true);
   const [activeMenu, setActiveMenu] = useState<ActiveMenuType>(null);
@@ -44,7 +51,9 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         aiPanelWidth,
         isResizingAiPanel,
         sidebarTab,
+        secondarySidebarTab,
         isSidebarOpen,
+        isSecondarySidebarOpen: isAiPanelOpen,
         isAiPanelOpen,
         activeMenu,
         setSidebarWidth,
@@ -52,8 +61,10 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         setAiPanelWidth,
         setIsResizingAiPanel,
         setSidebarTab,
+        setSecondarySidebarTab,
         setIsSidebarOpen,
         setIsAiPanelOpen,
+        setIsSecondarySidebarOpen: setIsAiPanelOpen,
         setActiveMenu
       }}
     >

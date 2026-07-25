@@ -46,6 +46,7 @@ function TerminalPane({
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const lastDetectedUrlRef = useRef<string | null>(null);
   const [shellName, setShellName] = useState('Terminal');
 
   useEffect(() => {
@@ -66,6 +67,8 @@ function TerminalPane({
 
   useEffect(() => {
     if (!terminalRef.current || !containerRef.current) return;
+
+    const guard = { cancelled: false };
 
     const term = new Terminal({
       cursorBlink: true,
@@ -111,11 +114,14 @@ function TerminalPane({
     };
 
     ws.onopen = () => {
+      if (guard.cancelled) {
+        // Cleanup already ran — close the socket immediately without writing to terminal
+        try { ws.close(); } catch {}
+        return;
+      }
       // Send initial terminal dimensions so the PTY is created at the right size
       sendResize();
     };
-
-    const lastDetectedUrlRef = useRef<string | null>(null);
 
     const checkOutputForLocalhost = (text: string) => {
       if (!text) return;
@@ -166,7 +172,7 @@ function TerminalPane({
         fitAddon.fit();
       } catch (e) {}
     });
-    resizeObserver.observe(containerRef.current);
+    resizeObserver.observe(containerRef.current!);
 
     const timer = setTimeout(() => {
       try {
@@ -184,15 +190,22 @@ function TerminalPane({
     window.addEventListener('devpilot_terminal_stream', handleAgentStream);
 
     return () => {
+      guard.cancelled = true;
       clearTimeout(timer);
       disposable.dispose();
       resizeDisposable.dispose();
       window.removeEventListener('devpilot_terminal_stream', handleAgentStream);
       term.dispose();
       resizeObserver.disconnect();
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      // Clear all handlers so no callbacks fire after unmount
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      // onopen checks guard.cancelled — don't reassign it here
+      if (ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
+      // If CONNECTING, onopen will see guard.cancelled === true and close itself
     };
   }, [workspacePath]);
 
@@ -368,13 +381,50 @@ export default function TerminalArea({
   useEffect(() => {
     const handleRunCommandEvent = (e: Event) => {
       const detail = (e as CustomEvent<{ command: string }>).detail;
-      if (detail?.command) {
-        handleRunCommand(detail.command);
+      if (!detail?.command) return;
+
+      const rawCmd = detail.command.trim();
+      const commands = rawCmd.split('\n').map(c => c.trim()).filter(Boolean);
+
+      if (commands.length === 1) {
+        handleRunCommand(commands[0]);
+      } else if (commands.length > 1) {
+        // Run the first command in the current active terminal pane
+        handleRunCommand(commands[0]);
+
+        const newPanes: { id: number; shell: string }[] = [];
+        const commandsToTrigger: { id: number; cmd: string }[] = [];
+
+        let tempNextId = nextId;
+        for (let idx = 1; idx < Math.min(commands.length, 3); idx++) {
+          const cmd = commands[idx];
+          const newId = tempNextId;
+          newPanes.push({ id: newId, shell: selectedShell });
+          commandsToTrigger.push({ id: newId, cmd });
+          tempNextId++;
+        }
+
+        if (newPanes.length > 0) {
+          setSplitTerminals(prev => [...prev, ...newPanes]);
+          setNextId(tempNextId);
+
+          // Queue command execution for each new split pane after short connection buffer
+          commandsToTrigger.forEach((item) => {
+            setTimeout(() => {
+              setCommandToRun({
+                id: item.id,
+                cmd: item.cmd,
+                timestamp: Date.now()
+              });
+              recordCommandHistory(item.cmd);
+            }, 450);
+          });
+        }
       }
     };
     window.addEventListener('devpilot-run-terminal-command', handleRunCommandEvent);
     return () => window.removeEventListener('devpilot-run-terminal-command', handleRunCommandEvent);
-  }, [activePaneId]);
+  }, [activePaneId, nextId, selectedShell]);
 
   return (
     <div className="h-full w-full flex flex-col bg-[#0d0f12] text-gray-300 overflow-hidden font-sans">
