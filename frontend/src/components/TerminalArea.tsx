@@ -115,8 +115,28 @@ function TerminalPane({
       sendResize();
     };
 
+    const lastDetectedUrlRef = useRef<string | null>(null);
+
+    const checkOutputForLocalhost = (text: string) => {
+      if (!text) return;
+      const match = text.match(/https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d+)/i);
+      if (match) {
+        const port = match[1];
+        const detectedUrl = `http://localhost:${port}`;
+        if (lastDetectedUrlRef.current !== detectedUrl) {
+          lastDetectedUrlRef.current = detectedUrl;
+          window.dispatchEvent(
+            new CustomEvent('devpilot-localhost-detected', {
+              detail: { url: detectedUrl, port }
+            })
+          );
+        }
+      }
+    };
+
     ws.onmessage = (event) => {
       term.write(event.data);
+      checkOutputForLocalhost(String(event.data || ''));
     };
 
     ws.onclose = () => {
@@ -158,6 +178,7 @@ function TerminalPane({
       const customEvent = e as CustomEvent;
       if (customEvent.detail) {
         term.write(customEvent.detail.replace(/\r?\n/g, '\r\n'));
+        checkOutputForLocalhost(String(customEvent.detail || ''));
       }
     };
     window.addEventListener('devpilot_terminal_stream', handleAgentStream);
@@ -241,13 +262,27 @@ export default function TerminalArea({
   activeTerminalExitCode,
   activeTerminalElapsed
 }: TerminalAreaProps) {
-  const [history, setHistory] = useState<string[]>([
-    'npm run test',
-    'git status',
-    'git diff',
-    'npm run build',
-    'ls -la'
-  ]);
+  const [history, setHistory] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('devpilot_terminal_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const recordCommandHistory = (cmd: string) => {
+    if (!cmd || !cmd.trim()) return;
+    const trimmed = cmd.trim();
+    setHistory((prev) => {
+      const filtered = prev.filter((item) => item !== trimmed);
+      const updated = [trimmed, ...filtered].slice(0, 50);
+      try {
+        localStorage.setItem('devpilot_terminal_history', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
   const [showHistory, setShowHistory] = useState(false);
   const [filterText, setFilterText] = useState('');
 
@@ -327,10 +362,19 @@ export default function TerminalArea({
       cmd,
       timestamp: Date.now()
     });
-    if (!history.includes(cmd)) {
-      setHistory(prev => [cmd, ...prev]);
-    }
+    recordCommandHistory(cmd);
   };
+
+  useEffect(() => {
+    const handleRunCommandEvent = (e: Event) => {
+      const detail = (e as CustomEvent<{ command: string }>).detail;
+      if (detail?.command) {
+        handleRunCommand(detail.command);
+      }
+    };
+    window.addEventListener('devpilot-run-terminal-command', handleRunCommandEvent);
+    return () => window.removeEventListener('devpilot-run-terminal-command', handleRunCommandEvent);
+  }, [activePaneId]);
 
   return (
     <div className="h-full w-full flex flex-col bg-[#0d0f12] text-gray-300 overflow-hidden font-sans">

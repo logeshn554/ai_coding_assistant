@@ -96,6 +96,30 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const lastAssistantMsgIdRef = useRef<string | null>(null);
   const reconnectDelayRef = useRef(1000);
 
+  // Listen for localhost URL detections in terminal / process execution
+  useEffect(() => {
+    const handleLocalhostDetected = (e: Event) => {
+      const detail = (e as CustomEvent<{ url: string; port: string }>).detail;
+      if (detail?.url) {
+        showToast(`Localhost server running at ${detail.url}`, 'info');
+        setMessages((prev) => {
+          const exists = prev.some((m) => typeof m.content === 'string' && m.content.includes(detail.url));
+          if (exists) return prev;
+          return [
+            ...prev,
+            {
+              id: `localhost_${Date.now()}`,
+              role: 'assistant',
+              content: `🚀 **Localhost Server Detected**\n\nYour application server is running at: [${detail.url}](${detail.url})`
+            }
+          ];
+        });
+      }
+    };
+    window.addEventListener('devpilot-localhost-detected', handleLocalhostDetected);
+    return () => window.removeEventListener('devpilot-localhost-detected', handleLocalhostDetected);
+  }, [showToast]);
+
   // Debounced tokenization from the backend
   useEffect(() => {
     const updateTokenCount = async () => {

@@ -8,6 +8,7 @@ import { useTerminal } from '../../core/terminal/TerminalContext';
 import { useAI } from '../../core/ai/AIContext';
 import { useCommand } from '../../core/command/CommandContext';
 import { useSettings } from '../../core/settings/SettingsContext';
+import { getExecutableCommandForFile } from '../../utils/executableCommand';
 import { NotificationBell, NotificationCenter } from '../NotificationCenter';
 
 interface MenuItem {
@@ -62,15 +63,8 @@ export const TitleBar: React.FC = () => {
 
   const handleStartStopDebug = async () => {
     setBottomTab('terminal');
-    try {
-      const res = await fetch('/api/project/run', { method: 'POST' });
-      if (!res.ok) {
-        const data = await res.json();
-        alert(data.detail || 'Failed to launch project run command.');
-      }
-    } catch (e) {
-      console.error('Failed to run project from TitleBar:', e);
-    }
+    const cmd = getExecutableCommandForFile(activeFilePath || '');
+    window.dispatchEvent(new CustomEvent('devpilot-run-terminal-command', { detail: { command: cmd } }));
   };
 
   useEffect(() => {

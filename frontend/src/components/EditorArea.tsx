@@ -9,12 +9,14 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Editor, { DiffEditor, type OnMount } from '@monaco-editor/react';
-import { X, Save, RotateCcw } from 'lucide-react';
+import { X, Save, RotateCcw, Play } from 'lucide-react';
 import { useLSP } from '../core/lsp/LSPContext';
 import { InlineChatPopover } from './editor/InlineChatPopover';
 import { BreadcrumbBar } from './editor/BreadcrumbBar';
 import { useAI } from '../core/ai/AIContext';
 import { useEditor } from '../core/editor/EditorContext';
+import { useTerminal } from '../core/terminal/TerminalContext';
+import { getExecutableCommandForFile } from '../utils/executableCommand';
 import { FileChangesReviewBar } from './chat/FileChangesReviewBar';
 
 
@@ -256,6 +258,7 @@ export default function EditorArea({
 
   const { connect: connectLSP, isReady: lspReady, error: lspError } = useLSP();
   const { setProposedDiff } = useEditor();
+  const { setBottomTab } = useTerminal();
   const {
     messages,
     handleSendMessage,
@@ -264,6 +267,13 @@ export default function EditorArea({
     handleApplyAllChanges,
     handleDiscardAllChanges,
   } = useAI();
+
+  const handleRunActiveFile = () => {
+    if (!activeTab) return;
+    setBottomTab('terminal');
+    const cmd = getExecutableCommandForFile(activeTab.path);
+    window.dispatchEvent(new CustomEvent('devpilot-run-terminal-command', { detail: { command: cmd } }));
+  };
 
   // ── AI Proposed Diff Action Handlers ─────────────────────────────────────
 
@@ -895,6 +905,16 @@ export default function EditorArea({
 
                 {/* Language label */}
                 <span className="text-gray-600">{getLanguage(activeTab.path).toUpperCase()}</span>
+
+                {/* Run active file button */}
+                <button
+                  onClick={handleRunActiveFile}
+                  className="px-2 py-0.5 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                  title={`Run ${activeTab.path} in terminal`}
+                >
+                  <Play className="w-3 h-3 fill-current" />
+                  <span>Run</span>
+                </button>
 
                 {/* Cursor position */}
                 {activeTab.cursorLine && (
