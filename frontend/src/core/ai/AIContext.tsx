@@ -31,6 +31,11 @@ interface AIContextType {
   liveFileChanges: LiveFileChange[];
   pendingFileChanges: string[];
   currentGoal: string;
+  totalCostUsd: number;
+  onSelectSession: (sessionId: string) => Promise<void>;
+  onNewSession: () => Promise<void>;
+  onDeleteSession: (sessionId: string) => Promise<void>;
+  onRenameSession: (sessionId: string, newTitle: string) => Promise<void>;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   handleSendMessage: (text: string, mode: ChatMode, autoApply: boolean) => void;
   handleConfirmTool: (toolCallId: string, approved: boolean, scope: string, hunkDecisions?: any) => void;
@@ -63,6 +68,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [pendingFileChanges, setPendingFileChanges] = useState<string[]>([]);
 
   const [currentGoal, setCurrentGoal] = useState('');
+  const [totalCostUsd, setTotalCostUsd] = useState<number>(0.0);
   const toolStartTimesRef = useRef<Record<string, number>>({});
   
   const [isWsConnected, setIsWsConnected] = useState(false);
@@ -414,6 +420,9 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
           setStatusMessage(null);
           lastAssistantMsgIdRef.current = null;
           updateStatusBarInfo();
+          if (typeof data.total_cost_usd === 'number') {
+            setTotalCostUsd(prev => prev + data.total_cost_usd);
+          }
           break;
         case 'agent_state':
           setActiveAgent(data.active_agent);
@@ -700,6 +709,11 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         liveFileChanges,
         pendingFileChanges,
         currentGoal,
+        totalCostUsd,
+        onSelectSession: handleSelectSession,
+        onNewSession: handleNewSession,
+        onDeleteSession: handleDeleteSession,
+        onRenameSession: handleRenameSession,
         setMessages,
         handleSendMessage,
         handleConfirmTool,

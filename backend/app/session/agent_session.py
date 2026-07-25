@@ -437,7 +437,10 @@ class AgentSession:
                 "type": "text_delta",
                 "content": "\n[Error: Agent is already running another task.]\n"
             })
-            await self.send_ws_message({"type": "session_done"})
+            await self.send_ws_message({
+                "type": "session_done",
+                "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
+            })
             return
 
         # Check for Run Agent activation (precise patterns only)
@@ -465,7 +468,10 @@ class AgentSession:
             finally:
                 self.is_running = False
                 await self.save_history_to_db()
-                await self.send_ws_message({"type": "session_done"})
+                await self.send_ws_message({
+                    "type": "session_done",
+                    "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
+                })
                 await self.broadcast_processes_state()
             return
 
@@ -693,10 +699,16 @@ class AgentSession:
             except Exception as pe:
                 logger.debug(f"Failed auto project detection: {pe}")
 
-            await self.send_ws_message({"type": "session_done"})
+            await self.send_ws_message({
+                "type": "session_done",
+                "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
+            })
 
         except asyncio.CancelledError:
-            await self.send_ws_message({"type": "session_done"})
+            await self.send_ws_message({
+                "type": "session_done",
+                "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
+            })
             raise
         except Exception as e:
             logger.exception(f"Error in handle_user_message agent loop: {str(e)}")
@@ -704,7 +716,10 @@ class AgentSession:
                 "type": "text_delta",
                 "content": f"\n\n[Error: {str(e)}]\n"
             })
-            await self.send_ws_message({"type": "session_done"})
+            await self.send_ws_message({
+                "type": "session_done",
+                "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
+            })
         finally:
             self.is_running = False
             await self.save_history_to_db()
@@ -748,7 +763,10 @@ class AgentSession:
                 "content": f"\n[Error: {str(e)}]\n"
             })
         finally:
-            await self.send_ws_message({"type": "session_done"})
+            await self.send_ws_message({
+                "type": "session_done",
+                "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
+            })
             await self.save_history_to_db()
 
     async def _execute_tool_with_guardrails(

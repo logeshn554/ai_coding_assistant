@@ -3,8 +3,14 @@ import { History, Loader2, MessageSquare, Play } from 'lucide-react';
 import type { Session } from '../../types/chat';
 
 interface SessionHistoryPanelProps {
+  sessions?: Session[];
   activeSessionId?: string;
+  totalCostUsd?: number;
   onResume: (sessionId: string) => Promise<void>;
+  onSelectSession?: (sessionId: string) => Promise<void>;
+  onDeleteSession?: (sessionId: string) => Promise<void>;
+  onNewSession?: () => Promise<void>;
+  onRenameSession?: (sessionId: string, newTitle: string) => Promise<void>;
 }
 
 function formatTimestamp(value: string | number | undefined): string {
@@ -29,11 +35,17 @@ function formatTimestamp(value: string | number | undefined): string {
  * Session History tab — lists persisted chats with Resume.
  */
 export const SessionHistoryPanel: React.FC<SessionHistoryPanelProps> = ({
+  sessions: propsSessions,
   activeSessionId,
+  totalCostUsd: _totalCostUsd,
   onResume,
+  onSelectSession: _onSelectSession,
+  onDeleteSession: _onDeleteSession,
+  onNewSession: _onNewSession,
+  onRenameSession: _onRenameSession,
 }) => {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [sessions, setSessions] = useState<Session[]>(propsSessions || []);
+  const [loading, setLoading] = useState(!propsSessions);
   const [error, setError] = useState<string | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
 

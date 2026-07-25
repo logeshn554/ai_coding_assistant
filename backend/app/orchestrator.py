@@ -124,6 +124,7 @@ requirement_prompt_template = PromptTemplate.from_template(
     "You are the Requirement Analysis Agent. Walk the live workspace file tree and identify "
     "exactly which files need to be read or modified for this task.\n\n"
     "Task: {task_description}\n\n"
+    "Workspace files:\n{codebase_details}\n\n"
     "Rules:\n"
     "- Output a JSON list of relative file paths. No other text.\n"
     "- Only include files that are directly relevant to the task.\n"
@@ -734,10 +735,22 @@ class TestingAgent(BaseAgent):
         await self.orchestrator.context.log(f"Testing Agent: Verifying results for: {task_description}")
         await self.orchestrator.update_task_progress(task_id, 20, session)
         
-        if os.path.exists(os.path.join(session.workspace_root, "package.json")):
-            cmd = "npm test"
-        else:
-            cmd = "pytest"
+        import json as _json
+        ws = session.workspace_root
+        cmd = "pytest"
+        pkg_json_path = os.path.join(ws, "package.json")
+        pyproject_path = os.path.join(ws, "pyproject.toml")
+        if os.path.exists(pkg_json_path):
+            try:
+                with open(pkg_json_path) as f:
+                    pkg = _json.load(f)
+                cmd = pkg.get("scripts", {}).get("test", "npm test")
+                if cmd != "npm test":
+                    cmd = f"npm run {list(pkg.get('scripts', {}).keys())[list(pkg.get('scripts', {}).values()).index(cmd)]}"
+            except Exception:
+                cmd = "npm test -- --watchAll=false"
+        elif os.path.exists(pyproject_path):
+            cmd = "python -m pytest"
             
         await self.orchestrator.context.log(f"Testing Agent: Running test command: {cmd}")
         tc_id = f"test_{task_id}_{uuid.uuid4().hex[:6]}"
@@ -985,10 +998,14 @@ class FrontendDeveloperAgent(BaseAgent):
         target_files = self.orchestrator.context.memory.get("target_files", [])
         file_contents = self.orchestrator.context.memory.get("file_contents", {})
 
-        frontend_prefixes = ("frontend/", "src/", "components/", "pages/", "app/", ".tsx", ".ts", ".jsx", ".js", ".css")
+        frontend_prefixes = ("frontend/", "src/", "components/", "pages/", "app/", ".tsx", ".ts", ".jsx", ".js", ".css", ".html")
         frontend_files = [f for f in target_files if any(f.startswith(p) or f.endswith(p) for p in frontend_prefixes)]
         if not frontend_files:
-            frontend_files = target_files
+            await self.orchestrator.context.log(
+                "Frontend Developer Agent: No frontend files in target list — skipping."
+            )
+            await self.orchestrator.update_task_progress(task_id, 100, session)
+            return "No frontend files to modify."
 
         if not frontend_files:
             await self.orchestrator.context.log("Frontend Developer Agent: No frontend files to modify.")
@@ -1049,7 +1066,11 @@ class BackendDeveloperAgent(BaseAgent):
         backend_prefixes = ("backend/", "app/", "api/", "server/", ".py", ".go", ".java")
         backend_files = [f for f in target_files if any(f.startswith(p) or f.endswith(p) for p in backend_prefixes)]
         if not backend_files:
-            backend_files = target_files
+            await self.orchestrator.context.log(
+                "Backend Developer Agent: No backend files in target list — skipping."
+            )
+            await self.orchestrator.update_task_progress(task_id, 100, session)
+            return "No backend files to modify."
 
         if not backend_files:
             await self.orchestrator.context.log("Backend Developer Agent: No backend files to modify.")
@@ -2018,7 +2039,8 @@ class AgentOrchestrator:
                     "status": "pending",
                     "human_confirmation_required": False,
                     "messages": [],
-                    "session": session
+                    "session": session,
+                    "refinement_cycles": 0
                 }
                 session.parallel_subtasks = []
                 for st in parallel_subtasks:

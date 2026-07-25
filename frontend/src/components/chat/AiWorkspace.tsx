@@ -226,7 +226,18 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
   const [hunkDecisions, setHunkDecisions] = useState<Record<string, Record<string, boolean>>>({});
 
   // Pull live data from AIContext
-  const { liveToolCalls, liveFileChanges, currentGoal } = useAI();
+  const {
+    liveToolCalls,
+    liveFileChanges,
+    currentGoal,
+    sessions,
+    activeSessionId: aiActiveSessionId,
+    onSelectSession,
+    onDeleteSession,
+    onNewSession,
+    onRenameSession,
+    totalCostUsd
+  } = useAI();
 
   const handleToggleHunk = (msgId: string, hunkId: string, accepted: boolean) => {
     setHunkDecisions(prev => ({
@@ -498,8 +509,14 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
         {/* ── SESSION HISTORY TAB ── */}
         {activeTab === 'history' && (
           <SessionHistoryPanel
-            activeSessionId={activeSessionId}
-            onResume={onResumeSession || (async () => undefined)}
+            sessions={sessions}
+            activeSessionId={aiActiveSessionId || activeSessionId}
+            onResume={onSelectSession || onResumeSession || (async () => undefined)}
+            onSelectSession={onSelectSession}
+            onDeleteSession={onDeleteSession}
+            onNewSession={onNewSession}
+            onRenameSession={onRenameSession}
+            totalCostUsd={totalCostUsd}
           />
         )}
 
