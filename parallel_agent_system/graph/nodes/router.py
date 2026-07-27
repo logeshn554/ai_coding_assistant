@@ -97,12 +97,44 @@ async def run_agents_parallel_node(state: GraphState) -> dict:
             return_exceptions=False
         ))
 
-        # Check for stuck tasks using StuckDetector
-        stuck_task_ids = stuck_detector.check(subtasks, batch_results)
+        # Check for stuck tasks and recurring errors using StuckDetector
+        threshold = 2
+        fallback_enabled = False
+        try:
+            from backend.app.state import config_manager
+            threshold = config_manager.get_repeat_error_threshold()
+            fallback_enabled = config_manager.get_web_search_fallback_enabled()
+        except Exception:
+            pass
+
+        check_res = stuck_detector.check_detailed(subtasks, batch_results, repeat_error_threshold=threshold)
+        stuck_task_ids = check_res.get("stuck_ids", [])
+        web_search_task_ids = check_res.get("web_search_task_ids", [])
+        error_signatures = check_res.get("error_signatures", {})
+
         if stuck_task_ids:
             for r in batch_results:
                 if r.subtask_id in stuck_task_ids:
                     r.status = "stuck"
+
+        # Web Search Fallback Trigger
+        if fallback_enabled and web_search_task_ids:
+            try:
+                from backend.app.tools.web_search_tool import search_web
+                for st_id in web_search_task_ids:
+                    err_sig = error_signatures.get(st_id, "recurring error")
+                    # Perform web search query
+                    search_results = await search_web(err_sig, max_results=3)
+                    if search_results:
+                        formatted_search = "\n\n## Web search results for this recurring error\n" + "\n\n".join(
+                            [f"### {sr.title}\nURL: {sr.url}\n{sr.snippet}" for sr in search_results]
+                        )
+                        # Append search results to corresponding subtask description for retry
+                        for t in subtasks:
+                            if t.id == st_id and formatted_search not in t.description:
+                                t.description += formatted_search
+            except Exception as ws_err:
+                pass
 
         # Accumulate results for dependency tracking in the next iteration
         current_results.extend(batch_results)

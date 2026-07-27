@@ -129,30 +129,119 @@ class AgentMonitor:
         ).hexdigest()[:16]
 
 
-class StuckDetector:
+import re
+from collections import defaultdict
+
+
+def normalize_error_signature(error_msg: str) -> str:
+    """Normalize error message by stripping line numbers, timestamps, memory addresses, paths, and GUIDs.
+
+    Two errors differing only by line numbers or timestamps will produce identical normalized signatures.
     """
-    Evaluates subtasks and execution results to detect stuck, stalled, or looping agents.
+    if not error_msg or not isinstance(error_msg, str):
+        return ""
+
+    text = error_msg.strip()
+
+    # 1. Remove ISO timestamps (e.g., 2026-07-27T18:04:13) and clock times
+    text = re.sub(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?", "<TIMESTAMP>", text)
+    text = re.sub(r"\b\d{2}:\d{2}:\d{2}\b", "<TIME>", text)
+
+    # 2. Remove memory addresses (e.g., 0x7fa8b9c10)
+    text = re.sub(r"0x[0-9a-fA-F]+\b", "<HEX_ADDR>", text)
+
+    # 3. Remove GUIDs / UUIDs
+    text = re.sub(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", "<UUID>", text)
+
+    # 4. Remove line and column numbers (e.g., line 42, :123:45, :89)
+    text = re.sub(r"\bline\s+\d+\b", "line <N>", text, flags=re.IGNORECASE)
+    text = re.sub(r":\d+:\d+", ":<LINE>:<COL>", text)
+    text = re.sub(r":\d+\b", ":<LINE>", text)
+
+    # 5. Remove absolute file paths (e.g. C:\Users\... or /home/...)
+    text = re.sub(r"(?:[a-zA-Z]:)?[/\\][\w.\-_/\\]+\.(?:py|js|ts|tsx|jsx|json|md|c|cpp|h|go|rs)", "<FILE_PATH>", text)
+
+    # 6. Normalize whitespace runs
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+class StuckDetector:
+    """Evaluates subtasks and execution results to detect stuck, stalled, or looping agents.
+
+    Also tracks recurring error signatures per subtask to trigger web search fallback
+    after threshold repeats AND debugging agent attempts.
     """
 
     def __init__(self, config: SystemConfig | None = None):
         self.config = config or SystemConfig()
+        # subtask_id -> list of normalized error signatures
+        self._error_signatures: dict[str, list[str]] = defaultdict(list)
+        # subtask_id -> bool indicating if Debugging Agent attempt was made
+        self._debugging_attempted: dict[str, bool] = defaultdict(bool)
 
-    def check(self, subtasks: list[Any], results: list[Any]) -> list[str]:
-        """
-        Checks subtasks and results for stuck states.
-        Returns a list of stuck subtask IDs.
-        """
+    def record_debugging_attempt(self, subtask_id: str) -> None:
+        """Record that the Debugging Agent has attempted to fix this subtask."""
+        self._debugging_attempted[subtask_id] = True
+
+    def check(
+        self,
+        subtasks: list[Any],
+        results: list[Any],
+        repeat_error_threshold: int = 2,
+    ) -> list[str]:
+        """Checks subtasks and results for stuck states. Returns list of stuck subtask IDs."""
+        detailed = self.check_detailed(subtasks, results, repeat_error_threshold)
+        return detailed["stuck_ids"]
+
+    def check_detailed(
+        self,
+        subtasks: list[Any],
+        results: list[Any],
+        repeat_error_threshold: int = 2,
+    ) -> dict[str, Any]:
+        """Detailed stuck check returning stuck_ids, web_search_task_ids, and active error_signatures."""
         stuck_ids = []
+        web_search_task_ids = []
+        error_map = {}
+
         for r in results:
             status = getattr(r, "status", "")
             subtask_id = getattr(r, "subtask_id", None)
             if not subtask_id:
                 continue
-            if status == "stuck":
-                stuck_ids.append(subtask_id)
-            else:
-                output = getattr(r, "output", "") or ""
-                if any(kw in output.lower() for kw in ("stuck", "stuckerror", "loop detected")):
+
+            output = getattr(r, "output", "") or ""
+
+            # Check if execution returned an error or stuck status
+            is_error = status in ("error", "stuck", "failed") or any(
+                kw in output.lower() for kw in ("error", "failed", "exception", "stuck", "loop detected")
+            )
+
+            if is_error and output:
+                sig = normalize_error_signature(output)
+                if sig:
+                    self._error_signatures[subtask_id].append(sig)
+                    error_map[subtask_id] = sig
+
+                    # Count how many times this specific normalized error signature has occurred
+                    sig_count = self._error_signatures[subtask_id].count(sig)
+
+                    # Trigger web search ONLY if:
+                    # 1. Same normalized error fired >= repeat_error_threshold times
+                    # 2. Debugging Agent has ALREADY attempted to fix it first
+                    if sig_count >= repeat_error_threshold and self._debugging_attempted.get(subtask_id, False):
+                        if subtask_id not in web_search_task_ids:
+                            web_search_task_ids.append(subtask_id)
+
+            if status == "stuck" or any(kw in output.lower() for kw in ("stuck", "stuckerror", "loop detected")):
+                if subtask_id not in stuck_ids:
                     stuck_ids.append(subtask_id)
-        return stuck_ids
+
+        return {
+            "stuck_ids": stuck_ids,
+            "web_search_task_ids": web_search_task_ids,
+            "error_signatures": error_map,
+        }
+
 

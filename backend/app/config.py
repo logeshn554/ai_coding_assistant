@@ -34,9 +34,14 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
+    TAVILY_API_KEY: str = ""
     
     # Auto QA & Dev Server Settings
     AUTO_INSPECT_ON_SERVER_START: bool = False
+
+    # Web Search Fallback Settings
+    WEB_SEARCH_FALLBACK_ENABLED: bool = False
+    REPEAT_ERROR_THRESHOLD: int = 2
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -452,6 +457,33 @@ class ConfigManager:
         config["mcp_servers"] = servers
         self._save_raw_config(config)
         return servers
+
+    def get_web_search_fallback_enabled(self) -> bool:
+        config = self._read_raw_config()
+        return config.get("web_search_fallback_enabled", False)
+
+    def set_web_search_fallback_enabled(self, val: bool):
+        config = self._read_raw_config()
+        config["web_search_fallback_enabled"] = bool(val)
+        self._save_raw_config(config)
+
+    def get_repeat_error_threshold(self) -> int:
+        config = self._read_raw_config()
+        return config.get("repeat_error_threshold", 2)
+
+    def set_repeat_error_threshold(self, val: int):
+        config = self._read_raw_config()
+        config["repeat_error_threshold"] = max(1, min(10, int(val)))
+        self._save_raw_config(config)
+
+    def get_tavily_api_key(self) -> str:
+        config = self._read_raw_config()
+        return config.get("tavily_api_key", os.environ.get("TAVILY_API_KEY", ""))
+
+    def set_tavily_api_key(self, key: str):
+        config = self._read_raw_config()
+        config["tavily_api_key"] = str(key or "")
+        self._save_raw_config(config)
 
     # ------------------------------------------------------------------
     # Terminal preferences

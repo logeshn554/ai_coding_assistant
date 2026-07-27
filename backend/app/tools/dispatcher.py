@@ -95,6 +95,20 @@ async def dispatch_tool(
             raise ValueError("spawn_subagent requires a non-empty 'prompt' argument.")
         return await _spawn_subagent_mod.spawn_subagent(session, prompt)
 
+    if name in ("search_web", "tavily_search", "web_search"):
+        from .web_search_tool import search_web
+        from ..state import config_manager
+
+        if not config_manager.get_web_search_fallback_enabled():
+            return "Web search fallback is disabled in settings."
+
+        query_str = args.get("query", "")
+        results = await search_web(query_str)
+        if not results:
+            return "No web search results found or TAVILY_API_KEY not configured."
+        formatted = "\n\n".join([f"### {r.title}\nURL: {r.url}\n{r.snippet}" for r in results])
+        return f"## Web Search Results for '{query_str}':\n\n" + formatted
+
     # D. Discovered MCP Tools routing with permission checks
     from ..mcp_client import MCP_DISCOVERED_TOOLS
     if name in MCP_DISCOVERED_TOOLS or name.startswith("mcp_"):

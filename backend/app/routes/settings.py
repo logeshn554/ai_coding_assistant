@@ -17,6 +17,10 @@ class SettingsUpdateRequest(BaseModel):
     agent_models: Optional[dict] = None
     image_analysis_model: Optional[str] = ""
     mcp_servers: Optional[list] = None
+    # Web Search Fallback settings
+    web_search_fallback_enabled: Optional[bool] = False
+    repeat_error_threshold: Optional[int] = Field(default=2, ge=1, le=10)
+    tavily_api_key: Optional[str] = ""
     # Terminal preferences
     default_shell: Optional[str] = ""
     terminal_font_size: Optional[int] = Field(default=13, ge=8, le=32)
@@ -40,6 +44,9 @@ def get_settings():
         "agent_models": config_manager.get_agent_models(),
         "image_analysis_model": config_manager.get_image_analysis_model(),
         "mcp_servers": config_manager.get_mcp_servers(),
+        "web_search_fallback_enabled": config_manager.get_web_search_fallback_enabled(),
+        "repeat_error_threshold": config_manager.get_repeat_error_threshold(),
+        "tavily_api_key": config_manager.get_tavily_api_key(),
         # Terminal preferences
         "default_shell": config_manager.get_default_shell(),
         "terminal_font_size": config_manager.get_terminal_font_size(),
@@ -68,6 +75,12 @@ def save_settings(req: SettingsUpdateRequest):
             config_manager.set_image_analysis_model(req.image_analysis_model)
         if req.mcp_servers is not None:
             config_manager.set_mcp_servers(req.mcp_servers)
+        if req.web_search_fallback_enabled is not None:
+            config_manager.set_web_search_fallback_enabled(req.web_search_fallback_enabled)
+        if req.repeat_error_threshold is not None:
+            config_manager.set_repeat_error_threshold(req.repeat_error_threshold)
+        if req.tavily_api_key is not None:
+            config_manager.set_tavily_api_key(req.tavily_api_key)
         # Terminal preferences
         shell = req.default_shell or ""
         if shell not in VALID_SHELLS:
