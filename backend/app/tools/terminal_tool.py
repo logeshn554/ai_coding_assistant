@@ -102,6 +102,13 @@ async def run_shell_command(session: Any, command: str) -> str:
             line = line_bytes.decode("utf-8", errors="replace")
             output_chunks.append(line)
 
+            # Check line for dev server ready patterns
+            try:
+                from .server_watcher import global_server_watcher
+                global_server_watcher.check_log_line(line, session)
+            except Exception:
+                pass
+
             # Stream terminal line to client
             await session.send_ws_message({
                 "type": "terminal_stream",

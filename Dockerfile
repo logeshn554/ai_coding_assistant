@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy backend requirements and install them
 COPY backend/requirements.txt ./backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt
+RUN playwright install --with-deps chromium
 
 # Copy and install parallel_agent_system
 COPY parallel_agent_system/ ./parallel_agent_system/

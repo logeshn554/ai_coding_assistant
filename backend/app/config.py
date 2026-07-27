@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
     
+    # Auto QA & Dev Server Settings
+    AUTO_INSPECT_ON_SERVER_START: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -384,6 +387,15 @@ class ConfigManager:
     def set_auto_backup_enabled(self, val: bool):
         config = self._read_raw_config()
         config["auto_backup_enabled"] = val
+        self._save_raw_config(config)
+
+    def get_auto_inspect_on_server_start(self) -> bool:
+        config = self._read_raw_config()
+        return config.get("auto_inspect_on_server_start", False)
+
+    def set_auto_inspect_on_server_start(self, val: bool):
+        config = self._read_raw_config()
+        config["auto_inspect_on_server_start"] = bool(val)
         self._save_raw_config(config)
 
     def get_agent_model_name(self) -> str:

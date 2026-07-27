@@ -12,6 +12,7 @@ VALID_SHELLS = {"", "cmd", "powershell", "bash", "sh"}
 class SettingsUpdateRequest(BaseModel):
     exclude_list: list
     auto_backup_enabled: bool
+    auto_inspect_on_server_start: Optional[bool] = False
     agent_model_name: Optional[str] = ""
     agent_models: Optional[dict] = None
     # Terminal preferences
@@ -32,6 +33,7 @@ def get_settings():
     return {
         "exclude_list": config_manager.get_exclude_list(),
         "auto_backup_enabled": config_manager.get_auto_backup_enabled(),
+        "auto_inspect_on_server_start": config_manager.get_auto_inspect_on_server_start(),
         "agent_model_name": config_manager.get_agent_model_name(),
         "agent_models": config_manager.get_agent_models(),
         # Terminal preferences
@@ -53,6 +55,8 @@ def save_settings(req: SettingsUpdateRequest):
     try:
         config_manager.set_exclude_list(req.exclude_list)
         config_manager.set_auto_backup_enabled(req.auto_backup_enabled)
+        if req.auto_inspect_on_server_start is not None:
+            config_manager.set_auto_inspect_on_server_start(req.auto_inspect_on_server_start)
         config_manager.set_agent_model_name(req.agent_model_name)
         if req.agent_models is not None:
             config_manager.set_agent_models(req.agent_models)

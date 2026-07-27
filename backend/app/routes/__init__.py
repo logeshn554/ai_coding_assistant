@@ -24,6 +24,7 @@ from .graph_route import router as graph_router
 from .review_route import router as review_router
 from .tasks_route import router as tasks_router
 from .snippets import router as snippets_router
+from .inspect_route import router as inspect_router
 
 all_routers = [
     auth_router,
@@ -52,4 +53,6 @@ all_routers = [
     review_router,
     tasks_router,
     snippets_router,
+    inspect_router,
 ]
+
