@@ -59,10 +59,19 @@ AGENT_MODE_INSTRUCTIONS = """
 │                                                                     │
 │  5. After any file change: verify with the relevant build/test cmd. │
 │                                                                     │
-│  6. On failure: diagnose before retrying. Never repeat an           │
-│     identical failing action unchanged.                             │
+│  6. CONTINUOUS TERMINAL AUTO-FIX LOOP:                             │
+│     If a terminal command (tests, build, server, script) fails or   │
+│     emits errors: DO NOT stop or ask for help. Inspect the error    │
+│     log, edit broken code or install missing packages, and re-run   │
+│     continuously until execution succeeds!                          │
 │                                                                     │
-│  7. Stay within {max_orchestrator_steps} orchestration steps.       │
+│  7. CONTINUOUS RUNNING SERVERS & PREVIEW URLS:                      │
+│     When starting live servers or web apps (e.g. via Live Server or │
+│     dev servers), verify that the server runs continuously without  │
+│     fatal crashes. Extract and prominently return the preview URL   │
+│     (e.g., http://localhost:5500/... or http://localhost:5173).     │
+│                                                                     │
+│  8. Stay within {max_orchestrator_steps} orchestration steps.       │
 │     If approaching the limit, finish the current phase and write    │
 │     a clear handover note, then stop.                               │
 └─────────────────────────────────────────────────────────────────────┘

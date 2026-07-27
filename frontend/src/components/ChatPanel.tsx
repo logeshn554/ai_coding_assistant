@@ -451,7 +451,7 @@ export default function ChatPanel({
                 )}
               </button>
 
-              {/* Review Changes Button (from screenshot) */}
+              {/* Review Changes Button */}
               <button
                 type="button"
                 onClick={handleOpenReviewPanel}
@@ -461,6 +461,20 @@ export default function ChatPanel({
                 <FileCode className="w-3.5 h-3.5 text-violet-400" />
                 <span>Review Changes</span>
               </button>
+
+              {/* Running Process Indicator Badge & Quick Stop */}
+              {isProcessRunning && (
+                <button
+                  type="button"
+                  onClick={() => onStopProcess?.()}
+                  className="flex items-center gap-1 px-2 py-1 bg-red-950/60 hover:bg-red-900/60 text-red-300 font-semibold border border-red-800/80 rounded-lg text-[10.5px] cursor-pointer transition-colors"
+                  title="Click to stop running background server or process"
+                >
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <span>Process</span>
+                  <span className="text-[9px] font-bold bg-red-600 text-white px-1 rounded ml-0.5">■ Stop</span>
+                </button>
+              )}
             </div>
 
             {/* Right Controls: Mode Selector & Send */}
@@ -477,22 +491,13 @@ export default function ChatPanel({
                 <option value="Agent">Agent</option>
               </select>
 
-              {/* Submit / Cancel Button */}
-              {isGenerating ? (
+              {/* Submit / Stop Generation Button */}
+              {isGenerating && !input.trim() ? (
                 <button
                   type="button"
                   onClick={onCancelGeneration}
-                  className="p-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg cursor-pointer transition-colors"
+                  className="p-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg cursor-pointer transition-colors shadow-sm"
                   title="Stop generating"
-                >
-                  <span className="w-3.5 h-3.5 flex items-center justify-center font-bold text-[9px]">■</span>
-                </button>
-              ) : isProcessRunning ? (
-                <button
-                  type="button"
-                  onClick={() => onStopProcess?.()}
-                  className="p-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg cursor-pointer transition-colors"
-                  title="Stop running process"
                 >
                   <span className="w-3.5 h-3.5 flex items-center justify-center font-bold text-[9px]">■</span>
                 </button>
