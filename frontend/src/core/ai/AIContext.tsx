@@ -37,7 +37,7 @@ interface AIContextType {
   onDeleteSession: (sessionId: string) => Promise<void>;
   onRenameSession: (sessionId: string, newTitle: string) => Promise<void>;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  handleSendMessage: (text: string, mode: ChatMode, autoApply: boolean) => void;
+  handleSendMessage: (text: string, mode: ChatMode, autoApply: boolean, attachedFiles?: string[]) => void;
   handleConfirmTool: (toolCallId: string, approved: boolean, scope: string, hunkDecisions?: any) => void;
   handleConfirmPermission: (toolCallId: string, approved: boolean, scope: string, command?: string) => void;
   handleConfirmPortConflict: (toolCallId: string, action: 'stop' | 'next_port' | 'cancel') => void;
@@ -580,7 +580,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     };
   };
 
-  const handleSendMessage = (text: string, mode: ChatMode, autoApply: boolean) => {
+  const handleSendMessage = (text: string, mode: ChatMode, autoApply: boolean, attachedFiles?: string[]) => {
     if (!text.trim() || isGenerating) return;
 
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -614,7 +614,8 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         type: 'user_message',
         text,
         mode: effectiveMode,
-        auto_apply: autoApply
+        auto_apply: autoApply,
+        attached_files: attachedFiles && attachedFiles.length > 0 ? attachedFiles : undefined,
       })
     );
   };

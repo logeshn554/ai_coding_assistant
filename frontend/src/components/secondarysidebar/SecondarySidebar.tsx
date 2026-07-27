@@ -38,7 +38,7 @@ interface SecondarySidebarProps {
   messages: ChatMessage[];
   inputText: string;
   setInputText: (text: string) => void;
-  onSendMessage: () => void;
+  onSendMessage: (attachedFiles?: string[]) => void;
   isGenerating: boolean;
   onCancelGeneration: () => void;
   mode: ChatMode;

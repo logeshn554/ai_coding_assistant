@@ -182,3 +182,33 @@ def get_flat_files():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+from fastapi import UploadFile, File
+
+@router.post("/api/files/upload")
+async def upload_attachment(file: UploadFile = File(...)):
+    """Upload a file or pasted image attachment for AI Chat processing."""
+    try:
+        root = workspace_state.root or os.path.join(os.path.expanduser("~"), ".devpilot")
+        att_dir = os.path.join(root, "artifacts", "attachments")
+        os.makedirs(att_dir, exist_ok=True)
+
+        filename = file.filename or "pasted_image.png"
+        safe_filename = f"{hashlib.md5(filename.encode()).hexdigest()[:8]}_{filename}"
+        target_path = os.path.join(att_dir, safe_filename)
+
+        with open(target_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        rel_path = os.path.relpath(target_path, workspace_state.root).replace("\\", "/") if workspace_state.root else target_path
+        return {
+            "success": True,
+            "filename": filename,
+            "path": target_path,
+            "rel_path": rel_path
+        }
+    except Exception as e:
+        logger.error(f"Failed to upload attachment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+

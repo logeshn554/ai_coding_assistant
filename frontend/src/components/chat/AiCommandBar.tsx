@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Send, Square, FileText, Folder, Terminal,
-  GitBranch, Code2, Layers, ChevronRight, AtSign
+  GitBranch, Code2, Layers, ChevronRight, AtSign,
+  Paperclip, FolderPlus, Image as ImageIcon, X
 } from 'lucide-react';
 import type { SlashCommand, ContextMention, ChatMode } from '../../types/chat';
 
@@ -20,7 +21,6 @@ const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/explain',   description: 'Explain active selection or file logic',         example: '/explain How does routing work?' },
 ];
 
-
 const CONTEXT_MENTIONS: ContextMention[] = [
   { name: '@file',      type: 'file',      description: 'Reference a specific file' },
   { name: '@folder',    type: 'folder',    description: 'Reference a folder directory' },
@@ -30,10 +30,17 @@ const CONTEXT_MENTIONS: ContextMention[] = [
   { name: '@workspace', type: 'workspace', description: 'Attach global workspace context' },
 ];
 
+export interface AttachmentItem {
+  name: string;
+  path: string;
+  type: 'image' | 'file' | 'folder';
+  previewUrl?: string;
+}
+
 interface AiCommandBarProps {
   inputText: string;
   setInputText: (text: string) => void;
-  onSend: () => void;
+  onSend: (attachedFiles?: string[]) => void;
   isGenerating: boolean;
   onCancel: () => void;
   mode: ChatMode;
@@ -41,16 +48,23 @@ interface AiCommandBarProps {
 }
 
 export const AiCommandBar: React.FC<AiCommandBarProps> = ({
-  inputText, setInputText, onSend, isGenerating, onCancel, mode, setMode
+  inputText, setInputText, onSend, isGenerating, onCancel, mode
 }) => {
   const [showSlashMenu, setShowSlashMenu]     = useState(false);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [selectedIndex, setSelectedIndex]     = useState(0);
   const [workspaceFiles, setWorkspaceFiles]   = useState<string[]>([]);
   const [mentionFilter, setMentionFilter]     = useState('');
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Fetch flat workspace files on mount or when menu opens
+  // Attachment state for images, files, and folders
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch flat workspace files on mount
   useEffect(() => {
     fetch('/api/files/flat')
       .then(res => res.json())
@@ -93,6 +107,87 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
     ? fileMentions
     : [...filteredStaticMentions, ...fileMentions.slice(0, 10)];
 
+  // Helper to upload a file / image / folder item to /api/files/upload
+  const uploadSingleFile = async (file: File): Promise<AttachmentItem | null> => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file, file.name);
+
+      const res = await fetch('/api/files/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(file.name);
+        const isFolder = (file as any).webkitRelativePath && (file as any).webkitRelativePath.includes('/');
+        const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+
+        return {
+          name: file.name,
+          path: data.path || data.rel_path || file.name,
+          type: isImage ? 'image' : isFolder ? 'folder' : 'file',
+          previewUrl,
+        };
+      }
+    } catch (err) {
+      console.error('Failed to upload file attachment:', err);
+    }
+    return null;
+  };
+
+  const handleProcessFiles = async (files: FileList | File[]) => {
+    setIsUploading(true);
+    const fileArray = Array.from(files);
+    const uploadedItems: AttachmentItem[] = [];
+
+    for (const file of fileArray) {
+      const item = await uploadSingleFile(file);
+      if (item) uploadedItems.push(item);
+    }
+
+    if (uploadedItems.length > 0) {
+      setAttachments(prev => [...prev, ...uploadedItems]);
+    }
+    setIsUploading(false);
+  };
+
+  // Clipboard Paste Image / File Handler
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboardItems = e.clipboardData.items;
+    const filesToUpload: File[] = [];
+
+    if (clipboardItems) {
+      for (let i = 0; i < clipboardItems.length; i++) {
+        const item = clipboardItems[i];
+        if (item.type.indexOf('image') !== -1 || item.kind === 'file') {
+          const blob = item.getAsFile();
+          if (blob) {
+            filesToUpload.push(blob);
+          }
+        }
+      }
+    }
+
+    if (filesToUpload.length > 0) {
+      e.preventDefault();
+      handleProcessFiles(filesToUpload);
+    }
+  };
+
+  // Drag and Drop Handler
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleProcessFiles(e.dataTransfer.files);
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const menuOpen = showSlashMenu || showMentionMenu;
     const menuLen  = showSlashMenu ? SLASH_COMMANDS.length : activeMentions.length;
@@ -111,92 +206,106 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
 
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (isGenerating) onCancel(); else if (inputText.trim()) onSend();
+      if (isGenerating) {
+        onCancel();
+      } else if (inputText.trim() || attachments.length > 0) {
+        handleTriggerSend();
+      }
     }
+  };
+
+  const handleTriggerSend = () => {
+    const attachedPaths = attachments.map(a => a.path);
+    onSend(attachedPaths.length > 0 ? attachedPaths : undefined);
+    setAttachments([]);
   };
 
   const insertSlashCommand = (cmd: SlashCommand) => {
     const words = inputText.split(/\s+/);
     words.pop();
-    setInputText([...words, cmd.name].join(' ') + ' ');
+    const prefix = words.length > 0 ? words.join(' ') + ' ' : '';
+    setInputText(prefix + cmd.name + ' ');
     setShowSlashMenu(false);
-    if (cmd.name === '/plan') setMode('Plan');
-    if (cmd.name === '/goal') setMode('Goal');
     inputRef.current?.focus();
   };
 
   const insertMention = (mention: ContextMention) => {
     const words = inputText.split(/\s+/);
     words.pop();
-    setInputText([...words, mention.name].join(' ') + ' ');
+    const prefix = words.length > 0 ? words.join(' ') + ' ' : '';
+    setInputText(prefix + mention.name + ' ');
     setShowMentionMenu(false);
     inputRef.current?.focus();
   };
 
   return (
-    <div className="relative flex flex-col gap-2">
+    <div className="relative w-full" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
+      {/* Hidden File Input Elements */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={(e) => e.target.files && handleProcessFiles(e.target.files)}
+        multiple
+        className="hidden"
+      />
+      <input
+        type="file"
+        ref={folderInputRef}
+        onChange={(e) => e.target.files && handleProcessFiles(e.target.files)}
+        {...({ webkitdirectory: '', directory: '' } as any)}
+        multiple
+        className="hidden"
+      />
 
-      {/* ── Slash Command Menu ── */}
+      {/* Slash Command Autocomplete Menu */}
       {showSlashMenu && (
-        <div
-          className="absolute bottom-full left-0 mb-2 w-72 rounded-xl overflow-hidden z-50 animate-slide-down"
-          style={{ background: 'var(--dp-bg-elevated)', border: '1px solid var(--dp-border-mid)', boxShadow: 'var(--dp-shadow-float)' }}
-        >
-          <div className="px-3 py-2 text-[10px] font-semibold text-[var(--dp-accent)] border-b border-[var(--dp-border)] uppercase tracking-wider flex items-center justify-between">
+        <div className="absolute bottom-full left-0 mb-2 w-full z-50 rounded-xl bg-[var(--dp-bg-elevated)] border border-[var(--dp-border-mid)] shadow-2xl overflow-hidden font-sans">
+          <div className="px-3 py-1.5 border-b border-white/5 bg-white/5 flex items-center justify-between text-[10px] text-[var(--dp-text-muted)] uppercase tracking-wider font-semibold">
             <span>Slash Commands</span>
-            <span className="text-[var(--dp-text-muted)] normal-case font-normal">↑↓ navigate · Enter select</span>
+            <span>↑↓ Navigate • ↵ Select</span>
           </div>
-          <div className="max-h-48 overflow-y-auto py-1">
+          <div className="max-h-48 overflow-y-auto p-1 space-y-0.5">
             {SLASH_COMMANDS.map((cmd, idx) => (
               <div
                 key={cmd.name}
                 onClick={() => insertSlashCommand(cmd)}
-                className={`px-3 py-2 text-xs cursor-pointer flex items-center justify-between transition-colors ${
-                  idx === selectedIndex
-                    ? 'bg-[var(--dp-accent-dim)] text-[var(--dp-text-bright)]'
-                    : 'text-[var(--dp-text-secondary)] hover:bg-white/4'
+                className={`flex items-center justify-between px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
+                  idx === selectedIndex ? 'bg-[var(--dp-accent)]/20 text-white font-medium' : 'text-[var(--dp-text-secondary)] hover:bg-white/5'
                 }`}
               >
-                <div>
+                <div className="flex items-center gap-2">
                   <span className="font-mono text-[var(--dp-accent)] font-semibold">{cmd.name}</span>
-                  <p className="text-[10px] text-[var(--dp-text-muted)] mt-0.5">{cmd.description}</p>
+                  <span className="text-[var(--dp-text-muted)] text-[11px]">{cmd.description}</span>
                 </div>
-                <ChevronRight className="w-3.5 h-3.5 text-[var(--dp-text-muted)] shrink-0" />
+                <ChevronRight className="w-3 h-3 text-[var(--dp-text-muted)] shrink-0" />
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* ── Mention Menu ── */}
+      {/* Context Mention (@) Menu */}
       {showMentionMenu && (
-        <div
-          className="absolute bottom-full left-0 mb-2 w-80 rounded-xl overflow-hidden z-50 animate-slide-down"
-          style={{ background: 'var(--dp-bg-elevated)', border: '1px solid var(--dp-border-mid)', boxShadow: 'var(--dp-shadow-float)' }}
-        >
-          <div className="px-3 py-2 text-[10px] font-semibold text-[var(--dp-info)] border-b border-[var(--dp-border)] uppercase tracking-wider flex items-center justify-between">
-            <span>Context & File Mentions</span>
-            <span className="text-[var(--dp-text-muted)] normal-case font-normal">↑↓ navigate · Enter select</span>
+        <div className="absolute bottom-full left-0 mb-2 w-full z-50 rounded-xl bg-[var(--dp-bg-elevated)] border border-[var(--dp-border-mid)] shadow-2xl overflow-hidden font-sans">
+          <div className="px-3 py-1.5 border-b border-white/5 bg-white/5 flex items-center justify-between text-[10px] text-[var(--dp-text-muted)] uppercase tracking-wider font-semibold">
+            <span>Context Mentions</span>
+            <span>↑↓ Navigate • ↵ Select</span>
           </div>
-          <div className="max-h-56 overflow-y-auto py-1">
+          <div className="max-h-48 overflow-y-auto p-1 space-y-0.5">
             {activeMentions.length === 0 ? (
-              <div className="px-3 py-3 text-xs text-[var(--dp-text-muted)] italic text-center">
-                No matching files or context
-              </div>
+              <div className="px-3 py-2 text-xs text-[var(--dp-text-muted)]">No matching files or context</div>
             ) : (
               activeMentions.map((mention, idx) => (
                 <div
-                  key={mention.name + idx}
+                  key={mention.name}
                   onClick={() => insertMention(mention)}
-                  className={`px-3 py-2 text-xs cursor-pointer flex items-center gap-2.5 transition-colors ${
-                    idx === selectedIndex
-                      ? 'bg-[rgba(96,165,250,0.12)] text-[var(--dp-text-bright)] font-medium'
-                      : 'text-[var(--dp-text-secondary)] hover:bg-white/4'
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
+                    idx === selectedIndex ? 'bg-[var(--dp-accent)]/20 text-white font-medium' : 'text-[var(--dp-text-secondary)] hover:bg-white/5'
                   }`}
                 >
-                  {mention.type === 'file'      && <FileText className="w-3.5 h-3.5 text-[var(--dp-info)] shrink-0" />}
-                  {mention.type === 'folder'    && <Folder   className="w-3.5 h-3.5 text-[var(--dp-warning)] shrink-0" />}
-                  {mention.type === 'terminal'  && <Terminal  className="w-3.5 h-3.5 text-[var(--dp-success)] shrink-0" />}
+                  {mention.type === 'file'      && <FileText  className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+                  {mention.type === 'folder'    && <Folder    className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                  {mention.type === 'terminal'  && <Terminal  className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
                   {mention.type === 'git'       && <GitBranch className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
                   {mention.type === 'selection' && <Code2     className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
                   {mention.type === 'workspace' && <Layers    className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
@@ -223,15 +332,50 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
           border: '1px solid var(--dp-border-mid)',
         }}
       >
+        {/* Attachment Chips Preview Bar */}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 px-3 pt-2.5 pb-1 border-b border-white/5 max-h-24 overflow-y-auto">
+            {attachments.map((att, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] bg-white/10 text-white font-mono border border-white/10 shadow-sm"
+              >
+                {att.previewUrl ? (
+                  <img src={att.previewUrl} alt={att.name} className="w-4 h-4 rounded object-cover" />
+                ) : att.type === 'image' ? (
+                  <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
+                ) : att.type === 'folder' ? (
+                  <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
+                ) : (
+                  <FileText className="w-3.5 h-3.5 text-blue-400" />
+                )}
+                <span className="truncate max-w-[130px]" title={att.name}>{att.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(idx)}
+                  className="hover:text-red-400 text-gray-400 transition-colors ml-0.5 cursor-pointer"
+                  title="Remove attachment"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+            {isUploading && (
+              <span className="text-[10px] text-violet-400 animate-pulse">Uploading...</span>
+            )}
+          </div>
+        )}
+
         {/* Textarea */}
         <textarea
           ref={inputRef}
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={
             mode === 'Agent'
-              ? 'Ask DevPilot anything...'
+              ? 'Ask DevPilot anything... (Paste image or drop files)'
               : mode === 'Plan'
               ? 'Describe feature to plan...'
               : 'Ask a question...'
@@ -243,7 +387,7 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
 
         {/* Footer */}
         <div className="flex items-center justify-between px-2 pb-2 pt-1">
-          {/* Left: context tools */}
+          {/* Left: context tools & Attachment Buttons */}
           <div className="flex items-center gap-0.5">
             <button
               onClick={() => { setInputText(inputText + '@'); inputRef.current?.focus(); }}
@@ -259,10 +403,25 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
             >
               <span className="text-[12px] font-bold">/</span>
             </button>
+
+            {/* Paperclip Button for Image / File Upload */}
             <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
               className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
-              title="Add file context"
+              title="Upload file or image attachment"
             >
+              <Paperclip className="w-3.5 h-3.5" />
+            </button>
+
+            {/* FolderPlus Button for Folder Upload */}
+            <button
+              type="button"
+              onClick={() => folderInputRef.current?.click()}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
+              title="Upload folder attachment"
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -277,12 +436,12 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
             </button>
           ) : (
             <button
-              onClick={onSend}
-              disabled={!inputText.trim()}
+              onClick={handleTriggerSend}
+              disabled={!inputText.trim() && attachments.length === 0}
               className="w-8 h-8 flex items-center justify-center rounded-xl disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all hover:scale-105 active:scale-95"
               style={{
                 background: 'linear-gradient(135deg, #7c6af0 0%, #4f8df5 100%)',
-                boxShadow: inputText.trim() ? '0 4px 12px rgba(124,106,240,0.4)' : 'none',
+                boxShadow: (inputText.trim() || attachments.length > 0) ? '0 4px 12px rgba(124,106,240,0.4)' : 'none',
               }}
               title="Send (Enter)"
             >
