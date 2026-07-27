@@ -135,5 +135,32 @@ AVAILABLE_TOOLS = [
                 }
             }
         }
+    },
+    {
+        "name": "spawn_subagent",
+        "description": (
+            "Spawn a disposable, stateless, read-only sub-agent to answer a single "
+            "self-contained question about the codebase. "
+            "Stateless, one-shot. The sub-agent cannot ask follow-up questions — "
+            "prompt must be fully self-contained. "
+            "The sub-agent is restricted to read-only tools (list_directory, read_file, "
+            "search_codebase) and cannot write files, edit files, or run terminal commands. "
+            "Use this when you need to delegate a focused research task without consuming "
+            "the parent session's tool-call budget."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": (
+                        "A fully self-contained prompt for the sub-agent. "
+                        "Include all necessary context — the sub-agent has no access "
+                        "to the parent conversation history."
+                    )
+                }
+            },
+            "required": ["prompt"]
+        }
     }
-]
+]

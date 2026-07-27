@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from . import file_tools, search_tool, terminal_tool
+from . import file_tools, search_tool, terminal_tool, spawn_subagent as _spawn_subagent_mod
 
 
 async def dispatch_tool(
@@ -88,6 +88,12 @@ async def dispatch_tool(
 
     if name == "open_with_live_server":
         return await file_tools.open_with_live_server(session, args)
+
+    if name == "spawn_subagent":
+        prompt = args.get("prompt", "")
+        if not prompt:
+            raise ValueError("spawn_subagent requires a non-empty 'prompt' argument.")
+        return await _spawn_subagent_mod.spawn_subagent(session, prompt)
 
     raise NotImplementedError(f"Tool '{name}' is not supported.")
 
