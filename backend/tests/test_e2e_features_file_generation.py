@@ -1,0 +1,164 @@
+"""End-to-End integration tests for all newly added features by generating physical files.
+
+Tests cover:
+1. Image generation -> Vision / OCR extraction on generated PNG.
+2. Code & Document file generation -> RAG chunking, indexing, and retrieval.
+3. MCP server script generation -> Server connection, tool registration, and permission checks.
+4. Error log file generation -> StuckDetector error normalization & Tavily web search fallback.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from PIL import Image, ImageDraw
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from app.attachments import format_attachment_prompt, process_attachments
+from app.mcp_client import MCP_DISCOVERED_TOOLS, global_mcp_manager
+from app.rag import chunk_file, embed_and_index, query
+from app.tools.dispatcher import dispatch_tool
+from app.vision import VisionResult, analyze_image
+from parallel_agent_system.core.state import AgentResult, SubTask
+from parallel_agent_system.monitor.stuck_detector import StuckDetector, normalize_error_signature
+
+
+@pytest.mark.asyncio
+async def test_generated_image_file_vision_analysis(tmp_path):
+    """Generates a physical PNG image file and analyzes it via vision/OCR."""
+    img_path = tmp_path / "generated_invoice.png"
+    img = Image.new("RGB", (300, 100), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    draw.text((10, 40), "DevPilot QA Invoice #1001", fill=(0, 0, 0))
+    img.save(img_path)
+
+    assert os.path.exists(img_path)
+
+    # 1. OCR fallback on generated image file
+    res_ocr: VisionResult = await analyze_image(str(img_path))
+    assert res_ocr.mode == "ocr"
+    assert "generated_invoice.png" in res_ocr.text
+    assert res_ocr.confidence > 0.0
+
+    # 2. Vision Model path on generated image file
+    with patch("app.state.config_manager.get_image_analysis_model", return_value="gpt-4o"):
+        with patch("app.adapters.router.ModelRouter.completion", new_callable=AsyncMock) as mock_comp:
+            mock_comp.return_value = "Invoice #1001 detected with amount $500.00"
+            res_vision: VisionResult = await analyze_image(str(img_path))
+
+    assert res_vision.mode == "vision_model"
+    assert "Invoice #1001" in res_vision.text
+    assert res_vision.confidence == 1.0
+
+
+@pytest.mark.asyncio
+async def test_generated_code_files_rag_pipeline(tmp_path):
+    """Generates code and documentation files, then tests RAG chunking & retrieval."""
+    py_file = tmp_path / "database_service.py"
+    py_file.write_text(
+        "class DatabaseService:\n"
+        "    def __init__(self, db_url: str):\n"
+        "        self.db_url = db_url\n\n"
+        "    def connect_postgresql(self):\n"
+        "        print('Connecting to PostgreSQL database...')\n"
+        "        return True\n",
+        encoding="utf-8",
+    )
+
+    md_file = tmp_path / "API_GUIDE.md"
+    md_file.write_text(
+        "# API Documentation Guide\n"
+        "Use `/api/v1/auth/login` to obtain a JWT bearer token.\n"
+        "Use `/api/v1/users/profile` to get user metadata.\n",
+        encoding="utf-8",
+    )
+
+    assert os.path.exists(py_file)
+    assert os.path.exists(md_file)
+
+    # Process both generated attachments
+    results = await process_attachments(
+        [str(py_file), str(md_file)],
+        query="How do I connect to PostgreSQL?",
+        workspace_root=str(tmp_path),
+    )
+
+    assert len(results) == 2
+    assert results[0].file_type == "document"
+    assert results[0].mode == "rag"
+    assert "connect_postgresql" in results[0].summary_or_chunks
+
+    assert results[1].file_type == "document"
+    assert results[1].mode == "rag"
+
+    formatted_prompt = format_attachment_prompt(results)
+    assert "ATTACHED FILE CONTEXT" in formatted_prompt
+    assert "database_service.py" in formatted_prompt
+    assert "API_GUIDE.md" in formatted_prompt
+
+
+@pytest.mark.asyncio
+async def test_generated_mcp_script_server_registration(tmp_path):
+    """Generates a mock MCP server script and tests tool registration & dispatcher execution."""
+    server_script = tmp_path / "mock_mcp_server.py"
+    server_script.write_text(
+        "import sys, json\n"
+        "print(json.dumps({'jsonrpc': '2.0', 'id': 1, 'result': {'tools': [{'name': 'mcp_gen_query'}]}}))\n",
+        encoding="utf-8",
+    )
+
+    server_cfg = {
+        "id": "gen-mcp-server",
+        "name": "Generated MCP Server",
+        "command": sys.executable,
+        "args": [str(server_script)],
+    }
+
+    discovered = await global_mcp_manager.connect_server(server_cfg)
+    assert len(discovered) >= 1
+
+    tool_name = discovered[0]["name"]
+    assert tool_name in MCP_DISCOVERED_TOOLS
+
+    class DummySession:
+        workspace_root = str(tmp_path)
+
+    # Execute discovered MCP tool via dispatcher
+    exec_res = await dispatch_tool(DummySession(), "tc-mcp-1", tool_name, {"query": "SELECT * FROM users"}, auto_apply=True)
+    assert "Executed" in exec_res or "Arguments" in exec_res
+
+
+@pytest.mark.asyncio
+async def test_generated_error_log_tavily_fallback(tmp_path):
+    """Generates log files with repeating errors and verifies StuckDetector & web search query formatting."""
+    log_file = tmp_path / "error_trace.log"
+    log_content = (
+        "2026-07-27T18:10:00 [ERROR] main.py:45 - ConnectionRefusedError: [Errno 111] Connection refused at 0x7f88\n"
+        "2026-07-27T18:10:05 [ERROR] main.py:90 - ConnectionRefusedError: [Errno 111] Connection refused at 0x90a1\n"
+    )
+    log_file.write_text(log_content, encoding="utf-8")
+
+    lines = log_file.read_text(encoding="utf-8").strip().split("\n")
+    sig1 = normalize_error_signature(lines[0])
+    sig2 = normalize_error_signature(lines[1])
+
+    assert sig1 == sig2
+    assert "ConnectionRefusedError" in sig1
+    assert "0x7f88" not in sig1
+    assert "0x90a1" not in sig1
+
+    detector = StuckDetector()
+    subtask = SubTask(id="sub-101", agent_type="backend", description="Fix DB connection error", workspace_dir=str(tmp_path))
+    detector.record_debugging_attempt("sub-101")
+
+    res1 = AgentResult(subtask_id="sub-101", agent_type="backend", status="failed", output=lines[0], event_log_key="events:sub-101")
+    res2 = AgentResult(subtask_id="sub-101", agent_type="backend", status="failed", output=lines[1], event_log_key="events:sub-101")
+
+    check_res = detector.check_detailed([subtask], [res1, res2], repeat_error_threshold=2)
+    assert "sub-101" in check_res["web_search_task_ids"]
+    assert "ConnectionRefusedError" in check_res["error_signatures"]["sub-101"]
