@@ -342,6 +342,38 @@ export default function ChatPanel({
           onOpenSettings={onOpenSettings}
         />
 
+        {/* Quick prompt suggestions */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1 px-0.5 text-[10.5px]">
+          <button
+            type="button"
+            onClick={() => setInput('/review Perform security & code review on active file')}
+            className="px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg shrink-0 cursor-pointer transition-colors"
+          >
+            🔍 Review Code
+          </button>
+          <button
+            type="button"
+            onClick={() => setInput('Scan workspace for potential bugs and performance risks')}
+            className="px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg shrink-0 cursor-pointer transition-colors"
+          >
+            🐛 Scan Bugs
+          </button>
+          <button
+            type="button"
+            onClick={() => setInput('Generate unit tests covering happy path and edge cases')}
+            className="px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg shrink-0 cursor-pointer transition-colors"
+          >
+            🧪 Generate Tests
+          </button>
+          <button
+            type="button"
+            onClick={() => setInput('/goal Refactor active file for high performance and clean architecture')}
+            className="px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg shrink-0 cursor-pointer transition-colors"
+          >
+            ⚡ Refactor
+          </button>
+        </div>
+
         {/* Input Box Container */}
         <form onSubmit={handleSubmit} className="bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 flex flex-col gap-2.5 focus-within:border-violet-500/60 shadow-inner">
           <textarea

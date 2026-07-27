@@ -1,182 +1,50 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Folder, FolderOpen, File as FileIcon, Plus, FolderPlus, Trash2,
-  ChevronRight, ChevronDown, Terminal, ChevronsDownUp,
-  Eye, EyeOff, Copy, Clipboard, Pencil
-} from 'lucide-react';
+import { Plus, FolderPlus, FolderOpen } from 'lucide-react';
 import { listFiles, createFile, deleteFile, getWorkspaceStats } from '../api';
-import { LoadingSpinner } from './LoadingSpinner';
-import { ContextMenu } from './ContextMenu';
-import type { ContextMenuEntry } from './ContextMenu';
-import { useTerminal } from '../core/terminal/TerminalContext';
+import type { FileItem, SidebarProps, WorkspaceStatsData } from './Sidebar/types';
+import { SearchBar } from './Sidebar/SearchBar';
+import { FileCreationDialog } from './Sidebar/FileCreationDialog';
+import { FileContextMenu } from './Sidebar/FileContextMenu';
+import { WorkspaceStats } from './Sidebar/WorkspaceStats';
+import { FileTree } from './Sidebar/FileTree';
 
-interface FileItem {
-  name: string;
-  path: string;
-  is_dir: boolean;
-  size?: number;
-}
-
-interface SidebarProps {
-  onSelectFile: (path: string) => void;
-  selectedFilePath: string | null;
-  refreshTrigger: number;
-  workspacePath: string;
-  onOpenFolder: () => void;
-  gitChanges?: Record<string, string>;
-}
-
-// ── File Icon System ──
-const FILE_ICON_MAP: Record<string, { color: string; label: string }> = {
-  py: { color: '#3572A5', label: '🐍' },
-  ts: { color: '#3178C6', label: 'TS' },
-  tsx: { color: '#3178C6', label: 'TX' },
-  js: { color: '#F7DF1E', label: 'JS' },
-  jsx: { color: '#F7DF1E', label: 'JX' },
-  json: { color: '#cbcb41', label: '{}' },
-  html: { color: '#E34F26', label: '<>' },
-  css: { color: '#563d7c', label: '#' },
-  scss: { color: '#c6538c', label: 'S#' },
-  md: { color: '#519aba', label: 'M↓' },
-  yml: { color: '#cb171e', label: 'YM' },
-  yaml: { color: '#cb171e', label: 'YM' },
-  toml: { color: '#9c4121', label: 'TL' },
-  sh: { color: '#89e051', label: '$_' },
-  bat: { color: '#C1F12E', label: '⌘' },
-  sql: { color: '#e38c00', label: 'SQ' },
-  graphql: { color: '#e10098', label: 'GQ' },
-  env: { color: '#ECD53F', label: '.E' },
-  gitignore: { color: '#F54D27', label: '.G' },
-  dockerfile: { color: '#2496ED', label: '🐳' },
-  rs: { color: '#DEA584', label: 'Rs' },
-  go: { color: '#00ADD8', label: 'Go' },
-  java: { color: '#b07219', label: 'Jv' },
-  c: { color: '#555555', label: 'C' },
-  cpp: { color: '#f34b7d', label: 'C+' },
-  h: { color: '#555555', label: '.H' },
-  rb: { color: '#CC342D', label: 'Rb' },
-  php: { color: '#4F5D95', label: 'P?' },
-  svg: { color: '#ff9900', label: '◇' },
-  png: { color: '#a074c4', label: '🖼' },
-  jpg: { color: '#a074c4', label: '🖼' },
-  gif: { color: '#a074c4', label: '🖼' },
-  ico: { color: '#a074c4', label: '▣' },
-  woff: { color: '#aaaaaa', label: 'Fn' },
-  woff2: { color: '#aaaaaa', label: 'Fn' },
-  lock: { color: '#776e6e', label: '🔒' },
-  txt: { color: '#89898b', label: 'Tx' },
-  log: { color: '#776e6e', label: '📋' },
-  xml: { color: '#f36e1f', label: 'XM' },
-  zip: { color: '#afb42b', label: '📦' },
-  gz: { color: '#afb42b', label: '📦' },
-  tar: { color: '#afb42b', label: '📦' },
-  map: { color: '#776e6e', label: '.M' },
-};
-
-const HIDDEN_PATTERNS = [
-  'node_modules', '__pycache__', '.git', '.venv', 'venv', '.mypy_cache',
-  '.pytest_cache', '.next', 'dist', '.DS_Store', 'thumbs.db',
-  '.env.local', '.vercel', '.turbo', '.cache'
-];
-
-/** Get a styled icon element for a filename */
-function getFileIconElement(name: string, isDir: boolean, isExpanded: boolean) {
-  if (isDir) {
-    return isExpanded
-      ? <FolderOpen className="w-4 h-4 text-yellow-500/90 shrink-0" />
-      : <Folder className="w-4 h-4 text-yellow-500/80 shrink-0" />;
-  }
-
-  const lower = name.toLowerCase();
-  // Special filenames
-  if (lower === 'dockerfile' || lower.startsWith('dockerfile.')) {
-    const m = FILE_ICON_MAP['dockerfile'];
-    return <span className="w-4 h-4 flex items-center justify-center text-[9px] font-bold shrink-0 rounded-sm" style={{ color: m.color }}>{m.label}</span>;
-  }
-  if (lower === '.gitignore') {
-    const m = FILE_ICON_MAP['gitignore'];
-    return <span className="w-4 h-4 flex items-center justify-center text-[9px] font-bold shrink-0 rounded-sm" style={{ color: m.color }}>{m.label}</span>;
-  }
-  if (lower === '.env' || lower.startsWith('.env.')) {
-    const m = FILE_ICON_MAP['env'];
-    return <span className="w-4 h-4 flex items-center justify-center text-[9px] font-bold shrink-0 rounded-sm" style={{ color: m.color }}>{m.label}</span>;
-  }
-
-  const ext = name.split('.').pop()?.toLowerCase() || '';
-  const mapping = FILE_ICON_MAP[ext];
-  if (mapping) {
-    return <span className="w-4 h-4 flex items-center justify-center text-[9px] font-bold shrink-0 rounded-sm" style={{ color: mapping.color }}>{mapping.label}</span>;
-  }
-
-  // Fallback
-  return <FileIcon className="w-3.5 h-3.5 text-gray-400 shrink-0" />;
-}
-
-/** Git status badge */
-function GitBadge({ status }: { status: string }) {
-  const config: Record<string, { label: string; cls: string }> = {
-    M: { label: 'M', cls: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/20' },
-    A: { label: 'A', cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' },
-    D: { label: 'D', cls: 'bg-red-500/15 text-red-400 border-red-500/20' },
-    '??': { label: 'U', cls: 'bg-blue-500/15 text-blue-400 border-blue-500/20' },
-    R: { label: 'R', cls: 'bg-purple-500/15 text-purple-400 border-purple-500/20' },
-  };
-  const c = config[status] || config['??'];
-  return (
-    <span className={`text-[8px] font-bold px-1 py-px rounded border leading-none shrink-0 font-mono ${c.cls}`}>
-      {c.label}
-    </span>
-  );
-}
-
-export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger, workspacePath, onOpenFolder, gitChanges }: SidebarProps) {
-  const { setBottomTab, setActiveTerminalCommand } = useTerminal();
+export default function Sidebar({
+  onSelectFile,
+  selectedFilePath,
+  refreshTrigger,
+  workspacePath,
+  onOpenFolder,
+  gitChanges,
+}: SidebarProps) {
   const [rootItems, setRootItems] = useState<FileItem[]>([]);
   const [dirContents, setDirContents] = useState<Record<string, FileItem[]>>({});
   const [expandedPaths, setExpandedPaths] = useState<Record<string, boolean>>({});
   const [loadingDir, setLoadingDir] = useState<string | null>(null);
+
+  // Search & Filters
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [showHidden, setShowHidden] = useState(false);
+
+  // Creation State
   const [creatingType, setCreatingType] = useState<'file' | 'folder' | null>(null);
   const [creatingInPath, setCreatingInPath] = useState<string>('');
   const [newItemName, setNewItemName] = useState<string>('');
+
+  // Rename State
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState<string>('');
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [showHidden, setShowHidden] = useState(false);
-  const [stats, setStats] = useState<null | {
-    total_files: number;
-    total_lines: number;
-    languages: Record<string, number>;
-    git_commits: number;
-  }>(null);
+
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: FileItem } | null>(null);
+
+  // Drag & Drop State
+  const [dragItem, setDragItem] = useState<FileItem | null>(null);
+
+  // Stats State
+  const [stats, setStats] = useState<WorkspaceStatsData | null>(null);
   const [isStatsExpanded, setIsStatsExpanded] = useState(false);
 
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    item: FileItem;
-  } | null>(null);
-
-  // Drag & drop state
-  const [dragItem, setDragItem] = useState<FileItem | null>(null);
-  const [dragOverPath, setDragOverPath] = useState<string | null>(null);
-
-  useEffect(() => {
-    refreshRoot();
-  }, [workspacePath, refreshTrigger]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const s = await getWorkspaceStats();
-        setStats(s);
-      } catch {
-        // ignore
-      }
-    })();
-  }, [workspacePath, refreshTrigger]);
-
-  const refreshRoot = async () => {
+  const refreshRoot = useCallback(async () => {
     if (!workspacePath) return;
     setLoadingDir('');
     try {
@@ -189,7 +57,22 @@ export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger
     } finally {
       setLoadingDir(null);
     }
-  };
+  }, [workspacePath]);
+
+  useEffect(() => {
+    refreshRoot();
+  }, [workspacePath, refreshTrigger, refreshRoot]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await getWorkspaceStats();
+        setStats(s);
+      } catch {
+        // ignore stats errors
+      }
+    })();
+  }, [workspacePath, refreshTrigger]);
 
   const loadDirectory = async (path: string) => {
     if (dirContents[path]) return;
@@ -198,573 +81,211 @@ export default function Sidebar({ onSelectFile, selectedFilePath, refreshTrigger
       const items = await listFiles(path);
       setDirContents(prev => ({ ...prev, [path]: items || [] }));
     } catch (err) {
-      console.error('Failed to load directory', path, err);
+      console.error(`Failed to list dir: ${path}`, err);
     } finally {
       setLoadingDir(null);
     }
   };
 
-  const handleToggleFolder = async (path: string) => {
-    const isExpanded = !!expandedPaths[path];
-    if (isExpanded) {
-      setExpandedPaths(prev => ({ ...prev, [path]: false }));
-      return;
-    }
-    await loadDirectory(path);
-    setExpandedPaths(prev => ({ ...prev, [path]: true }));
+  const toggleExpand = (path: string) => {
+    setExpandedPaths(prev => {
+      const nextState = !prev[path];
+      if (nextState) {
+        loadDirectory(path);
+      }
+      return { ...prev, [path]: nextState };
+    });
   };
 
-  const handleCreateItem = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!newItemName.trim()) return setCreatingType(null);
-    const fullPath = creatingInPath ? `${creatingInPath}/${newItemName}` : newItemName;
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newItemName.trim() || !creatingType) return;
+    const fullPath = creatingInPath
+      ? `${creatingInPath}/${newItemName.trim()}`
+      : newItemName.trim();
+
     try {
       await createFile(fullPath, creatingType === 'folder');
-      setNewItemName('');
       setCreatingType(null);
-      if (!creatingInPath) {
-        await refreshRoot();
+      setNewItemName('');
+
+      if (creatingInPath) {
+        const items = await listFiles(creatingInPath);
+        setDirContents(prev => ({ ...prev, [creatingInPath]: items || [] }));
       } else {
-        // Force re-fetch by removing cached contents
-        setDirContents(prev => {
-          const next = { ...prev };
-          delete next[creatingInPath];
-          return next;
-        });
-        await loadDirectory(creatingInPath);
-        setExpandedPaths(prev => ({ ...prev, [creatingInPath]: true }));
+        refreshRoot();
       }
     } catch (err) {
-      console.error('Failed to create item', err);
+      console.error('Failed to create file/folder', err);
     }
   };
 
-  const handleDeleteItem = async (path: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    if (!confirm(`Delete ${path}?`)) return;
-    try {
-      await deleteFile(path);
-      const parent = path.includes('/') ? path.split('/').slice(0, -1).join('/') : '';
-      if (!parent) await refreshRoot();
-      else {
-        setDirContents(prev => ({ ...prev, [parent]: (prev[parent] || []).filter(i => i.path !== path) }));
-      }
-    } catch (err) {
-      console.error('Failed to delete', err);
-    }
-  };
-
-  const handleRename = async (oldPath: string, newName: string) => {
-    if (!newName.trim()) { setRenamingPath(null); return; }
-    const parent = oldPath.includes('/') ? oldPath.split('/').slice(0, -1).join('/') : '';
-    const newPath = parent ? `${parent}/${newName}` : newName;
-    try {
-      const res = await fetch('/api/files/rename', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ old_path: oldPath, new_path: newPath })
-      });
-      if (res.ok) {
-        setRenamingPath(null);
-        setRenameValue('');
-        if (!parent) await refreshRoot();
-        else {
-          setDirContents(prev => { const next = { ...prev }; delete next[parent]; return next; });
-          await loadDirectory(parent);
-        }
-      } else {
-        alert('Rename failed');
-      }
-    } catch (err) {
-      console.error('Rename error', err);
-      alert('Rename failed');
-    }
-  };
-
-  // ── Collapse All ──
-  const collapseAll = () => setExpandedPaths({});
-
-  // ── Copy path to clipboard ──
-  const copyPath = (path: string, relative = true) => {
-    const fullPath = relative ? path : `${workspacePath}/${path}`;
-    navigator.clipboard.writeText(fullPath.replace(/\//g, '\\'));
-  };
-
-  // ── Context Menu Builder ──
-  const buildContextMenu = (item: FileItem): ContextMenuEntry[] => {
-    const entries: ContextMenuEntry[] = [];
-
-    if (item.is_dir) {
-      entries.push(
-        { label: 'New File', icon: <Plus className="w-3.5 h-3.5" />, onClick: () => { setCreatingInPath(item.path); setCreatingType('file'); } },
-        { label: 'New Folder', icon: <FolderPlus className="w-3.5 h-3.5" />, onClick: () => { setCreatingInPath(item.path); setCreatingType('folder'); } },
-        { type: 'divider' as const },
-      );
-    }
-
-    entries.push(
-      { label: 'Rename', icon: <Pencil className="w-3.5 h-3.5" />, shortcut: 'F2', onClick: () => { setRenamingPath(item.path); setRenameValue(item.name); } },
-      { label: 'Copy Path', icon: <Copy className="w-3.5 h-3.5" />, onClick: () => copyPath(item.path, false) },
-      { label: 'Copy Relative Path', icon: <Clipboard className="w-3.5 h-3.5" />, onClick: () => copyPath(item.path, true) },
-    );
-
-    if (item.is_dir) {
-      entries.push(
-        { type: 'divider' as const },
-        { label: 'Reveal in Terminal', icon: <Terminal className="w-3.5 h-3.5" />, onClick: () => {
-          // Navigate terminal to the directory containing this file/folder
-          const dir = item.is_dir
-            ? item.path
-            : item.path.includes('/') || item.path.includes('\\')
-              ? item.path.substring(0, Math.max(item.path.lastIndexOf('/'), item.path.lastIndexOf('\\')))
-              : '';
-          setBottomTab('terminal');
-          if (dir) setActiveTerminalCommand(`cd "${dir}"`);
-        } },
-      );
-    }
-
-    entries.push(
-      { type: 'divider' as const },
-      { label: 'Delete', icon: <Trash2 className="w-3.5 h-3.5" />, destructive: true, onClick: () => handleDeleteItem(item.path) },
-    );
-
-    return entries;
-  };
-
-  // ── Drag & Drop Handlers ──
-  const handleDragStart = (e: React.DragEvent, item: FileItem) => {
-    e.dataTransfer.setData('text/plain', item.path);
-    setDragItem(item);
-  };
-
-  const handleDragOver = (e: React.DragEvent, targetItem: FileItem) => {
-    if (!targetItem.is_dir) return;
+  const handleRenameSubmit = async (e: React.FormEvent, item: FileItem) => {
     e.preventDefault();
-    e.stopPropagation();
-    setDragOverPath(targetItem.path);
-  };
+    if (!renameValue.trim() || renameValue === item.name) {
+      setRenamingPath(null);
+      return;
+    }
+    const parentDir = item.path.includes('/') ? item.path.split('/').slice(0, -1).join('/') : '';
+    const newPath = parentDir ? `${parentDir}/${renameValue.trim()}` : renameValue.trim();
 
-  const handleDragLeave = () => setDragOverPath(null);
-
-  const handleDrop = async (e: React.DragEvent, targetDir: FileItem) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverPath(null);
-
-    if (!dragItem || !targetDir.is_dir) return;
-    if (dragItem.path === targetDir.path) return;
-    // Don't allow dropping into itself
-    if (targetDir.path.startsWith(dragItem.path + '/')) return;
-
-    const newPath = `${targetDir.path}/${dragItem.name}`;
     try {
-      const res = await fetch('/api/files/rename', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ old_path: dragItem.path, new_path: newPath })
-      });
-      if (res.ok) {
-        // Refresh both source and target directories
-        const sourceParent = dragItem.path.includes('/') ? dragItem.path.split('/').slice(0, -1).join('/') : '';
-        setDirContents(prev => {
-          const next = { ...prev };
-          delete next[sourceParent || '__root__'];
-          delete next[targetDir.path];
-          return next;
-        });
-        if (!sourceParent) await refreshRoot();
-        else await loadDirectory(sourceParent);
-        await loadDirectory(targetDir.path);
-      }
+      await createFile(newPath, item.is_dir);
+      await deleteFile(item.path);
+      setRenamingPath(null);
+      refreshRoot();
     } catch (err) {
-      console.error('Move failed', err);
+      console.error('Failed to rename file', err);
     }
-    setDragItem(null);
   };
 
-  const handleDragEnd = () => { setDragItem(null); setDragOverPath(null); };
-
-  // ── Filter hidden files ──
-  const filterItems = useCallback((items: FileItem[]) => {
-    let filtered = items;
-    if (!showHidden) {
-      filtered = filtered.filter(item => !HIDDEN_PATTERNS.some(p => item.name === p || item.name.startsWith('.')));
+  const handleDeleteItem = async (item: FileItem) => {
+    if (!window.confirm(`Are you sure you want to delete ${item.name}?`)) return;
+    try {
+      await deleteFile(item.path);
+      refreshRoot();
+    } catch (err) {
+      console.error('Failed to delete file', err);
     }
-    if (searchTerm) {
-      filtered = filtered.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }
-    // Sort: directories first, then alphabetical
-    return filtered.sort((a, b) => {
-      if (a.is_dir && !b.is_dir) return -1;
-      if (!a.is_dir && b.is_dir) return 1;
-      return a.name.localeCompare(b.name);
-    });
-  }, [showHidden, searchTerm]);
-
-  // ── Breadcrumb for selected file ──
-  const renderBreadcrumb = () => {
-    if (!selectedFilePath) return null;
-    const parts = selectedFilePath.split('/');
-    return (
-      <div className="dp-breadcrumb border-b border-[#2d2d2d] bg-[#1a1a1a]">
-        {parts.map((part, i) => (
-          <React.Fragment key={i}>
-            {i > 0 && <span className="dp-breadcrumb-separator">›</span>}
-            <span
-              className={`dp-breadcrumb-item ${i === parts.length - 1 ? 'text-white font-medium' : ''}`}
-              onClick={() => {
-                if (i < parts.length - 1) {
-                  const dirPath = parts.slice(0, i + 1).join('/');
-                  handleToggleFolder(dirPath);
-                }
-              }}
-            >
-              {i < parts.length - 1 && <Folder className="w-3 h-3 text-yellow-500/70" />}
-              {part}
-            </span>
-          </React.Fragment>
-        ))}
-      </div>
-    );
   };
 
-  // ── Tree Renderer ──
-  const renderTree = (items: FileItem[], depth = 0) => (
-    <div className="flex flex-col">
-      {filterItems(items).map(item => {
-        const isExpanded = !!expandedPaths[item.path];
-        const isSelected = selectedFilePath === item.path;
-        const gitStatus = gitChanges ? gitChanges[item.path] : undefined;
-        const isDragTarget = dragOverPath === item.path;
-        const isBeingRenamed = renamingPath === item.path;
+  const handleDrop = async (e: React.DragEvent, targetItem: FileItem) => {
+    e.preventDefault();
+    if (!dragItem || dragItem.path === targetItem.path) return;
 
-        return (
-          <div key={item.path} className="flex flex-col">
-            {/* File / Folder Row */}
-            <div
-              draggable
-              onDragStart={(e) => handleDragStart(e, item)}
-              onDragOver={(e) => handleDragOver(e, item)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, item)}
-              onDragEnd={handleDragEnd}
-              onClick={() => (item.is_dir ? handleToggleFolder(item.path) : onSelectFile(item.path))}
-              onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item }); }}
-              style={{ paddingLeft: `${depth * 14 + 8}px` }}
-              className={`group flex items-center justify-between py-[3px] pr-2 cursor-pointer transition-all duration-75
-                ${isDragTarget ? 'dp-drag-over' : ''}
-                ${dragItem?.path === item.path ? 'dp-dragging' : ''}
-                ${isSelected
-                  ? 'bg-[var(--dp-bg-active)] text-[var(--dp-text-bright)]'
-                  : 'text-[var(--dp-text-secondary)] hover:bg-[var(--dp-bg-hover)] hover:text-[var(--dp-text-primary)]'
-                }`}
-            >
-              <div className="flex items-center gap-1.5 min-w-0 select-none">
-                {/* Expand/Collapse chevron */}
-                {item.is_dir ? (
-                  <span className="w-4 h-4 flex items-center justify-center shrink-0">
-                    {isExpanded
-                      ? <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
-                      : <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
-                    }
-                  </span>
-                ) : (
-                  <span className="w-4" />
-                )}
+    const targetDir = targetItem.is_dir
+      ? targetItem.path
+      : targetItem.path.split('/').slice(0, -1).join('/');
 
-                {/* File/Folder Icon */}
-                {getFileIconElement(item.name, item.is_dir, isExpanded)}
+    const newPath = targetDir ? `${targetDir}/${dragItem.name}` : dragItem.name;
 
-                {/* Name or Rename input */}
-                {isBeingRenamed ? (
-                  <form
-                    onSubmit={(e) => { e.preventDefault(); handleRename(item.path, renameValue); }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex-1 min-w-0"
-                  >
-                    <input
-                      autoFocus
-                      type="text"
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onBlur={() => setRenamingPath(null)}
-                      onKeyDown={(e) => { if (e.key === 'Escape') setRenamingPath(null); }}
-                      className="bg-[#171922] border border-[var(--dp-accent)] text-xs px-1.5 py-0.5 rounded text-white focus:outline-none w-full font-mono"
-                    />
-                  </form>
-                ) : (
-                  <div className="flex items-center gap-1.5 min-w-0 truncate" title={`File: ${item.path}\nAI Modified: Yes\nLast AI Edit: Just now\nAuthor: DevPilot AI`}>
-                    <span className={`text-[12px] truncate leading-tight ${
-                      isSelected ? 'text-white font-medium' :
-                      gitStatus === 'M' ? 'text-[var(--dp-git-modified)]' :
-                      (gitStatus === 'A' || gitStatus === '??') ? 'text-[var(--dp-git-added)]' :
-                      gitStatus === 'D' ? 'text-[var(--dp-git-deleted)]' :
-                      'text-gray-400'
-                    }`}>
-                      {item.name}
-                    </span>
-                    {gitStatus && <GitBadge status={gitStatus} />}
-                    {/* AI Decoration Badge */}
-                    {!item.is_dir && (item.name.endsWith('.tsx') || item.name.endsWith('.py') || item.name.endsWith('.ts')) && (
-                      <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold shrink-0">
-                        AI
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Hover action buttons */}
-              {!isBeingRenamed && (
-                <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity duration-100">
-                  {item.is_dir && (
-                    <>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setCreatingInPath(item.path); setCreatingType('file'); }}
-                        className="p-0.5 rounded hover:bg-white/10 hover:text-white"
-                        title="New File"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setCreatingInPath(item.path); setCreatingType('folder'); }}
-                        className="p-0.5 rounded hover:bg-white/10 hover:text-white"
-                        title="New Folder"
-                      >
-                        <FolderPlus className="w-3.5 h-3.5" />
-                      </button>
-                    </>
-                  )}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setRenamingPath(item.path); setRenameValue(item.name); }}
-                    className="p-0.5 rounded hover:bg-white/10 hover:text-white"
-                    title="Rename"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                  <button
-                    onClick={(e) => handleDeleteItem(item.path, e)}
-                    className="p-0.5 rounded hover:bg-red-500/20 hover:text-red-400"
-                    title="Delete"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Expanded directory children */}
-            {item.is_dir && isExpanded && (
-              <div>
-                {/* Inline create form */}
-                {creatingType && creatingInPath === item.path && (
-                  <form
-                    onSubmit={handleCreateItem}
-                    style={{ paddingLeft: `${(depth + 1) * 14 + 24}px` }}
-                    className="py-1 pr-2 flex items-center gap-2"
-                  >
-                    {creatingType === 'folder'
-                      ? <Folder className="w-4 h-4 text-yellow-500/80 shrink-0" />
-                      : <FileIcon className="w-4 h-4 text-gray-400 shrink-0" />
-                    }
-                    <input
-                      autoFocus
-                      type="text"
-                      value={newItemName}
-                      onChange={(e) => setNewItemName(e.target.value)}
-                      onBlur={() => setCreatingType(null)}
-                      onKeyDown={(e) => { if (e.key === 'Escape') setCreatingType(null); }}
-                      className="bg-[#171922] border border-[var(--dp-accent)] text-xs px-1.5 py-0.5 rounded text-white focus:outline-none w-full font-mono"
-                      placeholder={creatingType === 'folder' ? 'Folder name...' : 'File name...'}
-                    />
-                  </form>
-                )}
-
-                {/* Directory children */}
-                {dirContents[item.path] ? renderTree(dirContents[item.path], depth + 1) : (
-                  loadingDir === item.path ? (
-                    <div style={{ paddingLeft: `${(depth + 1) * 14 + 8}px` }} className="py-2">
-                      <LoadingSpinner size={14} />
-                    </div>
-                  ) : null
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+    try {
+      await createFile(newPath, dragItem.is_dir);
+      await deleteFile(dragItem.path);
+      setDragItem(null);
+      refreshRoot();
+    } catch (err) {
+      console.error('Failed to move file', err);
+    }
+  };
 
   return (
-    <div className="h-full flex flex-col select-none font-sans" style={{ background: 'var(--dp-bg-secondary)', color: 'var(--dp-text-primary)' }}>
-      {/* Explorer Header */}
-      <div
-        className="flex items-center justify-between px-3 py-2 shrink-0 select-none"
-        style={{ borderBottom: '1px solid var(--dp-border)' }}
-      >
-        <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--dp-text-muted)]">Explorer</span>
-        {workspacePath && (
-          <div className="flex items-center gap-0.5">
+    <div className="h-full flex flex-col bg-[#151823] border-r border-[#2a3142] select-none">
+      {/* Header Bar */}
+      <div className="p-3 border-b border-[#2a3142] bg-[#0f111a] shrink-0">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+            EXPLORER
+          </span>
+          <div className="flex items-center gap-1">
             <button
-              onClick={() => { setCreatingInPath(''); setCreatingType('file'); }}
-              className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
+              onClick={() => {
+                setCreatingInPath('');
+                setCreatingType('file');
+              }}
               title="New File"
+              className="p-1 rounded text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => { setCreatingInPath(''); setCreatingType('folder'); }}
-              className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
+              onClick={() => {
+                setCreatingInPath('');
+                setCreatingType('folder');
+              }}
               title="New Folder"
+              className="p-1 rounded text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
             >
               <FolderPlus className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={collapseAll}
-              className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
-              title="Collapse All"
+              onClick={onOpenFolder}
+              title="Open Workspace Folder"
+              className="p-1 rounded text-gray-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
             >
-              <ChevronsDownUp className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => setShowHidden(!showHidden)}
-              className={`w-6 h-6 flex items-center justify-center rounded cursor-pointer transition-colors hover:bg-white/6 ${showHidden ? 'text-[var(--dp-accent)]' : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)]'}`}
-              title={showHidden ? 'Hide Hidden Files' : 'Show Hidden Files'}
-            >
-              {showHidden ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              <FolderOpen className="w-3.5 h-3.5" />
             </button>
           </div>
+        </div>
+
+        <SearchBar
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          showHidden={showHidden}
+          setShowHidden={setShowHidden}
+        />
+      </div>
+
+      {/* Inline Creation Dialog */}
+      <FileCreationDialog
+        creatingType={creatingType}
+        creatingInPath={creatingInPath}
+        newItemName={newItemName}
+        setNewItemName={setNewItemName}
+        onSubmit={handleCreateSubmit}
+        onCancel={() => setCreatingType(null)}
+      />
+
+      {/* Main File Tree Area */}
+      <div className="flex-1 overflow-y-auto py-1">
+        {rootItems.length === 0 ? (
+          <div className="p-4 text-center text-xs text-gray-500 italic">
+            No workspace files found.
+          </div>
+        ) : (
+          <FileTree
+            items={rootItems}
+            dirContents={dirContents}
+            expandedPaths={expandedPaths}
+            selectedFilePath={selectedFilePath}
+            loadingDir={loadingDir}
+            renamingPath={renamingPath}
+            renameValue={renameValue}
+            gitChanges={gitChanges}
+            searchTerm={searchTerm}
+            showHidden={showHidden}
+            onToggleExpand={toggleExpand}
+            onSelectFile={onSelectFile}
+            onContextMenu={(e, item) => {
+              e.preventDefault();
+              setContextMenu({ x: e.clientX, y: e.clientY, item });
+            }}
+            onRenameSubmit={handleRenameSubmit}
+            setRenameValue={setRenameValue}
+            setRenamingPath={setRenamingPath}
+            onDragStart={setDragItem}
+            onDragOver={e => e.preventDefault()}
+            onDrop={handleDrop}
+          />
         )}
       </div>
 
-      {/* Search Filter */}
-      <div className="px-2 py-1.5" style={{ borderBottom: '1px solid var(--dp-border)' }}>
-        <input
-          type="text"
-          placeholder="Filter files..."
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          className="w-full px-2 py-1 rounded-md text-[11px] font-sans placeholder-[var(--dp-text-muted)] focus:outline-none transition-colors"
-          style={{ background: 'var(--dp-bg-tertiary)', border: '1px solid var(--dp-border)', color: 'var(--dp-text-primary)' }}
-        />
-      </div>
+      {/* Right-click Context Menu */}
+      <FileContextMenu
+        contextMenu={contextMenu}
+        onClose={() => setContextMenu(null)}
+        onStartCreateInFolder={(dir, type) => {
+          setCreatingInPath(dir);
+          setCreatingType(type);
+          setContextMenu(null);
+        }}
+        onStartRename={item => {
+          setRenamingPath(item.path);
+          setRenameValue(item.name);
+          setContextMenu(null);
+        }}
+        onDelete={item => {
+          handleDeleteItem(item);
+          setContextMenu(null);
+        }}
+      />
 
-      {/* Breadcrumb */}
-      {renderBreadcrumb()}
-
-      {/* File Tree */}
-      {!workspacePath ? (
-        <div className="flex-1 flex flex-col justify-center items-center px-4 py-8 text-center">
-          <FolderOpen className="w-10 h-10 text-[var(--dp-text-muted)]/30 mb-3" />
-          <p className="text-[12px] font-semibold mb-1.5 text-[var(--dp-text-secondary)]">No Folder Opened</p>
-          <p className="text-[11px] text-[var(--dp-text-muted)] mb-4 max-w-[180px] leading-relaxed">
-            Open a workspace folder to view and manage files.
-          </p>
-          <button
-            onClick={onOpenFolder}
-            className="px-4 py-1.5 text-white text-[11px] font-semibold rounded-lg transition-all cursor-pointer hover:opacity-90"
-            style={{ background: 'var(--dp-accent-gradient)' }}
-          >
-            Open Folder
-          </button>
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col min-h-0">
-          {/* Project root label */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--dp-text-muted)]" style={{ borderBottom: '1px solid var(--dp-border)' }}>
-            <Folder className="w-3 h-3" />
-            {workspacePath.replace(/\\/g, '/').split('/').pop() || 'Project'}
-          </div>
-          <div className="flex-1 overflow-y-auto py-0.5">
-            {/* Root create form */}
-            {creatingType && creatingInPath === '' && (
-              <form onSubmit={handleCreateItem} className="px-3 py-1 flex items-center gap-1.5">
-                {creatingType === 'folder'
-                  ? <Folder className="w-3.5 h-3.5 text-yellow-500/80 shrink-0" />
-                  : <FileIcon className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                }
-                <input
-                  autoFocus
-                  type="text"
-                  value={newItemName}
-                  onChange={(e) => setNewItemName(e.target.value)}
-                  onBlur={() => setCreatingType(null)}
-                  onKeyDown={(e) => { if (e.key === 'Escape') setCreatingType(null); }}
-                  className="bg-[var(--dp-bg-tertiary)] border border-[var(--dp-accent)] text-xs px-1.5 py-0.5 rounded text-white focus:outline-none w-full font-mono"
-                  placeholder={creatingType === 'folder' ? 'Folder name...' : 'File name...'}
-                />
-              </form>
-            )}
-
-            {loadingDir === '' ? (
-              <div className="flex items-center justify-center py-4"><LoadingSpinner size={20} /></div>
-            ) : rootItems.length === 0 ? (
-              <div className="px-3 py-8 text-center text-xs text-gray-500 font-sans">Workspace is empty</div>
-            ) : (
-              renderTree(rootItems)
-            )}
-          </div>
-
-          {/* Workspace Insights */}
-          {stats && (
-            <div className="shrink-0 bg-[var(--dp-bg-tertiary)] select-none border-t border-[var(--dp-border)] font-sans">
-              <div
-                onClick={() => setIsStatsExpanded(!isStatsExpanded)}
-                className="flex items-center justify-between px-3 py-1 hover:bg-white/5 cursor-pointer text-gray-400 hover:text-white transition-colors"
-              >
-                <span className="text-[9px] font-bold uppercase tracking-wider">Workspace Insights</span>
-                {isStatsExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-              </div>
-
-              {isStatsExpanded && (
-                <div className="p-3 bg-[var(--dp-bg-secondary)] text-[10px] space-y-2 max-h-48 overflow-y-auto border-t border-[var(--dp-border)]">
-                  <div className="grid grid-cols-2 gap-1.5 text-gray-400 font-mono">
-                    <div className="p-1.5 bg-[var(--dp-bg-primary)] border border-[var(--dp-border)] rounded">
-                      <div className="text-gray-500 text-[8px] uppercase font-bold">Files</div>
-                      <div className="text-xs font-bold text-[var(--dp-accent)]">{stats.total_files}</div>
-                    </div>
-                    <div className="p-1.5 bg-[var(--dp-bg-primary)] border border-[var(--dp-border)] rounded">
-                      <div className="text-gray-500 text-[8px] uppercase font-bold">Total LOC</div>
-                      <div className="text-xs font-bold text-[var(--dp-accent)]">{stats.total_lines.toLocaleString()}</div>
-                    </div>
-                    {stats.git_commits > 0 && (
-                      <div className="col-span-2 p-1.5 bg-[var(--dp-bg-primary)] border border-[var(--dp-border)] rounded flex justify-between items-center">
-                        <span className="text-gray-500 text-[8px] uppercase font-bold">Git Commits</span>
-                        <span className="text-xs font-bold text-[var(--dp-accent)] font-mono">{stats.git_commits}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {Object.keys(stats.languages).length > 0 && (
-                    <div className="space-y-1">
-                      <div className="text-gray-500 text-[8px] uppercase font-bold">Languages</div>
-                      <div className="flex flex-wrap gap-1">
-                        {Object.entries(stats.languages).map(([lang, count]) => (
-                          <span key={lang} className="px-1.5 py-0.5 rounded bg-[var(--dp-accent-dim)] text-[var(--dp-accent)] text-[9px] border border-[var(--dp-accent)]/10 font-medium font-mono">
-                            {lang}: <span className="font-bold">{count}</span>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Context Menu */}
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          items={buildContextMenu(contextMenu.item)}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
+      {/* Footer Workspace Stats Drawer */}
+      <WorkspaceStats
+        stats={stats}
+        isExpanded={isStatsExpanded}
+        setIsExpanded={setIsStatsExpanded}
+      />
     </div>
   );
 }

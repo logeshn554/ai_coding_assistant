@@ -147,10 +147,12 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   );
 
   const applyTheme = (theme: string) => {
-    document.documentElement.setAttribute('data-theme', theme === 'dark' ? '' : theme);
+    document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('devpilot_theme', theme);
     setActiveTheme(theme);
+    window.dispatchEvent(new Event('devpilot-theme-change'));
   };
+
 
   const loadPreferences = async () => {
     try {

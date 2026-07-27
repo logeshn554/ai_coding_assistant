@@ -8,7 +8,9 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from .config import settings
 from .state import SESSION_TOKEN, verify_token, limiter, logger
+from .middleware.error_handler import global_error_middleware
 from .routes import all_routers
 
 @asynccontextmanager
@@ -25,8 +27,19 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Redis startup check raised unexpectedly: {e}")
     yield
 
-# Instantiate FastAPI app with lifespan context manager and global authentication check
-app = FastAPI(title="DevPilot Backend", dependencies=[Depends(verify_token)], lifespan=lifespan)
+# Instantiate FastAPI app with OpenAPI docs and global auth verification
+app = FastAPI(
+    title=settings.APP_NAME,
+    description="Multi-agent production-grade AI IDE Backend API",
+    version=settings.APP_VERSION,
+    docs_url="/api/docs",
+    openapi_url="/api/openapi.json",
+    dependencies=[Depends(verify_token)],
+    lifespan=lifespan,
+)
+
+# Register Global Error Middleware
+app.middleware("http")(global_error_middleware)
 
 # Add limiter state and exception handler
 app.state.limiter = limiter
@@ -41,18 +54,7 @@ def permission_error_handler(request: Request, exc: PermissionError):
     )
 
 # Setup CORS
-cors_origins = ["http://localhost:5173"]
-cors_env = os.environ.get("CORS_ORIGINS")
-if cors_env:
-    cors_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
-elif os.environ.get("ALLOW_REMOTE", "false").lower() == "true" or os.environ.get("DOCKER_MODE", "false").lower() == "true":
-    cors_origins = [
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "http://127.0.0.1:5173"
-    ]
-
+cors_origins = settings.CORS_ORIGINS
 allow_all = "*" in cors_origins
 
 app.add_middleware(

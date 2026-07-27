@@ -1,5 +1,5 @@
 import React from 'react';
-import { Folder, Search, Settings, GitBranch, Play, Puzzle, Bot, LayoutGrid, User, FlaskConical, Sparkles } from 'lucide-react';
+import { Folder, Search, Settings, GitBranch, Play, Puzzle, Bot, LayoutGrid, User, FlaskConical, Sparkles, Code } from 'lucide-react';
 import { useUI } from '../../core/ui/UIContext';
 import { useSettings } from '../../core/settings/SettingsContext';
 import { useGit } from '../../core/git/GitContext';
@@ -14,13 +14,13 @@ export const ActivityBar: React.FC = () => {
     { id: 'search',     icon: Search,      label: 'Search' },
     { id: 'git',        icon: GitBranch,   label: 'Source Control', badge: gitChangesList?.length || 0 },
     { id: 'debug',      icon: Play,        label: 'Run & Debug' },
+    { id: 'snippets',   icon: Code,        label: 'Code Snippets' },
     { id: 'artifacts',  icon: Sparkles,    label: 'Artifacts & Plans' },
     { id: 'extensions', icon: Puzzle,      label: 'Extensions' },
     { id: 'testing',    icon: FlaskConical,label: 'Testing' },
     { id: 'agents',     icon: Bot,         label: 'AI Agents' },
-    { id: 'workspace',  icon: LayoutGrid,  label: 'Workspace' },
+    { id: 'workspace',  icon: LayoutGrid,  label: 'Workspace Overview' },
   ];
-
 
   const handleTabClick = (tabId: string) => {
     if (isSidebarOpen && sidebarTab === tabId) {
@@ -33,89 +33,94 @@ export const ActivityBar: React.FC = () => {
 
   return (
     <div
-      className="w-[48px] flex flex-col justify-between py-2 shrink-0 select-none z-10"
+      className="w-[52px] flex flex-col justify-between py-3 shrink-0 select-none z-20 font-sans"
       style={{ background: 'var(--dp-bg-tertiary)', borderRight: '1px solid var(--dp-border)' }}
     >
       {/* Top: Nav icons */}
-      <div className="flex flex-col items-center gap-0.5 w-full px-1">
+      <div className="flex flex-col items-center gap-1.5 w-full px-1.5">
         {topTabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = isSidebarOpen && sidebarTab === tab.id;
 
           return (
-            <div key={tab.id} className="relative w-full flex justify-center">
+            <div key={tab.id} className="relative w-full flex justify-center group">
               <button
                 onClick={() => handleTabClick(tab.id)}
                 title={tab.label}
                 className={`
-                  relative w-9 h-9 flex items-center justify-center rounded-xl transition-all duration-150 cursor-pointer
+                  relative w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-180 cursor-pointer
                   ${isActive
-                    ? 'bg-[var(--dp-accent-dim)] text-[var(--dp-accent-hover)] shadow-[0_0_12px_rgba(124,106,240,0.2)]'
-                    : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5'
+                    ? 'bg-[#7C5CFF]/15 text-[#7C5CFF] shadow-[0_0_16px_rgba(124,92,255,0.35)] ring-1 ring-[#7C5CFF]/30'
+                    : 'text-[var(--dp-text-muted)] hover:text-white hover:bg-white/5'
                   }
                 `}
               >
-                <Icon className="w-[18px] h-[18px]" strokeWidth={isActive ? 2 : 1.75} />
+                <Icon className="w-4 h-4" strokeWidth={isActive ? 2.2 : 1.8} />
 
-                {/* Active accent left bar */}
+                {/* Rounded active indicator pill on left border */}
                 {isActive && (
-                  <span className="absolute left-0 top-2 bottom-2 w-[3px] bg-[var(--dp-accent)] rounded-r-full shadow-[0_0_6px_var(--dp-accent)]" />
+                  <span className="absolute -left-1.5 top-2.5 bottom-2.5 w-1 bg-[#7C5CFF] rounded-r-full shadow-[0_0_10px_#7C5CFF]" />
                 )}
 
                 {/* Badge */}
                 {tab.badge != null && tab.badge > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-[var(--dp-accent)] text-white text-[8px] font-bold px-1 leading-none shadow-sm">
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-[#7C5CFF] text-white text-[8px] font-extrabold px-1 leading-none shadow-md">
                     {tab.badge > 99 ? '99+' : tab.badge}
                   </span>
                 )}
               </button>
+
+              {/* Floating Tooltip */}
+              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1 bg-[#1A1F2E] text-white text-[11px] font-medium rounded-lg border border-[#2A3146] shadow-xl pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap">
+                {tab.label}
+              </div>
             </div>
           );
         })}
       </div>
 
       {/* Bottom: Profile + Settings */}
-      <div className="flex flex-col items-center gap-0.5 w-full px-1">
-        {/* Profile */}
-        <div className="relative w-full flex justify-center">
+      <div className="flex flex-col items-center gap-1.5 w-full px-1.5">
+        {/* Profile button */}
+        <div className="relative w-full flex justify-center group">
           <button
             onClick={() => handleTabClick('profile')}
             title="Profile"
             className={`
-              w-9 h-9 flex items-center justify-center rounded-xl transition-all duration-150 cursor-pointer
+              w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-180 cursor-pointer
               ${isSidebarOpen && sidebarTab === 'profile'
-                ? 'bg-[var(--dp-accent-dim)] text-[var(--dp-accent-hover)]'
-                : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5'
+                ? 'bg-[#7C5CFF]/15 text-[#7C5CFF]'
+                : 'text-[var(--dp-text-muted)] hover:text-white hover:bg-white/5'
               }
             `}
           >
-            <User className="w-[18px] h-[18px]" strokeWidth={1.75} />
+            <User className="w-4 h-4" strokeWidth={1.8} />
             {isSidebarOpen && sidebarTab === 'profile' && (
-              <span className="absolute left-0 top-2 bottom-2 w-[3px] bg-[var(--dp-accent)] rounded-r-full" />
+              <span className="absolute -left-1.5 top-2.5 bottom-2.5 w-1 bg-[#7C5CFF] rounded-r-full" />
             )}
           </button>
         </div>
 
-        {/* Settings */}
-        <div className="relative w-full flex justify-center">
+        {/* Settings button */}
+        <div className="relative w-full flex justify-center group">
           <button
             onClick={() => setIsSettingsOpen(true)}
             title="Settings"
-            className="w-9 h-9 flex items-center justify-center rounded-xl text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5 transition-all duration-150 cursor-pointer"
+            className="w-10 h-10 flex items-center justify-center rounded-xl text-[var(--dp-text-muted)] hover:text-white hover:bg-white/5 transition-all duration-180 cursor-pointer"
           >
-            <Settings className="w-[18px] h-[18px]" strokeWidth={1.75} />
+            <Settings className="w-4 h-4" strokeWidth={1.8} />
           </button>
         </div>
 
-        {/* Avatar pip — opens Profile sidebar */}
+        {/* User avatar pip */}
         <div
           onClick={() => handleTabClick('profile')}
-          className={`mt-1 w-7 h-7 rounded-full flex items-center justify-center text-white text-[9px] font-bold shadow-sm cursor-pointer transition-all duration-150 ${
+          className={`mt-1 w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-md cursor-pointer transition-all duration-180 ${
             isSidebarOpen && sidebarTab === 'profile'
-              ? 'bg-gradient-to-br from-violet-400 to-indigo-500 ring-2 ring-violet-400/50 scale-110'
-              : 'bg-gradient-to-br from-violet-500 to-indigo-600 hover:scale-110 hover:ring-2 hover:ring-violet-400/40'
+              ? 'bg-gradient-to-br from-[#7C5CFF] to-indigo-600 ring-2 ring-[#7C5CFF]/50 scale-105'
+              : 'bg-gradient-to-br from-purple-600 to-indigo-600 hover:scale-105 hover:ring-2 hover:ring-[#7C5CFF]/40'
           }`}
-          title="Profile"
+          title="User Profile"
         >
           U
         </div>

@@ -25,7 +25,7 @@ async def list_directory(session: Any, args: Dict[str, Any]) -> str:
     Returns:
         JSON string of directory entries.
     """
-    path = args.get("path", "")
+    path = args.get("path") or args.get("dir") or args.get("directory") or args.get("folder") or ""
     items = await async_list_workspace_dir(session.workspace_root, path)
     return json.dumps(items, indent=2)
 
@@ -40,8 +40,9 @@ async def read_file(session: Any, args: Dict[str, Any]) -> str:
     Returns:
         File contents as a string.
     """
-    path = args.get("path", "")
+    path = args.get("path") or args.get("file") or args.get("filepath") or args.get("filename") or ""
     return await async_read_workspace_file(session.workspace_root, path)
+
 
 
 async def write_or_edit_file(
@@ -140,3 +141,88 @@ async def write_or_edit_file(
     await async_write_workspace_file(session.workspace_root, path, proposed_content)
     session.log_audit(name, args, "success", f"Modified {path}")
     return f"Successfully updated file '{path}'."
+
+
+def find_free_port(start_port: int = 5500) -> int:
+    """Finds an available free TCP port starting from start_port."""
+    import socket
+    for port in range(start_port, start_port + 50):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(('127.0.0.1', port))
+                return port
+            except OSError:
+                continue
+    return start_port
+
+
+async def open_with_live_server(session: Any, args: Dict[str, Any]) -> str:
+    """Launches or reuses Live Server for an HTML file or static site in the workspace.
+
+    Args:
+        session: Active AgentSession providing workspace_root & send_ws_message.
+        args: Tool arguments; optional ``path`` (default auto-detect) and ``port`` (default 5500).
+
+    Returns:
+        String output containing the Live Server localhost URL.
+    """
+    rel_path = args.get("path") or args.get("file") or args.get("filepath") or ""
+
+    if not rel_path or not rel_path.endswith((".html", ".htm")):
+        found_html = None
+        for root, _, files in os.walk(session.workspace_root):
+            for file in files:
+                if file.endswith((".html", ".htm")):
+                    rel_p = os.path.relpath(os.path.join(root, file), session.workspace_root).replace("\\", "/")
+                    if file == "index.html":
+                        found_html = rel_p
+                        break
+                    elif not found_html:
+                        found_html = rel_p
+            if found_html and found_html.endswith("index.html"):
+                break
+        rel_path = found_html or "index.html"
+
+    from ..processes import global_process_manager
+
+    # 1. Check if Live Server is already running for this workspace
+    running_procs = global_process_manager.get_running_processes()
+    for p in running_procs:
+        if p.cwd == session.workspace_root and ("http.server" in p.command or "Live Server" in (p.name or "")):
+            port = p.port or 5500
+            live_url = f"http://localhost:{port}/{rel_path}".rstrip("/")
+            res_msg = (
+                f"🚀 **Live Server is already running!**\n\n"
+                f"🔗 **Preview URL**: [{live_url}]({live_url})\n\n"
+                f"Serving file: `{rel_path}` at `http://localhost:{port}/`"
+            )
+            await session.send_ws_message({
+                "type": "text_delta",
+                "content": f"\n{res_msg}\n"
+            })
+            return res_msg
+
+    # 2. Find an available free port if requested port is blocked
+    requested_port = args.get("port") or 5500
+    port = find_free_port(requested_port)
+    command = f"python -m http.server {port}"
+
+    proc = await global_process_manager.start_process(command, session.workspace_root, name="Live Server (Static HTML)")
+    asyncio.create_task(session.monitor_and_stream_events(proc))
+
+    live_url = f"http://localhost:{port}/{rel_path}".rstrip("/")
+
+    res_msg = (
+        f"🚀 **Live Server Started!**\n\n"
+        f"🔗 **Preview URL**: [{live_url}]({live_url})\n\n"
+        f"Serving HTML file `{rel_path}` at `http://localhost:{port}/`"
+    )
+
+    await session.send_ws_message({
+        "type": "text_delta",
+        "content": f"\n{res_msg}\n"
+    })
+
+    return res_msg
+
+

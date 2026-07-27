@@ -359,10 +359,11 @@ class AgentSession:
         return router.get_adapter(latest_profile, is_agent=is_agent)
 
     def _get_tools_for_mode(self, mode: str) -> list:
-        read_only_tools = {"list_directory", "read_file", "search_codebase"}
+        read_only_tools = {"list_directory", "read_file", "search_codebase", "open_with_live_server"}
         if mode in ("Ask", "Plan"):
             return [t for t in AVAILABLE_TOOLS if t["name"] in read_only_tools]
         return AVAILABLE_TOOLS
+
 
     def _get_system_prompt(self, mode: str) -> str:
         """Build the system prompt for the given operating mode.
@@ -445,14 +446,16 @@ class AgentSession:
 
         # Check for Run Agent activation (precise patterns only)
         RUN_PATTERNS = [
-            r'\b(run|start|launch|execute|serve)\s+(the\s+)?(project|app|application|server|frontend|backend|api)\b',
-            r'\b(build\s+and\s+run|start\s+server|run\s+project|open\s+application|preview\s+(the\s+)?app)\b',
-            r'\bstart\s+(the\s+)?(dev\s+)?server\b',
+            r'\b(run|start|launch|execute|serve|open|preview)\s+(the\s+)?(project|app|application|server|frontend|backend|api|html|site|page)\b',
+            r'\b(build\s+and\s+run|start\s+server|run\s+project|open\s+application|preview\s+(the\s+)?(app|page|html|site)|live\s*server|open\s+with\s+live\s*server)\b',
+            r'\bstart\s+(the\s+)?(dev\s+)?(server|live\s*server)\b',
+            r'\b(run|open|serve|preview)\s+.*\.html?\b',
             r'\bnpm\s+(run|start)\b',
             r'\buvicorn\b',
             r'\bpython\s+-m\b',
         ]
         is_run_command = any(re.search(p, text.lower()) for p in RUN_PATTERNS)
+
 
         if is_run_command:
             self.is_running = True
@@ -485,74 +488,81 @@ class AgentSession:
                 # ── Fast-path router: classify trivial inputs without an LLM call ──
                 _t = text.strip().lower().rstrip("!?.,:;")
 
+                # ── Greeting / ack fast-path — no LLM call needed ──
                 _GREETINGS = {
-                    "hi", "hello", "hey", "yo", "sup", "hiya", "howdy",
-                    "thanks", "thank you", "ty", "thx", "ok", "okay",
-                    "yes", "no", "sure", "cool", "got it", "alright",
-                    "great", "perfect", "good", "nice", "awesome"
+                    "hi", "hello", "hey", "yo", "sup", "hiya", "howdy", "greetings",
+                    "thanks", "thank you", "ty", "thx", "cheers",
+                    "ok", "okay", "yes", "no", "sure", "cool", "got it",
+                    "alright", "great", "perfect", "good", "nice", "awesome",
+                    "sounds good", "makes sense", "make sense",
                 }
                 if _t in _GREETINGS:
                     mode = "Ask"
-                elif len(text.strip()) < 15 and not any(
-                    kw in _t for kw in ["create", "write", "fix", "run", "build", "add", "edit", "delete", "install"]
+
+                # ── Very short non-action input → Ask ────────────────────
+                elif len(_t) < 12 and not any(
+                    kw in _t for kw in [
+                        "create", "write", "fix", "run", "build",
+                        "add", "edit", "delete", "install", "refactor",
+                    ]
                 ):
                     mode = "Ask"
+
+                # ── Explicit action keywords → Agent (no LLM call) ───────
                 elif re.search(
-                    r'\b(create|write|build|fix|run|start|launch|install|refactor|edit|delete|add|generate|deploy|implement|test)\b',
-                    _t
+                    r'\b(create|write|build|fix|run|start|launch|install|'
+                    r'refactor|edit|delete|add|generate|deploy|implement|'
+                    r'scaffold|init|setup|migrate|seed)\b',
+                    _t,
                 ):
                     mode = "Agent"
+
+                # ── Question-word fast-path → Ask (no LLM call) ──────────
+                elif re.match(
+                    r'^(what|why|how|when|where|who|which|explain|describe|'
+                    r'tell me|can you tell|show me how|what is|what are|'
+                    r'what does|how does|how do)\b',
+                    _t,
+                ):
+                    mode = "Ask"
+
+                # ── Genuinely ambiguous — call LLM classifier ────────────
                 else:
-                    system_prompt = (
+                    _CLASSIFIER_PROMPT = (
                         "You are a query classifier for a coding IDE. "
                         "Read the user's message and return EXACTLY one word: Ask, Plan, or Agent.\n\n"
-                        "RULES — read carefully:\n"
-                        "  Ask   → Greetings, questions, explanations, definitions, help requests, code review "
-                        "without changes, 'what is X', 'how does X work', 'explain Y', 'hi', 'hello', 'thanks'.\n"
-                        "  Plan  → User explicitly wants a plan, outline, roadmap, or architecture design "
-                        "WITHOUT implementation. Keywords: 'plan', 'design', 'outline', 'propose', 'think through'.\n"
-                        "  Agent → User wants ACTIONS: create files, edit code, fix bugs, run commands, "
-                        "install packages, write tests, refactor, build, deploy, start server.\n\n"
-                        "CRITICAL RULES:\n"
-                        "  - A greeting like 'hi', 'hello', 'hey', 'thanks' is ALWAYS Ask.\n"
-                        "  - A question starting with 'what', 'why', 'how', 'explain', 'can you tell me' is ALWAYS Ask.\n"
-                        "  - 'Write me a function' IS Agent (creates code).\n"
-                        "  - 'Explain this function' IS Ask (no changes).\n"
-                        "  - When uncertain between Ask and Plan, choose Ask.\n"
-                        "  - When uncertain between Plan and Agent, choose Plan.\n\n"
+                        "RULES:\n"
+                        "  Ask   → Greetings, questions, explanations, definitions, code review without changes.\n"
+                        "  Plan  → User explicitly wants a plan, outline, or roadmap WITHOUT implementation.\n"
+                        "  Agent → User wants ACTIONS: create files, edit code, fix bugs, run commands, write tests.\n\n"
                         "EXAMPLES:\n"
-                        "  hi                              → Ask\n"
-                        "  hello, how are you              → Ask\n"
-                        "  what is a decorator in python   → Ask\n"
-                        "  explain how JWT works           → Ask\n"
-                        "  review this code                → Ask\n"
-                        "  plan a REST API for my app      → Plan\n"
-                        "  design the database schema      → Plan\n"
-                        "  create a login page             → Agent\n"
-                        "  fix the bug in auth.py          → Agent\n"
-                        "  run the tests                   → Agent\n"
-                        "  add a dark mode toggle          → Agent\n"
-                        "  refactor the user service       → Agent\n\n"
-                        "Reply with ONLY one of these three words. No punctuation. No explanation."
+                        "  what is a decorator           → Ask\n"
+                        "  review this code              → Ask\n"
+                        "  plan a REST API               → Plan\n"
+                        "  design the database schema    → Plan\n"
+                        "  create a login page           → Agent\n"
+                        "  fix the bug in auth.py        → Agent\n\n"
+                        "Reply with ONLY one word. No punctuation. No explanation."
                     )
                     try:
-                        response = await self._run_llm_query(system_prompt, text, agent_name="Orchestrator Agent")
-                        classified = response.strip().strip("'\"").strip()
-                        if classified in ["Ask", "Plan", "Agent"]:
+                        response = await self._run_llm_query(
+                            _CLASSIFIER_PROMPT, text, agent_name="Router"
+                        )
+                        classified = response.strip().strip("'\"").rstrip(".").strip()
+                        if classified in ("Ask", "Plan", "Agent"):
                             mode = classified
+                        elif "ask" in classified.lower():
+                            mode = "Ask"
+                        elif "plan" in classified.lower():
+                            mode = "Plan"
+                        elif "agent" in classified.lower():
+                            mode = "Agent"
                         else:
-                            if "ask" in classified.lower():
-                                mode = "Ask"
-                            elif "plan" in classified.lower():
-                                mode = "Plan"
-                            elif "agent" in classified.lower():
-                                mode = "Agent"
-                            else:
-                                mode = "Ask"  # Safe default — never assume expensive work is needed
+                            mode = "Ask"  # Safe fallback — never default to Agent
                     except Exception as e:
-                        logger.error(f"Failed to auto-classify query using LLM: {str(e)}")
-                        mode = "Ask"
-                logger.info(f"Auto-routed query '{text}' using LLM to mode: '{mode}'")
+                        logger.error(f"Auto-classifier LLM call failed: {e}")
+                        mode = "Ask"  # Safe fallback
+                logger.info(f"Auto-routed '{text[:60]}' → mode={mode}")
 
             # Direct tool-calling loop for all modes (Ask/Plan/Agent)
             # The multi-agent orchestrator is bypassed because it requires
@@ -568,11 +578,19 @@ class AgentSession:
             while turn < self.max_turns:
                 turn += 1
 
-                # Send status update
+                # Send mode-aware status update
+                _status_msg = (
+                    "Thinking..."
+                    if mode == "Ask"
+                    else f"Planning (turn {turn})..."
+                    if mode == "Plan"
+                    else f"Agent turn {turn}/{self.max_turns}..."
+                )
                 await self.send_ws_message({
                     "type": "status",
                     "status": "thinking",
-                    "message": f"Thinking (Turn {turn}/{self.max_turns})..."
+                    "message": _status_msg,
+                    "mode": mode,
                 })
 
                 response_text = ""
@@ -825,7 +843,7 @@ class AgentSession:
             return response_text
         except Exception as e:
             logger.error(f"Error querying background LLM (including fallbacks): {str(e)}")
-            raise e
+            raise  # re-raise preserving original traceback
 
     async def broadcast_processes_state(self):
         from ..processes import global_process_manager
@@ -934,6 +952,7 @@ class AgentSession:
             return None
 
         # Resolve files present
+        # Resolve files present
         django_file = find_file_in_list("manage.py")
         maven_file = find_file_in_list("pom.xml")
         go_file = find_file_in_list("main.go")
@@ -943,6 +962,20 @@ class AgentSession:
         app_py = find_file_in_list("app.py")
         main_py = find_file_in_list("main.py")
         index_html = find_file_in_list("index.html")
+
+        # HTML file detection (match any .html file or index.html)
+        html_files = [f for f in files_list if f.endswith(".html") or f.endswith(".htm")]
+        target_html_file = None
+        for hf in html_files:
+            fname = hf.split("/")[-1]
+            if fname.lower() in user_text.lower():
+                target_html_file = hf
+                break
+        if not target_html_file:
+            if index_html:
+                target_html_file = index_html
+            elif html_files:
+                target_html_file = html_files[0]
 
         if django_file:
             detected_framework = "Django"
@@ -1016,13 +1049,9 @@ class AgentSession:
             else:
                 detected_command = f"python {target_py}"
 
-        elif index_html:
-            detected_framework = "Static Site"
-            if "/" in index_html:
-                sub_dir = index_html.rsplit("/index.html", 1)[0]
-                detected_command = f"cd {sub_dir} && npx serve ."
-            else:
-                detected_command = "npx serve ."
+        elif target_html_file:
+            detected_framework = "Live Server (Static HTML)"
+            detected_command = "python -m http.server 5500"
 
         if detected_command:
             framework = detected_framework
@@ -1074,10 +1103,12 @@ class AgentSession:
                             command = f"npm start{prefix}"
                             break
                 if not command:
-                    if "main.py" in files_list or any(f.endswith("/main.py") for f in files_list):
+                    if target_html_file:
+                        command = "python -m http.server 5500"
+                    elif "main.py" in files_list or any(f.endswith("/main.py") for f in files_list):
                         command = "python main.py"
                     else:
-                        command = "python -m http.server 8000"
+                        command = "python -m http.server 5500"
 
         # Auto-adjust npm command to include --prefix if root package.json does not exist
         if command and command.startswith("npm ") and "--prefix" not in command:
@@ -1090,28 +1121,67 @@ class AgentSession:
                         logger.info(f"Auto-adjusted npm command to include prefix: '{command}'")
                         break
 
-        # Resolve port
-        port = 8000
-        cmd_lower = command.lower()
-        if "runserver" in cmd_lower:
-            port = 8000
-        elif "3000" in cmd_lower or "serve" in cmd_lower:
-            port = 3000
-        elif "5173" in cmd_lower or "vite" in cmd_lower:
-            port = 5173
-        elif "8080" in cmd_lower or "spring-boot" in cmd_lower or "go run" in cmd_lower:
-            port = 8080
-        elif "5000" in cmd_lower or "flask" in cmd_lower:
-            port = 5000
-        elif "npm" in cmd_lower:
-            port = 5173
+        from ..tools.file_tools import find_free_port
 
-        # Send command suggested response in run markdown syntax
-        run_response_text = f"```run\n{command}\n```\nURL: http://localhost:{port}\n\n"
+        # 1. Universal check: is ANY server process already running for this workspace?
+        running_procs = global_process_manager.get_running_processes()
+        for p in running_procs:
+            if p.cwd == self.workspace_root:
+                p_port = p.port or 8000
+                live_url = f"http://localhost:{p_port}/{target_html_file}" if target_html_file else (p.localhost_url or f"http://localhost:{p_port}")
+                run_response_text = (
+                    f"🚀 **Server is already running for this workspace!**\n\n"
+                    f"🔗 **Preview URL**: [{live_url}]({live_url})\n\n"
+                )
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": run_response_text
+                })
+                return
+
+        # 2. Resolve port and command for HTML vs dynamic non-static servers
+        if target_html_file or "Live Server" in framework or "http.server" in command:
+            port = find_free_port(5500)
+            command = f"python -m http.server {port}"
+        else:
+            port = 8000
+            cmd_lower = command.lower()
+            if "runserver" in cmd_lower:
+                port = 8000
+            elif "3000" in cmd_lower or "serve" in cmd_lower:
+                port = 3000
+            elif "5173" in cmd_lower or "vite" in cmd_lower:
+                port = 5173
+            elif "8080" in cmd_lower or "spring-boot" in cmd_lower or "go run" in cmd_lower:
+                port = 8080
+            elif "5000" in cmd_lower or "flask" in cmd_lower:
+                port = 5000
+            elif "npm" in cmd_lower:
+                port = 5173
+
+        # Formulate response
+        if target_html_file:
+            live_url = f"http://localhost:{port}/{target_html_file}"
+            run_response_text = (
+                f"🚀 **Live Server Started!**\n\n"
+                f"🔗 **Preview URL**: [{live_url}]({live_url})\n\n"
+                f"```run\n{command}\n```\n"
+            )
+        else:
+            live_url = f"http://localhost:{port}"
+            run_response_text = (
+                f"🚀 **Server Started!** ({framework})\n\n"
+                f"🔗 **Localhost URL**: [{live_url}]({live_url})\n\n"
+                f"```run\n{command}\n```\n"
+            )
+
         await self.send_ws_message({
             "type": "text_delta",
             "content": run_response_text
         })
+
+
+
 
         # The user explicitly asked to run the project and we already showed them the
         # command in the chat (```run block). No additional permission gate is needed.

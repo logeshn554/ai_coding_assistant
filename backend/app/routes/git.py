@@ -198,6 +198,74 @@ async def get_git_diff(
         logger.error(f"Error in get_git_diff: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/api/git/blame")
+async def get_git_blame(path: str = Query(...)):
+    """
+    GET /api/git/blame?path=<file>
+    Runs `git blame --porcelain <file>` and parses structured commit line info.
+    """
+    if not workspace_state.root:
+        raise HTTPException(status_code=400, detail="No workspace open.")
+    
+    file_path = safe_path(workspace_state.root, path)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found.")
+
+    try:
+        raw_out = await run_cmd_async(["git", "blame", "--porcelain", "--", path], workspace_state.root)
+        if "fatal:" in raw_out:
+            return {"path": path, "blame": []}
+
+        blame_entries = []
+        lines = raw_out.splitlines()
+        idx = 0
+
+        while idx < len(lines):
+            line = lines[idx]
+            parts = line.split()
+            if not parts:
+                idx += 1
+                continue
+
+            if len(parts[0]) in (40, 7, 8):
+                commit_hash = parts[0]
+                line_num = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else 1
+                idx += 1
+                author = "Unknown"
+                summary = ""
+                time_str = ""
+
+                while idx < len(lines) and not lines[idx].startswith("\t"):
+                    subline = lines[idx]
+                    if subline.startswith("author "):
+                        author = subline[7:].strip()
+                    elif subline.startswith("author-time "):
+                        time_str = subline[12:].strip()
+                    elif subline.startswith("summary "):
+                        summary = subline[8:].strip()
+                    idx += 1
+
+                content = ""
+                if idx < len(lines) and lines[idx].startswith("\t"):
+                    content = lines[idx][1:]
+                    idx += 1
+
+                blame_entries.append({
+                    "line": line_num,
+                    "commit": commit_hash[:8],
+                    "author": author,
+                    "summary": summary,
+                    "time": time_str,
+                    "content": content
+                })
+            else:
+                idx += 1
+
+        return {"path": path, "blame": blame_entries}
+    except Exception as e:
+        logger.error(f"Error getting git blame for {path}: {e}")
+        return {"path": path, "blame": [], "error": str(e)}
+
 @router.get("/api/git/changes")
 async def get_git_changes():
     if not workspace_state.root:

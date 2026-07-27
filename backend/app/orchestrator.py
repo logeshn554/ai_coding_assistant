@@ -98,15 +98,16 @@ planner_prompt_template = PromptTemplate.from_template(
     "ordered, dependency-aware subtask plan for specialist agents.\n\n"
     "Request: {task_description}\n\n"
     "RULES:\n"
-    "- Only include agents that are actually needed. Do not include Documentation, Git, "
-    "or Testing agents unless the request specifically requires them.\n"
-    "- Simple single-file changes need only: File System Agent + one coding agent. "
-    "Do NOT add unnecessary phases.\n"
-    "- Tasks with empty dependencies[] run in parallel.\n"
-    "- Choose EXACTLY ONE of: Coding Agent, Frontend Developer Agent, or Backend Developer "
-    "Agent (based on what files change — never all three on the same files).\n"
-    "- Only add Terminal Agent if the task requires running commands to verify.\n"
-    "- Only add Testing Agent if tests exist or are being created.\n\n"
+    "- Include ONLY agents that are needed for this specific request.\n"
+    "- Simple single-file changes: [Requirement Analysis Agent → File System Agent → "
+    "one coding agent]. Do NOT add Terminal, Testing, or Documentation unless the task needs them.\n"
+    "- Include Terminal Agent ONLY when compilation/build verification is meaningful "
+    "(e.g., new dependencies, build config changes, TypeScript changes).\n"
+    "- Include Testing Agent ONLY when tests exist or are being written.\n"
+    "- Include Documentation Agent ONLY for new features or API changes.\n"
+    "- Tasks with empty dependencies[] can run in parallel.\n"
+    "- Use exactly ONE of: Coding Agent, Frontend Developer Agent, or Backend Developer Agent "
+    "(choose based on what files change — never two on the same files).\n\n"
     "Output ONLY a JSON array with no other text:\n"
     "[\n"
     '  {{"id": 1, "agent": "Requirement Analysis Agent", "description": "...", "dependencies": []}},\n'
@@ -582,30 +583,37 @@ class FileSystemAgent(BaseAgent):
         super().__init__("File System Agent", orchestrator)
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
-        await self.orchestrator.context.log(f"File System Agent: Reading codebase files...")
-        await self.orchestrator.update_task_progress(task_id, 20, session)
-        
+        await self.orchestrator.context.log("File System Agent: Reading codebase files...")
+        await self.orchestrator.update_task_progress(task_id, 10, session)
+
         target_files = self.orchestrator.context.memory.get("target_files", [])
-        
+        if not target_files:
+            await self.orchestrator.context.log("File System Agent: No target files in shared memory.")
+            await self.orchestrator.update_task_progress(task_id, 100, session)
+            return "No files to read."
+
         from .async_files import async_read_workspace_file
-        file_contents = {}
-        
-        progress_step = 80 / max(len(target_files), 1)
-        current_progress = 20
-        
-        for index, path in enumerate(target_files):
+
+        async def _read_one(path: str) -> tuple:
+            """Read a single file; return (path, content) or (path, None) on error."""
             try:
                 content = await async_read_workspace_file(session.workspace_root, path)
-                file_contents[path] = content
-                await self.orchestrator.context.log(f"File System Agent: Read {path} successfully.")
+                await self.orchestrator.context.log(f"File System Agent: \u2713 Read {path}")
+                return path, content
             except Exception as e:
-                await self.orchestrator.context.log(f"File System Agent: Warning: Could not read {path}: {str(e)}")
-            current_progress += progress_step
-            await self.orchestrator.update_task_progress(task_id, int(current_progress), session)
-            
+                await self.orchestrator.context.log(
+                    f"File System Agent: \u26a0 Could not read {path}: {e}"
+                )
+                return path, None
+
+        # Read all files concurrently
+        results = await asyncio.gather(*[_read_one(p) for p in target_files])
+
+        file_contents = {path: content for path, content in results if content is not None}
         self.orchestrator.context.memory["file_contents"] = file_contents
+
         await self.orchestrator.update_task_progress(task_id, 100, session)
-        return "Completed"
+        return f"Read {len(file_contents)}/{len(target_files)} files."
 
 class CodingAgent(BaseAgent):
     """General-purpose code generator that modifies files to implement features."""

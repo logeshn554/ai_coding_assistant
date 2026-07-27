@@ -34,6 +34,40 @@ async def dispatch_tool(
         NotImplementedError: If ``name`` is not a supported tool.
         ValueError: Propagated from edit uniqueness checks.
     """
+    # Tool Name Normalization / Aliases for LLM compatibility
+    TOOL_ALIASES = {
+        "list_files": "list_directory",
+        "list_dir": "list_directory",
+        "dir": "list_directory",
+        "ls": "list_directory",
+        "get_files": "list_directory",
+        "show_files": "list_directory",
+        "view_files": "list_directory",
+        "see_files": "list_directory",
+        "workspace_files": "list_directory",
+        "view_file": "read_file",
+        "get_file": "read_file",
+        "read_workspace_file": "read_file",
+        "open_file": "read_file",
+        "cat_file": "read_file",
+        "find_files": "search_codebase",
+        "search_files": "search_codebase",
+        "search_code": "search_codebase",
+        "grep": "search_codebase",
+        "execute_command": "run_terminal_command",
+        "run_command": "run_terminal_command",
+        "terminal": "run_terminal_command",
+        "shell_command": "run_terminal_command",
+        "live_server": "open_with_live_server",
+        "start_live_server": "open_with_live_server",
+        "open_live_server": "open_with_live_server",
+        "serve_html": "open_with_live_server",
+        "run_html": "open_with_live_server",
+        "preview_html": "open_with_live_server",
+        "open_with_live_server": "open_with_live_server",
+    }
+    name = TOOL_ALIASES.get(name.lower(), name)
+
     # A. File write/edit safety check
     if name in ("write_file", "edit_file"):
         return await file_tools.write_or_edit_file(session, tc_id, name, args, auto_apply)
@@ -42,7 +76,7 @@ async def dispatch_tool(
     if name == "run_terminal_command":
         return await terminal_tool.run_terminal_command(session, tc_id, args, auto_apply)
 
-    # C. Read-only tools (no approval required)
+    # C. Read-only / Live Server tools (no approval required)
     if name == "list_directory":
         return await file_tools.list_directory(session, args)
 
@@ -52,4 +86,9 @@ async def dispatch_tool(
     if name == "search_codebase":
         return await search_tool.search_codebase(session, args)
 
+    if name == "open_with_live_server":
+        return await file_tools.open_with_live_server(session, args)
+
     raise NotImplementedError(f"Tool '{name}' is not supported.")
+
+

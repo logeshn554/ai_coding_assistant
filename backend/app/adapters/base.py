@@ -118,5 +118,22 @@ AVAILABLE_TOOLS = [
             },
             "required": ["query"]
         }
+    },
+    {
+        "name": "open_with_live_server",
+        "description": "Launches a Live Server for an HTML file or static site in the workspace and returns the localhost URL (e.g., http://localhost:5500/index.html). Use when the user asks to open, run, or preview HTML files.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Relative path of the HTML file to open with Live Server (e.g., 'index.html', 'game.html'). If omitted, automatically finds the primary HTML file."
+                },
+                "port": {
+                    "type": "integer",
+                    "description": "Port to run the live HTTP server on (default 5500)."
+                }
+            }
+        }
     }
-]
+]

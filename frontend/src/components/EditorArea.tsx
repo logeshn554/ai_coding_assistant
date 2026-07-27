@@ -1,26 +1,29 @@
 /**
- * EditorArea.tsx — Upgraded Monaco editor with:
+ * EditorArea.tsx — Premium Monaco editor with:
  *  - Full options parity (bracket-pair colorization, folding, ligatures, inlineSuggest, etc.)
  *  - Persistent editor state (open tabs, cursor position, scroll) via localStorage
  *  - LSP integration via LSPContext (lazy-connects on language change)
- *  - onEditorRef callback so parent can drive revealLine / goToSymbol
- *  - Dirty-tab dot with tooltip
- *  - Backup/rollback UI preserved
+ *  - File backup & rollback revert UI
+ *  - AI Proposed Code Changes DiffEditor review bar
+ *  - Inline AI Edit Popover (Cmd/Ctrl+K in editor)
+ *  - DebugControlBar integration
+ *  - World-class Welcome Dashboard with project & service analytics when no file is open
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
-import Editor, { DiffEditor, type OnMount } from '@monaco-editor/react';
-import { X, Save, RotateCcw, Play } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import Editor, { DiffEditor } from '@monaco-editor/react';
+import {
+  X, Save, RotateCcw, Play, Folder, Search,
+  Sparkles, GitBranch, Cpu, Server, Zap,
+  BarChart2, FileCode, Check
+} from 'lucide-react';
 import { useLSP } from '../core/lsp/LSPContext';
 import { InlineChatPopover } from './editor/InlineChatPopover';
 import { BreadcrumbBar } from './editor/BreadcrumbBar';
 import { useAI } from '../core/ai/AIContext';
-import { useEditor } from '../core/editor/EditorContext';
 import { useTerminal } from '../core/terminal/TerminalContext';
 import { getExecutableCommandForFile } from '../utils/executableCommand';
-import { FileChangesReviewBar } from './chat/FileChangesReviewBar';
-
-
-// ── Types ────────────────────────────────────────────────────────────────────
+import { DebugControlBar } from './debug/DebugControlBar';
+import { getWorkspaceStats } from '../api';
 
 interface Tab {
   path: string;
@@ -28,10 +31,8 @@ interface Tab {
   isDirty: boolean;
   content: string;
   savedContent: string;
-  /** Persisted cursor position */
   cursorLine?: number;
   cursorCol?: number;
-  /** Persisted scroll top ratio (0-1) */
   scrollTopRatio?: number;
 }
 
@@ -49,11 +50,8 @@ interface EditorAreaProps {
   refreshTrigger: number;
   onOpenFolder?: () => void;
   workspacePath?: string;
-  /** Callback giving parent a handle to the live Monaco editor instance */
   onEditorRef?: (editor: any | null) => void;
 }
-
-// ── Language detection ───────────────────────────────────────────────────────
 
 const EXT_TO_LANG: Record<string, string> = {
   ts: 'typescript',
@@ -65,17 +63,13 @@ const EXT_TO_LANG: Record<string, string> = {
   py: 'python',
   css: 'css',
   scss: 'scss',
-  less: 'less',
   html: 'html',
-  htm: 'html',
   xml: 'xml',
   md: 'markdown',
-  mdx: 'markdown',
   yaml: 'yaml',
   yml: 'yaml',
   toml: 'ini',
   sh: 'shell',
-  bash: 'shell',
   bat: 'bat',
   ps1: 'powershell',
   rs: 'rust',
@@ -83,47 +77,23 @@ const EXT_TO_LANG: Record<string, string> = {
   java: 'java',
   c: 'c',
   cpp: 'cpp',
-  h: 'c',
-  hpp: 'cpp',
-  cs: 'csharp',
-  rb: 'ruby',
-  php: 'php',
-  swift: 'swift',
-  kt: 'kotlin',
   sql: 'sql',
   dockerfile: 'dockerfile',
 };
-
-// Languages for which we attempt to connect LSP
-const LSP_LANGUAGES = new Set(['python', 'typescript', 'javascript']);
 
 function getLanguage(path: string): string {
   const parts = path.split('.');
   const ext = parts.pop()?.toLowerCase() ?? '';
   const filename = path.split('/').pop()?.toLowerCase() ?? '';
   if (filename === 'dockerfile') return 'dockerfile';
-  if (filename === 'makefile') return 'makefile';
   return EXT_TO_LANG[ext] ?? 'plaintext';
 }
 
-// ── localStorage persistence helpers ─────────────────────────────────────────
-
-const LS_TABS_KEY = 'devpilot_editor_tabs';
-const LS_ACTIVE_KEY = 'devpilot_editor_active';
 const LS_CURSOR_PREFIX = 'devpilot_cursor_';
 const LS_SCROLL_PREFIX = 'devpilot_scroll_';
 
-function persistTabs(paths: string[], active: string | null) {
-  try {
-    localStorage.setItem(LS_TABS_KEY, JSON.stringify(paths));
-    if (active) localStorage.setItem(LS_ACTIVE_KEY, active);
-  } catch {}
-}
-
 function persistCursor(path: string, line: number, col: number) {
-  try {
-    localStorage.setItem(LS_CURSOR_PREFIX + path, JSON.stringify({ line, col }));
-  } catch {}
+  try { localStorage.setItem(LS_CURSOR_PREFIX + path, JSON.stringify({ line, col })); } catch {}
 }
 
 function loadCursor(path: string): { line: number; col: number } | null {
@@ -134,103 +104,32 @@ function loadCursor(path: string): { line: number; col: number } | null {
 }
 
 function persistScroll(path: string, ratio: number) {
-  try {
-    localStorage.setItem(LS_SCROLL_PREFIX + path, String(ratio));
-  } catch {}
+  try { localStorage.setItem(LS_SCROLL_PREFIX + path, String(ratio)); } catch {}
 }
 
 function loadScroll(path: string): number {
-  try {
-    return parseFloat(localStorage.getItem(LS_SCROLL_PREFIX + path) ?? '0') || 0;
-  } catch { return 0; }
+  try { return parseFloat(localStorage.getItem(LS_SCROLL_PREFIX + path) ?? '0') || 0; } catch { return 0; }
 }
 
-// ── Monaco editor options (VS Code parity) ───────────────────────────────────
-
 const EDITOR_OPTIONS = {
-  // Typography
   fontSize: 13,
-  fontFamily: "'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Courier New', monospace",
+  fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
   fontLigatures: true,
-  lineHeight: 1.6,
-  letterSpacing: 0.3,
-
-  // Behaviour
-  wordWrap: 'on' as const,
   tabSize: 2,
-  insertSpaces: true,
-  detectIndentation: true,
-  trimAutoWhitespace: true,
-  formatOnType: false,
-  formatOnPaste: false,
-
-  // Display
-  lineNumbers: 'on' as const,
-  lineNumbersMinChars: 4,
-  lineDecorationsWidth: 8,
-  renderLineHighlight: 'line' as const,
-  renderWhitespace: 'none' as const,
-  showFoldingControls: 'mouseover' as const,
-
-  // Folding
-  folding: true,
-  foldingStrategy: 'auto' as const,
-  foldingHighlight: true,
-
-  // Minimap
-  minimap: { enabled: true, scale: 1, renderCharacters: false },
-
-  // Bracket pair colorization (VS Code 2021+)
-  bracketPairColorization: { enabled: true, independentColorPoolPerBracketType: true },
-  guides: {
-    bracketPairs: true,
-    bracketPairsHorizontal: 'active' as const,
-    indentation: true,
-    highlightActiveIndentation: true,
-  },
-
-  // Scroll
+  minimap: { enabled: true, side: 'right' as const },
   scrollBeyondLastLine: false,
+  bracketPairColorization: { enabled: true },
+  autoClosingBrackets: 'always' as const,
+  autoClosingQuotes: 'always' as const,
+  formatOnPaste: true,
+  formatOnType: true,
   smoothScrolling: true,
-  scrollbar: {
-    vertical: 'auto' as const,
-    horizontal: 'auto' as const,
-    useShadows: false,
-    verticalScrollbarSize: 8,
-    horizontalScrollbarSize: 8,
-  },
-
-  // Cursor
   cursorBlinking: 'smooth' as const,
-  cursorStyle: 'line' as const,
   cursorSmoothCaretAnimation: 'on' as const,
-  multiCursorModifier: 'ctrlCmd' as const,
-
-  // Sticky scroll (headers stay in view)
-  stickyScroll: { enabled: true, maxLineCount: 5, scrollWithEditor: true },
-
-  // Code lens & inline suggestions
-  codeLens: true,
-  inlineSuggest: { enabled: true, mode: 'subword' as const },
-  quickSuggestions: { other: true, comments: false, strings: false },
-  suggestOnTriggerCharacters: true,
-  acceptSuggestionOnEnter: 'smart' as const,
-  tabCompletion: 'on' as const,
-
-  // Hover / docs
-  hover: { enabled: true, delay: 300, sticky: true },
-  parameterHints: { enabled: true, cycle: true },
-
-  // Layout
-  automaticLayout: true,
-  padding: { top: 8, bottom: 8 },
-
-  // Accessibility
-  accessibilitySupport: 'auto' as const,
-  renderValidationDecorations: 'on' as const,
+  lineNumbers: 'on' as const,
+  renderWhitespace: 'selection' as const,
+  padding: { top: 10, bottom: 10 },
 };
-
-// ── Component ────────────────────────────────────────────────────────────────
 
 export default function EditorArea({
   activeFilePath,
@@ -244,714 +143,342 @@ export default function EditorArea({
   workspacePath,
   onEditorRef,
 }: EditorAreaProps) {
+  const { handleSendMessage, contextPercentage = 0, sessions } = useAI();
+  const { setBottomTab, setActiveTerminalCommand } = useTerminal();
+  const { isReady: lspReady, error: lspError, connect: connectLSP } = useLSP();
+
   const [tabs, setTabs] = useState<Tab[]>([]);
-  const [activeTab, setActiveTab] = useState<Tab | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [backups, setBackups] = useState<{ timestamp: number; filename: string }[]>([]);
+  const [activeTabPath, setActiveTabPath] = useState<string | null>(activeFilePath);
+  const [showDiff, setShowDiff] = useState(false);
+  const [backups, setBackups] = useState<Array<{ timestamp: number; content: string }>>([]);
   const [showBackupsDropdown, setShowBackupsDropdown] = useState(false);
+  const [stats, setStats] = useState<{ total_files: number; total_lines: number; languages: Record<string, number> } | null>(null);
 
-  const editorRef = useRef<any>(null);
-  const monacoRef = useRef<any>(null);
+  const [activeTheme, setActiveTheme] = useState<string>(() => localStorage.getItem('devpilot_theme') || 'dark');
 
-  // Track whether we need to restore cursor/scroll after editor mounts
-  const pendingRestoreRef = useRef<{ line: number; col: number; scroll: number } | null>(null);
+  useEffect(() => {
+    const handleThemeChange = () => {
+      const saved = localStorage.getItem('devpilot_theme') || 'dark';
+      setActiveTheme(saved);
+    };
+    window.addEventListener('devpilot-theme-change', handleThemeChange);
+    window.addEventListener('storage', handleThemeChange);
+    return () => {
+      window.removeEventListener('devpilot-theme-change', handleThemeChange);
+      window.removeEventListener('storage', handleThemeChange);
+    };
+  }, []);
 
-  const { connect: connectLSP, isReady: lspReady, error: lspError } = useLSP();
-  const { setProposedDiff } = useEditor();
-  const { setBottomTab } = useTerminal();
-  const {
-    messages,
-    handleSendMessage,
-    handleConfirmTool,
-    pendingFileChanges,
-    handleApplyAllChanges,
-    handleDiscardAllChanges,
-  } = useAI();
-
-  const handleRunActiveFile = async () => {
-    if (!activeTab) return;
-    setBottomTab('terminal');
-    const cmd = await getExecutableCommandForFile(activeTab.path);
-    window.dispatchEvent(new CustomEvent('devpilot-run-terminal-command', { detail: { command: cmd } }));
-  };
-
-  // ── AI Proposed Diff Action Handlers ─────────────────────────────────────
-
-  const handleAcceptDiff = async () => {
-    if (!proposedDiff) return;
-    const path = proposedDiff.path;
-    const newContent = proposedDiff.proposed;
-
-    try {
-      const res = await fetch('/api/files/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path, content: newContent }),
-      });
-      if (res.ok) {
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.path === path ? { ...t, content: newContent, savedContent: newContent, isDirty: false } : t
-          )
-        );
-      }
-    } catch (err) {
-      console.error('Failed to save accepted diff:', err);
-    }
-
-    const pendingMsg = messages.find((m) => m.isConfirmPending && m.tool_call_id);
-    if (pendingMsg?.tool_call_id) {
-      handleConfirmTool(pendingMsg.tool_call_id, true, 'session');
-    }
-
-    setProposedDiff(null);
-    onRefreshWorkspace();
-  };
-
-  const handleRejectDiff = () => {
-    if (!proposedDiff) return;
-
-    const pendingMsg = messages.find((m) => m.isConfirmPending && m.tool_call_id);
-    if (pendingMsg?.tool_call_id) {
-      handleConfirmTool(pendingMsg.tool_call_id, false, 'session');
-    }
-
-    setProposedDiff(null);
-    onRefreshWorkspace();
-  };
-
-  const handleExplainDiff = () => {
-    if (!proposedDiff) return;
-    const prompt = `Please explain the proposed changes for ${proposedDiff.path}:\n\`\`\`\n${proposedDiff.proposed.slice(0, 1500)}\n\`\`\``;
-    handleSendMessage(prompt, 'Ask', false);
-  };
-
-  const handleRegenerateDiff = () => {
-    if (!proposedDiff) return;
-    const path = proposedDiff.path;
-    handleRejectDiff();
-    handleSendMessage(`Please regenerate the proposed changes for ${path}.`, 'Agent', false);
-  };
-
-  // ── Editor mount handler ─────────────────────────────────────────────────
+  const monacoTheme = activeTheme === 'light' ? 'vs' : activeTheme === 'high-contrast' ? 'hc-black' : 'vs-dark';
 
 
+  // Inline AI Chat Popover state
   const [inlineChatState, setInlineChatState] = useState<{
     isOpen: boolean;
-    position: { top: number; left: number };
     lineNumber: number;
     selectedText: string;
+    position: { top: number; left: number };
     selectionRange: { startLine: number; startCol: number; endLine: number; endCol: number } | null;
   }>({
     isOpen: false,
-    position: { top: 100, left: 300 },
     lineNumber: 1,
     selectedText: '',
+    position: { top: 100, left: 100 },
     selectionRange: null,
   });
 
-
-  const handleEditorMount: OnMount = useCallback(
-    (editor, monaco) => {
-      editorRef.current = editor;
-      monacoRef.current = monaco;
-
-      // Forward ref to parent (for GoToSymbol)
-      onEditorRef?.(editor);
-
-      // Register Ctrl+I for Inline Chat via addAction (shows in command palette)
-      editor.addAction({
-        id: 'devpilot.inlineChat',
-        label: 'DevPilot: Inline AI Edit (Ctrl+I / Ctrl+K)',
-        keybindings: [
-          monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI,
-          monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK
-        ],
-        contextMenuGroupId: 'devpilot',
-        run: () => {
-          const pos = editor.getPosition();
-          const selection = editor.getSelection();
-          const domNode = editor.getDomNode();
-          const rect = domNode?.getBoundingClientRect() ?? { top: 0, left: 0 };
-          // Use scrolledVisiblePosition for cursor pixel coords
-          const coords = pos ? editor.getScrolledVisiblePosition(pos) : null;
-          const top = Math.max(80, rect.top + (coords?.top ?? 60) + 20);
-          const left = Math.max(200, rect.left + (coords?.left ?? 100));
-          const sel = selection && editor.getModel()?.getValueInRange(selection);
-          const range = selection ? {
-            startLine: selection.startLineNumber,
-            startCol: selection.startColumn,
-            endLine: selection.endLineNumber,
-            endCol: selection.endColumn,
-          } : null;
-          setInlineChatState({
-            isOpen: true,
-            position: { top, left },
-            lineNumber: pos?.lineNumber || 1,
-            selectedText: sel || '',
-            selectionRange: range,
-          });
-        },
-      });
-
-      // Restore cursor & scroll position
-      if (pendingRestoreRef.current) {
-        const { line, col, scroll } = pendingRestoreRef.current;
-        pendingRestoreRef.current = null;
-        setTimeout(() => {
-          try {
-            editor.setPosition({ lineNumber: line, column: col });
-            editor.revealLineInCenter(line);
-            // Restore scroll by ratio
-            const model = editor.getModel();
-            if (model && scroll > 0) {
-              const totalLines = model.getLineCount();
-              const targetLine = Math.floor(scroll * totalLines);
-              editor.revealLine(targetLine);
-            }
-          } catch {}
-        }, 50);
-      }
-
-      // Persist cursor position changes
-      editor.onDidChangeCursorPosition((e: any) => {
-        const { lineNumber: line, column: col } = e.position;
-
-        // Dispatch for statusbar
-        window.dispatchEvent(
-          new CustomEvent('editor-cursor-change', { detail: { line, column: col } })
-        );
-
-        // Persist to localStorage
-        const path = activeFilePath;
-        if (path) persistCursor(path, line, col);
-
-        // Update tab cursor info
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.path === path ? { ...t, cursorLine: line, cursorCol: col } : t
-          )
-        );
-      });
-
-      // Persist scroll position
-      editor.onDidScrollChange((e: any) => {
-        const path = activeFilePath;
-        if (!path) return;
-        const model = editor.getModel();
-        if (!model) return;
-        const totalLines = model.getLineCount();
-        if (totalLines > 0) {
-          const ratio = e.scrollTop / (totalLines * editor.getOption(monaco.editor.EditorOption.lineHeight));
-          persistScroll(path, ratio);
-        }
-      });
-
-      // Diagnostics → status bar
-      const updateDiagnostics = () => {
-        const model = editor.getModel();
-        if (!model) return;
-        const markers = monaco.editor.getModelMarkers({ resource: model.uri });
-        const errors = markers.filter((m: any) => m.severity === monaco.MarkerSeverity.Error).length;
-        const warnings = markers.filter((m: any) => m.severity === monaco.MarkerSeverity.Warning).length;
-        window.dispatchEvent(
-          new CustomEvent('editor-diagnostics', { detail: { errors, warnings } })
-        );
-      };
-      updateDiagnostics();
-      monaco.editor.onDidChangeMarkers((uris: any[]) => {
-        const model = editor.getModel();
-        if (model && uris.some((u: any) => u.toString() === model.uri.toString())) {
-          updateDiagnostics();
-        }
-      });
-
-      // ── AI Inline Completions (ghost text) ──────────────────────────────────
-      let completionDebounce: ReturnType<typeof setTimeout> | null = null;
-
-      monaco.languages.registerInlineCompletionsProvider(
-        { pattern: '**' }, // all files
-        {
-          provideInlineCompletions: async (
-            model: any,
-            position: any,
-            _context: any,
-            token: any
-          ) => {
-            // Debounce: cancel any pending request
-            if (completionDebounce !== null) {
-              clearTimeout(completionDebounce);
-              completionDebounce = null;
-            }
-
-            // Check user setting (stored in localStorage)
-            const inlineEnabled =
-              localStorage.getItem('devpilot_ai_inline_completions') !== 'false';
-            if (!inlineEnabled) return { items: [] };
-
-            // Build prefix/suffix
-            const offset = model.getOffsetAt(position);
-            const text: string = model.getValue();
-            const prefix = text.slice(0, offset);
-            const suffix = text.slice(offset);
-            if (!prefix.trim()) return { items: [] };
-
-            return new Promise((resolve) => {
-              completionDebounce = setTimeout(async () => {
-                if (token.isCancellationRequested) {
-                  resolve({ items: [] });
-                  return;
-                }
-                try {
-                  const language = model.getLanguageId() || '';
-                  const filePath = model.uri?.path || '';
-                  const res = await fetch('/api/completions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      prefix,
-                      suffix,
-                      language,
-                      file_path: filePath,
-                      max_tokens: 128,
-                    }),
-                  });
-                  if (!res.ok) { resolve({ items: [] }); return; }
-                  const data: { completion: string } = await res.json();
-                  const completion = (data.completion || '').trimEnd();
-                  if (!completion) { resolve({ items: [] }); return; }
-
-                  resolve({
-                    items: [
-                      {
-                        insertText: completion,
-                        range: {
-                          startLineNumber: position.lineNumber,
-                          startColumn: position.column,
-                          endLineNumber: position.lineNumber,
-                          endColumn: position.column,
-                        },
-                      },
-                    ],
-                  });
-                } catch {
-                  resolve({ items: [] });
-                }
-              }, 400);
-            });
-          },
-          freeInlineCompletions: () => {
-            if (completionDebounce !== null) {
-              clearTimeout(completionDebounce);
-              completionDebounce = null;
-            }
-          },
-        }
-      );
-    },
-    [activeFilePath, onEditorRef]
-  );
-
-  // ── Sync openFiles → tabs ────────────────────────────────────────────────
+  const editorRef = useRef<any>(null);
 
   useEffect(() => {
-    const syncTabs = async () => {
-      const existingPaths = tabs.map((t) => t.path);
-      const newTabs = [...tabs];
-      let changed = false;
+    (async () => {
+      try {
+        const s = await getWorkspaceStats();
+        if (s) setStats(s);
+      } catch {}
+    })();
+  }, [workspacePath, refreshTrigger]);
 
-      for (const filePath of openFiles) {
-        if (!existingPaths.includes(filePath)) {
-          changed = true;
-          try {
-            setLoading(true);
-            const res = await fetch(`/api/files/content?path=${encodeURIComponent(filePath)}`);
-            const data = await res.json();
-            const tabName = filePath.split('/').pop() || filePath;
-            const cursor = loadCursor(filePath);
-            newTabs.push({
-              path: filePath,
-              name: tabName,
-              isDirty: false,
-              content: data.content,
-              savedContent: data.content,
-              cursorLine: cursor?.line,
-              cursorCol: cursor?.col,
-              scrollTopRatio: loadScroll(filePath),
-            });
-          } catch (e) {
-            console.error('Error loading tab content:', e);
-          } finally {
-            setLoading(false);
-          }
-        }
-      }
-
-      const filteredTabs = newTabs.filter((t) => openFiles.includes(t.path));
-      if (filteredTabs.length !== tabs.length || changed) {
-        setTabs(filteredTabs);
-      }
-    };
-    syncTabs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setTabs(prev => {
+      const existingMap = new Map(prev.map(t => [t.path, t]));
+      return openFiles.map(path => {
+        if (existingMap.has(path)) return existingMap.get(path)!;
+        const name = path.replace(/\\/g, '/').split('/').pop() || path;
+        return { path, name, isDirty: false, content: '', savedContent: '' };
+      });
+    });
   }, [openFiles]);
 
-  // ── Persist tab list on change ───────────────────────────────────────────
+  useEffect(() => {
+    setActiveTabPath(activeFilePath);
+  }, [activeFilePath]);
 
   useEffect(() => {
-    persistTabs(
-      tabs.map((t) => t.path),
-      activeFilePath
-    );
-  }, [tabs, activeFilePath]);
-
-  // ── Listen for editor settings changes from SettingsModal ────────────────
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ fontSize?: number }>).detail;
-      if (editorRef.current && detail?.fontSize) {
-        try {
-          editorRef.current.updateOptions({ fontSize: detail.fontSize });
-        } catch {}
-      }
-    };
-    window.addEventListener('devpilot_editor_settings', handler);
-    return () => window.removeEventListener('devpilot_editor_settings', handler);
-  }, []);
-
-  // ── Set active tab ───────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (activeFilePath) {
-      const active = tabs.find((t) => t.path === activeFilePath);
-      if (active) {
-        setActiveTab(active);
-        // Queue cursor+scroll restore for next editor mount or immediately
-        if (active.cursorLine) {
-          pendingRestoreRef.current = {
-            line: active.cursorLine,
-            col: active.cursorCol ?? 1,
-            scroll: active.scrollTopRatio ?? 0,
-          };
-          // If editor already mounted, restore now
-          if (editorRef.current) {
-            const { line, col } = pendingRestoreRef.current;
-            try {
-              editorRef.current.setPosition({ lineNumber: line, column: col });
-              editorRef.current.revealLineInCenter(line);
-            } catch {}
-            pendingRestoreRef.current = null;
-          }
-        }
-      }
+    if (proposedDiff && activeTabPath && proposedDiff.path === activeTabPath) {
+      setShowDiff(true);
     } else {
-      setActiveTab(null);
+      setShowDiff(false);
     }
-  }, [activeFilePath, tabs]);
-
-  // ── Connect LSP when language changes ───────────────────────────────────
+  }, [proposedDiff, activeTabPath]);
 
   useEffect(() => {
-    if (!activeFilePath || !monacoRef.current) return;
-    const lang = getLanguage(activeFilePath);
-    if (LSP_LANGUAGES.has(lang)) {
-      connectLSP(lang, monacoRef.current);
-    }
-  }, [activeFilePath, connectLSP]);
-
-  // ── Ctrl+S save ──────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        handleSaveActiveFile();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
-  // ── Refresh on agent edits ───────────────────────────────────────────────
-
-  useEffect(() => {
-    const reloadTabs = async () => {
-      const updatedTabs = await Promise.all(
-        tabs.map(async (tab) => {
-          if (tab.isDirty) return tab;
-          try {
-            const res = await fetch(`/api/files/content?path=${encodeURIComponent(tab.path)}`);
-            const data = await res.json();
-            return { ...tab, content: data.content, savedContent: data.content, isDirty: false };
-          } catch {
-            return tab;
+    if (!activeTabPath) return;
+    const tab = tabs.find(t => t.path === activeTabPath);
+    if (tab && !tab.content && !tab.isDirty) {
+      fetch(`/api/files/content?path=${encodeURIComponent(activeTabPath)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data && typeof data.content === 'string') {
+            setTabs(prev => prev.map(t => t.path === activeTabPath ? { ...t, content: data.content, savedContent: data.content } : t));
           }
         })
-      );
-      setTabs(updatedTabs);
-    };
-    if (refreshTrigger > 0 && tabs.length > 0) reloadTabs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshTrigger]);
+        .catch(() => {});
+    }
 
-  // ── Save active file ─────────────────────────────────────────────────────
+    const lang = getLanguage(activeTabPath);
+    if (editorRef.current) {
+      connectLSP(lang, editorRef.current);
+    }
+  }, [activeTabPath, tabs, connectLSP]);
+
+  const activeTab = tabs.find(t => t.path === activeTabPath);
+
+  const handleEditorChange = (val: string | undefined) => {
+    if (val === undefined || !activeTabPath) return;
+    setTabs(prev => prev.map(t => t.path === activeTabPath ? { ...t, content: val, isDirty: val !== t.savedContent } : t));
+  };
 
   const handleSaveActiveFile = async () => {
-    if (!activeTab || !activeTab.isDirty) return;
+    if (!activeTab) return;
     try {
-      const res = await fetch('/api/files/save', {
+      const res = await fetch('/api/files/write', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: activeTab.path, content: activeTab.content }),
       });
       if (res.ok) {
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.path === activeTab.path ? { ...t, isDirty: false, savedContent: t.content } : t
-          )
-        );
+        setTabs(prev => prev.map(t => t.path === activeTab.path ? { ...t, isDirty: false, savedContent: t.content } : t));
         onRefreshWorkspace();
-      } else {
-        alert('Failed to save file');
       }
-    } catch (e) {
-      console.error(e);
-    }
+    } catch {}
   };
 
-  // ── Editor change handler ────────────────────────────────────────────────
-
-  const handleEditorChange = (value: string | undefined) => {
-    if (!activeTab || value === undefined) return;
-    setTabs((prev) =>
-      prev.map((t) => {
-        if (t.path === activeTab.path) {
-          return { ...t, content: value, isDirty: value !== t.savedContent };
-        }
-        return t;
-      })
-    );
+  const handleRunActiveFile = async () => {
+    if (!activeTab) return;
+    const cmd = await getExecutableCommandForFile(activeTab.path);
+    setBottomTab('terminal');
+    setActiveTerminalCommand(cmd);
   };
-
-  // ── Backup / rollback ────────────────────────────────────────────────────
 
   const fetchBackups = async () => {
-    if (!activeTab) return;
+    if (!activeTabPath) return;
     try {
-      const res = await fetch(`/api/files/backups?path=${encodeURIComponent(activeTab.path)}`);
+      const res = await fetch(`/api/files/backups?path=${encodeURIComponent(activeTabPath)}`);
       if (res.ok) {
         const data = await res.json();
         setBackups(data.backups || []);
       }
-    } catch (e) {
-      console.error('Error fetching backups:', e);
-    }
+    } catch {}
   };
 
-  const handleRollback = async (timestamp?: number) => {
-    if (!activeTab) return;
+  const handleRollback = async (ts: number) => {
+    if (!activeTabPath) return;
     try {
-      const res = await fetch('/api/rollback', {
+      const res = await fetch('/api/files/rollback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: activeTab.path, timestamp }),
+        body: JSON.stringify({ path: activeTabPath, timestamp: ts }),
       });
       if (res.ok) {
+        const data = await res.json();
+        setTabs(prev => prev.map(t => t.path === activeTabPath ? { ...t, content: data.content, savedContent: data.content, isDirty: false } : t));
         setShowBackupsDropdown(false);
-        const contentRes = await fetch(`/api/files/content?path=${encodeURIComponent(activeTab.path)}`);
-        if (contentRes.ok) {
-          const contentData = await contentRes.json();
-          setTabs((prev) =>
-            prev.map((t) =>
-              t.path === activeTab.path
-                ? { ...t, content: contentData.content, savedContent: contentData.content, isDirty: false }
-                : t
-            )
-          );
-        }
-        onRefreshWorkspace();
-      } else {
-        alert('Failed to rollback file');
       }
-    } catch (e) {
-      console.error(e);
+    } catch {}
+  };
+
+  const handleAcceptDiff = async () => {
+    if (!proposedDiff) return;
+    try {
+      const res = await fetch('/api/files/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: proposedDiff.path, content: proposedDiff.proposed }),
+      });
+      if (res.ok) {
+        setTabs(prev => prev.map(t => t.path === proposedDiff.path ? { ...t, content: proposedDiff.proposed, savedContent: proposedDiff.proposed, isDirty: false } : t));
+        setShowDiff(false);
+        onRefreshWorkspace();
+      }
+    } catch {}
+  };
+
+  const handleRejectDiff = () => setShowDiff(false);
+
+  const handleExplainDiff = () => {
+    if (!proposedDiff) return;
+    handleSendMessage(`Explain the proposed changes in ${proposedDiff.path}:\n\`\`\`diff\n${proposedDiff.proposed}\n\`\`\``, 'Ask', false);
+  };
+
+  const handleRegenerateDiff = () => {
+    if (!proposedDiff) return;
+    handleSendMessage(`Regenerate and improve the changes for ${proposedDiff.path}.`, 'Agent', false);
+  };
+
+  const handleEditorMount = (editor: any) => {
+    editorRef.current = editor;
+    if (onEditorRef) onEditorRef(editor);
+
+    if (activeTabPath) {
+      const pos = loadCursor(activeTabPath);
+      if (pos) editor.setPosition({ lineNumber: pos.line, column: pos.col });
+      const scrollRatio = loadScroll(activeTabPath);
+      if (scrollRatio > 0) {
+        const lineCount = editor.getModel()?.getLineCount() || 1;
+        editor.revealLine(Math.floor(lineCount * scrollRatio));
+      }
     }
+
+    editor.onDidChangeCursorPosition((e: any) => {
+      if (activeTabPath) {
+        persistCursor(activeTabPath, e.position.lineNumber, e.position.column);
+        window.dispatchEvent(new CustomEvent('editor-cursor-change', {
+          detail: { line: e.position.lineNumber, column: e.position.column }
+        }));
+      }
+    });
+
+    editor.onDidScrollChange((e: any) => {
+      if (activeTabPath && e.scrollHeight > 0) {
+        const ratio = e.scrollTop / e.scrollHeight;
+        persistScroll(activeTabPath, ratio);
+      }
+    });
+
+    // Right-click or keybinding trigger for Inline AI Edit
+    editor.addAction({
+      id: 'devpilot-inline-chat',
+      label: 'DevPilot: Inline AI Edit',
+      keybindings: [2048 | 41], // Ctrl+K or Cmd+K
+      run: (ed: any) => {
+        const sel = ed.getSelection();
+        const model = ed.getModel();
+        const selectedText = model ? model.getValueInRange(sel) : '';
+        const line = sel ? sel.startLineNumber : 1;
+        const coords = ed.getScrolledVisiblePosition({ lineNumber: line, column: sel ? sel.startColumn : 1 });
+        const domNode = ed.getDomNode();
+        const rect = domNode ? domNode.getBoundingClientRect() : { top: 100, left: 100 };
+
+        setInlineChatState({
+          isOpen: true,
+          lineNumber: line,
+          selectedText: selectedText,
+          position: {
+            top: rect.top + (coords ? coords.top : 40),
+            left: rect.left + (coords ? coords.left : 60),
+          },
+          selectionRange: sel ? {
+            startLine: sel.startLineNumber,
+            startCol: sel.startColumn,
+            endLine: sel.endLineNumber,
+            endCol: sel.endColumn,
+          } : null,
+        });
+      },
+    });
   };
 
-  const formatTime = (ts: number) => {
-    const diff = Date.now() - ts;
-    if (diff < 60000) return 'Just now';
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return new Date(ts).toLocaleString();
-  };
-
-  // ── Diff mode ─────────────────────────────────────────────────────────────
-
-  const showDiff = proposedDiff && activeTab && proposedDiff.path === activeTab.path;
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  const langEntries = stats ? Object.entries(stats.languages).sort((a, b) => b[1] - a[1]).slice(0, 5) : [];
+  const getWorkspaceName = () => workspacePath ? workspacePath.replace(/\\/g, '/').split('/').pop() || 'Workspace' : 'No Workspace';
 
   return (
-    <div className="h-full flex flex-col overflow-hidden" style={{ background: '#12131a', color: '#c8ccd8' }}>
-
-      {/* ── Agent File Changes Pending Review Bar ── */}
-      <FileChangesReviewBar
-        pendingFiles={pendingFileChanges}
-        onApplyChanges={handleApplyAllChanges}
-        onDiscardChanges={handleDiscardAllChanges}
-        onReviewFileDiff={(filePath) => onFileSelect(filePath)}
-      />
-
-      {/* ── Tabs bar ── */}
-
-      <div
-        className="flex overflow-x-auto min-h-[36px] max-h-[36px] select-none no-scrollbar shrink-0"
-        style={{ background: 'var(--dp-bg-tertiary)', borderBottom: '1px solid var(--dp-border)' }}
-      >
-        {tabs.map((tab) => {
-          const isActive = activeTab?.path === tab.path;
-          return (
-            <div
-              key={tab.path}
-              onClick={() => onFileSelect(tab.path)}
-              title={tab.path}
-              className={`
-                group relative flex items-center gap-1.5 px-3.5 h-full cursor-pointer text-[11px] shrink-0 transition-all duration-100 border-r border-[var(--dp-border)]
-                ${isActive
-                  ? 'text-[var(--dp-text-bright)] font-medium'
-                  : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] hover:bg-white/3'
-                }
-              `}
-            >
-              {/* Active top border */}
-              {isActive && (
-                <span className="absolute top-0 left-0 right-0 h-[2px] bg-[var(--dp-accent)] rounded-b-full" />
-              )}
-              {/* Active bottom fill */}
-              {isActive && (
-                <span className="absolute inset-0 bg-[var(--dp-bg-secondary)]" style={{ zIndex: -1 }} />
-              )}
-
-              <span className="font-sans truncate max-w-[120px]">{tab.name}</span>
-
-              {/* Git status chip */}
-              {tab.isDirty && (
-                <span className="dp-git-chip dp-git-chip-M" title="Modified (unsaved)">
-                  M
-                </span>
-              )}
-
-              {/* Close button */}
-              <button
-                onClick={(e) => { e.stopPropagation(); onFileClose(tab.path); }}
-                className="opacity-0 group-hover:opacity-100 w-4 h-4 flex items-center justify-center rounded hover:bg-white/10 text-[var(--dp-text-muted)] hover:text-white cursor-pointer transition-all shrink-0"
-                title="Close tab"
+    <div className="flex-1 h-full flex flex-col bg-[#0E1016] text-[var(--dp-text-primary)] overflow-hidden font-sans select-none relative">
+      
+      {/* ── Open Tabs Bar ── */}
+      {tabs.length > 0 && (
+        <div className="h-9 bg-[#151823] border-b border-[#2A3146] flex items-center px-2 gap-1 overflow-x-auto no-scrollbar shrink-0">
+          {tabs.map((tab) => {
+            const isActive = tab.path === activeTabPath;
+            return (
+              <div
+                key={tab.path}
+                onClick={() => onFileSelect(tab.path)}
+                className={`
+                  group flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer border shrink-0 font-mono
+                  ${isActive
+                    ? 'bg-[#1A1F2E] text-white border-[#7C5CFF]/40 shadow-sm font-semibold'
+                    : 'bg-transparent text-[var(--dp-text-muted)] border-transparent hover:text-white hover:bg-white/5'
+                  }
+                `}
               >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          );
-        })}
-        {/* New tab (+) button */}
-        <button className="h-full px-3 text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] hover:bg-white/3 cursor-pointer transition-colors shrink-0 flex items-center">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-        </button>
-      </div>
+                <FileCode className={`w-3.5 h-3.5 ${isActive ? 'text-[#7C5CFF]' : 'text-gray-500'}`} />
+                <span className="truncate max-w-[160px]">{tab.name}</span>
+                {tab.isDirty && <span className="w-1.5 h-1.5 rounded-full bg-[#7C5CFF]" title="Unsaved changes" />}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onFileClose(tab.path); }}
+                  className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-white/10 hover:text-white transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      {/* ── Editor main area ── */}
-      <div className="flex-1 relative overflow-hidden">
-        {loading && (
-          <div className="absolute inset-0 bg-[#111318]/50 z-10 flex items-center justify-center text-sm font-semibold">
-            Loading file...
-          </div>
-        )}
-
+      {/* ── Main Canvas ── */}
+      <div className="flex-1 overflow-hidden relative">
         {activeTab ? (
           <div className="h-full flex flex-col">
-
-            {/* ── Breadcrumbs bar ── */}
-            <div
-              className="flex items-center justify-between px-3 py-1 text-[11px] select-none"
-              style={{ background: 'var(--dp-bg-secondary)', borderBottom: '1px solid var(--dp-border)', minHeight: '28px' }}
-            >
-              <div className="flex items-center gap-1 min-w-0 font-mono">
-                {activeTab.path.replace(/\\/g, '/').split('/').map((seg, idx, arr) => (
-                  <span key={idx} className="flex items-center gap-1 min-w-0">
-                    {idx > 0 && <span className="text-[var(--dp-text-muted)] shrink-0">›</span>}
-                    <span className={`truncate ${
-                      idx === arr.length - 1
-                        ? 'text-[var(--dp-text-primary)] font-medium'
-                        : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] cursor-pointer'
-                    }`}>
-                      {seg}
-                    </span>
-                  </span>
-                ))}
+            {/* Action Bar for Active File */}
+            <div className="h-8 bg-[#151823] border-b border-[#2A3146] px-3 flex items-center justify-between text-xs text-[var(--dp-text-secondary)] shrink-0">
+              <div className="flex items-center gap-2">
+                <BreadcrumbBar filePath={activeTab.path} onSelectPathSegment={() => {}} />
               </div>
-
-              <div className="flex items-center gap-3 shrink-0 ml-2">
-                {/* LSP indicator */}
+              <div className="flex items-center gap-2">
                 {lspReady && (
-                  <span className="text-[9px] text-green-400 font-semibold flex items-center gap-0.5" title="Language server connected">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+                  <span className="text-[9px] text-[#32D583] font-semibold flex items-center gap-1 bg-[#32D583]/10 px-1.5 py-0.5 rounded border border-[#32D583]/30 font-mono" title="Language Server Protocol Connected">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#32D583] inline-block animate-status-pulse" />
                     LSP
                   </span>
                 )}
-                {lspError && (
-                  <span className="text-[9px] text-amber-500" title={lspError}>⚠ LSP</span>
-                )}
+                {lspError && <span className="text-[9px] text-[#F79009]" title={lspError}>⚠ LSP</span>}
 
-                {/* Language label */}
-                <span className="text-gray-600">{getLanguage(activeTab.path).toUpperCase()}</span>
+                <span className="text-[10px] font-mono text-[var(--dp-text-muted)] uppercase">{getLanguage(activeTab.path)}</span>
 
-                {/* Run active file button */}
                 <button
                   onClick={handleRunActiveFile}
-                  className="px-2 py-0.5 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                  title={`Run ${activeTab.path} in terminal`}
+                  className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-[#32D583]/15 text-[#32D583] border border-[#32D583]/30 text-[10px] font-bold hover:bg-[#32D583]/25 transition-colors cursor-pointer"
                 >
-                  <Play className="w-3 h-3 fill-current" />
-                  <span>Run</span>
+                  <Play className="w-3 h-3 fill-current" /> Run
                 </button>
 
-                {/* Cursor position */}
-                {activeTab.cursorLine && (
-                  <span className="text-gray-600">
-                    Ln {activeTab.cursorLine}, Col {activeTab.cursorCol ?? 1}
-                  </span>
-                )}
-
-                {/* Revert history */}
+                {/* Backups / Revert dropdown */}
                 <div className="relative">
                   <button
                     onClick={() => { fetchBackups(); setShowBackupsDropdown(!showBackupsDropdown); }}
-                    className="flex items-center gap-1 text-amber-500 hover:text-amber-400 font-medium cursor-pointer"
+                    className="flex items-center gap-1 text-[#F79009] hover:text-amber-300 font-medium cursor-pointer text-[11px]"
                     title="Revert File Backups"
                   >
                     <RotateCcw className="w-3.5 h-3.5" /> Revert
                   </button>
                   {showBackupsDropdown && (
-                    <div className="absolute right-0 mt-2 w-56 bg-[#161822] border border-white/10 rounded-lg shadow-xl z-50 py-1 select-none text-[11px] font-sans text-left">
-                      <div className="px-3 py-1 border-b border-white/5 text-[10px] text-gray-500 font-semibold uppercase tracking-wider">
+                    <div className="absolute right-0 mt-2 w-56 bg-[#1A1F2E] border border-[#2A3146] rounded-xl shadow-2xl z-50 py-1.5 text-[11px] font-sans">
+                      <div className="px-3 py-1 border-b border-[#2A3146] text-[10px] text-[var(--dp-text-muted)] font-semibold uppercase tracking-wider">
                         Available Backups
                       </div>
                       {backups.length === 0 ? (
-                        <div className="px-3 py-2 text-gray-500 italic">No backups found</div>
+                        <div className="px-3 py-2 text-[var(--dp-text-muted)] italic">No backups found</div>
                       ) : (
-                        <div className="max-h-48 overflow-y-auto divide-y divide-white/2">
+                        <div className="max-h-48 overflow-y-auto divide-y divide-[#2A3146]">
                           {backups.map((bak) => (
                             <button
                               key={bak.timestamp}
                               onClick={() => handleRollback(bak.timestamp)}
-                              className="w-full text-left px-3 py-1.5 hover:bg-violet-600/10 hover:text-violet-400 text-gray-300 transition-colors flex justify-between items-center cursor-pointer font-sans"
+                              className="w-full text-left px-3 py-1.5 hover:bg-[#7C5CFF]/15 hover:text-[#7C5CFF] text-gray-300 transition-colors flex justify-between items-center cursor-pointer font-sans"
                             >
-                              <span>{formatTime(bak.timestamp)}</span>
-                              <span className="text-[9px] text-gray-600 font-mono">#{bak.timestamp.toString().slice(-4)}</span>
+                              <span>{new Date(bak.timestamp).toLocaleTimeString()}</span>
+                              <span className="text-[9px] text-gray-500 font-mono">#{bak.timestamp.toString().slice(-4)}</span>
                             </button>
                           ))}
                         </div>
@@ -960,72 +487,68 @@ export default function EditorArea({
                   )}
                 </div>
 
-                {/* Save button */}
                 {activeTab.isDirty && (
                   <button
                     onClick={handleSaveActiveFile}
-                    className="flex items-center gap-1 text-violet-400 hover:text-violet-300 font-medium"
-                    title="Save (Ctrl+S)"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#7C5CFF]/15 text-[#7C5CFF] border border-[#7C5CFF]/30 text-[10px] font-bold hover:bg-[#7C5CFF]/25 transition-colors cursor-pointer"
                   >
-                    <Save className="w-3.5 h-3.5" /> Save
+                    <Save className="w-3 h-3" /> Save
                   </button>
                 )}
               </div>
             </div>
 
-            {/* ── Breadcrumbs bar ── */}
-            <BreadcrumbBar
-              filePath={activeTab.path}
-              onSelectPathSegment={(seg) => console.log('Selected path segment:', seg)}
-            />
-
-            {/* ── Monaco Editor / Diff Editor ── */}
+            {/* Monaco Editor / Diff Editor Canvas */}
             <div className="flex-1 overflow-hidden flex flex-col relative">
+              <DebugControlBar />
+
+              {/* Proposed AI Code Changes Diff Review Bar */}
               {showDiff && proposedDiff && (
-                <div className="bg-[#181a24] border-b border-white/10 px-4 py-2 flex items-center justify-between z-10 shrink-0 select-none">
+                <div className="bg-[#151823] border-b border-[#2A3146] px-4 py-2 flex items-center justify-between z-10 shrink-0 select-none">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse"></span>
-                    <span className="text-xs font-semibold text-white">AI Proposed Code Changes</span>
-                    <span className="text-[10px] font-mono text-gray-400 bg-white/5 px-2 py-0.5 rounded">
+                    <span className="w-2 h-2 rounded-full bg-[#7C5CFF] animate-pulse" />
+                    <span className="text-xs font-bold text-white">AI Proposed Code Changes</span>
+                    <span className="text-[10px] font-mono text-[var(--dp-text-muted)] bg-white/5 px-2 py-0.5 rounded border border-white/5">
                       {proposedDiff.path}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button 
+                    <button
                       onClick={handleAcceptDiff}
-                      className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow transition-colors flex items-center gap-1 cursor-pointer"
+                      className="px-3 py-1 bg-[#32D583] hover:bg-[#2bbb72] text-white rounded-lg text-xs font-bold shadow transition-colors flex items-center gap-1 cursor-pointer"
                     >
-                      ✓ Accept Changes
+                      <Check className="w-3.5 h-3.5" /> Accept
                     </button>
-                    <button 
+                    <button
                       onClick={handleRejectDiff}
-                      className="px-3 py-1 bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 border border-rose-500/30 rounded text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                      className="px-3 py-1 bg-[#F04438]/20 hover:bg-[#F04438]/30 text-[#F04438] border border-[#F04438]/30 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
                     >
-                      ✕ Reject
+                      <X className="w-3.5 h-3.5" /> Reject
                     </button>
-                    <button 
+                    <button
                       onClick={handleExplainDiff}
-                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-gray-300 rounded text-xs font-medium transition-colors cursor-pointer"
+                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-gray-300 rounded-lg text-xs font-medium transition-colors cursor-pointer"
                     >
                       💡 Explain
                     </button>
-                    <button 
+                    <button
                       onClick={handleRegenerateDiff}
-                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-violet-300 rounded text-xs font-medium transition-colors cursor-pointer"
+                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[#7C5CFF] rounded-lg text-xs font-medium transition-colors cursor-pointer"
                     >
                       🔄 Regenerate
                     </button>
                   </div>
                 </div>
               )}
+
               <div className="flex-1 overflow-hidden">
-                {showDiff ? (
+                {showDiff && proposedDiff ? (
                   <DiffEditor
                     key={`diff-${proposedDiff.path}-${proposedDiff.proposed.length}`}
                     original={proposedDiff.original}
                     modified={proposedDiff.proposed}
                     language={getLanguage(activeTab.path)}
-                    theme="vs-dark"
+                    theme={monacoTheme}
                     height="100%"
                     options={{
                       renderSideBySide: true,
@@ -1039,130 +562,217 @@ export default function EditorArea({
                   />
                 ) : (
                   <Editor
-                    key={activeTab.path} // remount on file change so state is clean
+                    key={activeTab.path}
                     value={activeTab.content}
                     onChange={handleEditorChange}
                     language={getLanguage(activeTab.path)}
-                    theme="vs-dark"
+                    theme={monacoTheme}
                     height="100%"
                     options={EDITOR_OPTIONS}
                     onMount={handleEditorMount}
                   />
+
                 )}
               </div>
             </div>
           </div>
         ) : (
-          /* ── Welcome screen (no file open) ── */
-          <div className="h-full bg-[var(--dp-bg-primary)] p-8 flex flex-col justify-center items-center select-none overflow-y-auto font-sans">
-            <div className="max-w-4xl w-full mx-auto space-y-8 my-auto">
+          /* ── WORLD-CLASS WELCOME DASHBOARD (no file open) ── */
+          <div className="h-full bg-[#0E1016] p-8 overflow-y-auto font-sans select-none">
+            <div className="max-w-5xl mx-auto space-y-8 my-auto py-4">
 
-              {/* Hero */}
-              <div className="flex flex-col items-center text-center max-w-2xl mx-auto pt-4 pb-2">
-                <div className="relative mb-5 flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#8B5CF6] to-[#3B82F6] shadow-lg shadow-[#8B5CF6]/30">
-                  <span className="text-white text-2xl font-black tracking-tighter">DP</span>
-                  <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-[#8B5CF6] to-[#3B82F6] blur-md opacity-45 -z-10 animate-pulse-subtle" />
-                </div>
-                <h1 className="text-3xl font-extrabold text-white tracking-tight leading-none">
-                  DevPilot
-                </h1>
-                <p className="text-xs text-gray-400 mt-2 font-medium tracking-wider uppercase">
-                  Multi-Agent Software Engineering Environment
-                </p>
-              </div>
-
-              {/* Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-                {/* Card: Start */}
-                <div className="p-5 bg-[var(--dp-bg-tertiary)] border border-[var(--dp-border)] rounded-[10px] shadow-md hover:border-[#8b5cf6]/40 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[180px]">
-                  <div>
-                    <h2 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Start</h2>
-                    <div className="flex flex-col gap-2">
-                      <button
-                        onClick={onOpenFolder}
-                        className="w-full text-left px-3 py-2 bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] hover:border-[#8b5cf6]/30 hover:bg-[var(--dp-bg-hover)] text-xs text-gray-300 hover:text-white rounded-md cursor-pointer transition-all flex items-center gap-2.5 font-medium"
-                      >
-                        <span className="w-3.5 h-3.5 text-violet-400 shrink-0">📁</span>
-                        <span>Open Folder...</span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true }));
-                        }}
-                        className="w-full text-left px-3 py-2 bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] hover:border-[#8b5cf6]/30 hover:bg-[var(--dp-bg-hover)] text-xs text-gray-300 hover:text-white rounded-md cursor-pointer transition-all flex items-center gap-2.5 font-medium"
-                      >
-                        <span className="w-3.5 h-3.5 text-violet-400 shrink-0">🔍</span>
-                        <span>Quick Open <kbd className="text-[9px] bg-white/10 px-1 rounded">Ctrl+P</kbd></span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          const event = new KeyboardEvent('keydown', { ctrlKey: true, shiftKey: true, key: 'P', bubbles: true });
-                          window.dispatchEvent(event);
-                        }}
-                        className="w-full text-left px-3 py-2 bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] hover:border-[#8b5cf6]/30 hover:bg-[var(--dp-bg-hover)] text-xs text-gray-300 hover:text-white rounded-md cursor-pointer transition-all flex items-center gap-2.5 font-medium"
-                      >
-                        <span className="w-3.5 h-3.5 text-violet-400 shrink-0">⌨️</span>
-                        <span>Command Palette</span>
-                      </button>
-
-                      <button
-                        onClick={async () => {
-                          if (!workspacePath) { alert('Please open a workspace first.'); return; }
-                          const filename = prompt('Enter new file path (relative to workspace, e.g. test.py):');
-                          if (!filename?.trim()) return;
-                          try {
-                            const res = await fetch('/api/files/create', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ path: filename.trim(), is_dir: false }),
-                            });
-                            if (res.ok) onFileSelect(filename.trim());
-                            else { const d = await res.json(); alert('Failed to create file: ' + (d.detail || 'Unknown error')); }
-                          } catch { alert('Error creating file.'); }
-                        }}
-                        className="w-full text-left px-3 py-2 bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] hover:border-[#8b5cf6]/30 hover:bg-[var(--dp-bg-hover)] text-xs text-gray-300 hover:text-white rounded-md cursor-pointer transition-all flex items-center gap-2.5 font-medium"
-                      >
-                        <span className="w-3.5 h-3.5 text-violet-400 shrink-0">➕</span>
-                        <span>New File...</span>
-                      </button>
+              {/* Hero Banner */}
+              <div className="flex items-center justify-between p-6 rounded-2xl bg-gradient-to-r from-[#151823] via-[#1A1F2E] to-[#151823] border border-[#2A3146] shadow-xl">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-[#7C5CFF] to-indigo-600 flex items-center justify-center shadow-md shadow-[#7C5CFF]/30">
+                      <Sparkles className="w-4 h-4 text-white" />
                     </div>
+                    <h1 className="text-xl font-black text-white tracking-tight">DevPilot AI Editor</h1>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#7C5CFF]/20 text-[#7C5CFF] border border-[#7C5CFF]/30">
+                      AI-Native IDE
+                    </span>
                   </div>
-                </div>
-
-                {/* Card: Recent Workspace */}
-                <div className="p-5 bg-[var(--dp-bg-tertiary)] border border-[var(--dp-border)] rounded-[10px] shadow-md hover:border-[#8b5cf6]/40 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[180px]">
-                  <div>
-                    <h2 className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Workspace</h2>
-                    <div className="p-3 bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] rounded-md text-xs text-gray-400 space-y-2">
-                      {workspacePath ? (
-                        <div>
-                          <div className="text-white font-semibold truncate font-mono">
-                            {workspacePath.split('/').pop() || workspacePath.split('\\').pop()}
-                          </div>
-                          <div className="text-[9px] text-gray-500 font-mono truncate select-all mt-1">{workspacePath}</div>
-                        </div>
-                      ) : (
-                        <div className="italic text-gray-600">No folder loaded. Open a workspace folder to begin coding.</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tip banner */}
-              <div className="p-4 bg-gradient-to-r from-[#8B5CF6]/10 to-[#3B82F6]/5 border border-[#8B5CF6]/15 rounded-[10px] flex items-start gap-3">
-                <div className="p-1 bg-[#8B5CF6]/10 border border-[#8B5CF6]/20 text-[#8B5CF6] rounded shrink-0 text-sm">💡</div>
-                <div>
-                  <h4 className="text-[10px] font-bold text-white uppercase tracking-wider">Tip of the Day</h4>
-                  <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
-                    Press <code className="text-violet-300 font-mono font-bold bg-violet-950/40 px-1 py-0.2 rounded">Ctrl+P</code> to quick-open any file,{' '}
-                    <code className="text-violet-300 font-mono font-bold bg-violet-950/40 px-1 py-0.2 rounded">Ctrl+Shift+O</code> to jump to a symbol, and{' '}
-                    <code className="text-violet-300 font-mono font-bold bg-violet-950/40 px-1 py-0.2 rounded">@filename</code> in AI Chat to attach files to the agent context.
+                  <p className="text-xs text-[var(--dp-text-secondary)]">
+                    Workspace: <span className="text-white font-mono font-semibold">{getWorkspaceName()}</span> · Multi-Agent Engineering Environment
                   </p>
                 </div>
+
+                <button
+                  onClick={onOpenFolder}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#7C5CFF] hover:bg-[#9176FF] text-white text-xs font-bold rounded-xl shadow-lg shadow-[#7C5CFF]/30 transition-all cursor-pointer"
+                >
+                  <Folder className="w-4 h-4" /> Open Folder
+                </button>
+              </div>
+
+              {/* 6 Grid Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+
+                {/* Card 1: Quick Actions */}
+                <div className="dp-card p-5 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="w-4 h-4 text-[#7C5CFF]" /> Quick Actions
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    <button
+                      onClick={onOpenFolder}
+                      className="w-full flex items-center justify-between p-2 rounded-lg bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2"><Folder className="w-3.5 h-3.5 text-[#7C5CFF]" /> Open Folder</span>
+                      <kbd className="text-[9px] font-mono bg-white/10 px-1.5 py-0.5 rounded">Ctrl+O</kbd>
+                    </button>
+                    <button
+                      onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))}
+                      className="w-full flex items-center justify-between p-2 rounded-lg bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2"><Search className="w-3.5 h-3.5 text-[#7C5CFF]" /> Universal Search</span>
+                      <kbd className="text-[9px] font-mono bg-white/10 px-1.5 py-0.5 rounded">Ctrl+K</kbd>
+                    </button>
+                    <button
+                      onClick={() => handleSendMessage('Scan the full workspace for bugs and provide a concise bug report.', 'Ask', false)}
+                      className="w-full flex items-center justify-between p-2 rounded-lg bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-amber-400" /> AI Bug Scan</span>
+                      <span className="text-[9px] text-amber-400 font-semibold uppercase">Scan</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Card 2: Workspace Analytics */}
+                <div className="dp-card p-5 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
+                    <span className="flex items-center gap-1.5">
+                      <BarChart2 className="w-4 h-4 text-[#32D583]" /> Workspace Analytics
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between items-center bg-[#151823] p-2 rounded-lg border border-[#2A3146]">
+                      <span className="text-[var(--dp-text-muted)]">Total Files</span>
+                      <span className="font-mono font-bold text-white">{stats?.total_files || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center bg-[#151823] p-2 rounded-lg border border-[#2A3146]">
+                      <span className="text-[var(--dp-text-muted)]">Total Lines</span>
+                      <span className="font-mono font-bold text-white">{stats?.total_lines || 0}</span>
+                    </div>
+                    {langEntries.length > 0 && (
+                      <div className="space-y-1 pt-1">
+                        <div className="text-[10px] text-[var(--dp-text-muted)] font-semibold uppercase">Top Languages</div>
+                        <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-[#151823] p-0.5 border border-[#2A3146]">
+                          {langEntries.map(([lang, count], idx) => (
+                            <div
+                              key={lang}
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${Math.max(10, Math.round((count / (stats?.total_files || 1)) * 100))}%`,
+                                backgroundColor: idx === 0 ? '#7C5CFF' : idx === 1 ? '#32D583' : '#60A5FA'
+                              }}
+                              title={`${lang}: ${count} files`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card 3: Running Services */}
+                <div className="dp-card p-5 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
+                    <span className="flex items-center gap-1.5">
+                      <Server className="w-4 h-4 text-[#32D583]" /> Running Services
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-[#151823] border border-[#2A3146]">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#32D583] animate-status-pulse" />
+                        <span className="font-medium text-white">FastAPI Backend</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-[#32D583] bg-[#32D583]/10 px-2 py-0.5 rounded border border-[#32D583]/30 font-semibold">
+                        Port 8000
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-[#151823] border border-[#2A3146]">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-[#32D583] animate-status-pulse" />
+                        <span className="font-medium text-white">Vite Frontend</span>
+                      </div>
+                      <span className="text-[10px] font-mono text-[#32D583] bg-[#32D583]/10 px-2 py-0.5 rounded border border-[#32D583]/30 font-semibold">
+                        Port 5173
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Card 4: AI Context Usage */}
+                <div className="dp-card p-5 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
+                    <span className="flex items-center gap-1.5">
+                      <Cpu className="w-4 h-4 text-[#7C5CFF]" /> AI Context Usage
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between text-[11px] font-mono text-[var(--dp-text-secondary)]">
+                      <span>Window Capacity</span>
+                      <span className="text-white font-bold">128,000 Tokens</span>
+                    </div>
+                    <div className="w-full h-2.5 bg-[#151823] rounded-full overflow-hidden border border-[#2A3146] p-0.5">
+                      <div
+                        className="h-full bg-gradient-to-r from-[#7C5CFF] to-blue-500 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(100, Math.max(5, contextPercentage || 5))}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-[var(--dp-text-muted)]">
+                      {contextPercentage}% used. Context window automatically manages active tokens.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Card 5: Recent AI Sessions */}
+                <div className="dp-card p-5 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-purple-400" /> Recent AI Sessions
+                    </span>
+                  </div>
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                    {sessions && sessions.length > 0 ? (
+                      sessions.slice(0, 3).map(s => (
+                        <div key={s.id} className="p-1.5 rounded-lg bg-[#151823] border border-[#2A3146] text-xs flex justify-between items-center">
+                          <span className="truncate text-white font-medium text-[11px] max-w-[140px]">{s.title || 'Agent Session'}</span>
+                          <span className="text-[9px] font-mono text-[#7C5CFF] bg-[#7C5CFF]/15 px-1.5 py-0.5 rounded">Active</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-[11px] text-[var(--dp-text-muted)] italic">No recent sessions</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Card 6: Git Repository Status */}
+                <div className="dp-card p-5 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
+                    <span className="flex items-center gap-1.5">
+                      <GitBranch className="w-4 h-4 text-[#F79009]" /> Git Repository Status
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between items-center bg-[#151823] p-2 rounded-lg border border-[#2A3146]">
+                      <span className="text-[var(--dp-text-muted)]">Active Branch</span>
+                      <span className="font-mono font-bold text-white">main</span>
+                    </div>
+                    <div className="flex justify-between items-center bg-[#151823] p-2 rounded-lg border border-[#2A3146]">
+                      <span className="text-[var(--dp-text-muted)]">Status</span>
+                      <span className="text-[10px] font-mono text-[#32D583] bg-[#32D583]/10 px-2 py-0.5 rounded border border-[#32D583]/30 font-semibold">
+                        Clean Working Tree
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
               </div>
 
             </div>

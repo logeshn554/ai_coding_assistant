@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
-type SidebarTabType = 'explorer' | 'search' | 'git' | 'debug' | 'artifacts' | 'extensions' | 'testing' | 'packages' | 'agents' | 'workspace' | 'profile';
+type SidebarTabType = 'explorer' | 'search' | 'git' | 'debug' | 'snippets' | 'artifacts' | 'extensions' | 'testing' | 'packages' | 'agents' | 'workspace' | 'profile';
 
 export type SecondaryTabType = 'ai' | 'outline' | 'timeline' | 'docs' | 'graph' | 'review' | 'queue';
 
@@ -38,10 +38,20 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [aiPanelWidth, setAiPanelWidth] = useState(380);
   const [isResizingAiPanel, setIsResizingAiPanel] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<SidebarTabType>('explorer');
-  const [secondarySidebarTab, setSecondarySidebarTab] = useState<SecondaryTabType>('ai');
+  const [secondarySidebarTab, setSecondarySidebarTabState] = useState<SecondaryTabType>('ai');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(true);
   const [activeMenu, setActiveMenu] = useState<ActiveMenuType>(null);
+
+  const setSecondarySidebarTab = (tab: SecondaryTabType) => {
+    setSecondarySidebarTabState(tab);
+    if (tab === 'graph') {
+      const targetWidth = Math.max(550, Math.min(Math.round(window.innerWidth * 0.42), 700));
+      setAiPanelWidth(targetWidth);
+    } else if (tab === 'ai') {
+      setAiPanelWidth(380);
+    }
+  };
 
   return (
     <UIContext.Provider
@@ -65,7 +75,7 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         setIsSidebarOpen,
         setIsAiPanelOpen,
         setIsSecondarySidebarOpen: setIsAiPanelOpen,
-        setActiveMenu
+        setActiveMenu,
       }}
     >
       {children}
@@ -73,10 +83,8 @@ export const UIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   );
 };
 
-export const useUI = () => {
+export const useUI = (): UIContextType => {
   const context = useContext(UIContext);
-  if (!context) {
-    throw new Error('useUI must be used within a UIProvider');
-  }
+  if (!context) throw new Error('useUI must be used within a UIProvider');
   return context;
 };

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Search, Play, Cpu, Zap, PanelRight, PanelLeft } from 'lucide-react';
+import { Search, Cpu, PanelRight, PanelLeft, GitBranch } from 'lucide-react';
 import { useWorkspace } from '../../core/workspace/WorkspaceContext';
 import { useEditor } from '../../core/editor/EditorContext';
 import { useUI } from '../../core/ui/UIContext';
@@ -20,15 +20,15 @@ interface MenuItem {
 }
 
 const MenuDropdown: React.FC<{ items: MenuItem[]; onClose: () => void }> = ({ items, onClose }) => (
-  <div className="absolute left-0 top-full mt-0.5 w-52 bg-[var(--dp-bg-elevated)] border border-[var(--dp-border-mid)] shadow-[var(--dp-shadow-float)] py-1.5 z-50 text-xs text-[var(--dp-text-primary)] rounded-xl animate-fade-in">
+  <div className="absolute left-0 top-full mt-1 w-56 bg-[#1A1F2E] border border-[#2A3146] shadow-[0_16px_48px_rgba(0,0,0,0.7)] py-1.5 z-50 text-xs text-[var(--dp-text-primary)] rounded-xl animate-fade-in">
     {items.map((item, i) => (
       <React.Fragment key={i}>
         <button
           onClick={() => { onClose(); item.action(); }}
-          className={`w-full text-left px-3.5 py-1.5 flex items-center justify-between transition-colors cursor-pointer gap-3 font-sans rounded-none
+          className={`w-full text-left px-3.5 py-1.5 flex items-center justify-between transition-colors cursor-pointer gap-3 font-sans
             ${item.danger
               ? 'hover:bg-red-500/10 hover:text-red-400'
-              : 'hover:bg-[var(--dp-bg-active)] hover:text-[var(--dp-text-bright)]'
+              : 'hover:bg-[#7C5CFF]/15 hover:text-white'
             }`}
         >
           <span>{item.label}</span>
@@ -36,7 +36,7 @@ const MenuDropdown: React.FC<{ items: MenuItem[]; onClose: () => void }> = ({ it
             <span className="text-[9px] text-[var(--dp-text-muted)] font-mono bg-white/5 px-1.5 py-0.5 rounded">{item.shortcut}</span>
           )}
         </button>
-        {item.dividerAfter && <div className="border-t border-[var(--dp-border)] my-1 mx-2" />}
+        {item.dividerAfter && <div className="border-t border-[#2A3146] my-1 mx-2" />}
       </React.Fragment>
     ))}
   </div>
@@ -46,9 +46,9 @@ export const TitleBar: React.FC = () => {
   const { workspacePath, handleOpenWorkspaceFolder, changeWorkspacePath, triggerRefresh } = useWorkspace();
   const { activeFilePath } = useEditor();
   const { activeMenu, setActiveMenu, setSidebarTab, isSidebarOpen, setIsSidebarOpen, isAiPanelOpen, setIsAiPanelOpen } = useUI();
-  const { statusBarDebug } = useGit();
+  const { statusBarBranch, statusBarDebug } = useGit();
   const { setBottomTab } = useTerminal();
-  const { handleSendMessage, isGenerating, isWsConnected } = useAI();
+  const { handleSendMessage, contextPercentage = 0, contextTokensRaw = 0, isWsConnected } = useAI();
   const { setIsCommandPaletteOpen } = useCommand();
   const { activeProfileName } = useSettings();
 
@@ -56,13 +56,12 @@ export const TitleBar: React.FC = () => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 
   const getWorkspaceName = () => {
-    if (!workspacePath) return 'DevPilot';
+    if (!workspacePath) return 'No Folder';
     const normalized = workspacePath.replace(/\\/g, '/');
-    return normalized.split('/').pop() || 'DevPilot';
+    return normalized.split('/').pop() || 'Workspace';
   };
 
   const handleStartStopDebug = async () => {
-    // If the AI already surfaced a run command (from a previous chat response), inject it immediately.
     const storedCmd = localStorage.getItem('devpilot_detected_run_command');
     if (storedCmd) {
       setBottomTab('terminal');
@@ -70,7 +69,6 @@ export const TitleBar: React.FC = () => {
       return;
     }
 
-    // Otherwise open the AI panel and ask the run agent to analyse the workspace and start the project.
     setIsAiPanelOpen(true);
     handleSendMessage('run the project', 'Agent', true);
   };
@@ -120,7 +118,7 @@ export const TitleBar: React.FC = () => {
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === id ? null : id); }}
-        className={`px-2 py-0.5 rounded text-[11.5px] font-medium transition-colors cursor-pointer ${
+        className={`px-2 py-1 rounded text-[11.5px] font-medium transition-colors cursor-pointer ${
           activeMenu === id
             ? 'bg-white/10 text-white font-semibold'
             : 'text-[var(--dp-text-secondary)] hover:text-white hover:bg-white/5'
@@ -134,19 +132,34 @@ export const TitleBar: React.FC = () => {
     </div>
   );
 
-  return (
-    <div className="h-9 bg-[var(--dp-bg-secondary)] border-b border-[var(--dp-border)] flex items-center justify-between px-3 select-none shrink-0 z-30 font-sans">
+  const formatTokens = (num: number) => {
+    if (!num) return '0K';
+    if (num < 1000) return `${num}`;
+    return `${(num / 1000).toFixed(0)}K`;
+  };
 
-      {/* ── Left: Branding + Menus ── */}
-      <div className="flex items-center gap-2">
-        {/* DevPilot AI Editor Logo Icon */}
-        <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-violet-600 via-purple-600 to-indigo-500 flex items-center justify-center text-white text-[10px] font-extrabold shadow-sm shadow-violet-500/40 shrink-0 tracking-tighter">
+  return (
+    <div className="h-10 bg-[#0A0C12] border-b border-[#2A3146] flex items-center justify-between px-3 select-none shrink-0 z-30 font-sans">
+
+      {/* ── Left: Branding + Workspace Selector + Menus ── */}
+      <div className="flex items-center gap-2.5">
+        {/* DevPilot Logo */}
+        <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-[#7C5CFF] via-purple-600 to-indigo-500 flex items-center justify-center text-white text-[10px] font-extrabold shadow-md shadow-[#7C5CFF]/30 shrink-0 tracking-tighter">
           DP
         </div>
-        <span className="text-[11.5px] font-bold text-zinc-200 tracking-tight font-sans">DevPilot</span>
+        <span className="text-[12px] font-bold text-white tracking-tight">DevPilot</span>
 
+        {/* Workspace Selector Dropdown Badge */}
+        <div
+          onClick={handleOpenWorkspaceFolder}
+          className="flex items-center gap-1.5 px-2 py-0.5 bg-[#151823] border border-[#2A3146] hover:border-[#7C5CFF]/40 rounded-lg text-[11px] text-[var(--dp-text-primary)] cursor-pointer transition-colors"
+          title="Switch Workspace Folder"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-[#7C5CFF]" />
+          <span className="font-semibold truncate max-w-[120px]">{getWorkspaceName()}</span>
+        </div>
 
-        {/* Menu Items */}
+        {/* Top Menus */}
         <div className="flex items-center gap-0.5 ml-1">
           {renderMenu('file', 'File')}
           {renderMenu('edit', 'Edit')}
@@ -156,65 +169,68 @@ export const TitleBar: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Center: Search / Command Trigger Bar ── */}
+      {/* ── Center: Universal Search Trigger ── */}
       <div
         onClick={() => setIsCommandPaletteOpen(true)}
-        className="flex items-center justify-between w-96 max-w-md h-6 px-2.5 bg-[var(--dp-bg-tertiary)] hover:bg-white/[0.06] border border-[var(--dp-border)] rounded-md text-xs text-[var(--dp-text-muted)] cursor-pointer transition-colors"
+        className="flex items-center justify-between w-80 max-w-sm h-6.5 px-2.5 bg-[#151823] hover:bg-[#1A1F2E] border border-[#2A3146] hover:border-[#7C5CFF]/40 rounded-lg text-xs text-[var(--dp-text-muted)] cursor-pointer transition-all duration-150 group shadow-sm"
       >
         <div className="flex items-center gap-2 truncate">
-          <Search className="w-3.5 h-3.5 text-[var(--dp-text-muted)] shrink-0" />
-          <span className="truncate text-[11px]">
+          <Search className="w-3.5 h-3.5 text-[var(--dp-text-muted)] group-hover:text-[#7C5CFF] transition-colors shrink-0" />
+          <span className="truncate text-[11px] text-[var(--dp-text-secondary)]">
             {activeFilePath
               ? `${getWorkspaceName()} › ${activeFilePath.replace(/\\/g, '/').split('/').pop()}`
-              : 'Search files, symbols, commands...'
+              : 'Search files, commands, symbols...'
             }
           </span>
         </div>
-        <kbd className="px-1.5 py-0.5 bg-white/5 border border-white/8 text-[9px] font-mono text-[var(--dp-text-muted)] rounded shrink-0">
+        <kbd className="px-1.5 py-0.5 bg-[#1A1F2E] border border-[#2A3146] text-[9px] font-mono text-[var(--dp-text-muted)] rounded shrink-0">
           Ctrl K
         </kbd>
       </div>
 
-      {/* ── Right: Status + Controls ── */}
+      {/* ── Right: AI Model + Context Bar + Status Controls ── */}
       <div className="flex items-center gap-2 shrink-0">
 
-        {/* Model badge */}
+        {/* Git Branch Badge */}
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#151823] border border-[#2A3146] text-[10px] text-[var(--dp-text-secondary)] font-mono">
+          <GitBranch className="w-3 h-3 text-[#7C5CFF]" />
+          <span className="font-semibold text-white">{statusBarBranch || 'main'}</span>
+        </div>
+
+        {/* Active AI Model Badge */}
         <div
           onClick={() => {
             setSidebarTab('profile');
             setIsSidebarOpen(true);
           }}
-          title="Click to view & switch AI Profile"
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--dp-accent-dim)] border border-[var(--dp-accent)]/20 text-[11px] cursor-pointer hover:bg-[var(--dp-accent-dim)]/80 transition-colors"
+          title="Click to switch AI Profile & Models"
+          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-[#7C5CFF]/15 border border-[#7C5CFF]/30 text-[11px] cursor-pointer hover:bg-[#7C5CFF]/25 transition-all shadow-[0_0_10px_rgba(124,92,255,0.15)]"
         >
-          <Cpu className="w-3 h-3 text-[var(--dp-accent)]" />
-          <span className="font-semibold text-[var(--dp-accent)]">{activeProfileName || 'GPT-5.5'}</span>
+          <Cpu className="w-3.5 h-3.5 text-[#7C5CFF]" />
+          <span className="font-bold text-white">{activeProfileName || 'Groq / Claude 3.5'}</span>
         </div>
 
-        {/* Context tokens */}
-        <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-white/4 border border-[var(--dp-border)] text-[10px] font-mono text-[var(--dp-text-secondary)] cursor-default">
-          <span>128K</span>
-          <span className="text-[var(--dp-text-muted)]">Context</span>
-        </div>
-
-        {/* Latency */}
-        <div className="flex items-center gap-1 text-[10px] text-[var(--dp-text-muted)]" title="Network latency">
-          <div className="w-2 h-2 rounded-full bg-[var(--dp-success)] animate-status-pulse" />
-          <span className="font-mono">{latency}ms</span>
-        </div>
-
-        {/* WS connected / AI generating */}
-        {isGenerating ? (
-          <div className="flex items-center gap-1 text-[var(--dp-accent)] animate-pulse-subtle">
-            <Zap className="w-3.5 h-3.5" />
+        {/* Context Progress Bar */}
+        <div
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#151823] border border-[#2A3146] text-[10px] font-mono text-[var(--dp-text-secondary)]"
+          title={`Context Token Usage: ${formatTokens(contextTokensRaw)} / 128K (${contextPercentage}%)`}
+        >
+          <span>{formatTokens(contextTokensRaw)} / 128K</span>
+          <div className="w-12 h-1.5 bg-[#0A0C12] rounded-full overflow-hidden border border-[#2A3146]">
+            <div
+              className="h-full bg-gradient-to-r from-[#7C5CFF] to-blue-500 rounded-full transition-all duration-300"
+              style={{ width: `${Math.min(100, Math.max(5, contextPercentage || 5))}%` }}
+            />
           </div>
-        ) : (
-          !isWsConnected && (
-            <div className="w-2 h-2 rounded-full bg-[var(--dp-error)] animate-pulse" title="Disconnected" />
-          )
-        )}
+        </div>
 
-        {/* Bell + Notification Center */}
+        {/* Latency & Connection Status */}
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#151823] border border-[#2A3146] text-[10px] text-[var(--dp-text-muted)]" title="Live WS connection & latency">
+          <div className={`w-2 h-2 rounded-full ${isWsConnected ? 'bg-[#32D583] animate-status-pulse' : 'bg-[#F04438]'}`} />
+          <span className="font-mono text-zinc-300">{latency}ms</span>
+        </div>
+
+        {/* Notifications Bell */}
         <div className="relative">
           <NotificationBell
             onClick={() => setIsNotifOpen((v) => !v)}
@@ -226,38 +242,28 @@ export const TitleBar: React.FC = () => {
           />
         </div>
 
-        {/* Play / Stop */}
-        <button
-          onClick={handleStartStopDebug}
-          className={`p-1.5 hover:bg-white/5 rounded-md transition-colors cursor-pointer
-            ${statusBarDebug === 'Running' ? 'text-[var(--dp-success)]' : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)]'}`}
-          title={statusBarDebug === 'Running' ? 'Stop Running' : 'Start Project'}
-        >
-          <Play className="w-3.5 h-3.5" />
-        </button>
-
-        {/* Primary Sidebar toggle */}
+        {/* Primary Sidebar Toggle */}
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className={`p-1.5 hover:bg-white/5 rounded-md transition-colors cursor-pointer
-            ${isSidebarOpen ? 'text-[var(--dp-text-bright)] bg-white/5' : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)]'}`}
-          title={isSidebarOpen ? 'Toggle Primary Side Bar (Hide)' : 'Toggle Primary Side Bar (Show)'}
+          className={`p-1.5 hover:bg-white/5 rounded-lg transition-colors cursor-pointer
+            ${isSidebarOpen ? 'text-white bg-white/10' : 'text-[var(--dp-text-muted)] hover:text-white'}`}
+          title={isSidebarOpen ? 'Hide Primary Sidebar' : 'Show Primary Sidebar'}
         >
           <PanelLeft className="w-3.5 h-3.5" />
         </button>
 
-        {/* Secondary Sidebar toggle */}
+        {/* AI Workspace Panel Toggle */}
         <button
           onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}
-          className={`p-1.5 hover:bg-white/5 rounded-md transition-colors cursor-pointer
-            ${isAiPanelOpen ? 'text-[var(--dp-accent)] bg-[var(--dp-accent-dim)]' : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)]'}`}
-          title={isAiPanelOpen ? 'Toggle Secondary Side Bar (Hide)' : 'Toggle Secondary Side Bar (Show)'}
+          className={`p-1.5 rounded-lg transition-colors cursor-pointer
+            ${isAiPanelOpen ? 'text-[#7C5CFF] bg-[#7C5CFF]/15 border border-[#7C5CFF]/30' : 'text-[var(--dp-text-muted)] hover:text-white hover:bg-white/5'}`}
+          title={isAiPanelOpen ? 'Hide AI Workspace' : 'Show AI Workspace'}
         >
           <PanelRight className="w-3.5 h-3.5" />
         </button>
 
         {/* User avatar */}
-        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-[9px] font-bold shadow-sm cursor-pointer shrink-0">
+        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#7C5CFF] to-indigo-600 flex items-center justify-center text-white text-[9px] font-bold shadow-md cursor-pointer shrink-0">
           U
         </div>
       </div>

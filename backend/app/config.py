@@ -4,6 +4,44 @@ import logging
 import subprocess
 from pathlib import Path
 import keyring
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    """Centralized configuration management for DevPilot Backend."""
+    
+    APP_NAME: str = "DevPilot API"
+    APP_VERSION: str = "1.0.0"
+    DEBUG: bool = False
+    
+    # Server Settings
+    API_HOST: str = "127.0.0.1"
+    API_PORT: int = 8000
+    
+    # Security & Auth
+    SESSION_TOKEN: str = ""
+    JWT_SECRET: str = "devpilot-default-jwt-secret-change-in-prod-32chars"
+    
+    # CORS Configuration
+    CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    ALLOW_REMOTE: bool = False
+    DOCKER_MODE: bool = False
+    
+    # Storage & Database
+    DATABASE_URL: str = "sqlite:///devpilot.db"
+    REDIS_URL: str = "redis://localhost:6379"
+    
+    # LLM & AI Providers
+    OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+
+settings = Settings()
 
 from keyring.backend import KeyringBackend
 

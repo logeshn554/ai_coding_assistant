@@ -29,6 +29,7 @@ import PackagesSidebar from './components/PackagesSidebar';
 import AgentsSidebar from './components/AgentsSidebar';
 import WorkspaceSidebar from './components/WorkspaceSidebar';
 import ProfileSidebar from './components/ProfileSidebar';
+import SnippetsSidebar from './components/SnippetsSidebar';
 
 import { ArtifactViewer } from './components/chat/ArtifactViewer';
 
@@ -39,6 +40,8 @@ import { SecondarySidebar } from './components/secondarysidebar/SecondarySidebar
 import SettingsModal from './components/SettingsModal';
 import QuickOpen from './components/QuickOpen';
 import GoToSymbol from './components/GoToSymbol';
+
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Custom Hooks & Types
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -147,33 +150,36 @@ function EditorShell() {
           {isSidebarOpen && (
             <div style={{ width: `${sidebarWidth}px` }} className="h-full shrink-0 relative flex">
               <div className="flex-1 h-full min-w-0 overflow-hidden flex flex-col" style={{ background: 'var(--dp-bg-secondary)', borderRight: '1px solid var(--dp-border)' }}>
-                {sidebarTab === 'explorer' && (
-                  <Sidebar
-                    onSelectFile={handleSelectFile}
-                    selectedFilePath={activeFilePath}
-                    refreshTrigger={refreshTrigger}
-                    workspacePath={workspacePath}
-                    onOpenFolder={handleOpenWorkspaceFolder}
-                    gitChanges={gitChanges}
-                  />
-                )}
-                {sidebarTab === 'search' && <SearchSidebar onSelectFile={handleSelectFile} />}
-                {sidebarTab === 'git' && <GitSidebar />}
-                {sidebarTab === 'debug' && <RunDebugSidebar />}
-                {sidebarTab === 'artifacts' && (
-                  <ArtifactViewer
-                    workspacePath={workspacePath}
-                    onOpenFile={handleSelectFile}
-                    onSendMessage={(msg) => handleSendMessage(msg, chatMode, false)}
-                  />
-                )}
-                {sidebarTab === 'extensions' && <ExtensionsSidebar />}
+                <ErrorBoundary title="Sidebar Error">
+                  {sidebarTab === 'explorer' && (
+                    <Sidebar
+                      onSelectFile={handleSelectFile}
+                      selectedFilePath={activeFilePath}
+                      refreshTrigger={refreshTrigger}
+                      workspacePath={workspacePath}
+                      onOpenFolder={handleOpenWorkspaceFolder}
+                      gitChanges={gitChanges}
+                    />
+                  )}
+                  {sidebarTab === 'search' && <SearchSidebar onSelectFile={handleSelectFile} />}
+                  {sidebarTab === 'git' && <GitSidebar />}
+                  {sidebarTab === 'debug' && <RunDebugSidebar />}
+                  {sidebarTab === 'artifacts' && (
+                    <ArtifactViewer
+                      workspacePath={workspacePath}
+                      onOpenFile={handleSelectFile}
+                      onSendMessage={(msg) => handleSendMessage(msg, chatMode, false)}
+                    />
+                  )}
+                  {sidebarTab === 'extensions' && <ExtensionsSidebar />}
+                  {sidebarTab === 'snippets' && <SnippetsSidebar />}
 
-                {sidebarTab === 'testing' && <TestingSidebar />}
-                {sidebarTab === 'packages' && <PackagesSidebar />}
-                {sidebarTab === 'agents' && <AgentsSidebar />}
-                {sidebarTab === 'workspace' && <WorkspaceSidebar />}
-                {sidebarTab === 'profile' && <ProfileSidebar />}
+                  {sidebarTab === 'testing' && <TestingSidebar />}
+                  {sidebarTab === 'packages' && <PackagesSidebar />}
+                  {sidebarTab === 'agents' && <AgentsSidebar />}
+                  {sidebarTab === 'workspace' && <WorkspaceSidebar />}
+                  {sidebarTab === 'profile' && <ProfileSidebar />}
+                </ErrorBoundary>
               </div>
               <div
                 onMouseDown={() => setIsResizingSidebar(true)}
@@ -185,18 +191,20 @@ function EditorShell() {
           {/* Workspace Central area (Editor & Terminal) */}
           <div className="flex-1 h-full flex flex-col min-w-0" style={{ borderRight: '1px solid var(--dp-border)' }}>
             <div className="flex-1 overflow-hidden relative">
-              <EditorArea
-                activeFilePath={activeFilePath}
-                openFiles={openFiles}
-                onFileClose={handleCloseFile}
-                onFileSelect={handleSelectFile}
-                proposedDiff={proposedDiff}
-                onRefreshWorkspace={() => {}}
-                refreshTrigger={refreshTrigger}
-                onOpenFolder={handleOpenWorkspaceFolder}
-                workspacePath={workspacePath}
-                onEditorRef={(ed) => { editorInstanceRef.current = ed; }}
-              />
+              <ErrorBoundary title="Editor Error">
+                <EditorArea
+                  activeFilePath={activeFilePath}
+                  openFiles={openFiles}
+                  onFileClose={handleCloseFile}
+                  onFileSelect={handleSelectFile}
+                  proposedDiff={proposedDiff}
+                  onRefreshWorkspace={() => {}}
+                  refreshTrigger={refreshTrigger}
+                  onOpenFolder={handleOpenWorkspaceFolder}
+                  workspacePath={workspacePath}
+                  onEditorRef={(ed) => { editorInstanceRef.current = ed; }}
+                />
+              </ErrorBoundary>
             </div>
 
             {/* Resizable Terminal Panel */}
@@ -208,7 +216,9 @@ function EditorShell() {
                 onMouseDown={() => setIsResizingTerminal(true)}
                 className="dp-resize-handle-v absolute top-0 left-0 right-0 h-[3px] z-50 select-none cursor-row-resize"
               />
-              <BottomPanel />
+              <ErrorBoundary title="Terminal Panel Error">
+                <BottomPanel />
+              </ErrorBoundary>
             </div>
           </div>
 
@@ -220,24 +230,26 @@ function EditorShell() {
                 className="dp-resize-handle-h absolute left-0 top-0 bottom-0 w-[3px] z-50 select-none cursor-col-resize"
               />
               <div className="flex-1 h-full min-w-0 overflow-hidden flex flex-col">
-                <SecondarySidebar
-                  messages={messages}
-                  inputText={chatInputText}
-                  setInputText={setChatInputText}
-                  onSendMessage={handleSend}
-                  isGenerating={isGenerating}
-                  onCancelGeneration={handleCancelGeneration}
-                  mode={chatMode}
-                  setMode={setChatMode}
-                  onConfirmTool={handleConfirmToolBridge}
-                  onConfirmPermission={handleConfirmPermission}
-                  statusMessage={statusMessage ?? undefined}
-                  contextTokens={contextTokensRaw}
-                  contextPercentage={typeof contextPercentage === 'number' ? contextPercentage : undefined}
-                  activeSessionId={activeSessionId}
-                  onResumeSession={handleSelectSession}
-                  onRevealLine={handleRevealLine}
-                />
+                <ErrorBoundary title="AI Workspace Error">
+                  <SecondarySidebar
+                    messages={messages}
+                    inputText={chatInputText}
+                    setInputText={setChatInputText}
+                    onSendMessage={handleSend}
+                    isGenerating={isGenerating}
+                    onCancelGeneration={handleCancelGeneration}
+                    mode={chatMode}
+                    setMode={setChatMode}
+                    onConfirmTool={handleConfirmToolBridge}
+                    onConfirmPermission={handleConfirmPermission}
+                    statusMessage={statusMessage ?? undefined}
+                    contextTokens={contextTokensRaw}
+                    contextPercentage={typeof contextPercentage === 'number' ? contextPercentage : undefined}
+                    activeSessionId={activeSessionId}
+                    onResumeSession={handleSelectSession}
+                    onRevealLine={handleRevealLine}
+                  />
+                </ErrorBoundary>
               </div>
             </div>
           )}

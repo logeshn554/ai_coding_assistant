@@ -231,18 +231,74 @@ def delete_workspace_item(workspace_root: str, relative_path: str) -> None:
     except Exception as e:
         raise IOError(f"Failed to delete item: {str(e)}")
 
+def _search_with_ripgrep(workspace_root: str, query: str) -> list | None:
+    """
+    Executes ripgrep subprocess with --json formatting if rg executable exists.
+    Returns list of match dicts or None on failure to trigger python fallback.
+    """
+    rg_path = shutil.which("rg")
+    if not rg_path:
+        return None
+    try:
+        cmd = [rg_path, "--json", "-i", "-m", "100", "--", query, workspace_root]
+        res = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5
+        )
+        if res.returncode not in (0, 1):
+            return None
+
+        results = []
+        import json
+        for line in res.stdout.splitlines():
+            if not line.strip():
+                continue
+            try:
+                data = json.loads(line)
+                if data.get("type") == "match":
+                    payload = data.get("data", {})
+                    path_obj = payload.get("path", {})
+                    raw_path = path_obj.get("text", "")
+                    rel_p = os.path.relpath(raw_path, workspace_root).replace("\\", "/")
+                    line_num = payload.get("line_number", 1)
+                    lines_obj = payload.get("lines", {})
+                    content = lines_obj.get("text", "").strip()
+                    results.append({
+                        "path": rel_p,
+                        "line": line_num,
+                        "content": content
+                    })
+                    if len(results) >= 100:
+                        break
+            except Exception:
+                continue
+        return results
+    except Exception:
+        return None
+
+
 def search_workspace_codebase(workspace_root: str, query: str) -> list:
     """
-    Simple grep-like search across files in the workspace.
+    Grep-like search across files in the workspace using ripgrep with Python fallback.
     Excludes binary files, .git, node_modules, etc.
     """
-    results = []
-    exclude_dirs = set(config_manager.get_exclude_list())
-    exclude_extensions = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}
-    
     # If query is empty or whitespace, return empty results
     if not query or not query.strip():
         return []
+
+    # Try ripgrep first
+    rg_results = _search_with_ripgrep(workspace_root, query)
+    if rg_results is not None:
+        return rg_results
+
+    results = []
+    exclude_dirs = set(config_manager.get_exclude_list())
+    exclude_extensions = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}
     
     # Compile regex case-insensitively
     try:
