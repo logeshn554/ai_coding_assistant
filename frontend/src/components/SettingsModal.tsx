@@ -114,6 +114,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(true);
   const [agentModelName, setAgentModelName] = useState<string>('');
   const [agentModels, setAgentModels] = useState<Record<string, string>>({});
+  const [imageAnalysisModel, setImageAnalysisModel] = useState<string>('');
 
   // Agent Behavior & Local Permissions State
   const [artifactReviewPolicy, setArtifactReviewPolicy] = useState<string>('Always Ask');
@@ -163,6 +164,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         setAutoBackupEnabled(data?.auto_backup_enabled ?? true);
         setAgentModelName(data?.agent_model_name || '');
         setAgentModels(data?.agent_models && typeof data.agent_models === 'object' ? data.agent_models : {});
+        setImageAnalysisModel(data?.image_analysis_model || '');
         // Terminal preferences
         setDefaultShell(data?.default_shell || '');
         if (data?.terminal_font_size) setTermFontSize(data.terminal_font_size);
@@ -190,7 +192,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     netRulesOverride?: any[],
     termRulesOverride?: any[],
     unsandboxedRulesOverride?: any[],
-    mcpRulesOverride?: any[]
+    mcpRulesOverride?: any[],
+    newImgModel?: string
   ) => {
     try {
       await fetch('/api/config/settings', {
@@ -201,6 +204,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           auto_backup_enabled: newBackup,
           agent_model_name: newAgentModel !== undefined ? newAgentModel : agentModelName,
           agent_models: newAgentModels !== undefined ? newAgentModels : agentModels,
+          image_analysis_model: newImgModel !== undefined ? newImgModel : imageAnalysisModel,
           default_shell: defaultShell,
           terminal_font_size: termFontSize,
           terminal_scrollback: termScrollback,
@@ -1124,6 +1128,32 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                 className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
               >
                 <option value="">Use Active Profile Model (Default)</option>
+                {getSelectableModels().map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Image & Visual Analysis Model Selection */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-400 block">
+                Image & Visual Analysis Model
+              </label>
+              <span className="text-[10px] text-gray-500 block">
+                Select vision-capable model for analyzing image attachments & screenshots (falls back to OCR if none selected):
+              </span>
+              <select
+                value={imageAnalysisModel}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setImageAnalysisModel(val);
+                  savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                }}
+                className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
+              >
+                <option value="">None / Automatic OCR Fallback</option>
                 {getSelectableModels().map((model) => (
                   <option key={model} value={model}>
                     {model}

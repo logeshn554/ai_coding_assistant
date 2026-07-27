@@ -15,6 +15,8 @@ class SettingsUpdateRequest(BaseModel):
     auto_inspect_on_server_start: Optional[bool] = False
     agent_model_name: Optional[str] = ""
     agent_models: Optional[dict] = None
+    image_analysis_model: Optional[str] = ""
+    mcp_servers: Optional[list] = None
     # Terminal preferences
     default_shell: Optional[str] = ""
     terminal_font_size: Optional[int] = Field(default=13, ge=8, le=32)
@@ -36,6 +38,8 @@ def get_settings():
         "auto_inspect_on_server_start": config_manager.get_auto_inspect_on_server_start(),
         "agent_model_name": config_manager.get_agent_model_name(),
         "agent_models": config_manager.get_agent_models(),
+        "image_analysis_model": config_manager.get_image_analysis_model(),
+        "mcp_servers": config_manager.get_mcp_servers(),
         # Terminal preferences
         "default_shell": config_manager.get_default_shell(),
         "terminal_font_size": config_manager.get_terminal_font_size(),
@@ -60,6 +64,10 @@ def save_settings(req: SettingsUpdateRequest):
         config_manager.set_agent_model_name(req.agent_model_name)
         if req.agent_models is not None:
             config_manager.set_agent_models(req.agent_models)
+        if req.image_analysis_model is not None:
+            config_manager.set_image_analysis_model(req.image_analysis_model)
+        if req.mcp_servers is not None:
+            config_manager.set_mcp_servers(req.mcp_servers)
         # Terminal preferences
         shell = req.default_shell or ""
         if shell not in VALID_SHELLS:

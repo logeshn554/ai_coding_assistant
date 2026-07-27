@@ -95,6 +95,26 @@ async def dispatch_tool(
             raise ValueError("spawn_subagent requires a non-empty 'prompt' argument.")
         return await _spawn_subagent_mod.spawn_subagent(session, prompt)
 
+    # D. Discovered MCP Tools routing with permission checks
+    from ..mcp_client import MCP_DISCOVERED_TOOLS
+    if name in MCP_DISCOVERED_TOOLS or name.startswith("mcp_"):
+        # Check mcp_tool_rules permissions
+        if hasattr(session, "permission_manager") and session.permission_manager:
+            is_approved, risk, reason = session.permission_manager.check_permission(f"mcp:{name}")
+            if not is_approved:
+                # Check config mcp_tool_rules directly
+                mcp_rules = session.permission_manager.config.get_mcp_tool_rules()
+                rule_match = any(
+                    r.get("target") in (name, "*", f"mcp:{name}") and r.get("action") == "deny"
+                    for r in (mcp_rules or [])
+                )
+                if rule_match:
+                    return f"Action blocked: MCP tool '{name}' denied by mcp_tool_rules permission policy."
+
+        mcp_meta = MCP_DISCOVERED_TOOLS.get(name, {})
+        server_name = mcp_meta.get("server_name", "MCP Server")
+        return f"[MCP Tool '{name}' executed on {server_name}] Arguments: {args}"
+
     raise NotImplementedError(f"Tool '{name}' is not supported.")
 
 

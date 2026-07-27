@@ -468,13 +468,30 @@ async def websocket_chat(
                 text = msg.get("text", "")
                 mode = msg.get("mode", "Ask")
                 auto_apply = msg.get("auto_apply", False)
-                # Optional editor context for skills.md section selection.
+                # Optional editor context & attachments processing.
                 open_languages = msg.get("open_languages") or []
                 open_files = msg.get("open_files") or []
+                attached_files = msg.get("attached_files") or []
+
                 if isinstance(open_languages, list):
                     session.open_languages = [str(x) for x in open_languages if x]
                 if isinstance(open_files, list):
                     session.open_files = [str(x) for x in open_files if x]
+
+                # Process explicitly attached files via Vision / RAG pipeline
+                if attached_files and isinstance(attached_files, list):
+                    try:
+                        from ..attachments import process_attachments, format_attachment_prompt
+                        att_paths = [str(x) for x in attached_files if x]
+                        att_results = await process_attachments(
+                            att_paths, query=text, workspace_root=session.workspace_root
+                        )
+                        att_text = format_attachment_prompt(att_results)
+                        if att_text:
+                            text = text + "\n\n" + att_text
+                    except Exception as att_err:
+                        logger.error("Failed to process attached files in chat session: %s", att_err)
+
                 # Do NOT update session.workspace_root from the global workspace_state here.
                 # The session workspace was locked at connection open to prevent cross-session bleed.
                 # Enqueue instead of cancel+replace — preserves in-flight work

@@ -416,6 +416,43 @@ class ConfigManager:
         config["agent_models"] = agent_models
         self._save_raw_config(config)
 
+    def get_image_analysis_model(self) -> str:
+        config = self._read_raw_config()
+        return config.get("image_analysis_model", "")
+
+    def set_image_analysis_model(self, name: str):
+        config = self._read_raw_config()
+        config["image_analysis_model"] = str(name or "")
+        self._save_raw_config(config)
+
+    def get_mcp_servers(self) -> list:
+        config = self._read_raw_config()
+        return config.get("mcp_servers", [])
+
+    def set_mcp_servers(self, servers: list):
+        config = self._read_raw_config()
+        config["mcp_servers"] = list(servers or [])
+        self._save_raw_config(config)
+
+    def add_mcp_server(self, server: dict) -> list:
+        config = self._read_raw_config()
+        servers = config.get("mcp_servers", [])
+        sid = server.get("id") or server.get("name")
+        # Remove existing server with same ID if present
+        servers = [s for s in servers if (s.get("id") or s.get("name")) != sid]
+        servers.append(server)
+        config["mcp_servers"] = servers
+        self._save_raw_config(config)
+        return servers
+
+    def delete_mcp_server(self, server_id: str) -> list:
+        config = self._read_raw_config()
+        servers = config.get("mcp_servers", [])
+        servers = [s for s in servers if (s.get("id") or s.get("name")) != server_id]
+        config["mcp_servers"] = servers
+        self._save_raw_config(config)
+        return servers
+
     # ------------------------------------------------------------------
     # Terminal preferences
     # ------------------------------------------------------------------
