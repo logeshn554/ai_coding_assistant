@@ -38,9 +38,14 @@ const OriginalWebSocket = window.WebSocket
 class PatchedWebSocket extends OriginalWebSocket {
   constructor(url: string | URL, protocols?: string | string[]) {
     if (sessionToken) {
-      const urlObj = new URL(url.toString())
-      urlObj.searchParams.set('token', sessionToken)
-      url = urlObj.toString()
+      try {
+        const base = window.location.href.replace(/^http/, 'ws')
+        const urlObj = new URL(url.toString(), base)
+        urlObj.searchParams.set('token', sessionToken)
+        url = urlObj.toString()
+      } catch (e) {
+        console.error('Failed to patch WebSocket URL:', e)
+      }
     }
     super(url, protocols)
   }

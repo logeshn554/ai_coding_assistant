@@ -264,7 +264,8 @@ const SHELL_OPTIONS = [
   { value: '', label: 'Default (OS)' },
   { value: 'powershell', label: 'PowerShell' },
   { value: 'cmd', label: 'CMD' },
-  { value: 'bash', label: 'Bash' },
+  { value: 'bash', label: 'Git Bash' },
+  { value: 'wsl', label: 'WSL (Linux)' },
   { value: 'sh', label: 'Sh' },
 ];
 
@@ -298,14 +299,15 @@ export default function TerminalArea({
   };
   const [showHistory, setShowHistory] = useState(false);
   const [filterText, setFilterText] = useState('');
+  const [viewMode, setViewMode] = useState<'split' | 'tabs'>('split');
 
   // Terminal preferences loaded from backend settings
   const [fontSize, setFontSize] = useState(13);
   const [scrollback, setScrollback] = useState(5000);
 
   // Split terminals management — default shell starts empty until settings load
-  const [splitTerminals, setSplitTerminals] = useState<{ id: number; shell: string }[]>([
-    { id: 0, shell: '' }
+  const [splitTerminals, setSplitTerminals] = useState<{ id: number; shell: string; name?: string }[]>([
+    { id: 0, shell: '', name: 'Terminal 1' }
   ]);
   const [selectedShell, setSelectedShell] = useState<string>('');
   const [nextId, setNextId] = useState(1);
@@ -313,7 +315,6 @@ export default function TerminalArea({
   const [commandToRun, setCommandToRun] = useState<CommandTrigger | null>(null);
 
   // Load saved terminal preferences from the backend on mount.
-  // We apply the default shell to the initial pane once settings arrive.
   useEffect(() => {
     fetch('/api/config/settings', {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('session_token') || ''}` }
@@ -322,14 +323,13 @@ export default function TerminalArea({
       .then(data => {
         const shell = data.default_shell || '';
         setSelectedShell(shell);
-        setSplitTerminals([{ id: 0, shell }]);
+        setSplitTerminals([{ id: 0, shell, name: 'Terminal 1' }]);
         if (data.terminal_font_size) setFontSize(data.terminal_font_size);
         if (data.terminal_scrollback) setScrollback(data.terminal_scrollback);
       })
       .catch(() => {});
   }, []);
 
-  // Persist the chosen shell immediately when the user changes the selector.
   const handleShellChange = (newShell: string) => {
     setSelectedShell(newShell);
     fetch('/api/config/settings', {
@@ -339,7 +339,7 @@ export default function TerminalArea({
         'Authorization': `Bearer ${localStorage.getItem('session_token') || ''}`
       },
       body: JSON.stringify({
-        exclude_list: [],          // backend merges; only terminal fields matter here
+        exclude_list: [],
         auto_backup_enabled: true,
         default_shell: newShell,
         terminal_font_size: fontSize,
@@ -348,20 +348,24 @@ export default function TerminalArea({
     }).catch(() => {});
   };
 
-  const handleSplit = () => {
-    if (splitTerminals.length >= 3) {
-      return; // max 3 columns for space constraints
-    }
+  const handleAddTerminal = () => {
+    if (splitTerminals.length >= 6) return;
     const newId = nextId;
-    setSplitTerminals(prev => [...prev, { id: newId, shell: selectedShell }]);
+    const count = splitTerminals.length + 1;
+    setSplitTerminals(prev => [...prev, { id: newId, shell: selectedShell, name: `Terminal ${count}` }]);
     setNextId(prev => prev + 1);
     setActivePaneId(newId);
+  };
+
+  const handleSplit = () => {
+    if (splitTerminals.length >= 4) return;
+    setViewMode('split');
+    handleAddTerminal();
   };
 
   const removeSplit = (id: number) => {
     setSplitTerminals(prev => {
       const remaining = prev.filter(t => t.id !== id);
-      // fallback activePaneId if the closed one was active
       if (activePaneId === id && remaining.length > 0) {
         setActivePaneId(remaining[remaining.length - 1].id);
       }
@@ -389,17 +393,16 @@ export default function TerminalArea({
       if (commands.length === 1) {
         handleRunCommand(commands[0]);
       } else if (commands.length > 1) {
-        // Run the first command in the current active terminal pane
         handleRunCommand(commands[0]);
 
-        const newPanes: { id: number; shell: string }[] = [];
+        const newPanes: { id: number; shell: string; name?: string }[] = [];
         const commandsToTrigger: { id: number; cmd: string }[] = [];
 
         let tempNextId = nextId;
         for (let idx = 1; idx < Math.min(commands.length, 3); idx++) {
           const cmd = commands[idx];
           const newId = tempNextId;
-          newPanes.push({ id: newId, shell: selectedShell });
+          newPanes.push({ id: newId, shell: selectedShell, name: `Terminal ${splitTerminals.length + idx + 1}` });
           commandsToTrigger.push({ id: newId, cmd });
           tempNextId++;
         }
@@ -408,7 +411,6 @@ export default function TerminalArea({
           setSplitTerminals(prev => [...prev, ...newPanes]);
           setNextId(tempNextId);
 
-          // Queue command execution for each new split pane after short connection buffer
           commandsToTrigger.forEach((item) => {
             setTimeout(() => {
               setCommandToRun({
@@ -424,41 +426,54 @@ export default function TerminalArea({
     };
     window.addEventListener('devpilot-run-terminal-command', handleRunCommandEvent);
     return () => window.removeEventListener('devpilot-run-terminal-command', handleRunCommandEvent);
-  }, [activePaneId, nextId, selectedShell]);
+  }, [activePaneId, nextId, selectedShell, splitTerminals.length]);
+
+  const visiblePanes = viewMode === 'split' 
+    ? splitTerminals 
+    : splitTerminals.filter(p => p.id === activePaneId);
 
   return (
     <div className="h-full w-full flex flex-col bg-[#0d0f12] text-gray-300 overflow-hidden font-sans">
       {/* Title bar / Controls */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#111318] border-b border-white/5 text-xs text-gray-400 font-medium select-none shrink-0">
-        <div className="flex items-center gap-1.5 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           <TerminalIcon className="w-3.5 h-3.5 text-violet-400" />
-          <span className="font-semibold">Terminal</span>
+          
+          {/* View mode & Terminal Tabs */}
+          <div className="flex items-center gap-1 bg-[#181a24] p-0.5 rounded-lg border border-white/5">
+            {splitTerminals.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setActivePaneId(t.id)}
+                className={`px-2 py-0.5 rounded text-[10px] font-mono flex items-center gap-1 cursor-pointer transition-colors ${
+                  activePaneId === t.id ? 'bg-violet-600 text-white font-semibold' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                <span>{t.name || `Term ${t.id + 1}`}</span>
+              </button>
+            ))}
+            <button
+              onClick={handleAddTerminal}
+              className="px-1.5 py-0.5 text-[10px] text-violet-400 hover:text-violet-300 font-bold"
+              title="Add Terminal"
+            >
+              +
+            </button>
+          </div>
+
           {activeTerminalStatus === 'running' && (
             <span className="ml-2 px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400 font-mono text-[9px] animate-pulse truncate">
               Running: {activeTerminalCommand} ({activeTerminalElapsed}s)
             </span>
           )}
-          {activeTerminalStatus === 'completed' && (
-            <div className="flex items-center gap-1.5">
-              <span className={`px-1.5 py-0.5 rounded font-mono text-[9px] truncate ${
-                activeTerminalExitCode === 0 ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/25 text-red-400 border border-red-500/20'
-              }`}>
-                Exit {activeTerminalExitCode} ({activeTerminalElapsed}s)
-              </span>
-              {activeTerminalExitCode !== 0 && activeTerminalExitCode != null && (
-                <button
-                  onClick={() => {
-                    const prompt = `Diagnose and fix this terminal command error:\nCommand: \`${activeTerminalCommand || 'terminal process'}\` (exit code: ${activeTerminalExitCode})`;
-                    window.dispatchEvent(new CustomEvent('devpilot_explain_error', { detail: { prompt } }));
-                  }}
-                  className="px-2 py-0.5 rounded bg-violet-500/20 hover:bg-violet-500/40 text-violet-300 border border-violet-500/30 text-[9px] font-semibold flex items-center gap-1 transition-all cursor-pointer"
-                  title="Ask AI to diagnose and fix this terminal error"
-                >
-                  ✨ Explain with AI
-                </button>
-              )}
-            </div>
+          {activeTerminalStatus === 'completed' && activeTerminalExitCode !== undefined && (
+            <span className={`ml-2 px-1.5 py-0.5 rounded font-mono text-[9px] truncate ${
+              activeTerminalExitCode === 0 ? 'bg-emerald-500/25 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/25 text-red-400 border border-red-500/20'
+            }`}>
+              Exit {activeTerminalExitCode} ({activeTerminalElapsed}s)
+            </span>
           )}
+
         </div>
 
         <div className="flex items-center gap-2 relative">
@@ -500,51 +515,52 @@ export default function TerminalArea({
                       {cmd}
                     </button>
                   ))}
-                {history.filter(cmd => cmd.toLowerCase().includes(filterText.toLowerCase())).length === 0 && (
-                  <div className="text-[9px] text-gray-650 px-2 py-2 text-center">
-                    No matching commands
-                  </div>
-                )}
               </div>
             </div>
           )}
 
-          {/* Shell Selector Dropdown — selection is persisted to backend settings */}
+          {/* Shell Selector Dropdown */}
           <select
             value={selectedShell}
             onChange={(e) => handleShellChange(e.target.value)}
-            className="bg-black/40 text-[10px] border border-white/5 hover:border-violet-500/30 focus:border-violet-500/50 rounded px-2 py-0.5 text-white focus:outline-none transition-all cursor-pointer"
-            title="Default shell (saved automatically)"
+            className="bg-black/40 text-[10px] border border-white/5 hover:border-violet-500/30 focus:border-violet-500/50 rounded px-2 py-0.5 text-white focus:outline-none transition-all cursor-pointer font-mono"
+            title="Default shell profile"
           >
             {SHELL_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value} className="bg-[#161822] text-white">
+              <option key={opt.value} value={opt.value} className="bg-[#161822] text-white font-mono">
                 {opt.label}
               </option>
             ))}
           </select>
 
+          {/* View Switcher Button */}
+          <button
+            onClick={() => setViewMode(viewMode === 'split' ? 'tabs' : 'split')}
+            className="px-2 py-0.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded text-[10px] font-semibold cursor-pointer"
+            title="Toggle Split View / Single Tab View"
+          >
+            {viewMode === 'split' ? 'Tabs' : 'Split'}
+          </button>
+
           {/* Split Terminal button */}
           <button
             onClick={handleSplit}
-            disabled={splitTerminals.length >= 3}
+            disabled={splitTerminals.length >= 4}
             className={`px-2 py-0.5 rounded text-[10px] flex items-center gap-1 font-semibold transition-all cursor-pointer ${
-              splitTerminals.length >= 3 
+              splitTerminals.length >= 4 
                 ? 'bg-white/5 text-gray-600 cursor-not-allowed'
                 : 'bg-violet-600/80 hover:bg-violet-600 text-white'
             }`}
             title="Split Terminal side-by-side"
           >
             <span>Split</span>
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-            </svg>
           </button>
         </div>
       </div>
       
-      {/* Shell Area: Displays active split panels side-by-side */}
+      {/* Shell Area: Displays active split or tab panels */}
       <div className="flex-1 flex flex-row bg-[#0d0f12] overflow-hidden divide-x divide-white/10">
-        {splitTerminals.map((pane) => (
+        {visiblePanes.map((pane) => (
           <TerminalPane
             key={pane.id}
             id={pane.id}

@@ -268,10 +268,10 @@ export default function EditorArea({
     handleDiscardAllChanges,
   } = useAI();
 
-  const handleRunActiveFile = () => {
+  const handleRunActiveFile = async () => {
     if (!activeTab) return;
     setBottomTab('terminal');
-    const cmd = getExecutableCommandForFile(activeTab.path);
+    const cmd = await getExecutableCommandForFile(activeTab.path);
     window.dispatchEvent(new CustomEvent('devpilot-run-terminal-command', { detail: { command: cmd } }));
   };
 

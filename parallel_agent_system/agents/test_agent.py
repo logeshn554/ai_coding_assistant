@@ -6,5 +6,6 @@ class TestAgent(BaseParallelAgent):
     TestAgent responsible for writing pytest tests, executing tests,
     fixing test errors, and verifying test suite coverage.
     """
+    __test__ = False
     agent_type = "test"
     default_tools = ["bash", "file_editor", "ipython"]

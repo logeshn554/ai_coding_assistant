@@ -1,13 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   GitBranch, ArrowUp, ArrowDown, GitCommit,
-  ChevronRight, ChevronDown, Sparkles, Plus, Minus, Loader2
+  ChevronRight, ChevronDown, Sparkles, Plus, Minus, Loader2,
+  AlertTriangle
 } from 'lucide-react';
+
+
 
 interface GitFile {
   path: string;
   status: string;
   staged: boolean;
+}
+
+interface ConflictFile {
+  path: string;
+  has_conflicts: boolean;
 }
 
 interface DiffLine {
@@ -44,11 +52,13 @@ function statusColor(s: string): string {
 export default function GitSidebar() {
   const [branch, setBranch] = useState('main');
   const [files, setFiles] = useState<GitFile[]>([]);
+  const [conflicts, setConflicts] = useState<ConflictFile[]>([]);
   const [branches, setBranches] = useState<string[]>([]);
   const [history, setHistory] = useState<string[]>([]);
   const [commitMsg, setCommitMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [generatingMsg, setGeneratingMsg] = useState(false);
+  const [resolvingPath, setResolvingPath] = useState<string | null>(null);
 
   // Per-file expanded diff state
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
@@ -58,10 +68,11 @@ export default function GitSidebar() {
   const loadGitData = useCallback(async () => {
     setLoading(true);
     try {
-      const [statusRes, branchRes, historyRes] = await Promise.all([
+      const [statusRes, branchRes, historyRes, conflictsRes] = await Promise.all([
         fetch('/api/git/status'),
         fetch('/api/git/branches'),
         fetch('/api/git/history'),
+        fetch('/api/git/conflicts')
       ]);
       const statusData = await statusRes.json();
       setBranch(statusData.branch || 'main');
@@ -70,6 +81,8 @@ export default function GitSidebar() {
       setBranches(branchData.branches || []);
       const historyData = await historyRes.json();
       setHistory(historyData.history || []);
+      const conflictsData = await conflictsRes.json();
+      setConflicts(conflictsData.conflicts || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -78,6 +91,24 @@ export default function GitSidebar() {
   }, []);
 
   useEffect(() => { loadGitData(); }, [loadGitData]);
+
+  const handleResolveConflict = async (path: string, strategy: 'current' | 'incoming' | 'both') => {
+    setResolvingPath(path);
+    try {
+      const res = await fetch('/api/git/resolve-conflict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path, strategy })
+      });
+      if (res.ok) {
+        loadGitData();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setResolvingPath(null);
+    }
+  };
 
   // ── AI commit message generation ─────────────────────────────────────────
   const handleGenerateCommitMsg = async () => {
@@ -159,9 +190,7 @@ export default function GitSidebar() {
     const lbl = statusLabel(file.status);
 
     return (
-      <div
-        style={{ borderBottom: '1px solid var(--dp-border)' }}
-      >
+      <div style={{ borderBottom: '1px solid var(--dp-border)' }}>
         {/* Row header */}
         <div
           className="flex items-center gap-1.5 px-2 py-1 cursor-pointer group"
@@ -184,7 +213,7 @@ export default function GitSidebar() {
             {file.path.split('/').pop()}
           </span>
 
-          {/* +/- counts (visible once diff loaded) */}
+          {/* +/- counts */}
           {isOpen && (addCount > 0 || delCount > 0) && (
             <span className="flex items-center gap-1 text-[9px] font-mono shrink-0">
               <span style={{ color: 'var(--dp-git-added)' }}>+{addCount}</span>
@@ -344,6 +373,46 @@ export default function GitSidebar() {
           </select>
         )}
       </div>
+
+      {/* Merge Conflicts Banner Panel */}
+      {conflicts.length > 0 && (
+        <div className="p-2 border-b border-amber-500/30 bg-amber-950/30 space-y-2 shrink-0">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-400">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>{conflicts.length} Merge Conflict{conflicts.length > 1 ? 's' : ''} Detected</span>
+          </div>
+          <div className="space-y-1.5">
+            {conflicts.map(cf => (
+              <div key={cf.path} className="p-2 bg-black/40 border border-amber-500/20 rounded-lg text-[10px] space-y-1 font-mono">
+                <div className="text-zinc-200 font-semibold truncate">{cf.path}</div>
+                <div className="flex gap-1 pt-0.5">
+                  <button
+                    onClick={() => handleResolveConflict(cf.path, 'current')}
+                    disabled={resolvingPath === cf.path}
+                    className="flex-1 py-1 bg-emerald-600/80 hover:bg-emerald-500 text-white rounded text-[9px] font-sans font-bold cursor-pointer"
+                  >
+                    Accept Current
+                  </button>
+                  <button
+                    onClick={() => handleResolveConflict(cf.path, 'incoming')}
+                    disabled={resolvingPath === cf.path}
+                    className="flex-1 py-1 bg-blue-600/80 hover:bg-blue-500 text-white rounded text-[9px] font-sans font-bold cursor-pointer"
+                  >
+                    Accept Incoming
+                  </button>
+                  <button
+                    onClick={() => handleResolveConflict(cf.path, 'both')}
+                    disabled={resolvingPath === cf.path}
+                    className="flex-1 py-1 bg-violet-600/80 hover:bg-violet-500 text-white rounded text-[9px] font-sans font-bold cursor-pointer"
+                  >
+                    Accept Both
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Commit area ── */}
       <div

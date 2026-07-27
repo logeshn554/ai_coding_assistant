@@ -37,8 +37,21 @@ class PermissionManager:
             return RISK_SAFE
         cmd = command.strip().lower()
         
-        # Destructive patterns (removed keyword blocklist - security theater)
-        destructive_patterns = []
+        # Destructive patterns (commands that cause irreversible loss or mass deletion)
+        destructive_patterns = [
+            r"\brm\s+-[a-z]*r[a-z]*f\b",
+            r"\brm\s+-[a-z]*f[a-z]*r\b",
+            r"\bgit\s+reset\s+--hard\b",
+            r"\bgit\s+clean\s+-[a-z]*f\b",
+            r"\bdrop\s+(table|database|schema)\b",
+            r"\bformat\s+[a-z]:",
+            r"\bdel\s+/[fsq]\b",
+            r"\brd\s+/[sq]\b",
+            r"\bremove-item\b.*-force\b",
+            r"\bdd\s+if=",
+            r"\bmkfs\b",
+            r"\btruncate\s+table\b",
+        ]
         if any(re.search(pat, cmd) for pat in destructive_patterns):
             return RISK_DESTRUCTIVE
             

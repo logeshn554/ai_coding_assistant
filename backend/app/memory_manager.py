@@ -1,7 +1,7 @@
 """
 memory_manager.py — Persistent AI Project Memory Engine for Antigravity.
 
-Manages permanent project memory stored inside `.antigravity/memory.json`
+Manages permanent project memory stored inside `.devpilot/memory.json`
 in the workspace root directory. Retains project architecture, folder structure,
 coding conventions, theme system, state management rules, long-term goals,
 previous AI edits, user preferences, and known issues.
@@ -10,10 +10,13 @@ previous AI edits, user preferences, and known issues.
 import json
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("devpilot.memory")
+
+_memory_lock = threading.Lock()
 
 
 class MemoryManager:
@@ -72,35 +75,37 @@ class MemoryManager:
         return devpilot_dir / "memory.json"
 
     def load_memory(self) -> Dict[str, Any]:
-        """Loads memory from .antigravity/memory.json if present."""
+        """Loads memory from .devpilot/memory.json if present."""
         path = self._get_memory_path()
         if not path or not path.exists():
             return self._memory_data
 
-        try:
-            content = path.read_text(encoding="utf-8", errors="ignore")
-            data = json.loads(content)
-            if isinstance(data, dict):
-                self._memory_data = {**self.DEFAULT_MEMORY, **data}
-        except Exception as e:
-            logger.error(f"Failed to read .antigravity/memory.json: {e}")
+        with _memory_lock:
+            try:
+                content = path.read_text(encoding="utf-8", errors="ignore")
+                data = json.loads(content)
+                if isinstance(data, dict):
+                    self._memory_data = {**self.DEFAULT_MEMORY, **data}
+            except Exception as e:
+                logger.error(f"Failed to read .devpilot/memory.json: {e}")
 
         return self._memory_data
 
     def save_memory(self) -> bool:
-        """Persists memory data to disk."""
+        """Persists memory data to disk with thread safety."""
         path = self._get_memory_path()
         if not path:
             return False
 
-        try:
-            path.write_text(
-                json.dumps(self._memory_data, indent=2), encoding="utf-8"
-            )
-            return True
-        except Exception as e:
-            logger.error(f"Failed to write .antigravity/memory.json: {e}")
-            return False
+        with _memory_lock:
+            try:
+                path.write_text(
+                    json.dumps(self._memory_data, indent=2), encoding="utf-8"
+                )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to write .devpilot/memory.json: {e}")
+                return False
 
     def get_memory(self) -> Dict[str, Any]:
         return self._memory_data

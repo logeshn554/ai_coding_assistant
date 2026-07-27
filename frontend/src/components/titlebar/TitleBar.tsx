@@ -116,15 +116,15 @@ export const TitleBar: React.FC = () => {
   };
 
   const renderMenu = (id: MenuId, label: string) => (
-    <div className="relative" key={id}>
+    <div key={id} className="relative">
       <button
+        type="button"
         onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === id ? null : id); }}
-        onMouseEnter={() => { if (activeMenu && activeMenu !== id) setActiveMenu(id); }}
-        className={`px-2.5 py-1 text-[11px] transition-colors cursor-pointer rounded-md font-sans
-          ${activeMenu === id
-            ? 'bg-white/6 text-[var(--dp-text-bright)]'
-            : 'text-[var(--dp-text-secondary)] hover:text-[var(--dp-text-primary)] hover:bg-white/4'
-          }`}
+        className={`px-2 py-0.5 rounded text-[11.5px] font-medium transition-colors cursor-pointer ${
+          activeMenu === id
+            ? 'bg-white/10 text-white font-semibold'
+            : 'text-[var(--dp-text-secondary)] hover:text-white hover:bg-white/5'
+        }`}
       >
         {label}
       </button>
@@ -139,10 +139,12 @@ export const TitleBar: React.FC = () => {
 
       {/* ── Left: Branding + Menus ── */}
       <div className="flex items-center gap-2">
-        {/* DevPilot Logo Icon */}
-        <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-[#7C6AF0] to-[#50E3C2] flex items-center justify-center text-white text-[10px] font-bold shadow-sm shadow-[#7C6AF0]/30 shrink-0">
+        {/* DevPilot AI Editor Logo Icon */}
+        <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-violet-600 via-purple-600 to-indigo-500 flex items-center justify-center text-white text-[10px] font-extrabold shadow-sm shadow-violet-500/40 shrink-0 tracking-tighter">
           DP
         </div>
+        <span className="text-[11.5px] font-bold text-zinc-200 tracking-tight font-sans">DevPilot</span>
+
 
         {/* Menu Items */}
         <div className="flex items-center gap-0.5 ml-1">

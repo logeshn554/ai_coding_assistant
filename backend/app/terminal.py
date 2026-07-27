@@ -120,6 +120,8 @@ class TerminalManager:
                 return "cmd.exe"
             elif self.shell == "bash":
                 return "bash.exe"
+            elif self.shell == "wsl":
+                return "wsl.exe"
             return self.shell
 
         if sys.platform == "win32":
@@ -132,6 +134,7 @@ class TerminalManager:
                 return ps_path
             return "cmd.exe"
         return os.environ.get("SHELL") or "/bin/bash"
+
 
     async def _read_loop_windows(self):
         """Read output from the ConPTY and forward to the WebSocket."""

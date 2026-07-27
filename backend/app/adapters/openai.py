@@ -33,11 +33,11 @@ class OpenAIAdapter(ModelAdapter):
         tools: List[Dict[str, Any]], 
         system_prompt: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        # Initialize AsyncOpenAI client
-        # This will automatically pick up base_url and api_key
+        # Initialize AsyncOpenAI client with configurable timeout (default 60s)
         base_url = self.base_url if self.base_url else None
         api_key = self.api_key if self.api_key else "dummy-key"
-        client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        timeout_val = float(os.environ.get("OPENAI_TIMEOUT", "60.0"))
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout_val)
 
         # Convert tools to OpenAI format
         openai_tools = []
@@ -146,47 +146,59 @@ class OpenAIAdapter(ModelAdapter):
                 yield {"type": "done", "stop_reason": stop_reason}
 
             except Exception as stream_err:
-                # If streaming fails (e.g. Bedrock/LiteLLM nova-micro tool use stream error),
+                err_str = str(stream_err).lower()
+                is_timeout = "timeout" in err_str or "timed out" in err_str or "connecttimeout" in err_str
+
+                if is_timeout:
+                    logger.error(f"OpenAI API request timed out ({stream_err})")
+                    raise TimeoutError(f"Request timed out connecting to provider ({base_url or 'OpenAI API'}). Please check network or model endpoint.") from stream_err
+
+                # If streaming fails for non-timeout reason (e.g. Bedrock/LiteLLM tool use stream error),
                 # fallback to non-streaming request if tools were provided.
                 if openai_tools:
                     logger.warning(f"Streaming failed with tools ({stream_err}), falling back to non-streaming request.")
                     kwargs["stream"] = False
-                    non_stream_resp = await client.chat.completions.create(**kwargs)
-                    if not non_stream_resp.choices:
-                        yield {"type": "done", "stop_reason": "stop"}
-                        return
+                    try:
+                        non_stream_resp = await client.chat.completions.create(**kwargs)
+                        if not non_stream_resp.choices:
+                            yield {"type": "done", "stop_reason": "stop"}
+                            return
 
-                    choice = non_stream_resp.choices[0]
-                    msg = choice.message
-                    if getattr(msg, "content", None):
-                        yield {"type": "text", "content": msg.content}
-                    
-                    tcs = getattr(msg, "tool_calls", None)
-                    if tcs:
-                        for idx, tc in enumerate(tcs):
-                            tc_id = tc.id or f"call_{idx}"
-                            tc_name = tc.function.name
-                            tc_args = tc.function.arguments
-                            try:
-                                parsed_input = json.loads(tc_args)
-                            except Exception:
-                                parsed_input = {"raw_input": tc_args}
-                            yield {
-                                "type": "tool_call",
-                                "id": tc_id,
-                                "name": tc_name,
-                                "input": parsed_input,
-                                "thought_signature": None
-                            }
-                        yield {"type": "done", "stop_reason": "tool_use"}
-                    else:
-                        yield {"type": "done", "stop_reason": choice.finish_reason or "stop"}
+                        choice = non_stream_resp.choices[0]
+                        msg = choice.message
+                        if getattr(msg, "content", None):
+                            yield {"type": "text", "content": msg.content}
+                        
+                        tcs = getattr(msg, "tool_calls", None)
+                        if tcs:
+                            for idx, tc in enumerate(tcs):
+                                tc_id = tc.id or f"call_{idx}"
+                                tc_name = tc.function.name
+                                tc_args = tc.function.arguments
+                                try:
+                                    parsed_input = json.loads(tc_args)
+                                except Exception:
+                                    parsed_input = {"raw_input": tc_args}
+                                yield {
+                                    "type": "tool_call",
+                                    "id": tc_id,
+                                    "name": tc_name,
+                                    "input": parsed_input,
+                                    "thought_signature": None
+                                }
+                            yield {"type": "done", "stop_reason": "tool_use"}
+                        else:
+                            yield {"type": "done", "stop_reason": choice.finish_reason or "stop"}
+                    except Exception as fallback_err:
+                        logger.error(f"Non-streaming fallback failed: {fallback_err}")
+                        raise fallback_err
                 else:
                     raise stream_err
 
         except Exception as e:
             logger.error(f"OpenAI API Error: {str(e)}")
             raise e
+
 
     def _to_openai_messages(self, internal_messages: List[Dict[str, Any]], system_prompt: str) -> List[Dict[str, Any]]:
         """

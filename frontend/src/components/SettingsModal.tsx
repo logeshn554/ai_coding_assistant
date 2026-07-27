@@ -561,6 +561,16 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             Terminal Permissions
           </button>
           <button
+            onClick={() => setActiveSettingsTab('keybindings' as any)}
+            className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
+              (activeSettingsTab as string) === 'keybindings'
+                ? 'border-violet-500 text-white'
+                : 'border-transparent text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Keyboard Shortcuts
+          </button>
+          <button
             onClick={() => setActiveSettingsTab('preferences')}
             className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
               activeSettingsTab === 'preferences' 
@@ -581,6 +591,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             Terminal
           </button>
         </div>
+
 
 
         {/* Content */}
@@ -1030,10 +1041,42 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     ))}
                   </div>
                 )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {(activeSettingsTab as string) === 'keybindings' && (
+
+          <div className="flex-1 bg-[#111318] p-6 overflow-y-auto flex flex-col min-h-0 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-white">Keyboard Shortcuts & Keybindings</h3>
+                <p className="text-[10px] text-gray-400">View and customize global keybindings for quick navigation.</p>
+              </div>
+            </div>
+
+            <div className="border border-white/5 rounded-xl overflow-hidden divide-y divide-white/5 bg-[#171922]/60 font-mono text-xs">
+              {[
+                { command: 'Quick Open File', keybinding: 'Ctrl + P', defaultKey: 'Ctrl + P' },
+                { command: 'Workspace Symbol Search', keybinding: 'Ctrl + T', defaultKey: 'Ctrl + T' },
+                { command: 'File Symbol Search', keybinding: 'Ctrl + Shift + O', defaultKey: 'Ctrl + Shift + O' },
+                { command: 'Toggle Integrated Terminal', keybinding: 'Ctrl + `', defaultKey: 'Ctrl + `' },
+                { command: 'Global Text Search', keybinding: 'Ctrl + Shift + F', defaultKey: 'Ctrl + Shift + F' },
+                { command: 'Command Palette', keybinding: 'Ctrl + Shift + P', defaultKey: 'Ctrl + Shift + P' },
+                { command: 'AI Inline Suggestions', keybinding: 'Tab / Esc', defaultKey: 'Tab / Esc' }
+              ].map((kb, idx) => (
+                <div key={idx} className="p-3 flex items-center justify-between hover:bg-white/[0.02]">
+                  <span className="font-sans text-xs font-medium text-gray-200">{kb.command}</span>
+                  <span className="px-2 py-0.5 rounded bg-black/40 border border-white/10 text-violet-300 font-bold text-[11px]">
+                    {kb.keybinding}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {activeSettingsTab === 'preferences' && (
           <div className="flex-1 flex flex-col overflow-y-auto p-6 space-y-6">
             <div className="text-sm font-semibold text-white border-b border-white/5 pb-2">

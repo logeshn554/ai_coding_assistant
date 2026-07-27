@@ -620,8 +620,20 @@ class AgentSession:
                                     stop_reason = chunk["stop_reason"]
                         except Exception as retry_err:
                             raise retry_err
+                    elif "time" in err_str.lower() or "timeout" in err_str.lower() or "connecttimeout" in err_str.lower():
+                        logger.error(f"Agent session API call timed out: {e}")
+                        await self.send_ws_message({
+                            "type": "text_delta",
+                            "content": "\n\n⚠️ **API Request Timed Out**: The model provider did not respond within the timeout limit. Please check your network connection, API key, or provider endpoint settings and try again."
+                        })
+                        await self.send_ws_message({
+                            "type": "status",
+                            "message": "Request timed out. Ready."
+                        })
+                        break
                     else:
                         raise e
+
 
                 # 2. Append assistant response to history
                 assistant_msg = {
@@ -1081,7 +1093,9 @@ class AgentSession:
         # Resolve port
         port = 8000
         cmd_lower = command.lower()
-        if "3000" in cmd_lower or "serve" in cmd_lower:
+        if "runserver" in cmd_lower:
+            port = 8000
+        elif "3000" in cmd_lower or "serve" in cmd_lower:
             port = 3000
         elif "5173" in cmd_lower or "vite" in cmd_lower:
             port = 5173
@@ -1091,8 +1105,6 @@ class AgentSession:
             port = 5000
         elif "npm" in cmd_lower:
             port = 5173
-        elif "runserver" in cmd_lower:
-            port = 8000
 
         # Send command suggested response in run markdown syntax
         run_response_text = f"```run\n{command}\n```\nURL: http://localhost:{port}\n\n"

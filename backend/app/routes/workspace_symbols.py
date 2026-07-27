@@ -35,7 +35,6 @@ def get_symbols(path: str = Query(..., description="Relative file path within wo
     if not workspace_state.root:
         raise HTTPException(status_code=400, detail="No workspace open.")
 
-    # Security: ensure path doesn't escape workspace
     try:
         import os
         from pathlib import Path
@@ -54,6 +53,64 @@ def get_symbols(path: str = Query(..., description="Relative file path within wo
     except Exception as e:
         logger.error(f"Error extracting symbols from {path}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/workspace/global-symbols")
+def get_global_symbols(
+    q: str = Query("", description="Symbol query string"),
+    limit: int = Query(60, ge=1, le=200, description="Maximum results")
+):
+    """
+    Search symbols (functions, classes, interfaces, methods) across all workspace files.
+    Returns list of {name, kindName, line, col, file} objects.
+    """
+    if not workspace_state.root:
+        return {"symbols": []}
+
+    try:
+        import os
+        from pathlib import Path
+        root_path = Path(workspace_state.root).resolve()
+        exclude_dirs = {".git", "node_modules", "venv", ".venv", ".devpilot", "__pycache__", "dist", "build"}
+        valid_exts = {".py", ".ts", ".tsx", ".js", ".jsx", ".java", ".go", ".c", ".cpp", ".rs"}
+        
+        query_l = q.strip().lower()
+        idx = _get_index()
+        all_symbols = []
+
+        for root, dirs, file_list in os.walk(str(root_path)):
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            for f in file_list:
+                fp = Path(root) / f
+                if fp.suffix.lower() not in valid_exts:
+                    continue
+                rel_path = fp.relative_to(root_path).as_posix()
+                try:
+                    file_syms = idx.get_symbols(rel_path)
+                    for sym in file_syms:
+                        sym_name = sym.get("name", "")
+                        if not query_l or query_l in sym_name.lower():
+                            all_symbols.append({
+                                "name": sym_name,
+                                "kind": sym.get("kind", 0),
+                                "kindName": sym.get("kindName", "function"),
+                                "line": sym.get("line", 1),
+                                "col": sym.get("col", 1),
+                                "file": rel_path
+                            })
+                            if len(all_symbols) >= limit:
+                                break
+                except Exception:
+                    continue
+                if len(all_symbols) >= limit:
+                    break
+            if len(all_symbols) >= limit:
+                break
+
+        return {"symbols": all_symbols}
+    except Exception as e:
+        logger.error(f"Error extracting global workspace symbols: {e}")
+        return {"symbols": []}
 
 
 @router.get("/api/workspace/fuzzy-files")
@@ -95,3 +152,4 @@ def fuzzy_files(
     except Exception as e:
         logger.error(f"Error in fuzzy file search: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+

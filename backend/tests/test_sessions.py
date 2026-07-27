@@ -6,7 +6,11 @@ import json
 
 import pytest
 
-from backend.app.db import first_user_preview, truncate_preview
+try:
+    from app.db import first_user_preview, truncate_preview
+except ImportError:
+    from backend.app.db import first_user_preview, truncate_preview
+
 
 
 def test_truncate_preview_short() -> None:

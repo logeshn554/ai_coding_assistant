@@ -262,29 +262,37 @@ export function parseToolEvent(
     toolType = 'other';
   }
 
+  // Language emoji helper based on file extension
+  const getLangEmoji = (filename: string) => {
+    const fn = filename.toLowerCase();
+    if (fn.endsWith('.py')) return '🐍';
+    if (fn.endsWith('.tsx') || fn.endsWith('.jsx')) return '⚛️';
+    if (fn.endsWith('.ts') || fn.endsWith('.js')) return '📘';
+    if (fn.endsWith('.json') || fn.endsWith('.toml') || fn.endsWith('.yaml') || fn.endsWith('.yml')) return '⚙️';
+    if (fn.endsWith('.md') || fn.endsWith('.txt')) return '📝';
+    return '📄';
+  };
+
   // Fallbacks if nothing matched but it's a known tool type
   if (action === 'Executed' && target === n) {
-    if (t === 'file_read') {
-      iconEmoji = '📄';
-      action = 'Read';
-      target = p.path ? getFilename(p.path) : 'file';
+    if (t === 'file_read' || n.includes('view_file') || n.includes('read_file')) {
+      const filename = p.path || p.AbsolutePath || p.TargetFile || 'file';
+      iconEmoji = getLangEmoji(filename);
+      action = 'Analyzed';
+      target = getFilename(filename);
       toolType = 'file_read';
-    } else if (t === 'file_write') {
-      iconEmoji = '✏️';
-      action = 'Updated';
-      target = p.path ? getFilename(p.path) : 'file';
-      toolType = 'file_write';
-    } else if (t === 'file_edit') {
-      iconEmoji = '✏️';
+    } else if (t === 'file_write' || t === 'file_edit' || n.includes('replace_file') || n.includes('write_to_file')) {
+      const filename = p.path || p.TargetFile || p.AbsolutePath || 'file';
+      iconEmoji = getLangEmoji(filename);
       action = 'Edited';
-      target = p.path ? getFilename(p.path) : 'file';
+      target = getFilename(filename);
       toolType = 'file_edit';
-    } else if (t === 'search') {
+    } else if (t === 'search' || n.includes('grep_search') || n.includes('list_dir')) {
       iconEmoji = '🔍';
-      action = 'Searched';
-      target = p.query ? `"${p.query}"` : 'query';
+      action = 'Explored';
+      target = p.query ? `"${p.query}"` : 'workspace';
       toolType = 'search';
-    } else if (t === 'terminal') {
+    } else if (t === 'terminal' || n.includes('run_command')) {
       iconEmoji = '⚡';
       action = 'Executed';
       const cmd = p.command || p.cmd || p.CommandLine || '';
@@ -293,11 +301,30 @@ export function parseToolEvent(
     }
   }
 
+  // Add file language emoji if target is a filename
+  if (target.includes('.')) {
+    iconEmoji = getLangEmoji(target);
+  }
+
   // Line numbers meta
   if ((toolType === 'file_read' || toolType === 'file_edit' || toolType === 'file_write') && p.start_line && p.end_line) {
     meta = `#L${p.start_line}–${p.end_line}`;
   } else if ((toolType === 'file_read' || toolType === 'file_edit' || toolType === 'file_write') && p.StartLine && p.EndLine) {
     meta = `#L${p.StartLine}–${p.EndLine}`;
+  }
+
+  // Diff additions/deletions meta for file edits
+  if (toolType === 'file_edit' || action === 'Edited') {
+    if (p.added || p.deleted) {
+      meta = `+${p.added || 0} -${p.deleted || 0}`;
+    } else if (p.ReplacementContent) {
+      const addLines = p.ReplacementContent.split('\n').length;
+      const delLines = p.TargetContent ? p.TargetContent.split('\n').length : 0;
+      meta = `+${addLines} -${delLines}`;
+    } else if (p.CodeContent) {
+      const addLines = p.CodeContent.split('\n').length;
+      meta = `+${addLines} -0`;
+    }
   }
 
   // Search results count meta
@@ -318,6 +345,7 @@ export function parseToolEvent(
 
   return { iconEmoji, action, target, meta, toolType };
 }
+
 
 // ── Single Row Component ──────────────────────────────────────────────────────
 

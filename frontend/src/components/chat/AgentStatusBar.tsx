@@ -27,7 +27,8 @@ export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[var(--dp-accent-dim)] border border-[var(--dp-accent)]/30 text-[var(--dp-accent-hover)] text-[10px] font-bold tracking-wider uppercase">
           <Sparkles className="w-3 h-3 animate-pulse" />
-          <span>Antigravity Engine</span>
+          <span>DevPilot Engine</span>
+
         </div>
 
         {agents.length > 0 ? (

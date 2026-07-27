@@ -313,7 +313,7 @@ async def verify_token(request: Request = None):
         return
 
     path = request.url.path
-    if path in ("/auth/token", "/api/auth/token", "/docs", "/openapi.json", "/redoc"):
+    if path == "/" or path.startswith("/assets/") or path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico", ".ttf", ".woff", ".woff2", ".html")) or path in ("/auth/token", "/api/auth/token", "/docs", "/openapi.json", "/redoc"):
         return
 
     # Extract token from Bearer header or query param

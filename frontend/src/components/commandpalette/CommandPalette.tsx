@@ -106,9 +106,25 @@ export const CommandPalette: React.FC = () => {
     }
   }, [isCommandPaletteOpen]);
 
-  if (!isCommandPaletteOpen) return null;
+  const close = useCallback(() => {
+    setIsCommandPaletteOpen(false);
+    setCommandSearch('');
+  }, [setIsCommandPaletteOpen, setCommandSearch]);
 
-  const close = () => { setIsCommandPaletteOpen(false); setCommandSearch(''); };
+  const executeCommand = useCallback((cmd: Command) => {
+    saveRecent(cmd.label);
+    cmd.action();
+  }, []);
+
+  // Auto-scroll selected item into view
+  useEffect(() => {
+    if (!isCommandPaletteOpen) return;
+    const el = listRef.current?.children[selectedIdx] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIdx, isCommandPaletteOpen]);
+
+  // Reset selection when query changes
+  useEffect(() => { setSelectedIdx(0); }, [commandSearch]);
 
   const allCommands: Command[] = [
     // File
@@ -187,11 +203,6 @@ export const CommandPalette: React.FC = () => {
   const recentSet = new Set(recentLabels);
   const showDivider = !query && recentLabels.length > 0;
 
-  const executeCommand = useCallback((cmd: Command) => {
-    saveRecent(cmd.label);
-    cmd.action();
-  }, []);
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -207,14 +218,7 @@ export const CommandPalette: React.FC = () => {
     }
   };
 
-  // Auto-scroll selected item into view
-  useEffect(() => {
-    const el = listRef.current?.children[selectedIdx] as HTMLElement | undefined;
-    el?.scrollIntoView({ block: 'nearest' });
-  }, [selectedIdx]);
-
-  // Reset selection when query changes
-  useEffect(() => { setSelectedIdx(0); }, [commandSearch]);
+  if (!isCommandPaletteOpen) return null;
 
   return (
     <div

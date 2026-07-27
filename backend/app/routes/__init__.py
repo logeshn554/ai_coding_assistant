@@ -22,6 +22,7 @@ from .project import router as project_router
 from .artifacts import router as artifacts_router
 from .graph_route import router as graph_router
 from .review_route import router as review_router
+from .tasks_route import router as tasks_router
 
 all_routers = [
     auth_router,
@@ -48,4 +49,5 @@ all_routers = [
     artifacts_router,
     graph_router,
     review_router,
+    tasks_router,
 ]

@@ -89,30 +89,61 @@ def build_workspace_graph(workspace_root: str) -> Dict[str, Any]:
         imported_paths: List[str] = []
         if rel_path.endswith((".ts", ".tsx", ".js", ".jsx")):
             imported_paths = import_regex.findall(content)
+            for imp in imported_paths:
+                resolved_target = None
+                if imp.startswith("."):
+                    curr_dir = os.path.dirname(rel_path)
+                    candidate = os.path.normpath(os.path.join(curr_dir, imp)).replace("\\", "/")
+                    for ext in ["", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.tsx"]:
+                        test_p = candidate + ext
+                        if test_p in file_map:
+                            resolved_target = file_map[test_p]
+                            break
+                if resolved_target and resolved_target != source_id:
+                    if resolved_target not in adjacency[source_id]:
+                        adjacency[source_id].add(resolved_target)
+                        edges.append({
+                            "id": f"edge_{source_id}_{resolved_target}",
+                            "source": source_id,
+                            "target": resolved_target,
+                        })
         elif rel_path.endswith(".py"):
-            imported_paths = py_import_regex.findall(content)
+            py_matches = re.findall(r'(?:from|import)\s+([\.\w]+)', content)
+            curr_dir = os.path.dirname(rel_path)
+            for p_imp in py_matches:
+                resolved_target = None
+                if p_imp.startswith("."):
+                    dots_count = len(p_imp) - len(p_imp.lstrip("."))
+                    sub_mod = p_imp.lstrip(".")
+                    mod_parts = sub_mod.split(".") if sub_mod else []
+                    
+                    target_dir = curr_dir
+                    for _ in range(dots_count - 1):
+                        target_dir = os.path.dirname(target_dir)
+                    
+                    rel_mod_path = os.path.normpath(os.path.join(target_dir, *mod_parts)).replace("\\", "/")
+                    for ext in [".py", "/__init__.py"]:
+                        test_p = rel_mod_path + ext
+                        if test_p in file_map:
+                            resolved_target = file_map[test_p]
+                            break
+                else:
+                    # Absolute Python module import
+                    mod_path = p_imp.replace(".", "/")
+                    for test_p in [f"{mod_path}.py", f"{mod_path}/__init__.py"]:
+                        if test_p in file_map:
+                            resolved_target = file_map[test_p]
+                            break
 
-        for imp in imported_paths:
-            # Resolve relative import to target file
-            resolved_target = None
-            if imp.startswith("."):
-                curr_dir = os.path.dirname(rel_path)
-                candidate = os.path.normpath(os.path.join(curr_dir, imp)).replace("\\", "/")
-                # Check matching target file
-                for ext in ["", ".ts", ".tsx", ".js", ".jsx", "/index.ts", "/index.tsx"]:
-                    test_p = candidate + ext
-                    if test_p in file_map:
-                        resolved_target = file_map[test_p]
-                        break
+                if resolved_target and resolved_target != source_id:
+                    if resolved_target not in adjacency[source_id]:
+                        adjacency[source_id].add(resolved_target)
+                        edges.append({
+                            "id": f"edge_{source_id}_{resolved_target}",
+                            "source": source_id,
+                            "target": resolved_target,
+                        })
 
-            if resolved_target and resolved_target != source_id:
-                if resolved_target not in adjacency[source_id]:
-                    adjacency[source_id].add(resolved_target)
-                    edges.append({
-                        "id": f"edge_{source_id}_{resolved_target}",
-                        "source": source_id,
-                        "target": resolved_target,
-                    })
 
     # 4. Detect Circular Imports (Tarjan / Cycle DFS)
     circular_imports: List[List[str]] = []

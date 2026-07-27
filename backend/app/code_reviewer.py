@@ -6,6 +6,7 @@ Architecture, Accessibility, TypeScript, React anti-patterns, Memory Leaks,
 Dead Code, and Circular Dependencies. Computes overall workspace score (0-100).
 """
 
+import hashlib
 import os
 import re
 import logging
@@ -18,6 +19,15 @@ _SKIP_DIRS = {
     ".git", "node_modules", "venv", ".venv", "__pycache__", ".devpilot",
     "dist", "build", ".next", "target", "out", ".cache", "coverage"
 }
+
+_IGNORED_SECRET_PLACEHOLDERS = {
+    "your_key", "change-me", "example", "xxx", "0000", "placeholder", "dummy", "test", "your_api_key"
+}
+
+
+def _make_id(file: str, category: str, title: str) -> str:
+    raw = f"{file}:{category}:{title}"
+    return f"rev_{hashlib.md5(raw.encode('utf-8')).hexdigest()[:10]}"
 
 
 def review_workspace(workspace_root: str) -> Dict[str, Any]:
@@ -37,7 +47,7 @@ def review_workspace(workspace_root: str) -> Dict[str, Any]:
     # Rules patterns
     ANY_ANY_REGEX = re.compile(r':\s*any\b')
     EVAL_REGEX = re.compile(r'\beval\s*\(')
-    SECRET_REGEX = re.compile(r'(?:api[_-]?key|secret|password)\s*=\s*[\'"][^\'"]+[\'"]', re.IGNORECASE)
+    SECRET_REGEX = re.compile(r'(?:api[_-]?key|secret|password)\s*=\s*[\'"]([^\'"]+)[\'"]', re.IGNORECASE)
     CONSOLE_LOG_REGEX = re.compile(r'console\.log\s*\(')
     LARGE_FILE_LINE_COUNT = 350
 
@@ -63,7 +73,7 @@ def review_workspace(workspace_root: str) -> Dict[str, Any]:
             # 1. Large component check
             if len(lines) > LARGE_FILE_LINE_COUNT:
                 findings.append({
-                    "id": f"rev_{len(findings)}",
+                    "id": _make_id(rel_path, "Architecture", "Large File Size"),
                     "file": rel_path,
                     "category": "Architecture",
                     "severity": "warning",
@@ -73,23 +83,26 @@ def review_workspace(workspace_root: str) -> Dict[str, Any]:
                     "auto_fixable": False
                 })
 
-            # 2. Security: Hardcoded secrets
-            if SECRET_REGEX.search(content):
-                findings.append({
-                    "id": f"rev_{len(findings)}",
-                    "file": rel_path,
-                    "category": "Security",
-                    "severity": "critical",
-                    "title": "Possible Hardcoded Secret",
-                    "description": "Hardcoded secret or API key string detected in source code.",
-                    "suggestion": "Move sensitive credentials to environment variables (.env).",
-                    "auto_fixable": False
-                })
+            # 2. Security: Hardcoded secrets (ignoring obvious test/example placeholders)
+            secret_match = SECRET_REGEX.search(content)
+            if secret_match and not rel_path.endswith((".example", ".sample", ".md", ".txt")):
+                val = secret_match.group(1).lower()
+                if not any(ph in val for ph in _IGNORED_SECRET_PLACEHOLDERS) and len(val) > 4:
+                    findings.append({
+                        "id": _make_id(rel_path, "Security", "Possible Hardcoded Secret"),
+                        "file": rel_path,
+                        "category": "Security",
+                        "severity": "critical",
+                        "title": "Possible Hardcoded Secret",
+                        "description": "Hardcoded secret or API key string detected in source code.",
+                        "suggestion": "Move sensitive credentials to environment variables (.env).",
+                        "auto_fixable": False
+                    })
 
             # 3. Security: eval()
             if EVAL_REGEX.search(content):
                 findings.append({
-                    "id": f"rev_{len(findings)}",
+                    "id": _make_id(rel_path, "Security", "Dangerous eval() Usage"),
                     "file": rel_path,
                     "category": "Security",
                     "severity": "critical",
@@ -104,7 +117,7 @@ def review_workspace(workspace_root: str) -> Dict[str, Any]:
                 any_matches = len(ANY_ANY_REGEX.findall(content))
                 if any_matches > 3:
                     findings.append({
-                        "id": f"rev_{len(findings)}",
+                        "id": _make_id(rel_path, "TypeScript", "Excessive any Types"),
                         "file": rel_path,
                         "category": "TypeScript",
                         "severity": "info",
@@ -117,7 +130,7 @@ def review_workspace(workspace_root: str) -> Dict[str, Any]:
             # 5. Maintainability: Console log leftovers
             if CONSOLE_LOG_REGEX.search(content):
                 findings.append({
-                    "id": f"rev_{len(findings)}",
+                    "id": _make_id(rel_path, "Maintainability", "Console Logging Leftovers"),
                     "file": rel_path,
                     "category": "Maintainability",
                     "severity": "info",

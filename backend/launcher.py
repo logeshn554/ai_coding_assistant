@@ -21,12 +21,14 @@ def get_python_executable():
     return sys.executable
 
 def main():
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(project_root)
     print("Starting DevPilot Launcher...")
     
     # 1. Start FastAPI backend
     python_bin = get_python_executable()
     env = os.environ.copy()
-    env["PYTHONPATH"] = os.getcwd()
+    env["PYTHONPATH"] = project_root
     
     print(f"Starting Backend via {python_bin}...")
     backend_proc = subprocess.Popen(

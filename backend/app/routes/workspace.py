@@ -21,9 +21,52 @@ class WorkspaceChangeRequest(BaseModel):
     path: str
 
 
+class DetectCommandRequest(BaseModel):
+    file_path: str
+
+
 @router.get("/api/workspace")
 def get_workspace():
     return {"workspace": workspace_state.root}
+
+
+@router.post("/api/workspace/detect-file-command")
+async def detect_file_command(req: DetectCommandRequest):
+    """
+    Asks the LLM to dynamically determine the appropriate execution command for a file,
+    eliminating static hardcoded command maps.
+    """
+    file_path = (req.file_path or "").strip()
+    if not file_path:
+        raise HTTPException(status_code=400, detail="file_path cannot be empty")
+
+    norm_path = file_path.replace("\\", "/")
+
+    try:
+        profile = config_manager.get_active_profile()
+        if profile and (profile.get("api_key") or "localhost" in profile.get("base_url", "")):
+            from ..adapters.router import ModelRouter
+            router_inst = ModelRouter()
+            sys_prompt = (
+                "You are an AI CLI command detector for a software IDE. "
+                "Given a file path in a repository, return ONLY the single, exact shell command line to run or execute that file. "
+                "Do NOT use markdown code blocks, backticks, quotes around the whole line, or extra explanation text. "
+                "Output ONLY the raw command string."
+            )
+            messages = [{"role": "user", "content": f"File path to execute: {norm_path}"}]
+            llm_cmd = await router_inst.completion(profile, messages, system_prompt=sys_prompt)
+            clean_cmd = llm_cmd.strip().strip("`").strip('"').strip("'").strip()
+            if clean_cmd.startswith("```"):
+                lines = [l for l in clean_cmd.splitlines() if not l.startswith("```")]
+                clean_cmd = " ".join(lines).strip()
+            if clean_cmd:
+                return {"command": clean_cmd}
+    except Exception as e:
+        logger.warning(f"LLM command detection fallback for {norm_path}: {e}")
+
+    ext = norm_path.split(".")[-1].lower() if "." in norm_path else ""
+    return {"command": f"{ext} \"{norm_path}\"" if ext else f"\"{norm_path}\""}
+
 
 
 @router.get("/api/shell/name")
@@ -264,6 +307,52 @@ def get_workspace_stats():
     }
 
 
+class SSHHostRequest(BaseModel):
+    name: str
+    host: str
+    username: str
+    port: int = 22
+
+
+_MULTI_ROOTS: list[str] = []
+_SSH_HOSTS: list[dict] = []
+
+
+@router.get("/api/workspace/roots")
+def get_workspace_roots():
+    """Returns active multi-root workspace folders."""
+    roots = [workspace_state.root] if workspace_state.root else []
+    for r in _MULTI_ROOTS:
+        if r and r not in roots and os.path.isdir(r):
+            roots.append(r)
+    return {"roots": roots, "active_root": workspace_state.root}
+
+
+@router.post("/api/workspace/roots/add")
+def add_workspace_root(req: WorkspaceChangeRequest):
+    """Adds a secondary root folder to the multi-root workspace."""
+    path = os.path.normpath(req.path or "")
+    if not os.path.isdir(path):
+        raise HTTPException(status_code=400, detail="Folder path does not exist")
+    if path not in _MULTI_ROOTS:
+        _MULTI_ROOTS.append(path)
+    return {"success": True, "roots": get_workspace_roots()["roots"]}
+
+
+@router.get("/api/workspace/ssh-hosts")
+def get_ssh_hosts():
+    """Returns configured Remote SSH Host profiles."""
+    return {"hosts": _SSH_HOSTS}
+
+
+@router.post("/api/workspace/ssh-hosts")
+def add_ssh_host(req: SSHHostRequest):
+    """Adds or tests a Remote SSH Host profile."""
+    profile = {"name": req.name, "host": req.host, "username": req.username, "port": req.port}
+    _SSH_HOSTS.append(profile)
+    return {"success": True, "host": profile}
+
+
 @router.get("/api/health")
 async def get_health():
     """Returns server health status, uptime, and Redis connectivity."""
@@ -287,4 +376,5 @@ async def get_health():
         "redis_connected": redis_connected,
         "uptime_seconds": uptime,
     }
+
 

@@ -16,6 +16,108 @@ class GitActionRequest(BaseModel):
     message: Optional[str] = None
     branch: Optional[str] = None
 
+class ResolveConflictRequest(BaseModel):
+    path: str
+    strategy: str  # 'current', 'incoming', 'both', or 'custom'
+    custom_content: Optional[str] = None
+
+@router.get("/api/git/conflicts")
+async def get_git_conflicts():
+    """
+    Detects files in the workspace containing Git merge conflict markers.
+    """
+    if not workspace_state.root:
+        return {"conflicts": []}
+
+    try:
+        root_path = workspace_state.root
+        conflicts = []
+        exclude_dirs = {".git", "node_modules", "venv", ".venv", ".devpilot", "__pycache__", "dist", "build"}
+
+        for root, dirs, file_list in os.walk(root_path):
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            for f in file_list:
+                fp = os.path.join(root, f)
+                try:
+                    rel_p = os.path.relpath(fp, root_path).replace("\\", "/")
+                    with open(fp, "r", encoding="utf-8", errors="ignore") as file_obj:
+                        content = file_obj.read()
+                        if "<<<<<<<" in content and "=======" in content and ">>>>>>>" in content:
+                            conflicts.append({
+                                "path": rel_p,
+                                "has_conflicts": True
+                            })
+                except Exception:
+                    continue
+
+        return {"conflicts": conflicts}
+    except Exception as e:
+        logger.error(f"Error checking git conflicts: {e}")
+        return {"conflicts": []}
+
+@router.post("/api/git/resolve-conflict")
+async def resolve_git_conflict(req: ResolveConflictRequest):
+    """
+    Resolves merge conflicts in a file using 'current', 'incoming', 'both', or custom content.
+    """
+    if not workspace_state.root:
+        raise HTTPException(status_code=400, detail="No workspace open.")
+
+    file_path = safe_path(workspace_state.root, req.path)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Target file not found.")
+
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+
+        resolved_lines = []
+        in_conflict = False
+        in_incoming = False
+        current_lines = []
+        incoming_lines = []
+
+        for line in lines:
+            if line.startswith("<<<<<<<"):
+                in_conflict = True
+                in_incoming = False
+                current_lines = []
+                incoming_lines = []
+            elif line.startswith("=======") and in_conflict:
+                in_incoming = True
+            elif line.startswith(">>>>>>>") and in_conflict:
+                in_conflict = False
+                in_incoming = False
+
+                if req.strategy == "current":
+                    resolved_lines.extend(current_lines)
+                elif req.strategy == "incoming":
+                    resolved_lines.extend(incoming_lines)
+                elif req.strategy == "both":
+                    resolved_lines.extend(current_lines)
+                    resolved_lines.extend(incoming_lines)
+            else:
+                if in_conflict:
+                    if not in_incoming:
+                        current_lines.append(line)
+                    else:
+                        incoming_lines.append(line)
+                else:
+                    resolved_lines.append(line)
+
+        final_content = "".join(resolved_lines) if req.strategy != "custom" else (req.custom_content or "")
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(final_content)
+
+        # Stage the resolved file
+        await run_cmd_async(["git", "add", req.path], workspace_state.root)
+
+        return {"success": True, "path": req.path, "strategy": req.strategy}
+    except Exception as e:
+        logger.error(f"Error resolving conflict in {req.path}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/api/git/status")
 async def get_git_status():
     if not workspace_state.root:
@@ -194,3 +296,4 @@ async def perform_git_action(req: GitActionRequest):
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

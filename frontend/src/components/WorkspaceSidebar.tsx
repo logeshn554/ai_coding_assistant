@@ -263,6 +263,70 @@ export default function WorkspaceSidebar() {
           </div>
         </div>
 
+        {/* Multi-Root Workspace Manager */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Multi-Root Folders</h3>
+            <button
+              onClick={async () => {
+                const folder = prompt('Enter additional workspace folder path to mount:');
+                if (!folder) return;
+                try {
+                  await fetch('/api/workspace/roots/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: folder })
+                  });
+                  loadAll();
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+              className="text-[10px] text-violet-400 hover:text-violet-300 font-bold cursor-pointer"
+            >
+              + Add Folder
+            </button>
+          </div>
+
+          <div className="bg-[var(--dp-bg-tertiary)] border border-[var(--dp-border)] rounded-lg p-2 space-y-1.5 font-mono text-[10.5px]">
+            <div className="flex items-center justify-between text-white font-semibold p-1.5 rounded bg-violet-600/20 border border-violet-500/30">
+              <span className="truncate" title={workspacePath || ''}>📁 {getWorkspaceName()}</span>
+              <span className="text-[9px] text-violet-300 font-bold uppercase px-1 rounded bg-violet-500/20">Active</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Remote SSH Connections */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Remote SSH Hosts</h3>
+            <button
+              onClick={async () => {
+                const hostStr = prompt('Enter SSH host connection (e.g. user@192.168.1.50):');
+                if (!hostStr) return;
+                const [username, host] = hostStr.includes('@') ? hostStr.split('@') : ['root', hostStr];
+                try {
+                  await fetch('/api/workspace/ssh-hosts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: hostStr, host, username, port: 22 })
+                  });
+                  loadAll();
+                } catch (e) {
+                  console.error(e);
+                }
+              }}
+              className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold cursor-pointer"
+            >
+              + Connect SSH
+            </button>
+          </div>
+
+          <div className="bg-[var(--dp-bg-tertiary)] border border-[var(--dp-border)] rounded-lg p-2 text-[10.5px] font-mono text-zinc-400 italic">
+            No remote SSH targets configured. Click '+ Connect SSH' to target remote Linux servers.
+          </div>
+        </div>
+
         {/* Workspace Timeline (real git history) */}
         <div className="space-y-2">
           <h3 className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Recent Commits</h3>
@@ -297,3 +361,4 @@ export default function WorkspaceSidebar() {
     </div>
   );
 }
+

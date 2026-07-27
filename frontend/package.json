@@ -10,7 +10,7 @@
     "test": "vitest run",
     "preview": "vite preview",
 
-    "start": "node -e \"const fs = require('fs'); const cp = require('child_process'); const py = fs.existsSync('../venv/Scripts/python.exe') ? '../venv/Scripts/python.exe' : (fs.existsSync('../venv/bin/python') ? '../venv/bin/python' : 'python3'); cp.spawn(py, ['../backend/launcher.py'], { stdio: 'inherit', shell: true });\""
+    "start": "node start.js"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

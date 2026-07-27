@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ShieldAlert,
   AlertTriangle,
@@ -6,8 +6,12 @@ import {
   Wrench,
   RefreshCw,
   Sparkles,
-  FileCode
+  FileCode,
+  Download,
+  Check
 } from 'lucide-react';
+
+
 import { useEditor } from '../../core/editor/EditorContext';
 import { useAI } from '../../core/ai/AIContext';
 
@@ -20,6 +24,7 @@ interface ReviewFinding {
   description: string;
   suggestion: string;
   auto_fixable: boolean;
+  line?: number;
 }
 
 interface ReviewReport {
@@ -39,6 +44,8 @@ export const WorkspaceReviewPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [fixingId, setFixingId] = useState<string | null>(null);
   const [filterSeverity, setFilterSeverity] = useState<'all' | 'critical' | 'warning' | 'info'>('all');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [copiedReport, setCopiedReport] = useState(false);
 
   const { handleSelectFile } = useEditor();
   const { handleSendMessage } = useAI();
@@ -92,9 +99,29 @@ export const WorkspaceReviewPanel: React.FC = () => {
     handleSendMessage(prompt, 'Agent', true);
   };
 
-  const filteredFindings = report?.findings.filter(
-    f => filterSeverity === 'all' || f.severity === filterSeverity
-  ) || [];
+  const handleExportMarkdown = () => {
+    if (!report) return;
+    const md = `# Workspace Code Quality & Security Audit Report\n\n- **Health Score**: ${report.score}/100\n- **Files Scanned**: ${report.files_scanned}\n- **Total Issues**: ${report.summary.total_issues}\n\n## Findings\n${report.findings.map(f => `### [${f.severity.toUpperCase()}] ${f.title}\n- **File**: \`${f.file}\`\n- **Category**: ${f.category}\n- **Description**: ${f.description}\n- **Suggestion**: ${f.suggestion}\n`).join('\n')}`;
+    
+    navigator.clipboard.writeText(md);
+    setCopiedReport(true);
+    setTimeout(() => setCopiedReport(false), 2000);
+  };
+
+  const categories = useMemo(() => {
+    if (!report) return ['all'];
+    const set = new Set(report.findings.map(f => f.category));
+    return ['all', ...Array.from(set)];
+  }, [report]);
+
+  const filteredFindings = useMemo(() => {
+    if (!report) return [];
+    return report.findings.filter(f => {
+      const matchesSev = filterSeverity === 'all' || f.severity === filterSeverity;
+      const matchesCat = filterCategory === 'all' || f.category === filterCategory;
+      return matchesSev && matchesCat;
+    });
+  }, [report, filterSeverity, filterCategory]);
 
   const scoreColor = (s: number) =>
     s >= 90 ? 'text-emerald-400' : s >= 75 ? 'text-amber-400' : 'text-red-400';
@@ -106,7 +133,7 @@ export const WorkspaceReviewPanel: React.FC = () => {
         <div className="flex items-center gap-2">
           <ShieldAlert className="w-4 h-4 text-violet-400" />
           <div>
-            <h4 className="font-bold text-white text-xs">One-Click AI Code Review</h4>
+            <h4 className="font-bold text-white text-xs">AI Code Review & Security Audit</h4>
             <p className="text-[10px] text-gray-400">
               {report?.files_scanned || 0} files scanned · {report?.summary.total_issues || 0} issues detected
             </p>
@@ -114,6 +141,16 @@ export const WorkspaceReviewPanel: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleExportMarkdown}
+            disabled={!report}
+            className="flex items-center gap-1 text-[11px] font-semibold text-zinc-200 bg-white/5 hover:bg-white/10 border border-white/10 px-2.5 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+            title="Export Audit Report as Markdown"
+          >
+            {copiedReport ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Download className="w-3.5 h-3.5 text-cyan-400" />}
+            <span>{copiedReport ? 'Copied' : 'Export'}</span>
+          </button>
+
           <button
             onClick={handleAiFixAll}
             disabled={!report || report.findings.length === 0}
@@ -145,7 +182,7 @@ export const WorkspaceReviewPanel: React.FC = () => {
         </div>
 
         <div
-          onClick={() => setFilterSeverity('critical')}
+          onClick={() => setFilterSeverity(filterSeverity === 'critical' ? 'all' : 'critical')}
           className={`bg-black/30 border p-2 rounded-lg cursor-pointer transition-colors ${
             filterSeverity === 'critical' ? 'border-red-500/50 bg-red-500/10' : 'border-white/5'
           }`}
@@ -155,7 +192,7 @@ export const WorkspaceReviewPanel: React.FC = () => {
         </div>
 
         <div
-          onClick={() => setFilterSeverity('warning')}
+          onClick={() => setFilterSeverity(filterSeverity === 'warning' ? 'all' : 'warning')}
           className={`bg-black/30 border p-2 rounded-lg cursor-pointer transition-colors ${
             filterSeverity === 'warning' ? 'border-amber-500/50 bg-amber-500/10' : 'border-white/5'
           }`}
@@ -165,7 +202,7 @@ export const WorkspaceReviewPanel: React.FC = () => {
         </div>
 
         <div
-          onClick={() => setFilterSeverity('info')}
+          onClick={() => setFilterSeverity(filterSeverity === 'info' ? 'all' : 'info')}
           className={`bg-black/30 border p-2 rounded-lg cursor-pointer transition-colors ${
             filterSeverity === 'info' ? 'border-blue-500/50 bg-blue-500/10' : 'border-white/5'
           }`}
@@ -175,15 +212,34 @@ export const WorkspaceReviewPanel: React.FC = () => {
         </div>
       </div>
 
+      {/* ── Category Filter Pills ── */}
+      {categories.length > 1 && (
+        <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none">
+          {categories.map(cat => (
+            <button
+              key={cat}
+              onClick={() => setFilterCategory(cat)}
+              className={`px-2 py-0.5 rounded text-[10px] font-mono capitalize transition-colors cursor-pointer shrink-0 ${
+                filterCategory === cat
+                  ? 'bg-violet-600/30 text-violet-300 border border-violet-500/40 font-bold'
+                  : 'bg-black/30 text-zinc-400 border border-white/5 hover:text-white'
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── Findings List ── */}
-      <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+      <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-none">
         {loading ? (
           <div className="flex items-center justify-center py-12 text-xs text-gray-500 gap-2">
             <RefreshCw className="w-4 h-4 animate-spin text-violet-400" /> Scanning workspace codebase...
           </div>
         ) : filteredFindings.length === 0 ? (
           <div className="text-center py-12 text-xs text-gray-500 italic">
-            No issues found. Your codebase is clean! 🎉
+            No issues found matching your filter criteria. Codebase is clean! 🎉
           </div>
         ) : (
           filteredFindings.map((f) => (
@@ -236,3 +292,4 @@ export const WorkspaceReviewPanel: React.FC = () => {
     </div>
   );
 };
+
