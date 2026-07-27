@@ -100,19 +100,21 @@ async def run_shell_command(session: Any, command: str) -> str:
             if not line_bytes:
                 break
             line = line_bytes.decode("utf-8", errors="replace")
-            output_chunks.append(line)
+            # Sanitize raw ^C and unprintable control characters (\x00-\x08, \x0b, \x0c, \x0e-\x1f, \x7f)
+            clean_line = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', line).replace('\x03', '')
+            output_chunks.append(clean_line)
 
             # Check line for dev server ready patterns
             try:
                 from .server_watcher import global_server_watcher
-                global_server_watcher.check_log_line(line, session)
+                global_server_watcher.check_log_line(clean_line, session)
             except Exception:
                 pass
 
             # Stream terminal line to client
             await session.send_ws_message({
                 "type": "terminal_stream",
-                "content": line
+                "content": clean_line
             })
 
         try:
