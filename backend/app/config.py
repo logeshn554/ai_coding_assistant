@@ -49,6 +49,21 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+    def __init__(self, **values):
+        super().__init__(**values)
+        try:
+            # Load or auto-generate JWT_SECRET on first run and store in encrypted keyring
+            secret = keyring.get_password("devpilot", "jwt_secret")
+            if not secret or secret == "devpilot-default-jwt-secret-change-in-prod-32chars":
+                import secrets
+                secret = secrets.token_hex(32)
+                keyring.set_password("devpilot", "jwt_secret", secret)
+            self.JWT_SECRET = secret
+        except Exception:
+            # Fallback to in-memory generation if keyring is inaccessible
+            import secrets
+            self.JWT_SECRET = secrets.token_hex(32)
+
 settings = Settings()
 
 from keyring.backend import KeyringBackend

@@ -1,9 +1,55 @@
 import logging
+from typing import Dict, Any, List, Optional
 from .openai import OpenAIAdapter
 from .anthropic import AnthropicAdapter
 from ..tools.scan_for_bugs import generate_bug_report_async
 
 logger = logging.getLogger("devpilot.router")
+
+# Capability Registry for known models
+_MODEL_CAPABILITIES = {
+    # Anthropic models
+    "claude-3-5-sonnet": {"context_window": 200000, "vision": True, "tool_calling": True},
+    "claude-3-5-opus": {"context_window": 200000, "vision": True, "tool_calling": True},
+    "claude-3-opus": {"context_window": 200000, "vision": True, "tool_calling": True},
+    "claude-3-sonnet": {"context_window": 200000, "vision": True, "tool_calling": True},
+    "claude-3-haiku": {"context_window": 200000, "vision": True, "tool_calling": True},
+    # OpenAI models
+    "gpt-4o": {"context_window": 128000, "vision": True, "tool_calling": True},
+    "gpt-4o-mini": {"context_window": 128000, "vision": True, "tool_calling": True},
+    "gpt-4-turbo": {"context_window": 128000, "vision": True, "tool_calling": True},
+    "gpt-4": {"context_window": 8192, "vision": False, "tool_calling": True},
+    "gpt-3.5-turbo": {"context_window": 16385, "vision": False, "tool_calling": True},
+    "o1": {"context_window": 128000, "vision": True, "tool_calling": True},
+    "o3-mini": {"context_window": 200000, "vision": False, "tool_calling": True},
+    # Gemini models
+    "gemini-1.5-pro": {"context_window": 2000000, "vision": True, "tool_calling": True},
+    "gemini-1.5-flash": {"context_window": 1000000, "vision": True, "tool_calling": True},
+    "gemini-2.0-flash": {"context_window": 1048576, "vision": True, "tool_calling": True},
+}
+
+DEFAULT_CAPABILITY = {"context_window": 8192, "vision": False, "tool_calling": True}
+
+
+def get_model_capabilities(model_name: str) -> Dict[str, Any]:
+    """Retrieve capabilities from the registry for the given model name."""
+    model_name_lower = model_name.lower()
+    for key, caps in _MODEL_CAPABILITIES.items():
+        if key in model_name_lower:
+            return caps
+    
+    # Fuzzy fallback logic based on brand prefixes
+    if "claude" in model_name_lower:
+        return {"context_window": 200000, "vision": True, "tool_calling": True}
+    if "gpt" in model_name_lower:
+        return {"context_window": 128000, "vision": "gpt-4" in model_name_lower or "gpt-4o" in model_name_lower, "tool_calling": True}
+    if "gemini" in model_name_lower:
+        return {"context_window": 1000000, "vision": True, "tool_calling": True}
+    if "llama" in model_name_lower or "qwen" in model_name_lower or "mistral" in model_name_lower:
+        return {"context_window": 32768, "vision": "vision" in model_name_lower, "tool_calling": True}
+    
+    return DEFAULT_CAPABILITY
+
 
 class ModelRouter:
     """
@@ -13,6 +59,26 @@ class ModelRouter:
     """
     def __init__(self, default_profile: dict = None):
         self.default_profile = default_profile or {}
+
+    def check_capabilities(self, model_name: str, messages: list) -> None:
+        """Scan messages for image attachments and verify model capability."""
+        caps = get_model_capabilities(model_name)
+        has_image = False
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and (item.get("type") == "image_url" or "image" in item):
+                        has_image = True
+                        break
+            elif isinstance(content, dict) and (content.get("type") == "image_url" or "image" in content):
+                has_image = True
+
+        if has_image and not caps.get("vision"):
+            logger.warning(
+                f"ModelRouter WARNING: Model '{model_name}' does not list vision capability in registry, "
+                f"but messages contain image inputs. This request may fail."
+            )
 
     def get_adapter(self, profile: dict, is_agent: bool = False, task_type: str = "general"):
         """
@@ -24,7 +90,7 @@ class ModelRouter:
         
         key = profile.get("api_key", "")
         url = profile.get("base_url", "")
-        model = profile.get("model_name", "")
+        model = profile.get("model_name", "") or profile.get("model") or ""
 
         url_l = (url or "").lower()
         model_l = (model or "").lower()
@@ -79,6 +145,9 @@ class ModelRouter:
         """
         Queries the routed model and aggregates streamed text chunks.
         """
+        model_name = profile.get("model_name") or profile.get("model") or "unknown"
+        self.check_capabilities(model_name, messages)
+
         adapter = self.get_adapter(profile, is_agent, task_type)
         response_text = ""
         try:

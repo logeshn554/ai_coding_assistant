@@ -91,23 +91,28 @@ function getLanguage(path: string): string {
 const LS_CURSOR_PREFIX = 'devpilot_cursor_';
 const LS_SCROLL_PREFIX = 'devpilot_scroll_';
 
-function persistCursor(path: string, line: number, col: number) {
-  try { localStorage.setItem(LS_CURSOR_PREFIX + path, JSON.stringify({ line, col })); } catch {}
+function getPrefixedKey(prefix: string, workspacePath: string | null | undefined, path: string): string {
+  const wsName = workspacePath ? workspacePath.replace(/\\/g, '/').split('/').pop() || 'default' : 'default';
+  return `${prefix}${wsName}_${path}`;
 }
 
-function loadCursor(path: string): { line: number; col: number } | null {
+function persistCursor(workspacePath: string | null | undefined, path: string, line: number, col: number) {
+  try { localStorage.setItem(getPrefixedKey(LS_CURSOR_PREFIX, workspacePath, path), JSON.stringify({ line, col })); } catch {}
+}
+
+function loadCursor(workspacePath: string | null | undefined, path: string): { line: number; col: number } | null {
   try {
-    const raw = localStorage.getItem(LS_CURSOR_PREFIX + path);
+    const raw = localStorage.getItem(getPrefixedKey(LS_CURSOR_PREFIX, workspacePath, path));
     return raw ? JSON.parse(raw) : null;
   } catch { return null; }
 }
 
-function persistScroll(path: string, ratio: number) {
-  try { localStorage.setItem(LS_SCROLL_PREFIX + path, String(ratio)); } catch {}
+function persistScroll(workspacePath: string | null | undefined, path: string, ratio: number) {
+  try { localStorage.setItem(getPrefixedKey(LS_SCROLL_PREFIX, workspacePath, path), String(ratio)); } catch {}
 }
 
-function loadScroll(path: string): number {
-  try { return parseFloat(localStorage.getItem(LS_SCROLL_PREFIX + path) ?? '0') || 0; } catch { return 0; }
+function loadScroll(workspacePath: string | null | undefined, path: string): number {
+  try { return parseFloat(localStorage.getItem(getPrefixedKey(LS_SCROLL_PREFIX, workspacePath, path)) ?? '0') || 0; } catch { return 0; }
 }
 
 const EDITOR_OPTIONS = {
@@ -395,9 +400,9 @@ export default function EditorArea({
     }
 
     if (activeTabPath) {
-      const pos = loadCursor(activeTabPath);
+      const pos = loadCursor(workspacePath, activeTabPath);
       if (pos) editor.setPosition({ lineNumber: pos.line, column: pos.col });
-      const scrollRatio = loadScroll(activeTabPath);
+      const scrollRatio = loadScroll(workspacePath, activeTabPath);
       if (scrollRatio > 0) {
         const lineCount = editor.getModel()?.getLineCount() || 1;
         editor.revealLine(Math.floor(lineCount * scrollRatio));
@@ -406,7 +411,7 @@ export default function EditorArea({
 
     editor.onDidChangeCursorPosition((e: any) => {
       if (activeTabPath) {
-        persistCursor(activeTabPath, e.position.lineNumber, e.position.column);
+        persistCursor(workspacePath, activeTabPath, e.position.lineNumber, e.position.column);
         window.dispatchEvent(new CustomEvent('editor-cursor-change', {
           detail: { line: e.position.lineNumber, column: e.position.column }
         }));
@@ -416,7 +421,7 @@ export default function EditorArea({
     editor.onDidScrollChange((e: any) => {
       if (activeTabPath && e.scrollHeight > 0) {
         const ratio = e.scrollTop / e.scrollHeight;
-        persistScroll(activeTabPath, ratio);
+        persistScroll(workspacePath, activeTabPath, ratio);
       }
     });
 

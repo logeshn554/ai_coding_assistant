@@ -118,18 +118,26 @@ def chunk_file(path: str, max_tokens: int = 500, overlap: int = 50) -> List[Chun
     return chunks
 
 
+_chroma_clients: dict = {}
+
 def _get_chroma_client(workspace_root: Optional[str] = None):
-    """Retrieve persistent ChromaDB client for the workspace."""
+    """Retrieve persistent ChromaDB client for the workspace with connection pooling."""
     if workspace_root and os.path.isdir(workspace_root):
         chroma_dir = os.path.join(workspace_root, "artifacts", "chroma")
     else:
         chroma_dir = os.path.join(os.path.expanduser("~"), ".devpilot", "chroma")
 
+    chroma_dir = os.path.abspath(chroma_dir)
+    if chroma_dir in _chroma_clients:
+        return _chroma_clients[chroma_dir]
+
     os.makedirs(chroma_dir, exist_ok=True)
 
     try:
         import chromadb
-        return chromadb.PersistentClient(path=chroma_dir)
+        client = chromadb.PersistentClient(path=chroma_dir)
+        _chroma_clients[chroma_dir] = client
+        return client
     except Exception as exc:
         logger.warning("ChromaDB initialization failed or not installed: %s. Using ephemeral store.", exc)
         return None

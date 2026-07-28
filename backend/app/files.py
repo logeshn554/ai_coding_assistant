@@ -120,11 +120,23 @@ def create_backup(workspace_root: str, relative_path: str) -> bool:
         timestamp = int(time.time() * 1000)
         backup_path = os.path.join(backup_dir, f"{timestamp}.bak")
         
-        # Save relative path metadata
+        # Save relative path metadata atomically to prevent truncation risk
         meta_path = os.path.join(backup_dir, "meta.txt")
         if not os.path.exists(meta_path):
-            with open(meta_path, "w", encoding="utf-8") as f:
-                f.write(relative_path)
+            tmp_meta_path = meta_path + ".tmp"
+            try:
+                with open(tmp_meta_path, "w", encoding="utf-8") as f:
+                    f.write(relative_path)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_meta_path, meta_path)
+            except Exception as e:
+                logger.warning("Failed atomic backup meta write: %s", e)
+                if os.path.exists(tmp_meta_path):
+                    try:
+                        os.remove(tmp_meta_path)
+                    except Exception:
+                        pass
                 
         shutil.copy2(abs_path, backup_path)
         
