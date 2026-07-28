@@ -21,60 +21,61 @@ router = APIRouter()
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ChatLogger:
-    """Appends structured chat events to a human-readable Markdown log file."""
+    """Appends structured chat events to the active workspace's chat_logs.md dynamically."""
 
-    ICONS = {
-        "user":        "👤",
-        "thinking":    "💭",
-        "tool_call":   "🛠️",
-        "tool_result": "📥",
-        "ai":          "🤖",
-        "status":      "⚙️",
-        "session":     "📋",
-    }
-
-    def __init__(self, workspace_root: str, session_id: str):
+    def __init__(self, session_id: str):
         self._session_id = session_id
-        self._log_path: str | None = None
-        if workspace_root and os.path.isdir(workspace_root):
-            log_dir = os.path.join(workspace_root, ".devpilot")
-            os.makedirs(log_dir, exist_ok=True)
-            self._log_path = os.path.join(log_dir, "chat_logs.md")
-            if not os.path.exists(self._log_path):
-                self._write_header()
-
-    def _write_header(self):
-        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        header = (
-            f"# DevPilot Chat Logs\n"
-            f"> Generated automatically. Updated live during each chat session.\n\n"
-            f"---\n\n"
-        )
-        self._raw_write(header)
-
-    def _raw_write(self, text: str):
-        if not self._log_path:
-            return
-        try:
-            with open(self._log_path, "a", encoding="utf-8") as f:
-                f.write(text)
-        except Exception as e:
-            logger.debug(f"ChatLogger write error: {e}")
+        self._in_ai_block = False
+        self._has_logged_session_start = False
 
     def _ts(self) -> str:
         return datetime.datetime.now().strftime("%H:%M:%S")
 
-    def log_session_start(self):
-        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self._raw_write(f"\n## 📋 Session `{self._session_id}` — {ts}\n\n")
+    def _ensure_session_start(self):
+        if not self._has_logged_session_start:
+            ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self._raw_write(f"\n## 📋 Session `{self._session_id}` — {ts}\n\n")
+            self._has_logged_session_start = True
+
+    def _close_ai_block_if_needed(self):
+        if self._in_ai_block:
+            self._raw_write("\n\n---\n\n")
+            self._in_ai_block = False
+
+    def _raw_write(self, text: str):
+        root = workspace_state.root
+        if not root or not os.path.isdir(root):
+            return
+        try:
+            log_dir = os.path.join(root, ".devpilot")
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(log_dir, "chat_logs.md")
+            
+            if not os.path.exists(log_path):
+                header = (
+                    f"# DevPilot Chat Logs\n"
+                    f"> Generated automatically. Updated live during each chat session.\n\n"
+                    f"---\n\n"
+                )
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(header)
+            
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(text)
+        except Exception as e:
+            logger.debug(f"ChatLogger write error: {e}")
 
     def log_user(self, text: str):
+        self._ensure_session_start()
+        self._close_ai_block_if_needed()
         self._raw_write(
             f"### 👤 User  `{self._ts()}`\n"
             f"```\n{text.strip()}\n```\n\n"
         )
 
     def log_thinking(self, content: str):
+        self._ensure_session_start()
+        self._close_ai_block_if_needed()
         snippet = content.strip()[:400]
         if len(content) > 400:
             snippet += "…"
@@ -84,6 +85,8 @@ class ChatLogger:
         )
 
     def log_tool_call(self, tool_name: str, tool_id: str, args: dict):
+        self._ensure_session_start()
+        self._close_ai_block_if_needed()
         args_str = json.dumps(args, ensure_ascii=False)[:300]
         self._raw_write(
             f"### 🛠️ Tool Called — `{tool_name}`  `{self._ts()}`\n"
@@ -92,6 +95,8 @@ class ChatLogger:
         )
 
     def log_tool_result(self, tool_name: str, tool_id: str, result: str, status: str):
+        self._ensure_session_start()
+        self._close_ai_block_if_needed()
         icon = "✅" if status == "success" else "❌"
         snippet = str(result).strip()[:500]
         if len(str(result)) > 500:
@@ -103,17 +108,16 @@ class ChatLogger:
             f"```\n{snippet}\n```\n\n"
         )
 
-    def log_ai_response(self, content: str):
-        snippet = content.strip()[:1000]
-        if len(content) > 1000:
-            snippet += "\n> _(truncated — full response in chat)_"
-        self._raw_write(
-            f"### 🤖 AI Response  `{self._ts()}`\n"
-            f"{snippet}\n\n"
-            f"---\n\n"
-        )
+    def log_ai_chunk(self, chunk: str):
+        self._ensure_session_start()
+        if not self._in_ai_block:
+            self._raw_write(f"### 🤖 AI Response  `{self._ts()}`\n")
+            self._in_ai_block = True
+        self._raw_write(chunk)
 
     def log_status(self, message: str):
+        self._ensure_session_start()
+        self._close_ai_block_if_needed()
         self._raw_write(f"**⚙️ Status** `{self._ts()}`: {message}\n\n")
 
 
@@ -520,11 +524,7 @@ async def websocket_chat(
         resolved_session_id = await get_fallback_session_id(session_workspace_root)
 
     # ── Live chat logger ────────────────────────────────────────────────────
-    chat_logger = ChatLogger(session_workspace_root or "", resolved_session_id or "unknown")
-    chat_logger.log_session_start()
-
-    # Track accumulated AI text so we can log the full response on completion
-    _ai_text_buffer: dict[str, str] = {}
+    chat_logger = ChatLogger(resolved_session_id or "unknown")
 
     async def send_to_client(data: dict):
         """Forward every message to the browser AND mirror it to the log file."""
@@ -560,14 +560,10 @@ async def websocket_chat(
                 )
 
             elif evt == "text_delta" and data.get("content"):
-                # Accumulate streamed text — log the full response on session_done
-                key = "current"
-                _ai_text_buffer[key] = _ai_text_buffer.get(key, "") + data["content"]
+                chat_logger.log_ai_chunk(data["content"])
 
             elif evt == "session_done":
-                buffered = _ai_text_buffer.pop("current", "")
-                if buffered.strip():
-                    chat_logger.log_ai_response(buffered)
+                chat_logger._close_ai_block_if_needed()
         except Exception as log_err:
             logger.debug(f"ChatLogger mirror error: {log_err}")
 
