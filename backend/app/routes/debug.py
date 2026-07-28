@@ -368,7 +368,7 @@ def debug_pause():
 
 @router.post("/api/scan-bugs")
 async def api_scan_bugs():
-    from ..diff_utils import generate_bug_report_async
+    from ..tools.scan_for_bugs import generate_bug_report_async
 
     async def run_scan_and_save():
         try:
