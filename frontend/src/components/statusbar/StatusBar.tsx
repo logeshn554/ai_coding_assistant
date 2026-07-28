@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GitBranch, AlertCircle, AlertTriangle, Zap, Cpu, CheckCircle2, Globe, Wifi } from 'lucide-react';
+import { GitBranch, AlertCircle, AlertTriangle, Zap, Cpu, CheckCircle2, Globe } from 'lucide-react';
 import { useWorkspace } from '../../core/workspace/WorkspaceContext';
 import { useGit } from '../../core/git/GitContext';
 import { useSettings } from '../../core/settings/SettingsContext';
@@ -143,17 +143,7 @@ export const StatusBar: React.FC = () => {
           </div>
         )}
 
-        {/* Token & Cost Usage */}
-        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/4 border border-white/8 text-[9px] font-mono text-[var(--dp-text-muted)]" title="Session Context & Estimated Cost">
-          <span className="text-[var(--dp-accent)] font-semibold">14.2K tok</span>
-          <span className="opacity-40">|</span>
-          <span className="text-[var(--dp-success)] font-semibold">$0.04</span>
-        </div>
 
-        {/* Connectivity */}
-        <div className="flex items-center gap-1 text-[var(--dp-text-muted)]">
-          <Wifi className="w-3 h-3 text-[var(--dp-success)]" />
-        </div>
 
         {/* Cursor position */}
         {activeFilePath && (

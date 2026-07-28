@@ -48,11 +48,11 @@ export const TitleBar: React.FC = () => {
   const { activeMenu, setActiveMenu, setSidebarTab, isSidebarOpen, setIsSidebarOpen, isAiPanelOpen, setIsAiPanelOpen } = useUI();
   const { statusBarBranch, statusBarDebug } = useGit();
   const { setBottomTab } = useTerminal();
-  const { handleSendMessage, contextPercentage = 0, contextTokensRaw = 0, isWsConnected } = useAI();
+  const { handleSendMessage, contextPercentage = 0, contextTokensRaw = 0 } = useAI();
   const { setIsCommandPaletteOpen } = useCommand();
   const { activeProfileName } = useSettings();
 
-  const [latency] = useState(4);
+
   const [isNotifOpen, setIsNotifOpen] = useState(false);
 
   const getWorkspaceName = () => {
@@ -224,11 +224,7 @@ export const TitleBar: React.FC = () => {
           </div>
         </div>
 
-        {/* Latency & Connection Status */}
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#151823] border border-[#2A3146] text-[10px] text-[var(--dp-text-muted)]" title="Live WS connection & latency">
-          <div className={`w-2 h-2 rounded-full ${isWsConnected ? 'bg-[#32D583] animate-status-pulse' : 'bg-[#F04438]'}`} />
-          <span className="font-mono text-zinc-300">{latency}ms</span>
-        </div>
+
 
         {/* Notifications Bell */}
         <div className="relative">
