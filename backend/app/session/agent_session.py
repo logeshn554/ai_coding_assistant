@@ -454,7 +454,12 @@ class AgentSession:
             r'\buvicorn\b',
             r'\bpython\s+-m\b',
         ]
-        is_run_command = any(re.search(p, text.lower()) for p in RUN_PATTERNS)
+        
+        is_run_command = False
+        text_lower = text.lower().strip()
+        # Avoid misclassifying long, multi-line coding instructions as run commands
+        if len(text_lower) < 250 and text_lower.count('\n') < 4:
+            is_run_command = any(re.search(p, text_lower) for p in RUN_PATTERNS)
 
 
         if is_run_command:
