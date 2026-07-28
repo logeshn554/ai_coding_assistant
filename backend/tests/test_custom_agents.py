@@ -113,3 +113,25 @@ def test_prompt_endpoints():
     res = client.get("/api/agents/prompts")
     assert res.status_code == 200
     assert res.json()["Audit Agent"] == new_custom_prompt
+
+
+@pytest.mark.asyncio
+async def test_rag_codebase_retrieval(tmp_path):
+    from app.orchestrator import async_get_codebase_dict
+    
+    workspace = tmp_path
+    src_dir = workspace / "src"
+    src_dir.mkdir()
+    (src_dir / "auth.py").write_text("def auth(): pass", encoding="utf-8")
+    (src_dir / "database.py").write_text("def db(): pass", encoding="utf-8")
+    (workspace / "requirements.txt").write_text("pytest\nfastapi", encoding="utf-8")
+    
+    # 1. Test when target_files is provided
+    res = await async_get_codebase_dict(str(workspace), target_files=["src/auth.py"])
+    assert "src/auth.py" in res
+    assert "src/database.py" not in res
+    assert res["src/auth.py"] == "def auth(): pass"
+    
+    # 2. Test when task_description matches keywords
+    res2 = await async_get_codebase_dict(str(workspace), task_description="database connection logic")
+    assert "src/database.py" in res2

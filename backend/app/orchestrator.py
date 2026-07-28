@@ -552,7 +552,40 @@ class RequirementAnalysisAgent(BaseAgent):
                     rel_path = os.path.relpath(abs_path, session.workspace_root).replace("\\", "/")
                     workspace_files.append(rel_path)
             
-            codebase_details = "Actual files in the workspace:\n" + "\n".join(workspace_files)
+            # If the workspace contains too many files, filter down to the most relevant files using RAG
+            if len(workspace_files) > 100:
+                import re
+                task_words = [w.lower() for w in re.findall(r'[a-zA-Z0-9_]+', task_description) if len(w) > 2]
+                scored_files = []
+                for f in workspace_files:
+                    score = 0
+                    f_lower = f.lower()
+                    for word in task_words:
+                        if word in f_lower:
+                            score += 10
+                    basename = os.path.basename(f).lower()
+                    if basename in ("package.json", "tsconfig.json", "requirements.txt", "pyproject.toml", "main.py", "app.py", "index.ts", "index.tsx", "vite.config.ts"):
+                        score += 5
+                    scored_files.append((score, f))
+                
+                scored_files.sort(key=lambda x: x[0], reverse=True)
+                
+                # Keep top 60 relevant files
+                top_files = [f for score, f in scored_files[:60]]
+                
+                # Form top-level directory layout summary
+                dirs_list = set()
+                for f in workspace_files:
+                    parts = f.split('/')
+                    if len(parts) > 1:
+                        dirs_list.add(parts[0] + "/")
+                        if len(parts) > 2:
+                            dirs_list.add(parts[0] + "/" + parts[1] + "/")
+                
+                trimmed_list = sorted(list(dirs_list))[:30] + ["... (folders layout)"] + sorted(top_files)
+                codebase_details = "Actual files in the workspace (filtered by relevance/RAG):\n" + "\n".join(trimmed_list)
+            else:
+                codebase_details = "Actual files in the workspace:\n" + "\n".join(workspace_files)
         except Exception as e:
             codebase_details = "Could not list workspace files."
             logger.error(f"Error listing workspace files: {e}")
@@ -887,7 +920,8 @@ class CodeReviewAgent(BaseAgent):
         await self.orchestrator.context.log(f"Code Review Agent: Auditing codebase modifications...")
         await self.orchestrator.update_task_progress(task_id, 30, session)
         
-        file_contents = await async_get_codebase_dict(session.workspace_root)
+        target_files = self.orchestrator.context.memory.get("target_files", [])
+        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description)
         chunks = chunked_codebase(file_contents)
         
         llm = DevPilotChatModel(session=session, agent_name=self.name)
@@ -1254,7 +1288,8 @@ class SecurityAgent(BaseAgent):
         await self.orchestrator.context.log("Security Agent: Running OWASP security audit...")
         await self.orchestrator.update_task_progress(task_id, 20, session)
 
-        file_contents = await async_get_codebase_dict(session.workspace_root)
+        target_files = self.orchestrator.context.memory.get("target_files", [])
+        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description)
         chunks = chunked_codebase(file_contents)
 
         llm = DevPilotChatModel(session=session, agent_name=self.name)
@@ -1308,7 +1343,8 @@ class PerformanceAgent(BaseAgent):
         await self.orchestrator.context.log("Performance Agent: Analyzing performance bottlenecks...")
         await self.orchestrator.update_task_progress(task_id, 20, session)
 
-        file_contents = await async_get_codebase_dict(session.workspace_root)
+        target_files = self.orchestrator.context.memory.get("target_files", [])
+        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description)
         chunks = chunked_codebase(file_contents)
 
         llm = DevPilotChatModel(session=session, agent_name=self.name)
@@ -1358,7 +1394,8 @@ class AIReviewerAgent(BaseAgent):
         await self.orchestrator.context.log("AI Reviewer Agent: Deep technical review as Staff Engineer...")
         await self.orchestrator.update_task_progress(task_id, 20, session)
 
-        file_contents = await async_get_codebase_dict(session.workspace_root)
+        target_files = self.orchestrator.context.memory.get("target_files", [])
+        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description)
         chunks = chunked_codebase(file_contents)
 
         llm = DevPilotChatModel(session=session, agent_name=self.name)
@@ -1626,10 +1663,28 @@ class AgentState(TypedDict):
 
 MAX_CHARS = 8000
 
-async def async_get_codebase_dict(workspace_root: str) -> dict:
+async def async_get_codebase_dict(workspace_root: str, target_files: list = None, task_description: str = "") -> dict:
     exclude_dirs = {".git", "node_modules", "venv", "__pycache__", ".devpilot", "dist", "build"}
     exclude_extensions = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}
 
+    # 1. RAG-based context handoff: If target_files is provided, fetch those files first
+    if target_files:
+        file_dict = {}
+        for tf in target_files:
+            clean_tf = tf.replace("\\", "/").strip().lstrip("/")
+            if ".." in clean_tf:
+                continue
+            abs_file_path = os.path.realpath(os.path.join(workspace_root, clean_tf))
+            if abs_file_path.startswith(os.path.realpath(workspace_root)) and os.path.isfile(abs_file_path):
+                try:
+                    with open(abs_file_path, "r", encoding="utf-8", errors="replace") as f:
+                        file_dict[clean_tf] = f.read()
+                except Exception:
+                    pass
+        if file_dict:
+            return file_dict
+
+    # 2. Retrieval-based fallback or full scan if target_files is empty
     def _sync_scan() -> dict:
         is_editor_root = False
         try:
@@ -1640,7 +1695,7 @@ async def async_get_codebase_dict(workspace_root: str) -> dict:
         except Exception:
             pass
 
-        file_dict = {}
+        file_list = []
         for root, dirs, files in os.walk(workspace_root):
             current_excludes = set(exclude_dirs)
             if is_editor_root and root == os.path.realpath(workspace_root):
@@ -1656,12 +1711,37 @@ async def async_get_codebase_dict(workspace_root: str) -> dict:
                     continue
                 abs_file_path = os.path.join(root, file)
                 rel_file_path = os.path.relpath(abs_file_path, workspace_root).replace("\\", "/")
-                try:
-                    with open(abs_file_path, "r", encoding="utf-8", errors="replace") as f:
-                        content = f.read()
-                    file_dict[rel_file_path] = content
-                except Exception:
-                    continue
+                file_list.append(rel_file_path)
+
+        # RAG Search: Filter files based on task relevance
+        if task_description and len(file_list) > 15:
+            import re
+            task_words = [w.lower() for w in re.findall(r'[a-zA-Z0-9_]+', task_description) if len(w) > 2]
+            scored_files = []
+            for f in file_list:
+                score = 0
+                f_lower = f.lower()
+                for word in task_words:
+                    if word in f_lower:
+                        score += 10
+                basename = os.path.basename(f).lower()
+                if basename in ("package.json", "tsconfig.json", "requirements.txt", "pyproject.toml", "main.py", "app.py", "index.ts", "index.tsx", "vite.config.ts"):
+                    score += 5
+                scored_files.append((score, f))
+            
+            scored_files.sort(key=lambda x: x[0], reverse=True)
+            selected_files = [f for _, f in scored_files[:15]]
+        else:
+            selected_files = file_list[:20]
+
+        file_dict = {}
+        for rel_file_path in selected_files:
+            abs_file_path = os.path.join(workspace_root, rel_file_path)
+            try:
+                with open(abs_file_path, "r", encoding="utf-8", errors="replace") as f:
+                    file_dict[rel_file_path] = f.read()
+            except Exception:
+                continue
         return file_dict
 
     loop = asyncio.get_event_loop()
