@@ -72,6 +72,42 @@ export const getWorkspaceStats = () =>
 export const searchCodebase = (query: string) =>
   request<any[]>(`/api/files/search?query=${encodeURIComponent(query)}`);
 
+/** Agents */
+export interface Agent {
+  name: string;
+  role: string;
+  tier: string;
+  icon: string;
+  color: string;
+  is_custom?: boolean;
+}
+
+export const getAgents = () => request<Agent[]>('/api/agents');
+
+export const addAgent = (agent: {
+  name: string;
+  role: string;
+  tier: string;
+  icon: string;
+  color: string;
+  system_prompt: string;
+  prompt_template: string;
+}) =>
+  request<{ status: string; message: string; agent: Agent }>('/api/agents', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(agent)
+  });
+
+export const getAgentPrompts = () => request<Record<string, string>>('/api/agents/prompts');
+
+export const updateAgentPrompt = (agentName: string, prompt: string) =>
+  request<{ status: string; message: string }>('/api/agents/prompts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent_name: agentName, prompt })
+  });
+
 /**
  * Exported type for generic API errors.
  */

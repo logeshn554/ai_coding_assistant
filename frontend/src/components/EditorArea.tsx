@@ -13,8 +13,7 @@ import { useState, useEffect, useRef } from 'react';
 import Editor, { DiffEditor } from '@monaco-editor/react';
 import {
   X, Save, RotateCcw, Play, Folder, Search,
-  Sparkles, GitBranch, Cpu, Server, Zap,
-  BarChart2, FileCode, Check
+  Sparkles, Zap, FileCode, Check
 } from 'lucide-react';
 import { useLSP } from '../core/lsp/LSPContext';
 import { InlineChatPopover } from './editor/InlineChatPopover';
@@ -23,7 +22,7 @@ import { useAI } from '../core/ai/AIContext';
 import { useTerminal } from '../core/terminal/TerminalContext';
 import { getExecutableCommandForFile } from '../utils/executableCommand';
 import { DebugControlBar } from './debug/DebugControlBar';
-import { getWorkspaceStats } from '../api';
+
 
 interface Tab {
   path: string;
@@ -138,12 +137,12 @@ export default function EditorArea({
   onFileSelect,
   proposedDiff,
   onRefreshWorkspace,
-  refreshTrigger,
+  refreshTrigger: _refreshTrigger,
   onOpenFolder,
   workspacePath,
   onEditorRef,
 }: EditorAreaProps) {
-  const { handleSendMessage, contextPercentage = 0, sessions } = useAI();
+  const { handleSendMessage } = useAI();
   const { setBottomTab, setActiveTerminalCommand } = useTerminal();
   const { isReady: lspReady, error: lspError, connect: connectLSP } = useLSP();
 
@@ -152,7 +151,7 @@ export default function EditorArea({
   const [showDiff, setShowDiff] = useState(false);
   const [backups, setBackups] = useState<Array<{ timestamp: number; content: string }>>([]);
   const [showBackupsDropdown, setShowBackupsDropdown] = useState(false);
-  const [stats, setStats] = useState<{ total_files: number; total_lines: number; languages: Record<string, number> } | null>(null);
+
 
   const [activeTheme, setActiveTheme] = useState<string>(() => localStorage.getItem('devpilot_theme') || 'dark');
 
@@ -189,14 +188,7 @@ export default function EditorArea({
 
   const editorRef = useRef<any>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const s = await getWorkspaceStats();
-        if (s) setStats(s);
-      } catch {}
-    })();
-  }, [workspacePath, refreshTrigger]);
+
 
   useEffect(() => {
     setTabs(prev => {
@@ -388,7 +380,7 @@ export default function EditorArea({
     });
   };
 
-  const langEntries = stats ? Object.entries(stats.languages).sort((a, b) => b[1] - a[1]).slice(0, 5) : [];
+
   const getWorkspaceName = () => workspacePath ? workspacePath.replace(/\\/g, '/').split('/').pop() || 'Workspace' : 'No Workspace';
 
   return (
@@ -606,173 +598,46 @@ export default function EditorArea({
                 </button>
               </div>
 
-              {/* 6 Grid Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-
-                {/* Card 1: Quick Actions */}
-                <div className="dp-card p-5 space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
-                    <span className="flex items-center gap-1.5">
-                      <Zap className="w-4 h-4 text-[#7C5CFF]" /> Quick Actions
+              {/* Center aligned Quick Actions Card */}
+              <div className="max-w-md mx-auto">
+                <div className="dp-card p-6 space-y-4 shadow-2xl border border-[#2A3146] bg-[#121522]/90 backdrop-blur-md rounded-2xl">
+                  <div className="flex items-center justify-between text-sm font-bold text-white border-b border-[#2A3146] pb-3">
+                    <span className="flex items-center gap-2">
+                      <Zap className="w-4.5 h-4.5 text-[#7C5CFF]" /> Quick Actions
                     </span>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <button
                       onClick={onOpenFolder}
-                      className="w-full flex items-center justify-between p-2 rounded-lg bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer"
+                      className="w-full flex items-center justify-between p-3 rounded-xl bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer shadow-sm group"
                     >
-                      <span className="flex items-center gap-2"><Folder className="w-3.5 h-3.5 text-[#7C5CFF]" /> Open Folder</span>
-                      <kbd className="text-[9px] font-mono bg-white/10 px-1.5 py-0.5 rounded">Ctrl+O</kbd>
+                      <span className="flex items-center gap-2.5 font-medium group-hover:text-[#7C5CFF] transition-colors">
+                        <Folder className="w-4 h-4 text-[#7C5CFF]" /> Open Folder
+                      </span>
+                      <kbd className="text-[10px] font-mono bg-white/10 px-2 py-0.5 rounded border border-white/5 text-slate-300">Ctrl+O</kbd>
                     </button>
+
                     <button
                       onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))}
-                      className="w-full flex items-center justify-between p-2 rounded-lg bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer"
+                      className="w-full flex items-center justify-between p-3 rounded-xl bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer shadow-sm group"
                     >
-                      <span className="flex items-center gap-2"><Search className="w-3.5 h-3.5 text-[#7C5CFF]" /> Universal Search</span>
-                      <kbd className="text-[9px] font-mono bg-white/10 px-1.5 py-0.5 rounded">Ctrl+K</kbd>
+                      <span className="flex items-center gap-2.5 font-medium group-hover:text-[#7C5CFF] transition-colors">
+                        <Search className="w-4 h-4 text-[#7C5CFF]" /> Universal Search
+                      </span>
+                      <kbd className="text-[10px] font-mono bg-white/10 px-2 py-0.5 rounded border border-white/5 text-slate-300">Ctrl+K</kbd>
                     </button>
+
                     <button
                       onClick={() => handleSendMessage('Scan the full workspace for bugs and provide a concise bug report.', 'Ask', false)}
-                      className="w-full flex items-center justify-between p-2 rounded-lg bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer"
+                      className="w-full flex items-center justify-between p-3 rounded-xl bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer shadow-sm group"
                     >
-                      <span className="flex items-center gap-2"><Sparkles className="w-3.5 h-3.5 text-amber-400" /> AI Bug Scan</span>
-                      <span className="text-[9px] text-amber-400 font-semibold uppercase">Scan</span>
+                      <span className="flex items-center gap-2.5 font-medium group-hover:text-[#7C5CFF] transition-colors">
+                        <Sparkles className="w-4 h-4 text-amber-400" /> AI Bug Scan
+                      </span>
+                      <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/20">SCAN</span>
                     </button>
                   </div>
                 </div>
-
-                {/* Card 2: Workspace Analytics */}
-                <div className="dp-card p-5 space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
-                    <span className="flex items-center gap-1.5">
-                      <BarChart2 className="w-4 h-4 text-[#32D583]" /> Workspace Analytics
-                    </span>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between items-center bg-[#151823] p-2 rounded-lg border border-[#2A3146]">
-                      <span className="text-[var(--dp-text-muted)]">Total Files</span>
-                      <span className="font-mono font-bold text-white">{stats?.total_files || 0}</span>
-                    </div>
-                    <div className="flex justify-between items-center bg-[#151823] p-2 rounded-lg border border-[#2A3146]">
-                      <span className="text-[var(--dp-text-muted)]">Total Lines</span>
-                      <span className="font-mono font-bold text-white">{stats?.total_lines || 0}</span>
-                    </div>
-                    {langEntries.length > 0 && (
-                      <div className="space-y-1 pt-1">
-                        <div className="text-[10px] text-[var(--dp-text-muted)] font-semibold uppercase">Top Languages</div>
-                        <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-[#151823] p-0.5 border border-[#2A3146]">
-                          {langEntries.map(([lang, count], idx) => (
-                            <div
-                              key={lang}
-                              className="h-full rounded-full"
-                              style={{
-                                width: `${Math.max(10, Math.round((count / (stats?.total_files || 1)) * 100))}%`,
-                                backgroundColor: idx === 0 ? '#7C5CFF' : idx === 1 ? '#32D583' : '#60A5FA'
-                              }}
-                              title={`${lang}: ${count} files`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Card 3: Running Services */}
-                <div className="dp-card p-5 space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
-                    <span className="flex items-center gap-1.5">
-                      <Server className="w-4 h-4 text-[#32D583]" /> Running Services
-                    </span>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center justify-between p-2 rounded-lg bg-[#151823] border border-[#2A3146]">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-[#32D583] animate-status-pulse" />
-                        <span className="font-medium text-white">FastAPI Backend</span>
-                      </div>
-                      <span className="text-[10px] font-mono text-[#32D583] bg-[#32D583]/10 px-2 py-0.5 rounded border border-[#32D583]/30 font-semibold">
-                        Port 8000
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between p-2 rounded-lg bg-[#151823] border border-[#2A3146]">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-[#32D583] animate-status-pulse" />
-                        <span className="font-medium text-white">Vite Frontend</span>
-                      </div>
-                      <span className="text-[10px] font-mono text-[#32D583] bg-[#32D583]/10 px-2 py-0.5 rounded border border-[#32D583]/30 font-semibold">
-                        Port 5173
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card 4: AI Context Usage */}
-                <div className="dp-card p-5 space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
-                    <span className="flex items-center gap-1.5">
-                      <Cpu className="w-4 h-4 text-[#7C5CFF]" /> AI Context Usage
-                    </span>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between text-[11px] font-mono text-[var(--dp-text-secondary)]">
-                      <span>Window Capacity</span>
-                      <span className="text-white font-bold">128,000 Tokens</span>
-                    </div>
-                    <div className="w-full h-2.5 bg-[#151823] rounded-full overflow-hidden border border-[#2A3146] p-0.5">
-                      <div
-                        className="h-full bg-gradient-to-r from-[#7C5CFF] to-blue-500 rounded-full transition-all duration-300"
-                        style={{ width: `${Math.min(100, Math.max(5, contextPercentage || 5))}%` }}
-                      />
-                    </div>
-                    <p className="text-[10px] text-[var(--dp-text-muted)]">
-                      {contextPercentage}% used. Context window automatically manages active tokens.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Card 5: Recent AI Sessions */}
-                <div className="dp-card p-5 space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
-                    <span className="flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-purple-400" /> Recent AI Sessions
-                    </span>
-                  </div>
-                  <div className="space-y-1.5 max-h-32 overflow-y-auto">
-                    {sessions && sessions.length > 0 ? (
-                      sessions.slice(0, 3).map(s => (
-                        <div key={s.id} className="p-1.5 rounded-lg bg-[#151823] border border-[#2A3146] text-xs flex justify-between items-center">
-                          <span className="truncate text-white font-medium text-[11px] max-w-[140px]">{s.title || 'Agent Session'}</span>
-                          <span className="text-[9px] font-mono text-[#7C5CFF] bg-[#7C5CFF]/15 px-1.5 py-0.5 rounded">Active</span>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-[11px] text-[var(--dp-text-muted)] italic">No recent sessions</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Card 6: Git Repository Status */}
-                <div className="dp-card p-5 space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-white border-b border-[#2A3146] pb-2">
-                    <span className="flex items-center gap-1.5">
-                      <GitBranch className="w-4 h-4 text-[#F79009]" /> Git Repository Status
-                    </span>
-                  </div>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between items-center bg-[#151823] p-2 rounded-lg border border-[#2A3146]">
-                      <span className="text-[var(--dp-text-muted)]">Active Branch</span>
-                      <span className="font-mono font-bold text-white">main</span>
-                    </div>
-                    <div className="flex justify-between items-center bg-[#151823] p-2 rounded-lg border border-[#2A3146]">
-                      <span className="text-[var(--dp-text-muted)]">Status</span>
-                      <span className="text-[10px] font-mono text-[#32D583] bg-[#32D583]/10 px-2 py-0.5 rounded border border-[#32D583]/30 font-semibold">
-                        Clean Working Tree
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
               </div>
 
             </div>

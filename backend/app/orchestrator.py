@@ -490,6 +490,17 @@ class PlannerAgent(BaseAgent):
         ])
         prompt_content = planner_prompt_template.format(task_description=task_description)
         
+        default_agent_names = {
+            "Planner Agent", "Frontend Planner Agent", "Backend Planner Agent", "Requirement Analysis Agent",
+            "Software Architect Agent", "File System Agent", "Coding Agent", "Frontend Developer Agent",
+            "Backend Developer Agent", "Database Agent", "API Agent", "Integration Agent", "Testing Agent",
+            "Debugging Agent", "Security Agent", "Performance Agent", "Code Review Agent", "AI Reviewer Agent",
+            "Documentation Agent", "Git Agent", "Terminal Agent", "DevOps Agent", "Release Agent", "Orchestrator Agent"
+        }
+        custom_agent_names = [name for name in self.orchestrator.agents if name not in default_agent_names]
+        if custom_agent_names:
+            prompt_content += f"\n\nAvailable custom available agents: {', '.join(custom_agent_names)}."
+        
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
@@ -1456,6 +1467,99 @@ class ReleaseAgent(BaseAgent):
         await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Release package prepared."
 
+class CustomAgent(BaseAgent):
+    """A user-defined custom agent that runs a dynamic prompt template."""
+    def __init__(self, name: str, orchestrator, prompt_template, system_prompt: str, role: str):
+        super().__init__(name, orchestrator)
+        self.prompt_template = prompt_template
+        self.system_prompt = system_prompt
+        self.role = role
+        self.__doc__ = role
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log(f"{self.name}: Starting execution...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+        
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", self.system_prompt or "You are a specialized custom agent."),
+            ("human", "{prompt_content}")
+        ])
+        
+        try:
+            prompt_content = self.prompt_template.format(task_description=task_description)
+        except Exception:
+            prompt_content = self.prompt_template.template.replace("{task_description}", task_description)
+            
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chain = chat_prompt | llm
+        
+        response = await chain.ainvoke({"prompt_content": prompt_content})
+        
+        memory_key = self.name.lower().replace(" ", "_")
+        self.orchestrator.context.memory[memory_key] = response.content
+        
+        await self.orchestrator.context.log(f"{self.name}: Completed execution.")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return response.content
+
+def apply_custom_agents_and_overrides(orchestrator_instance=None):
+    from pathlib import Path
+    import json
+    from langchain_core.prompts import PromptTemplate
+    
+    custom_agents_path = Path.home() / ".devpilot" / "custom_agents.json"
+    if not custom_agents_path.exists():
+        return
+        
+    try:
+        with open(custom_agents_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            custom_agents = data.get("custom_agents", [])
+            prompt_overrides = data.get("prompt_overrides", {})
+    except Exception as e:
+        logger.error(f"Failed to load custom agents: {e}")
+        return
+
+    # Apply overrides to default agents
+    default_templates = {
+        "Planner Agent": planner_prompt_template,
+        "Frontend Planner Agent": frontend_planner_prompt_template,
+        "Backend Planner Agent": backend_planner_prompt_template,
+        "Requirement Analysis Agent": requirement_prompt_template,
+        "Software Architect Agent": architect_prompt_template,
+        "Coding Agent": coding_prompt_template,
+        "Frontend Developer Agent": frontend_dev_prompt_template,
+        "Backend Developer Agent": backend_dev_prompt_template,
+        "Database Agent": database_prompt_template,
+        "API Agent": api_agent_prompt_template,
+        "Integration Agent": integration_prompt_template,
+        "Security Agent": security_prompt_template,
+        "Performance Agent": performance_prompt_template,
+        "Code Review Agent": review_prompt_template,
+        "AI Reviewer Agent": ai_reviewer_prompt_template,
+        "Documentation Agent": documentation_prompt_template,
+        "Terminal Agent": terminal_prompt_template,
+        "DevOps Agent": devops_prompt_template,
+        "Release Agent": release_prompt_template,
+        "Orchestrator Agent": orchestrator_prompt_template,
+    }
+    
+    for name, prompt_str in prompt_overrides.items():
+        if name in default_templates:
+            default_templates[name].template = prompt_str
+
+    if orchestrator_instance is not None:
+        for agent_info in custom_agents:
+            name = agent_info["name"]
+            role = agent_info.get("role", "Specialized custom agent")
+            system_prompt = agent_info.get("system_prompt", "You are a specialized custom agent.")
+            prompt_template_str = agent_info.get("prompt_template", "Process task: {task_description}")
+            try:
+                tmpl = PromptTemplate.from_template(prompt_template_str)
+                orchestrator_instance.agents[name] = CustomAgent(name, orchestrator_instance, tmpl, system_prompt, role)
+            except Exception as e:
+                logger.error(f"Failed to load custom agent {name}: {e}")
+
 def extract_json(text: str) -> dict:
     text = text.strip()
     try:
@@ -1891,6 +1995,7 @@ class AgentOrchestrator:
             "DevOps Agent": DevOpsAgent(self),
             "Release Agent": ReleaseAgent(self),
         }
+        apply_custom_agents_and_overrides(self)
         agent_names = list(self.agents.keys())
         if len(agent_names) != len(set(agent_names)):
             logger.warning("Duplicate agent mappings detected in orchestrator registry!")

@@ -26,6 +26,7 @@ from .tasks_route import router as tasks_router
 from .snippets import router as snippets_router
 from .inspect_route import router as inspect_router
 from .mcp_route import router as mcp_router
+from .agents import router as agents_router
 
 all_routers = [
     auth_router,
@@ -56,5 +57,6 @@ all_routers = [
     snippets_router,
     inspect_router,
     mcp_router,
+    agents_router,
 ]
 
