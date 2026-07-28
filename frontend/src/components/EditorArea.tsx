@@ -118,6 +118,7 @@ const EDITOR_OPTIONS = {
   minimap: { enabled: true, side: 'right' as const },
   scrollBeyondLastLine: false,
   bracketPairColorization: { enabled: true },
+  inlineSuggest: { enabled: true },
   autoClosingBrackets: 'always' as const,
   autoClosingQuotes: 'always' as const,
   formatOnPaste: true,
@@ -168,6 +169,14 @@ export default function EditorArea({
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (inlineCompletionsProviderRef.current) {
+        inlineCompletionsProviderRef.current.dispose();
+      }
+    };
+  }, []);
+
   const monacoTheme = activeTheme === 'light' ? 'vs' : activeTheme === 'high-contrast' ? 'hc-black' : 'vs-dark';
 
 
@@ -187,6 +196,7 @@ export default function EditorArea({
   });
 
   const editorRef = useRef<any>(null);
+  const inlineCompletionsProviderRef = useRef<any>(null);
 
 
 
@@ -317,9 +327,72 @@ export default function EditorArea({
     handleSendMessage(`Regenerate and improve the changes for ${proposedDiff.path}.`, 'Agent', false);
   };
 
-  const handleEditorMount = (editor: any) => {
+  const handleEditorMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
     if (onEditorRef) onEditorRef(editor);
+
+    // Register Inline Completions Provider for Ghost Text AI Autocomplete
+    if (monaco) {
+      if (inlineCompletionsProviderRef.current) {
+        inlineCompletionsProviderRef.current.dispose();
+      }
+      inlineCompletionsProviderRef.current = monaco.languages.registerInlineCompletionsProvider(
+        { pattern: '**/*' },
+        {
+          provideInlineCompletions: async (model: any, position: any, _context: any, token: any) => {
+            // Debounce to prevent server flooding during rapid typing
+            await new Promise((resolve) => setTimeout(resolve, 350));
+            if (token.isCancellationRequested) {
+              return { items: [] };
+            }
+
+            const value = model.getValue();
+            const offset = model.getOffsetAt(position);
+            const prefix = value.substring(0, offset);
+            const suffix = value.substring(offset);
+            const language = model.getLanguageId();
+            const file_path = model.uri ? model.uri.path : '';
+
+            try {
+              const res = await fetch('/api/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  prefix,
+                  suffix,
+                  language,
+                  file_path: file_path || '',
+                  max_tokens: 128
+                })
+              });
+              if (res.ok && !token.isCancellationRequested) {
+                const data = await res.json();
+                if (data && data.completion) {
+                  return {
+                    items: [
+                      {
+                        insertText: data.completion,
+                        range: new monaco.Range(
+                          position.lineNumber,
+                          position.column,
+                          position.lineNumber,
+                          position.column
+                        )
+                      }
+                    ]
+                  };
+                }
+              }
+            } catch (err) {
+              console.warn('[Inline Suggest] Fetch failed:', err);
+            }
+
+            return { items: [] };
+          },
+          freeInlineCompletions: () => {}
+        }
+      );
+    }
 
     if (activeTabPath) {
       const pos = loadCursor(activeTabPath);
