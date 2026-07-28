@@ -47,6 +47,7 @@ function TerminalPane({
   const terminalRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const lastDetectedUrlRef = useRef<string | null>(null);
+  const pendingCommandRef = useRef<string | null>(null);
   const [shellName, setShellName] = useState('Terminal');
 
   useEffect(() => {
@@ -121,6 +122,11 @@ function TerminalPane({
       }
       // Send initial terminal dimensions so the PTY is created at the right size
       sendResize();
+
+      if (pendingCommandRef.current) {
+        ws.send(pendingCommandRef.current + '\r');
+        pendingCommandRef.current = null;
+      }
     };
 
     const checkOutputForLocalhost = (text: string) => {
@@ -211,8 +217,12 @@ function TerminalPane({
 
   // Handle command triggers from parent history
   useEffect(() => {
-    if (commandToRun && commandToRun.id === id && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(commandToRun.cmd + '\r');
+    if (commandToRun && commandToRun.id === id) {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(commandToRun.cmd + '\r');
+      } else {
+        pendingCommandRef.current = commandToRun.cmd;
+      }
     }
   }, [commandToRun, id]);
 
