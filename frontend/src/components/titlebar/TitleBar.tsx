@@ -20,7 +20,7 @@ interface MenuItem {
 }
 
 const MenuDropdown: React.FC<{ items: MenuItem[]; onClose: () => void }> = ({ items, onClose }) => (
-  <div className="absolute left-0 top-full mt-1 w-56 bg-[#1A1F2E] border border-[#2A3146] shadow-[0_16px_48px_rgba(0,0,0,0.7)] py-1.5 z-50 text-xs text-[var(--dp-text-primary)] rounded-xl animate-fade-in">
+  <div className="absolute left-0 top-full mt-1 w-56 bg-[var(--dp-bg-elevated)] border border-[var(--dp-border)] shadow-[0_16px_48px_rgba(0,0,0,0.7)] py-1.5 z-50 text-xs text-[var(--dp-text-primary)] rounded-xl animate-fade-in">
     {items.map((item, i) => (
       <React.Fragment key={i}>
         <button
@@ -36,7 +36,7 @@ const MenuDropdown: React.FC<{ items: MenuItem[]; onClose: () => void }> = ({ it
             <span className="text-[9px] text-[var(--dp-text-muted)] font-mono bg-white/5 px-1.5 py-0.5 rounded">{item.shortcut}</span>
           )}
         </button>
-        {item.dividerAfter && <div className="border-t border-[#2A3146] my-1 mx-2" />}
+        {item.dividerAfter && <div className="border-t border-[var(--dp-border)] my-1 mx-2" />}
       </React.Fragment>
     ))}
   </div>
@@ -139,7 +139,7 @@ export const TitleBar: React.FC = () => {
   };
 
   return (
-    <div className="h-10 bg-[#0A0C12] border-b border-[#2A3146] flex items-center justify-between px-3 select-none shrink-0 z-30 font-sans">
+    <div className="h-10 bg-[var(--dp-bg-tertiary)] border-b border-[var(--dp-border)] flex items-center justify-between px-3 select-none shrink-0 z-30 font-sans">
 
       {/* ── Left: Branding + Workspace Selector + Menus ── */}
       <div className="flex items-center gap-2.5">
@@ -147,16 +147,16 @@ export const TitleBar: React.FC = () => {
         <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-[#7C5CFF] via-purple-600 to-indigo-500 flex items-center justify-center text-white text-[10px] font-extrabold shadow-md shadow-[#7C5CFF]/30 shrink-0 tracking-tighter">
           DP
         </div>
-        <span className="text-[12px] font-bold text-white tracking-tight">DevPilot</span>
+        <span className="text-[12px] font-bold text-[var(--dp-text-bright)] tracking-tight">DevPilot</span>
 
         {/* Workspace Selector Dropdown Badge */}
         <div
           onClick={handleOpenWorkspaceFolder}
-          className="flex items-center gap-1.5 px-2 py-0.5 bg-[#151823] border border-[#2A3146] hover:border-[#7C5CFF]/40 rounded-lg text-[11px] text-[var(--dp-text-primary)] cursor-pointer transition-colors"
+          className="flex items-center gap-1.5 px-2 py-0.5 bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] hover:border-[#7C5CFF]/40 rounded-lg text-[11px] text-[var(--dp-text-primary)] cursor-pointer transition-colors"
           title="Switch Workspace Folder"
         >
           <span className="w-1.5 h-1.5 rounded-full bg-[#7C5CFF]" />
-          <span className="font-semibold truncate max-w-[120px]">{getWorkspaceName()}</span>
+          <span className="font-semibold truncate max-w-[120px] text-[var(--dp-text-primary)]">{getWorkspaceName()}</span>
         </div>
 
         {/* Top Menus */}
@@ -172,7 +172,7 @@ export const TitleBar: React.FC = () => {
       {/* ── Center: Universal Search Trigger ── */}
       <div
         onClick={() => setIsCommandPaletteOpen(true)}
-        className="flex items-center justify-between w-80 max-w-sm h-6.5 px-2.5 bg-[#151823] hover:bg-[#1A1F2E] border border-[#2A3146] hover:border-[#7C5CFF]/40 rounded-lg text-xs text-[var(--dp-text-muted)] cursor-pointer transition-all duration-150 group shadow-sm"
+        className="flex items-center justify-between w-80 max-w-sm h-6.5 px-2.5 bg-[var(--dp-bg-secondary)] hover:bg-[var(--dp-bg-elevated)] border border-[var(--dp-border)] hover:border-[#7C5CFF]/40 rounded-lg text-xs text-[var(--dp-text-muted)] cursor-pointer transition-all duration-150 group shadow-sm"
       >
         <div className="flex items-center gap-2 truncate">
           <Search className="w-3.5 h-3.5 text-[var(--dp-text-muted)] group-hover:text-[#7C5CFF] transition-colors shrink-0" />
@@ -183,7 +183,7 @@ export const TitleBar: React.FC = () => {
             }
           </span>
         </div>
-        <kbd className="px-1.5 py-0.5 bg-[#1A1F2E] border border-[#2A3146] text-[9px] font-mono text-[var(--dp-text-muted)] rounded shrink-0">
+        <kbd className="px-1.5 py-0.5 bg-[var(--dp-bg-elevated)] border border-[var(--dp-border)] text-[9px] font-mono text-[var(--dp-text-muted)] rounded shrink-0">
           Ctrl K
         </kbd>
       </div>
@@ -192,9 +192,9 @@ export const TitleBar: React.FC = () => {
       <div className="flex items-center gap-2 shrink-0">
 
         {/* Git Branch Badge */}
-        <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#151823] border border-[#2A3146] text-[10px] text-[var(--dp-text-secondary)] font-mono">
+        <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] text-[10px] text-[var(--dp-text-secondary)] font-mono">
           <GitBranch className="w-3 h-3 text-[#7C5CFF]" />
-          <span className="font-semibold text-white">{statusBarBranch || 'main'}</span>
+          <span className="font-semibold text-[var(--dp-text-bright)]">{statusBarBranch || 'main'}</span>
         </div>
 
         {/* Active AI Model Badge */}
@@ -207,16 +207,16 @@ export const TitleBar: React.FC = () => {
           className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-[#7C5CFF]/15 border border-[#7C5CFF]/30 text-[11px] cursor-pointer hover:bg-[#7C5CFF]/25 transition-all shadow-[0_0_10px_rgba(124,92,255,0.15)]"
         >
           <Cpu className="w-3.5 h-3.5 text-[#7C5CFF]" />
-          <span className="font-bold text-white">{activeProfileName || 'Groq / Claude 3.5'}</span>
+          <span className="font-bold text-[var(--dp-text-bright)]">{activeProfileName || 'Groq / Claude 3.5'}</span>
         </div>
 
         {/* Context Progress Bar */}
         <div
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#151823] border border-[#2A3146] text-[10px] font-mono text-[var(--dp-text-secondary)]"
+          className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] text-[10px] font-mono text-[var(--dp-text-secondary)]"
           title={`Context Token Usage: ${formatTokens(contextTokensRaw)} / 128K (${contextPercentage}%)`}
         >
           <span>{formatTokens(contextTokensRaw)} / 128K</span>
-          <div className="w-12 h-1.5 bg-[#0A0C12] rounded-full overflow-hidden border border-[#2A3146]">
+          <div className="w-12 h-1.5 bg-[var(--dp-bg-tertiary)] rounded-full overflow-hidden border border-[var(--dp-border)]">
             <div
               className="h-full bg-gradient-to-r from-[#7C5CFF] to-blue-500 rounded-full transition-all duration-300"
               style={{ width: `${Math.min(100, Math.max(5, contextPercentage || 5))}%` }}
