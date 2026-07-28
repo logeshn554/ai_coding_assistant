@@ -6,6 +6,7 @@ Routes:
   GET /api/workspace/fuzzy-files?q=<query>     -> fuzzy-ranked list of file paths
 """
 import logging
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from ..state import workspace_state
 from ..workspace_index import WorkspaceIndex
@@ -27,18 +28,25 @@ def _get_index() -> WorkspaceIndex:
 
 
 @router.get("/api/workspace/symbols")
-def get_symbols(path: str = Query(..., description="Relative file path within workspace")):
+def get_symbols(
+    path: Optional[str] = Query(None, description="Relative file path within workspace"),
+    file: Optional[str] = Query(None, description="Alternative relative file path parameter")
+):
     """
     Extract code symbols (classes, functions, interfaces, etc.) from a workspace file.
     Returns a list of {name, kind, kindName, line, col} objects.
     """
+    target_path = path or file
+    if not target_path:
+        raise HTTPException(status_code=422, detail="Missing required 'path' or 'file' query parameter.")
+
     if not workspace_state.root:
         raise HTTPException(status_code=400, detail="No workspace open.")
 
     try:
         import os
         from pathlib import Path
-        abs_path = (Path(workspace_state.root) / path).resolve()
+        abs_path = (Path(workspace_state.root) / target_path).resolve()
         if not str(abs_path).startswith(str(Path(workspace_state.root).resolve())):
             raise HTTPException(status_code=403, detail="Access denied: path outside workspace.")
     except HTTPException:
@@ -48,10 +56,10 @@ def get_symbols(path: str = Query(..., description="Relative file path within wo
 
     try:
         idx = _get_index()
-        symbols = idx.get_symbols(path)
-        return {"symbols": symbols, "path": path}
+        symbols = idx.get_symbols(target_path)
+        return {"symbols": symbols, "path": target_path}
     except Exception as e:
-        logger.error(f"Error extracting symbols from {path}: {e}")
+        logger.error(f"Error extracting symbols from {target_path}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

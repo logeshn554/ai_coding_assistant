@@ -571,10 +571,15 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     };
 
     ws.onclose = () => {
+      if (wsRef.current !== ws) {
+        // This close was intentional (cleanup) or a new socket is already active
+        return;
+      }
       setIsWsConnected(false);
       logger.info(`Chat socket closed. Reconnecting in ${reconnectDelayRef.current}ms...`);
       setTimeout(() => {
-        connectChatSocket();
+        if (wsRef.current !== ws) return;
+        connectChatSocket(guard);
       }, reconnectDelayRef.current);
       reconnectDelayRef.current = Math.min(16000, reconnectDelayRef.current * 2);
     };
