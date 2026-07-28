@@ -2174,7 +2174,7 @@ class AgentOrchestrator:
                 thread_id = f"thread_{uuid.uuid4().hex[:8]}"
                 final_state = await graph.ainvoke(
                     initial_state,
-                    config={"configurable": {"thread_id": thread_id}}
+                    config={"configurable": {"thread_id": thread_id}, "recursion_limit": 150}
                 )
                 self.context.subtasks = session.parallel_subtasks
                 self.context.collaboration_log = session.collaboration_log
@@ -2223,7 +2223,10 @@ class AgentOrchestrator:
             workflow.add_edge(name, "Orchestrator")
             
         compiled_graph = workflow.compile()
-        final_state = await compiled_graph.ainvoke(initial_state)
+        final_state = await compiled_graph.ainvoke(
+            initial_state,
+            config={"recursion_limit": 150}
+        )
         
         # Update our context from final state
         self.context.collaboration_log = final_state["collaboration_log"]
