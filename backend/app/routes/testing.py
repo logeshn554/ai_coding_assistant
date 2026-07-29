@@ -1,4 +1,5 @@
 import os
+import asyncio
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -10,19 +11,26 @@ router = APIRouter()
 class TestRunRequest(BaseModel):
     file: Optional[str] = None
 
-@router.get("/api/testing/discover")
-def discover_tests():
-    if not workspace_state.root:
-        return {"tests": []}
-    
+def _discover_sync(workspace_root: str) -> list[str]:
     test_files = []
-    for root, dirs, files in os.walk(workspace_state.root):
-        if any(d in root for d in {".git", "node_modules", "venv", "__pycache__", ".devpilot"}):
+    for root, dirs, files in os.walk(workspace_root):
+        # Normalize slashes for comparison
+        norm_root = root.replace("\\", "/")
+        if any(f"/{d}" in norm_root or norm_root.endswith(d) for d in {".git", "node_modules", "venv", "__pycache__", ".devpilot"}):
             continue
         for f in files:
             if "test" in f.lower() and os.path.splitext(f)[1].lower() in {".py", ".ts", ".tsx", ".js", ".jsx"}:
-                rel_path = os.path.relpath(os.path.join(root, f), workspace_state.root).replace("\\", "/")
+                rel_path = os.path.relpath(os.path.join(root, f), workspace_root).replace("\\", "/")
                 test_files.append(rel_path)
+    return test_files
+
+@router.get("/api/testing/discover")
+async def discover_tests():
+    if not workspace_state.root:
+        return {"tests": []}
+    
+    # Run blocking os.walk in a background thread to avoid event loop starvation
+    test_files = await asyncio.to_thread(_discover_sync, workspace_state.root)
     return {"tests": test_files}
 
 @router.post("/api/testing/run")
@@ -30,16 +38,18 @@ async def run_tests(req: TestRunRequest):
     if not workspace_state.root:
         raise HTTPException(status_code=400, detail="No workspace open.")
     try:
+        # Use lists for executing commands securely without spawning a shell (avoids command injection)
         if req.file:
             if req.file.endswith(".py"):
-                cmd = f"python -m unittest {req.file}"
+                cmd = ["python", "-m", "unittest", req.file]
             else:
-                cmd = f"npm test {req.file}"
+                cmd = ["npm", "test", "--", req.file]
         else:
-            if os.path.exists(os.path.join(workspace_state.root, "package.json")):
-                cmd = "npm test"
+            pkg_json_exists = await asyncio.to_thread(os.path.exists, os.path.join(workspace_state.root, "package.json"))
+            if pkg_json_exists:
+                cmd = ["npm", "test"]
             else:
-                cmd = "pytest"
+                cmd = ["pytest"]
         out = await run_cmd_async(cmd, workspace_state.root)
         passed = "FAIL" not in out and "ERROR" not in out and "failed" not in out.lower()
         return {"success": True, "passed": passed, "output": out}

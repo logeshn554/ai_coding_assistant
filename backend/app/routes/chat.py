@@ -517,15 +517,15 @@ async def websocket_chat(
     await request.accept()
     active_profile = config_manager.get_active_profile()
 
-    # Snapshot the workspace root at connection time — do NOT re-read workspace_state
-    # on every message, as another tab changing the global state would corrupt this session.
-    session_workspace_root = workspace_state.root
-
     # If no session_id provided, resume the last session for this workspace.
     resolved_session_id = session_id
-    if not resolved_session_id and session_workspace_root:
+    if not resolved_session_id and workspace_state.root:
         from ..db import get_fallback_session_id
-        resolved_session_id = await get_fallback_session_id(session_workspace_root)
+        resolved_session_id = await get_fallback_session_id(workspace_state.root)
+
+    from ..state import session_id_var
+    session_id_var.set(resolved_session_id)
+    session_workspace_root = workspace_state.root
 
     # ── Live chat logger ────────────────────────────────────────────────────
     chat_logger = ChatLogger(resolved_session_id or "unknown")
@@ -687,6 +687,10 @@ async def websocket_chat(
                 
     except WebSocketDisconnect:
         logger.info("Chat WebSocket disconnected")
+        # Bug 4: abort pending confirmations on disconnect
+        for tc_id, item in list(session.pending_confirmations.items()):
+            item["approved"] = False
+            item["event"].set()
     except Exception as e:
         logger.error(f"Chat WebSocket error: {str(e)}")
 

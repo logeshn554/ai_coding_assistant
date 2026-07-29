@@ -1,7 +1,9 @@
 import os
 import time
 import logging
+import asyncio
 import subprocess
+from typing import Optional, Counter
 from collections import Counter
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -26,7 +28,7 @@ class DetectCommandRequest(BaseModel):
 
 
 @router.get("/api/workspace")
-def get_workspace():
+async def get_workspace():
     return {"workspace": workspace_state.root}
 
 
@@ -68,15 +70,14 @@ async def detect_file_command(req: DetectCommandRequest):
     return {"command": f"{ext} \"{norm_path}\"" if ext else f"\"{norm_path}\""}
 
 
-
 @router.get("/api/shell/name")
-def get_shell_name():
+async def get_shell_name():
     from ..shell_adapter import ShellAdapter
     return {"name": ShellAdapter.get_shell_name()}
 
 
 @router.post("/api/workspace/change")
-def change_workspace(req: WorkspaceChangeRequest):
+async def change_workspace(req: WorkspaceChangeRequest):
     try:
         raw_path = (req.path or "").strip().strip('"').strip("'")
         if raw_path == "":
@@ -104,7 +105,8 @@ def change_workspace(req: WorkspaceChangeRequest):
         else:
             path = os.path.abspath(path)
 
-        if not os.path.isdir(path):
+        is_dir = await asyncio.to_thread(os.path.isdir, path)
+        if not is_dir:
             raise HTTPException(
                 status_code=400,
                 detail=f"Directory does not exist: {path}"
@@ -119,54 +121,6 @@ def change_workspace(req: WorkspaceChangeRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/api/workspace/browse")
-def browse_workspace(path: str = ""):
-    """
-    Returns immediate subdirectories of the given path.
-    - No path → returns the list of mounted Windows drives (/host/c, /host/d, /host/e)
-    - With path → lists subdirectories inside that container path
-    """
-    is_docker = os.environ.get("DOCKER_MODE", "false").lower() == "true"
-
-    # Root: show available drives
-    if not path:
-        if is_docker:
-            drives = []
-            for letter, win_label in DRIVE_MAP.items():
-                mount = os.path.join(HOST_DRIVES_ROOT, letter)
-                if os.path.isdir(mount):
-                    drives.append({
-                        "name": win_label,
-                        "path": mount,
-                        "is_dir": True,
-                        "is_drive": True
-                    })
-            return {
-                "current": "",
-                "parent": None,
-                "entries": drives,
-                "is_docker": True,
-                "is_root": True
-            }
-        else:
-            browse_path = os.path.expanduser("~")
-            return _list_dir(browse_path, parent=None, is_docker=False)
-
-    browse_path = os.path.normpath(path)
-
-    if not os.path.isdir(browse_path):
-        raise HTTPException(status_code=404, detail=f"Path not found: {browse_path}")
-
-    # Determine parent
-    parent = os.path.dirname(browse_path)
-
-    # If going up from a drive root (/host/c → /host/c itself), go to drive list instead
-    if is_docker and browse_path in [os.path.join(HOST_DRIVES_ROOT, l) for l in DRIVE_MAP]:
-        parent = None  # signals "go back to drive list"
-
-    return _list_dir(browse_path, parent=parent, is_docker=is_docker)
 
 
 def _list_dir(browse_path: str, parent, is_docker: bool):
@@ -198,22 +152,74 @@ def _list_dir(browse_path: str, parent, is_docker: bool):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/workspace/select")
-def select_workspace():
+@router.get("/api/workspace/browse")
+async def browse_workspace(path: str = ""):
     """
-    Tries to open the native OS folder picker.
+    Returns immediate subdirectories of the given path.
+    - No path → returns the list of mounted Windows drives (/host/c, /host/d, /host/e)
+    - With path → lists subdirectories inside that container path
+    """
+    is_docker = os.environ.get("DOCKER_MODE", "false").lower() == "true"
+
+    # Root: show available drives
+    if not path:
+        if is_docker:
+            drives = []
+            for letter, win_label in DRIVE_MAP.items():
+                mount = os.path.join(HOST_DRIVES_ROOT, letter)
+                is_mount_dir = await asyncio.to_thread(os.path.isdir, mount)
+                if is_mount_dir:
+                    drives.append({
+                        "name": win_label,
+                        "path": mount,
+                        "is_dir": True,
+                        "is_drive": True
+                    })
+            return {
+                "current": "",
+                "parent": None,
+                "entries": drives,
+                "is_docker": True,
+                "is_root": True
+            }
+        else:
+            browse_path = await asyncio.to_thread(os.path.expanduser, "~")
+            return await asyncio.to_thread(_list_dir, browse_path, parent=None, is_docker=False)
+
+    browse_path = os.path.normpath(path)
+
+    is_dir = await asyncio.to_thread(os.path.isdir, browse_path)
+    if not is_dir:
+        raise HTTPException(status_code=404, detail=f"Path not found: {browse_path}")
+
+    # Determine parent
+    parent = os.path.dirname(browse_path)
+
+    # If going up from a drive root (/host/c → /host/c itself), go to drive list instead
+    if is_docker and browse_path in [os.path.join(HOST_DRIVES_ROOT, l) for l in DRIVE_MAP]:
+        parent = None  # signals "go back to drive list"
+
+    return await asyncio.to_thread(_list_dir, browse_path, parent=parent, is_docker=is_docker)
+
+
+@router.post("/api/workspace/select")
+async def select_workspace():
+    """
+    Tries to open the native OS folder picker in a background thread.
     If unavailable (Docker/headless), signals the frontend to show the browser UI.
     """
-    try:
+    def _pick_directory():
         import tkinter as tk
         from tkinter import filedialog
-
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
         folder_path = filedialog.askdirectory(title="Select Workspace Folder")
         root.destroy()
+        return folder_path
 
+    try:
+        folder_path = await asyncio.to_thread(_pick_directory)
         if folder_path:
             normalized = os.path.abspath(folder_path).replace("\\", "/")
             return {"path": normalized}
@@ -241,18 +247,7 @@ _SKIP_DIRS = {
 }
 
 
-@router.get("/api/workspace/stats")
-def get_workspace_stats():
-    """Returns real workspace statistics: file counts, language breakdown, git commit count."""
-    root = workspace_state.root
-    if not root or not os.path.isdir(root):
-        return {
-            "total_files": 0,
-            "total_lines": 0,
-            "languages": {},
-            "git_commits": 0,
-        }
-
+def _get_stats_sync(root: str) -> dict:
     lang_counter: Counter = Counter()
     total_files = 0
     total_lines = 0
@@ -276,7 +271,7 @@ def get_workspace_stats():
                 pass
 
     # Build percentage map (relative to tracked files only)
-    languages: dict = {}
+    languages = {}
     if lang_counter:
         grand_total = sum(lang_counter.values())
         languages = {
@@ -307,6 +302,22 @@ def get_workspace_stats():
     }
 
 
+@router.get("/api/workspace/stats")
+async def get_workspace_stats():
+    """Returns real workspace statistics: file counts, language breakdown, git commit count."""
+    root = workspace_state.root
+    is_dir = await asyncio.to_thread(os.path.isdir, root) if root else False
+    if not root or not is_dir:
+        return {
+            "total_files": 0,
+            "total_lines": 0,
+            "languages": {},
+            "git_commits": 0,
+        }
+
+    return await asyncio.to_thread(_get_stats_sync, root)
+
+
 class SSHHostRequest(BaseModel):
     name: str
     host: str
@@ -319,34 +330,37 @@ _SSH_HOSTS: list[dict] = []
 
 
 @router.get("/api/workspace/roots")
-def get_workspace_roots():
+async def get_workspace_roots():
     """Returns active multi-root workspace folders."""
     roots = [workspace_state.root] if workspace_state.root else []
     for r in _MULTI_ROOTS:
-        if r and r not in roots and os.path.isdir(r):
+        is_dir = await asyncio.to_thread(os.path.isdir, r)
+        if r and r not in roots and is_dir:
             roots.append(r)
     return {"roots": roots, "active_root": workspace_state.root}
 
 
 @router.post("/api/workspace/roots/add")
-def add_workspace_root(req: WorkspaceChangeRequest):
+async def add_workspace_root(req: WorkspaceChangeRequest):
     """Adds a secondary root folder to the multi-root workspace."""
     path = os.path.normpath(req.path or "")
-    if not os.path.isdir(path):
+    is_dir = await asyncio.to_thread(os.path.isdir, path)
+    if not is_dir:
         raise HTTPException(status_code=400, detail="Folder path does not exist")
     if path not in _MULTI_ROOTS:
         _MULTI_ROOTS.append(path)
-    return {"success": True, "roots": get_workspace_roots()["roots"]}
+    roots_info = await get_workspace_roots()
+    return {"success": True, "roots": roots_info["roots"]}
 
 
 @router.get("/api/workspace/ssh-hosts")
-def get_ssh_hosts():
+async def get_ssh_hosts():
     """Returns configured Remote SSH Host profiles."""
     return {"hosts": _SSH_HOSTS}
 
 
 @router.post("/api/workspace/ssh-hosts")
-def add_ssh_host(req: SSHHostRequest):
+async def add_ssh_host(req: SSHHostRequest):
     """Adds or tests a Remote SSH Host profile."""
     profile = {"name": req.name, "host": req.host, "username": req.username, "port": req.port}
     _SSH_HOSTS.append(profile)
@@ -360,7 +374,7 @@ async def get_health():
     from ..state import redis_client
 
     db_file = _Path.home() / ".devpilot" / "history.db"
-    db_connected = db_file.exists()
+    db_connected = await asyncio.to_thread(db_file.exists)
     uptime = round(time.time() - _SERVER_START_TIME, 1)
 
     redis_connected = False
@@ -376,5 +390,3 @@ async def get_health():
         "redis_connected": redis_connected,
         "uptime_seconds": uptime,
     }
-
-

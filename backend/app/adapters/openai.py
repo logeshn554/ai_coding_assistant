@@ -126,6 +126,7 @@ class OpenAIAdapter(ModelAdapter):
                     tc_name = tc["name"]
                     tc_args = tc["arguments"]
                     
+                    error_msg = None
                     try:
                         parsed_input = json.loads(tc_args)
                     except Exception:
@@ -133,14 +134,21 @@ class OpenAIAdapter(ModelAdapter):
                             parsed_input = json.loads(tc_args.strip())
                         except Exception:
                             parsed_input = {"raw_input": tc_args}
-                            
-                    yield {
+                            error_msg = (
+                                f"Error: model produced malformed JSON arguments for tool '{tc_name}': "
+                                f"{tc_args[:200]}. Tool was not executed."
+                            )
+
+                    chunk_dict = {
                         "type": "tool_call",
                         "id": tc_id,
                         "name": tc_name,
                         "input": parsed_input,
                         "thought_signature": tc.get("thought_signature")
                     }
+                    if error_msg:
+                        chunk_dict["error"] = error_msg
+                    yield chunk_dict
 
                 stop_reason = "tool_use" if tool_calls_accum else "stop"
                 yield {"type": "done", "stop_reason": stop_reason}
@@ -175,17 +183,25 @@ class OpenAIAdapter(ModelAdapter):
                                 tc_id = tc.id or f"call_{idx}"
                                 tc_name = tc.function.name
                                 tc_args = tc.function.arguments
+                                error_msg = None
                                 try:
                                     parsed_input = json.loads(tc_args)
                                 except Exception:
                                     parsed_input = {"raw_input": tc_args}
-                                yield {
+                                    error_msg = (
+                                        f"Error: model produced malformed JSON arguments for tool '{tc_name}': "
+                                        f"{tc_args[:200]}. Tool was not executed."
+                                    )
+                                chunk_dict = {
                                     "type": "tool_call",
                                     "id": tc_id,
                                     "name": tc_name,
                                     "input": parsed_input,
                                     "thought_signature": None
                                 }
+                                if error_msg:
+                                    chunk_dict["error"] = error_msg
+                                yield chunk_dict
                             yield {"type": "done", "stop_reason": "tool_use"}
                         else:
                             yield {"type": "done", "stop_reason": choice.finish_reason or "stop"}

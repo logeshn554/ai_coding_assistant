@@ -16,8 +16,20 @@ RISK_DESTRUCTIVE = "destructive"
 class PermissionManager:
     def __init__(self, config_manager, workspace_root: str):
         self.config_manager = config_manager
-        self.workspace_root = workspace_root
+        self._workspace_root = workspace_root
         self.session_permissions = set()  # set of command hashes approved for this session
+
+    @property
+    def workspace_root(self) -> str:
+        try:
+            from .state import workspace_state
+            return workspace_state.root
+        except Exception:
+            return self._workspace_root
+
+    @workspace_root.setter
+    def workspace_root(self, val: str) -> None:
+        self._workspace_root = val
 
     def _get_project_id(self) -> str:
         # Use workspace root path to uniquely identify the project

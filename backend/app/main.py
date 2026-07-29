@@ -41,6 +41,24 @@ app = FastAPI(
 # Register Global Error Middleware
 app.middleware("http")(global_error_middleware)
 
+from slowapi.middleware import SlowAPIMiddleware
+app.add_middleware(SlowAPIMiddleware)
+
+@app.middleware("http")
+async def session_middleware(request: Request, call_next):
+    session_id = (
+        request.headers.get("X-Session-ID")
+        or request.query_params.get("session_id")
+        or request.headers.get("x-session-id")
+    )
+    from .state import session_id_var
+    token = session_id_var.set(session_id)
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        session_id_var.reset(token)
+
 # Add limiter state and exception handler
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

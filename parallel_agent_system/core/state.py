@@ -1,5 +1,9 @@
 import operator
 from typing import Annotated, Any, Literal, TypedDict
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
 from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
 try:
@@ -62,4 +66,4 @@ class GraphState(TypedDict):
     # Capped at SystemConfig.max_refinement_cycles to prevent infinite loops.
     refinement_cycles: int
     # Session object passed from the main orchestrator for WebSocket I/O.
-    session: Any
+    session: NotRequired[Any]

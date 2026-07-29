@@ -163,6 +163,17 @@ async def _proxy_lsp(websocket: WebSocket, language: str):
         )
         logger.info(f"LSP [{language}] started: PID={process.pid}")
 
+        # Bug 16: Drain stderr in a background task to prevent pipe buffer deadlock
+        async def drain_stderr():
+            try:
+                while True:
+                    chunk = await process.stderr.read(4096)
+                    if not chunk:
+                        break
+            except Exception:
+                pass
+        stderr_task = asyncio.create_task(drain_stderr())
+
         # Buffer for partial LSP frames coming from server stdout
         header_buf = b""
         body_buf = b""
@@ -222,7 +233,7 @@ async def _proxy_lsp(websocket: WebSocket, language: str):
                 if msg_obj is None:
                     continue
 
-                encoded = raw if isinstance(raw, bytes) else raw.encode("utf-8")
+                encoded = json.dumps(msg_obj).encode("utf-8")
                 frame = (
                     f"Content-Length: {len(encoded)}\r\n"
                     f"Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n\r\n"

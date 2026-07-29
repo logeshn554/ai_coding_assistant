@@ -100,6 +100,10 @@ AVAILABLE_TOOLS = [
                 "command": {
                     "type": "string",
                     "description": "The shell command to execute."
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "description": "Optional timeout override in seconds (default 30, maximum 300)."
                 }
             },
             "required": ["command"]

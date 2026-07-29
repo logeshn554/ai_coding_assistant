@@ -54,21 +54,35 @@ class DockerWorkspace:
         self.cleaned = False
 
     async def cleanup(self) -> None:
-        """Cleans up host mounts and terminates execution containers.
-
-        WARNING: This is currently a stub. When the Docker runtime is fully
-        implemented, this method must:
-          1. Stop and remove the container (docker stop + docker rm or auto_remove).
-          2. Unmount or delete agent_workspace_path volumes.
-          3. Release the host_port reservation.
-
-        Until then, callers must NOT assume resources have been freed.
-        """
+        """Cleans up host mounts and terminates execution containers."""
+        import asyncio
+        import shutil
+        import os
         import logging as _logging
-        _logging.getLogger("parallel_agent_system.runtime").warning(
-            "DockerWorkspace.cleanup() called but container teardown is not yet implemented. "
-            "Container '%s' may still be running.", self.container_name
-        )
+        logger = _logging.getLogger("parallel_agent_system.runtime")
+
+        # 1. Stop and remove the Docker container
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker", "rm", "-f", self.container_name,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await proc.wait()
+            logger.info("Successfully stopped and removed container '%s'", self.container_name)
+        except Exception as e:
+            logger.warning("Failed to stop container '%s' using docker CLI: %s", self.container_name, e)
+
+        # 2. Unmount or delete agent_workspace_path volumes (e.g. /tmp/agent-*) (Bug 22)
+        for host_path, volume_info in self.volumes.items():
+            if volume_info.get("mode") == "rw":
+                try:
+                    if os.path.exists(host_path):
+                        await asyncio.to_thread(shutil.rmtree, host_path, ignore_errors=True)
+                        logger.info("Successfully cleaned up host path: %s", host_path)
+                except Exception as e:
+                    logger.warning("Failed to remove host path %s: %s", host_path, e)
+
         self.cleaned = True
 
 

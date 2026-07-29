@@ -8,8 +8,14 @@ from fastapi.testclient import TestClient
 # Ensure backend root is in sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.main import app
+from app.main import app, SESSION_TOKEN
 from app.routes.agents import get_custom_agents_file_path
+
+@pytest.fixture
+def auth_client():
+    client = TestClient(app)
+    client.headers.update({"Authorization": f"Bearer {SESSION_TOKEN}"})
+    return client
 
 @pytest.fixture(autouse=True)
 def clean_custom_agents_file():
@@ -32,9 +38,8 @@ def clean_custom_agents_file():
     if has_backup:
         backup_path.rename(file_path)
 
-def test_get_agents_initial():
-    client = TestClient(app)
-    res = client.get("/api/agents")
+def test_get_agents_initial(auth_client):
+    res = auth_client.get("/api/agents")
     assert res.status_code == 200
     agents = res.json()
     assert len(agents) > 0
@@ -44,9 +49,7 @@ def test_get_agents_initial():
     assert planner["tier"] == "Planning"
     assert "is_custom" not in planner or not planner["is_custom"]
 
-def test_create_and_get_custom_agent():
-    client = TestClient(app)
-    
+def test_create_and_get_custom_agent(auth_client):
     # Create new custom agent
     payload = {
         "name": "Security Expert Agent",
@@ -57,14 +60,14 @@ def test_create_and_get_custom_agent():
         "system_prompt": "You are a master security hacker.",
         "prompt_template": "Analyze: {task_description}"
     }
-    res = client.post("/api/agents", json=payload)
+    res = auth_client.post("/api/agents", json=payload)
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "ok"
     assert data["agent"]["name"] == "Security Expert Agent"
     
     # Get all agents, verify new one exists
-    res = client.get("/api/agents")
+    res = auth_client.get("/api/agents")
     assert res.status_code == 200
     agents = res.json()
     custom_agent = next((a for a in agents if a["name"] == "Security Expert Agent"), None)
@@ -72,11 +75,9 @@ def test_create_and_get_custom_agent():
     assert custom_agent["tier"] == "QA"
     assert custom_agent.get("is_custom") is True
 
-def test_prompt_endpoints():
-    client = TestClient(app)
-    
+def test_prompt_endpoints(auth_client):
     # Get all initial prompts
-    res = client.get("/api/agents/prompts")
+    res = auth_client.get("/api/agents/prompts")
     assert res.status_code == 200
     prompts = res.json()
     assert "Planner Agent" in prompts
@@ -84,12 +85,12 @@ def test_prompt_endpoints():
     
     # Update Planner Agent prompt (default agent override)
     new_prompt = "You are a new customized Planner."
-    res = client.post("/api/agents/prompts", json={"agent_name": "Planner Agent", "prompt": new_prompt})
+    res = auth_client.post("/api/agents/prompts", json={"agent_name": "Planner Agent", "prompt": new_prompt})
     assert res.status_code == 200
     assert res.json()["status"] == "ok"
     
     # Verify the update works and returns from GET
-    res = client.get("/api/agents/prompts")
+    res = auth_client.get("/api/agents/prompts")
     assert res.status_code == 200
     updated_prompts = res.json()
     assert updated_prompts["Planner Agent"] == new_prompt
@@ -101,16 +102,16 @@ def test_prompt_endpoints():
         "tier": "QA",
         "prompt_template": "Audit database: {task_description}"
     }
-    client.post("/api/agents", json=payload)
+    auth_client.post("/api/agents", json=payload)
     
     # Update custom agent prompt
     new_custom_prompt = "Optimized audit instructions: {task_description}"
-    res = client.post("/api/agents/prompts", json={"agent_name": "Audit Agent", "prompt": new_custom_prompt})
+    res = auth_client.post("/api/agents/prompts", json={"agent_name": "Audit Agent", "prompt": new_custom_prompt})
     assert res.status_code == 200
     assert res.json()["status"] == "ok"
     
     # Verify GET returns custom agent prompt
-    res = client.get("/api/agents/prompts")
+    res = auth_client.get("/api/agents/prompts")
     assert res.status_code == 200
     assert res.json()["Audit Agent"] == new_custom_prompt
 

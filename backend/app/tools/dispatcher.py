@@ -126,8 +126,14 @@ async def dispatch_tool(
                     return f"Action blocked: MCP tool '{name}' denied by mcp_tool_rules permission policy."
 
         mcp_meta = MCP_DISCOVERED_TOOLS.get(name, {})
-        server_name = mcp_meta.get("server_name", "MCP Server")
-        return f"[MCP Tool '{name}' executed on {server_name}] Arguments: {args}"
+        server_id = mcp_meta.get("server_id")
+        if not server_id:
+            return f"Error: MCP tool '{name}' has no registered server_id."
+        from ..mcp_client import global_mcp_manager
+        try:
+            return await global_mcp_manager.call_tool(server_id, name, args)
+        except Exception as e:
+            return f"Error executing MCP tool '{name}': {str(e)}"
 
     if name == "delegate_to_agent":
         agent_name = args.get("agent_name", "")

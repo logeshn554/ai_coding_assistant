@@ -121,34 +121,74 @@ class AnthropicAdapter(ModelAdapter):
                             "name": block.name,
                             "input_accumulator": ""
                         }
+                    elif block.type in ("thinking", "redacted_thinking"):
+                        # A6: track thinking blocks by index
+                        current_tool_calls[idx] = {
+                            "_thinking_type": block.type,
+                            "thinking_accumulator": "",
+                            "signature": getattr(block, "signature", None),
+                            "data": getattr(block, "data", None),
+                        }
                 elif chunk.type == "content_block_delta":
                     idx = chunk.index
                     delta = chunk.delta
                     if delta.type == "text_delta":
                         yield {"type": "text", "content": delta.text}
                     elif delta.type == "input_json_delta":
-                        if idx in current_tool_calls:
+                        if idx in current_tool_calls and "input_accumulator" in current_tool_calls[idx]:
                             current_tool_calls[idx]["input_accumulator"] += delta.partial_json
+                    elif delta.type == "thinking_delta":
+                        # A6: accumulate thinking text
+                        if idx in current_tool_calls and "thinking_accumulator" in current_tool_calls[idx]:
+                            current_tool_calls[idx]["thinking_accumulator"] += getattr(delta, "thinking", "")
+                    elif delta.type == "signature_delta":
+                        # A6: capture final signature
+                        if idx in current_tool_calls and "signature" in current_tool_calls[idx]:
+                            current_tool_calls[idx]["signature"] = getattr(delta, "signature", None)
                 elif chunk.type == "content_block_stop":
                     idx = chunk.index
                     if idx in current_tool_calls:
                         tc = current_tool_calls[idx]
-                        try:
-                            parsed_input = json.loads(tc["input_accumulator"])
-                        except Exception:
+                        # A6: emit completed thinking blocks
+                        if "_thinking_type" in tc:
+                            if tc["_thinking_type"] == "thinking":
+                                yield {
+                                    "type": "thinking",
+                                    "thinking": tc["thinking_accumulator"],
+                                    "signature": tc["signature"],
+                                }
+                            else:  # redacted_thinking
+                                yield {
+                                    "type": "redacted_thinking",
+                                    "data": tc["data"],
+                                }
+                            del current_tool_calls[idx]
+                        else:
+                            # Regular tool call — parse JSON (A7)
+                            raw_json = tc["input_accumulator"]
+                            error_msg = None
                             try:
-                                cleaned = tc["input_accumulator"].strip()
-                                parsed_input = json.loads(cleaned)
+                                parsed_input = json.loads(raw_json)
                             except Exception:
-                                parsed_input = {"raw_input": tc["input_accumulator"]}
-                        
-                        yield {
-                            "type": "tool_call",
-                            "id": tc["id"],
-                            "name": tc["name"],
-                            "input": parsed_input
-                        }
-                        del current_tool_calls[idx]
+                                try:
+                                    parsed_input = json.loads(raw_json.strip())
+                                except Exception:
+                                    parsed_input = {"raw_input": raw_json}
+                                    error_msg = (
+                                        f"Error: model produced malformed JSON arguments for tool '{tc['name']}': "
+                                        f"{raw_json[:200]}. Tool was not executed."
+                                    )
+
+                            chunk_dict = {
+                                "type": "tool_call",
+                                "id": tc["id"],
+                                "name": tc["name"],
+                                "input": parsed_input
+                            }
+                            if error_msg:
+                                chunk_dict["error"] = error_msg
+                            yield chunk_dict
+                            del current_tool_calls[idx]
                 elif chunk.type == "message_delta":
                     stop_reason = getattr(chunk.delta, "stop_reason", None)
                     if stop_reason == "tool_use":
@@ -197,11 +237,24 @@ class AnthropicAdapter(ModelAdapter):
                 if current_user_blocks:
                     anthropic_msgs.append({"role": "user", "content": current_user_blocks})
                     current_user_blocks = []
-                
+
                 content_blocks: List[Dict[str, Any]] = []
+
+                # A6: emit stored thinking blocks FIRST so Anthropic sees them in order.
+                # thinking_blocks is a list of {type: "thinking"|"redacted_thinking", ...}
+                for tb in msg.get("thinking_blocks") or []:
+                    tb_type = tb.get("type")
+                    if tb_type == "thinking":
+                        block = {"type": "thinking", "thinking": tb.get("thinking", "")}
+                        if tb.get("signature"):
+                            block["signature"] = tb["signature"]
+                        content_blocks.append(block)
+                    elif tb_type == "redacted_thinking":
+                        content_blocks.append({"type": "redacted_thinking", "data": tb.get("data", "")})
+
                 if msg.get("content"):
                     content_blocks.append({"type": "text", "text": msg["content"]})
-                
+
                 if msg.get("tool_calls"):
                     for tc in msg["tool_calls"]:
                         content_blocks.append({
@@ -210,7 +263,7 @@ class AnthropicAdapter(ModelAdapter):
                             "name": tc["name"],
                             "input": tc["input"]
                         })
-                
+
                 if content_blocks:
                     anthropic_msgs.append({"role": "assistant", "content": content_blocks})
 

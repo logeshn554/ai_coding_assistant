@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from ..state import workspace_state
@@ -13,13 +14,9 @@ class PackageInstallRequest(BaseModel):
 class PackageUninstallRequest(BaseModel):
     name: str
 
-@router.get("/api/packages/list")
-def list_packages():
-    if not workspace_state.root:
-        return {"manager": "npm", "dependencies": []}
-    
+def _list_packages_sync(workspace_root: str) -> dict:
     # Check node packages
-    pkg_json_path = os.path.join(workspace_state.root, "package.json")
+    pkg_json_path = os.path.join(workspace_root, "package.json")
     if os.path.exists(pkg_json_path):
         try:
             with open(pkg_json_path, "r", encoding="utf-8") as f:
@@ -34,7 +31,7 @@ def list_packages():
             pass
 
     # Check python packages
-    req_txt_path = os.path.join(workspace_state.root, "requirements.txt")
+    req_txt_path = os.path.join(workspace_root, "requirements.txt")
     if os.path.exists(req_txt_path):
         try:
             deps = []
@@ -52,16 +49,25 @@ def list_packages():
             
     return {"manager": "npm", "dependencies": []}
 
+@router.get("/api/packages/list")
+async def list_packages():
+    if not workspace_state.root:
+        return {"manager": "npm", "dependencies": []}
+    
+    # Run blocking file reads in background thread
+    return await asyncio.to_thread(_list_packages_sync, workspace_state.root)
+
 @router.post("/api/packages/install")
 async def install_package(req: PackageInstallRequest):
     if not workspace_state.root:
         raise HTTPException(status_code=400, detail="No workspace open.")
     try:
         pkg_json_path = os.path.join(workspace_state.root, "package.json")
-        if os.path.exists(pkg_json_path):
-            cmd = f"npm install {req.name}"
+        pkg_json_exists = await asyncio.to_thread(os.path.exists, pkg_json_path)
+        if pkg_json_exists:
+            cmd = ["npm", "install", req.name]
         else:
-            cmd = f"pip install {req.name}"
+            cmd = ["pip", "install", req.name]
         out = await run_cmd_async(cmd, workspace_state.root)
         return {"success": True, "output": out}
     except Exception as e:
@@ -73,10 +79,11 @@ async def uninstall_package(req: PackageUninstallRequest):
         raise HTTPException(status_code=400, detail="No workspace open.")
     try:
         pkg_json_path = os.path.join(workspace_state.root, "package.json")
-        if os.path.exists(pkg_json_path):
-            cmd = f"npm uninstall {req.name}"
+        pkg_json_exists = await asyncio.to_thread(os.path.exists, pkg_json_path)
+        if pkg_json_exists:
+            cmd = ["npm", "uninstall", req.name]
         else:
-            cmd = f"pip uninstall -y {req.name}"
+            cmd = ["pip", "uninstall", "-y", req.name]
         out = await run_cmd_async(cmd, workspace_state.root)
         return {"success": True, "output": out}
     except Exception as e:

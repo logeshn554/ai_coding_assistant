@@ -88,11 +88,17 @@ class DevPilotFileKeyring(KeyringBackend):
         self.key_filepath.parent.mkdir(parents=True, exist_ok=True)
         if not self.key_filepath.exists():
             key = Fernet.generate_key()
-            self.key_filepath.write_bytes(key)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
             try:
-                os.chmod(self.key_filepath, 0o600)
+                fd = os.open(self.key_filepath, flags, 0o600)
+                with os.fdopen(fd, "wb") as f:
+                    f.write(key)
             except Exception:
-                pass
+                self.key_filepath.write_bytes(key)
+                try:
+                    os.chmod(self.key_filepath, 0o600)
+                except Exception:
+                    pass
         else:
             key = self.key_filepath.read_bytes()
         return Fernet(key)
@@ -123,11 +129,17 @@ class DevPilotFileKeyring(KeyringBackend):
             fernet = self._get_fernet()
             payload = json.dumps(data, indent=4).encode("utf-8")
             encrypted = fernet.encrypt(payload)
-            self.filepath.write_bytes(encrypted)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
             try:
-                os.chmod(self.filepath, 0o600)
+                fd = os.open(self.filepath, flags, 0o600)
+                with os.fdopen(fd, "wb") as f:
+                    f.write(encrypted)
             except Exception:
-                pass
+                self.filepath.write_bytes(encrypted)
+                try:
+                    os.chmod(self.filepath, 0o600)
+                except Exception:
+                    pass
         except Exception:
             pass
 

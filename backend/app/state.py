@@ -80,6 +80,7 @@ class InMemoryFallbackRedis:
         import time as _time
         self.use_fallback = True
         self._last_failure_time = _time.monotonic()
+        self.client = None  # Reset client connection pool
         logger.warning(
             "Redis is offline or not configured during %s (%s). "
             "Using in-memory fallback for session context storage.",
@@ -95,13 +96,16 @@ class InMemoryFallbackRedis:
 
     async def _probe_redis(self) -> bool:
         """Ping Redis to check if it has come back online."""
+        import time as _time
         try:
+            self.client = None  # Ensure a fresh connection pool is created
             client = await self._ensure_client()
             await client.ping()
             self.use_fallback = False
             return True
         except Exception as exc:
             logger.debug("Redis probe failed: %s", exc)
+            self._last_failure_time = _time.monotonic()  # Reset cooldown
             return False
 
     async def _maybe_recover(self) -> bool:
@@ -293,9 +297,27 @@ config_manager = ConfigManager()
 # Default to the environment variable, persistent last workspace, or empty string
 INITIAL_WORKSPACE_ROOT = os.environ.get("INITIAL_WORKSPACE_ROOT") or config_manager.get_last_workspace() or ""
 
+import contextvars
+session_id_var = contextvars.ContextVar("session_id", default=None)
+
 class WorkspaceState:
     def __init__(self, initial_root: str):
-        self.root = initial_root
+        self._default_root = initial_root
+        self._session_roots = {}
+
+    @property
+    def root(self) -> str:
+        sid = session_id_var.get()
+        if sid and sid in self._session_roots:
+            return self._session_roots[sid]
+        return self._default_root
+
+    @root.setter
+    def root(self, val: str) -> None:
+        sid = session_id_var.get()
+        if sid:
+            self._session_roots[sid] = val
+        self._default_root = val
 
 workspace_state = WorkspaceState(INITIAL_WORKSPACE_ROOT)
 
@@ -316,24 +338,15 @@ async def verify_token(request: Request = None):
     if path == "/" or path.startswith("/assets/") or path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico", ".ttf", ".woff", ".woff2", ".html")) or path in ("/auth/token", "/api/auth/token", "/docs", "/openapi.json", "/redoc"):
         return
 
-    # Extract token from Bearer header or query param
+    # Extract token from Bearer header, X-Session-Token header, or query param
     auth_header = request.headers.get("Authorization", "")
     token = ""
     if auth_header.startswith("Bearer "):
         token = auth_header[len("Bearer "):].strip()
     if not token:
+        token = request.headers.get("X-Session-Token") or request.headers.get("x-session-token") or ""
+    if not token:
         token = request.query_params.get("token", "")
-
-    # Allow local requests (127.0.0.1 / localhost) when no token is provided
-    client_host = request.client.host if request.client else None
-    is_local = (
-        client_host is None
-        or client_host in ("127.0.0.1", "localhost", "::1", "testclient")
-        or client_host.startswith("127.0.0.")
-        or client_host.startswith("::ffff:127.0.0.")
-    )
-    if is_local and not token:
-        return
 
     # Constant-time compare to prevent timing attacks
     if not token or not secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):

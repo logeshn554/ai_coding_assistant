@@ -39,4 +39,5 @@ async def test_open_with_live_server_tool(tmp_path):
 
     res = await dispatch_tool(session, "tc-4", "live_server", {"path": "index.html"}, auto_apply=True)
     assert "Live Server Started" in res
-    assert "http://localhost:5500/index.html" in res
+    import re
+    assert re.search(r"http://localhost:\d+/index.html", res) is not None

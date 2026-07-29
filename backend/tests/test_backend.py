@@ -21,7 +21,12 @@ def test_path_traversal():
 def test_api_authentication():
     client = TestClient(app)
     
+    # Without token, must be 401 Unauthorized
     res = client.get("/api/workspace")
+    assert res.status_code == 401
+
+    # With valid token, must succeed
+    res = client.get("/api/workspace", headers={"Authorization": f"Bearer {SESSION_TOKEN}"})
     assert res.status_code == 200
 
 def test_auth_token():

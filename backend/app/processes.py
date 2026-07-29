@@ -179,13 +179,17 @@ class ActiveProcess:
             try:
                 if sys.platform == "win32":
                     # Taskkill tree of processes
-                    subprocess.call(f"taskkill /F /T /PID {self.process.pid}", shell=True)
+                    subprocess.call(f"taskkill /F /T /PID {self.process.pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 else:
                     self.process.terminate()
-                    await asyncio.wait_for(self.process.wait(), timeout=1.0)
+            except Exception:
+                pass
+            try:
+                await asyncio.wait_for(self.process.wait(), timeout=2.0)
             except Exception:
                 try:
                     self.process.kill()
+                    await asyncio.wait_for(self.process.wait(), timeout=1.0)
                 except Exception:
                     pass
             self.process = None

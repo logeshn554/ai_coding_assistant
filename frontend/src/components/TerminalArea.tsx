@@ -29,6 +29,7 @@ interface TerminalPaneProps {
   shell?: string;
   fontSize?: number;
   scrollback?: number;
+  isAgent?: boolean;
 }
 
 function TerminalPane({
@@ -42,6 +43,7 @@ function TerminalPane({
   shell,
   fontSize = 13,
   scrollback = 5000,
+  isAgent = false,
 }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -51,6 +53,10 @@ function TerminalPane({
   const [shellName, setShellName] = useState('Terminal');
 
   useEffect(() => {
+    if (isAgent) {
+      setShellName('DevPilot Agent');
+      return;
+    }
     if (shell) {
       const name = shell === 'cmd' ? 'CMD' : shell.charAt(0).toUpperCase() + shell.slice(1);
       setShellName(`Terminal (${name})`);
@@ -64,7 +70,7 @@ function TerminalPane({
         })
         .catch(() => {});
     }
-  }, [shell]);
+  }, [shell, isAgent]);
 
   useEffect(() => {
     if (!terminalRef.current || !containerRef.current) return;
@@ -97,37 +103,62 @@ function TerminalPane({
     term.open(terminalRef.current);
     fitAddon.fit();
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = localStorage.getItem('session_token') || '';
-    const wsUrl = `${protocol}//${window.location.host}/ws/terminal?token=${token}${shell ? `&shell=${encodeURIComponent(shell)}` : ''}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    let ws: WebSocket | null = null;
+    let disposable: any = null;
 
-    // Helper to send a resize control message
-    const sendResize = () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'resize',
-          cols: term.cols,
-          rows: term.rows,
-        }));
-      }
-    };
+    if (!isAgent) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const token = localStorage.getItem('session_token') || '';
+      const wsUrl = `${protocol}//${window.location.host}/ws/terminal?token=${token}${shell ? `&shell=${encodeURIComponent(shell)}` : ''}`;
+      const socket = new WebSocket(wsUrl);
+      ws = socket;
+      wsRef.current = socket;
 
-    ws.onopen = () => {
-      if (guard.cancelled) {
-        // Cleanup already ran — close the socket immediately without writing to terminal
-        try { ws.close(); } catch {}
-        return;
-      }
-      // Send initial terminal dimensions so the PTY is created at the right size
-      sendResize();
+      // Helper to send a resize control message
+      const sendResize = () => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({
+            type: 'resize',
+            cols: term.cols,
+            rows: term.rows,
+          }));
+        }
+      };
 
-      if (pendingCommandRef.current) {
-        ws.send(pendingCommandRef.current + '\r');
-        pendingCommandRef.current = null;
-      }
-    };
+      socket.onopen = () => {
+        if (guard.cancelled) {
+          try { socket.close(); } catch {}
+          return;
+        }
+        sendResize();
+
+        if (pendingCommandRef.current) {
+          socket.send(pendingCommandRef.current + '\r');
+          pendingCommandRef.current = null;
+        }
+      };
+
+      socket.onmessage = (event) => {
+        term.write(event.data);
+        checkOutputForLocalhost(String(event.data || ''));
+      };
+
+      socket.onclose = () => {
+        term.write('\r\n\x1b[90mTerminal session ended.\x1b[0m\r\n');
+      };
+
+      socket.onerror = () => {
+        term.write('\r\n\x1b[31mTerminal connection error.\x1b[0m\r\n');
+      };
+
+      disposable = term.onData((data) => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(data);
+        }
+      });
+    } else {
+      term.write('\x1b[35m[DevPilot Agent Terminal Ready]\x1b[0m\r\n');
+    }
 
     const checkOutputForLocalhost = (text: string) => {
       if (!text) return;
@@ -146,29 +177,9 @@ function TerminalPane({
       }
     };
 
-    ws.onmessage = (event) => {
-      term.write(event.data);
-      checkOutputForLocalhost(String(event.data || ''));
-    };
-
-    ws.onclose = () => {
-      term.write('\r\n\x1b[90mTerminal session ended.\x1b[0m\r\n');
-    };
-
-    ws.onerror = () => {
-      term.write('\r\n\x1b[31mTerminal connection error.\x1b[0m\r\n');
-    };
-
-    // Forward all user input to the PTY via WebSocket
-    const disposable = term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
-      }
-    });
-
     // Send resize events when xterm's dimensions change (from fitAddon)
     const resizeDisposable = term.onResize(({ cols, rows }) => {
-      if (ws.readyState === WebSocket.OPEN) {
+      if (!isAgent && ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'resize', cols, rows }));
       }
     });
@@ -188,7 +199,7 @@ function TerminalPane({
 
     const handleAgentStream = (e: Event) => {
       const customEvent = e as CustomEvent;
-      if (customEvent.detail) {
+      if (customEvent.detail && isAgent) {
         term.write(customEvent.detail.replace(/\r?\n/g, '\r\n'));
         checkOutputForLocalhost(String(customEvent.detail || ''));
       }
@@ -198,22 +209,21 @@ function TerminalPane({
     return () => {
       guard.cancelled = true;
       clearTimeout(timer);
-      disposable.dispose();
+      if (disposable) disposable.dispose();
       resizeDisposable.dispose();
       window.removeEventListener('devpilot_terminal_stream', handleAgentStream);
       term.dispose();
       resizeObserver.disconnect();
-      // Clear all handlers so no callbacks fire after unmount
-      ws.onmessage = null;
-      ws.onerror = null;
-      ws.onclose = null;
-      // onopen checks guard.cancelled — don't reassign it here
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
+      if (ws) {
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close();
+        }
       }
-      // If CONNECTING, onopen will see guard.cancelled === true and close itself
     };
-  }, [workspacePath]);
+  }, [workspacePath, isAgent]);
 
   // Handle command triggers from parent history
   useEffect(() => {
@@ -316,7 +326,7 @@ export default function TerminalArea({
   const [scrollback, setScrollback] = useState(5000);
 
   // Split terminals management — default shell starts empty until settings load
-  const [splitTerminals, setSplitTerminals] = useState<{ id: number; shell: string; name?: string }[]>([
+  const [splitTerminals, setSplitTerminals] = useState<{ id: number; shell: string; name?: string; isAgent?: boolean }[]>([
     { id: 0, shell: '', name: 'Terminal 1' }
   ]);
   const [selectedShell, setSelectedShell] = useState<string>('');
@@ -437,6 +447,30 @@ export default function TerminalArea({
     window.addEventListener('devpilot-run-terminal-command', handleRunCommandEvent);
     return () => window.removeEventListener('devpilot-run-terminal-command', handleRunCommandEvent);
   }, [activePaneId, nextId, selectedShell, splitTerminals.length]);
+
+  useEffect(() => {
+    if (activeTerminalStatus === 'running') {
+      setSplitTerminals(prev => {
+        const hasAgentTerm = prev.some(t => t.isAgent);
+        if (!hasAgentTerm) {
+          const newId = nextId;
+          setTimeout(() => {
+            setActivePaneId(newId);
+          }, 0);
+          setNextId(prevId => prevId + 1);
+          return [...prev, { id: newId, shell: selectedShell, name: 'DevPilot Agent', isAgent: true }];
+        } else {
+          const agentTerm = prev.find(t => t.isAgent);
+          if (agentTerm) {
+            setTimeout(() => {
+              setActivePaneId(agentTerm.id);
+            }, 0);
+          }
+          return prev;
+        }
+      });
+    }
+  }, [activeTerminalStatus, selectedShell, nextId]);
 
   const visiblePanes = viewMode === 'split' 
     ? splitTerminals 
@@ -583,6 +617,7 @@ export default function TerminalArea({
             shell={pane.shell}
             fontSize={fontSize}
             scrollback={scrollback}
+            isAgent={pane.isAgent}
           />
         ))}
       </div>

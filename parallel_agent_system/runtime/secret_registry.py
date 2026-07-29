@@ -14,3 +14,8 @@ class SecretRegistry:
     def register(cls, key: str, value: str) -> None:
         """Registers a secret value dynamically."""
         cls._secrets[key] = value
+
+    @classmethod
+    def set(cls, key: str, value: str) -> None:
+        """Sets a secret value dynamically (alias for register)."""
+        cls.register(key, value)

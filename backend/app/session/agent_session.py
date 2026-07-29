@@ -66,6 +66,8 @@ class AgentSession:
         # Optional editor context used to select relevant skills.md sections.
         self.open_languages: list[str] = []
         self.open_files: list[str] = []
+        # A8: Count turns wasted on timeouts, cancellations, and edit mismatches.
+        self.wasted_turns: int = 0
 
         # Request queue: new messages are enqueued while the agent is busy.
         # Each item is a tuple of (text, mode, auto_apply).
@@ -593,8 +595,9 @@ class AgentSession:
             system_prompt = self._get_system_prompt(mode)
             tools = self._get_tools_for_mode(mode)
 
+            effective_max_turns = 10000 if mode in ("Agent", "Goal") else self.max_turns
             turn = 0
-            while turn < self.max_turns:
+            while turn < effective_max_turns:
                 turn += 1
 
                 # Send mode-aware status update
@@ -603,7 +606,7 @@ class AgentSession:
                     if mode == "Ask"
                     else f"Planning (turn {turn})..."
                     if mode == "Plan"
-                    else f"Agent turn {turn}/{self.max_turns}..."
+                    else f"Agent turn {turn}..."
                 )
                 await self.send_ws_message({
                     "type": "status",
@@ -614,6 +617,7 @@ class AgentSession:
 
                 response_text = ""
                 tool_calls_to_run = []
+                thinking_blocks_current_turn: list = []  # A6: accumulate per-turn thinking blocks
 
                 # 1. Stream the model's text response and collect tool calls
                 try:
@@ -630,6 +634,27 @@ class AgentSession:
                             })
                         elif chunk["type"] == "tool_call":
                             tool_calls_to_run.append(chunk)
+                        elif chunk["type"] == "thinking":
+                            # A6: capture thinking block for re-emission next turn
+                            thinking_blocks_current_turn.append({
+                                "type": "thinking",
+                                "thinking": chunk.get("thinking", ""),
+                                "signature": chunk.get("signature"),
+                            })
+                        elif chunk["type"] == "redacted_thinking":
+                            # A6: capture redacted_thinking block
+                            thinking_blocks_current_turn.append({
+                                "type": "redacted_thinking",
+                                "data": chunk.get("data", ""),
+                            })
+                        elif chunk["type"] == "tool_call_error":
+                            # A7: model produced malformed JSON — surface as a tool result error
+                            err_msg = chunk.get("error", "Unknown tool call error")
+                            logger.warning(f"A7 tool_call_error: {err_msg}")
+                            await self.send_ws_message({
+                                "type": "text_delta",
+                                "content": f"\n\n⚠️ {err_msg}\n"
+                            })
                         elif chunk["type"] == "done":
                             stop_reason = chunk["stop_reason"]
                 except Exception as e:
@@ -677,6 +702,10 @@ class AgentSession:
                     "role": "assistant",
                     "content": response_text
                 }
+                # A6: store thinking blocks so _to_anthropic_messages re-emits them next turn
+                if thinking_blocks_current_turn:
+                    assistant_msg["thinking_blocks"] = thinking_blocks_current_turn
+
                 if tool_calls_to_run:
                     assistant_msg["tool_calls"] = [
                         {
@@ -719,6 +748,15 @@ class AgentSession:
                     batches.append((current_batch, is_parallel_batch))
 
                 for batch, is_parallel in batches:
+                    _wasted_signals = (
+                        "timed out", "timeout",
+                        "Action cancelled", "cancelled",
+                        "Target block not found", "Edit failed",
+                        "near-match was detected",
+                        "differs starting at line",
+                        "malformed JSON arguments",
+                    )
+
                     if is_parallel:
                         # Run consecutive delegate_to_agent calls in parallel
                         async def run_single_tool(tc):
@@ -733,12 +771,20 @@ class AgentSession:
                                 "tool_call": {"id": tc_id, "name": tc_name, "args": tc_args}
                             })
 
-                            try:
-                                result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
-                                status = "success"
-                            except Exception as e:
-                                result = f"Error executing tool '{tc_name}': {str(e)}"
+                            if tc.get("error"):
+                                result = tc["error"]
                                 status = "error"
+                            else:
+                                try:
+                                    result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
+                                    status = "success"
+                                except Exception as e:
+                                    result = f"Error executing tool '{tc_name}': {str(e)}"
+                                    status = "error"
+
+                            if any(sig.lower() in result.lower() for sig in _wasted_signals):
+                                if hasattr(self, "wasted_turns"):
+                                    self.wasted_turns += 1
 
                             # Send result back to frontend for chat display
                             await self.send_ws_message({
@@ -772,12 +818,16 @@ class AgentSession:
                                 "tool_call": {"id": tc_id, "name": tc_name, "args": tc_args}
                             })
 
-                            try:
-                                result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
-                                status = "success"
-                            except Exception as e:
-                                result = f"Error executing tool '{tc_name}': {str(e)}"
+                            if tc.get("error"):
+                                result = tc["error"]
                                 status = "error"
+                            else:
+                                try:
+                                    result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
+                                    status = "success"
+                                except Exception as e:
+                                    result = f"Error executing tool '{tc_name}': {str(e)}"
+                                    status = "error"
 
                             tool_results.append({
                                 "role": "tool",
@@ -785,6 +835,11 @@ class AgentSession:
                                 "name": tc_name,
                                 "content": result
                             })
+
+                            # A8: count wasted turns for diagnostics
+                            if any(sig.lower() in result.lower() for sig in _wasted_signals):
+                                if hasattr(self, "wasted_turns"):
+                                    self.wasted_turns += 1
 
                             # Send result back to frontend for chat display
                             await self.send_ws_message({
@@ -814,13 +869,15 @@ class AgentSession:
 
             await self.send_ws_message({
                 "type": "session_done",
-                "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
+                "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
+                "wasted_turns": getattr(self, "wasted_turns", 0),
             })
 
         except asyncio.CancelledError:
             await self.send_ws_message({
                 "type": "session_done",
-                "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
+                "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
+                "wasted_turns": getattr(self, "wasted_turns", 0),
             })
             raise
         except Exception as e:
@@ -831,7 +888,8 @@ class AgentSession:
             })
             await self.send_ws_message({
                 "type": "session_done",
-                "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
+                "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
+                "wasted_turns": getattr(self, "wasted_turns", 0),
             })
         finally:
             self.is_running = False
