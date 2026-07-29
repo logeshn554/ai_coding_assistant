@@ -8,7 +8,7 @@ interface AiWorkspaceProps {
   messages: ChatMessage[];
   inputText: string;
   setInputText: (text: string) => void;
-  onSendMessage: (attachedFiles?: string[]) => void;
+  onSendMessage: (attachedFiles?: string[], autoApply?: boolean) => void;
   isGenerating: boolean;
   onCancelGeneration: () => void;
   mode: ChatMode;
@@ -85,7 +85,7 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
             <AiCommandBar
               inputText={inputText}
               setInputText={setInputText}
-              onSend={(attachedFiles) => onSendMessage(attachedFiles)}
+              onSend={(attachedFiles, autoApply) => onSendMessage(attachedFiles, autoApply)}
               isGenerating={isGenerating}
               onCancel={onCancelGeneration}
               mode={mode}

@@ -121,9 +121,9 @@ function EditorShell() {
   } = useAI();
 
   // Handle sending message with clear input logic
-  const handleSend = useCallback((attachedFiles?: string[]) => {
+  const handleSend = useCallback((attachedFiles?: string[], autoApply?: boolean) => {
     if ((!chatInputText.trim() && (!attachedFiles || attachedFiles.length === 0)) || isGenerating) return;
-    handleSendMessage(chatInputText, chatMode, false, attachedFiles);
+    handleSendMessage(chatInputText, chatMode, typeof autoApply === 'boolean' ? autoApply : false, attachedFiles);
     setChatInputText('');
   }, [chatInputText, isGenerating, handleSendMessage, chatMode]);
 

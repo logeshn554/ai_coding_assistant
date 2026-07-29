@@ -40,7 +40,7 @@ export interface AttachmentItem {
 interface AiCommandBarProps {
   inputText: string;
   setInputText: (text: string) => void;
-  onSend: (attachedFiles?: string[]) => void;
+  onSend: (attachedFiles?: string[], autoApply?: boolean) => void;
   isGenerating: boolean;
   onCancel: () => void;
   mode: ChatMode;
@@ -50,6 +50,7 @@ interface AiCommandBarProps {
 export const AiCommandBar: React.FC<AiCommandBarProps> = ({
   inputText, setInputText, onSend, isGenerating, onCancel, mode
 }) => {
+  const [autoApply, setAutoApply] = useState(true);
   const [showSlashMenu, setShowSlashMenu]     = useState(false);
   const [showMentionMenu, setShowMentionMenu] = useState(false);
   const [selectedIndex, setSelectedIndex]     = useState(0);
@@ -216,7 +217,7 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
 
   const handleTriggerSend = () => {
     const attachedPaths = attachments.map(a => a.path);
-    onSend(attachedPaths.length > 0 ? attachedPaths : undefined);
+    onSend(attachedPaths.length > 0 ? attachedPaths : undefined, autoApply);
     setAttachments([]);
   };
 
@@ -425,29 +426,42 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
             </button>
           </div>
 
-          {/* Right: Send / Stop */}
-          {isGenerating ? (
-            <button
-              onClick={onCancel}
-              className="w-8 h-8 flex items-center justify-center rounded-xl bg-[var(--dp-error)]/15 border border-[var(--dp-error)]/30 text-[var(--dp-error)] hover:bg-[var(--dp-error)]/25 transition-all cursor-pointer"
-              title="Stop generation"
-            >
-              <Square className="w-3.5 h-3.5 fill-current" />
-            </button>
-          ) : (
-            <button
-              onClick={handleTriggerSend}
-              disabled={!inputText.trim() && attachments.length === 0}
-              className="w-8 h-8 flex items-center justify-center rounded-xl disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all hover:scale-105 active:scale-95"
-              style={{
-                background: 'linear-gradient(135deg, #7c6af0 0%, #4f8df5 100%)',
-                boxShadow: (inputText.trim() || attachments.length > 0) ? '0 4px 12px rgba(124,106,240,0.4)' : 'none',
-              }}
-              title="Send (Enter)"
-            >
-              <Send className="w-3.5 h-3.5 text-white" />
-            </button>
-          )}
+          {/* Right: Auto Apply & Send / Stop */}
+          <div className="flex items-center gap-2.5">
+            {(mode === 'Agent' || mode === 'Goal') && (
+              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--dp-text-muted)] hover:text-white cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoApply}
+                  onChange={(e) => setAutoApply(e.target.checked)}
+                  className="rounded border-white/10 bg-black/20 text-violet-600 focus:ring-violet-500 focus:ring-offset-0 w-3.5 h-3.5 cursor-pointer"
+                />
+                <span>Auto Apply</span>
+              </label>
+            )}
+            {isGenerating ? (
+              <button
+                onClick={onCancel}
+                className="w-8 h-8 flex items-center justify-center rounded-xl bg-[var(--dp-error)]/15 border border-[var(--dp-error)]/30 text-[var(--dp-error)] hover:bg-[var(--dp-error)]/25 transition-all cursor-pointer"
+                title="Stop generation"
+              >
+                <Square className="w-3.5 h-3.5 fill-current" />
+              </button>
+            ) : (
+              <button
+                onClick={handleTriggerSend}
+                disabled={!inputText.trim() && attachments.length === 0}
+                className="w-8 h-8 flex items-center justify-center rounded-xl disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all hover:scale-105 active:scale-95"
+                style={{
+                  background: 'linear-gradient(135deg, #7c6af0 0%, #4f8df5 100%)',
+                  boxShadow: (inputText.trim() || attachments.length > 0) ? '0 4px 12px rgba(124,106,240,0.4)' : 'none',
+                }}
+                title="Send (Enter)"
+              >
+                <Send className="w-3.5 h-3.5 text-white" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

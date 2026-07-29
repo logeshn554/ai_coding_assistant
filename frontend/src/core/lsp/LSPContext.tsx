@@ -81,6 +81,21 @@ export function LSPProvider({ children }: { children: React.ReactNode }) {
 
       try {
         // Dynamic import to keep the main bundle slim — only loaded when LSP is first needed
+        const { MonacoVscodeApiWrapper } = await import('monaco-languageclient/vscodeApiWrapper');
+        await import('vscode/localExtensionHost');
+
+        // Initialize VSCode API services if not already done
+        const envEnhanced = (window as any).MonacoEnvironment;
+        if (!envEnhanced || !envEnhanced.vscodeApiInitialised) {
+          const wrapper = new MonacoVscodeApiWrapper({
+            $type: 'classic',
+            viewsConfig: {
+              $type: 'EditorService'
+            }
+          });
+          await wrapper.start({ caller: 'LSPContext' });
+        }
+
         const { MonacoLanguageClient } = await import('monaco-languageclient');
         const { CloseAction, ErrorAction } = await import('vscode-languageclient/browser.js');
 
@@ -94,8 +109,7 @@ export function LSPProvider({ children }: { children: React.ReactNode }) {
         const webSocket = new WebSocket(wsUrl);
 
         webSocket.onopen = async () => {
-          // First message might be an error JSON from the backend
-          webSocket.onmessage = (msg) => {
+          const checkInitialError = (msg: MessageEvent) => {
             try {
               const data = JSON.parse(msg.data);
               if (data.error) {
@@ -107,9 +121,9 @@ export function LSPProvider({ children }: { children: React.ReactNode }) {
             } catch {
               // Normal LSP JSON-RPC frame — proceed
             }
-            // Remove this one-time check handler; the client will take over
-            webSocket.onmessage = null;
+            webSocket.removeEventListener("message", checkInitialError);
           };
+          webSocket.addEventListener("message", checkInitialError);
 
           const socket = toSocket(webSocket);
           const reader = new WebSocketMessageReader(socket);
