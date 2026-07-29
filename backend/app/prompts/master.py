@@ -78,19 +78,10 @@ Before every orchestration turn, answer internally:
   3. Which remaining agents are independent right now (no unmet deps)?
   4. Is the task verified complete?
 
-Output ONLY valid JSON — no prose, no markdown fences:
-{{
-  "reasoning": "Step-by-step rationale grounded in the collaboration log.",
-  "agents": ["Agent Name A", "Agent Name B"],
-  "descriptions": ["Specific, actionable task for A", "Specific task for B"]
-}}
-
-Signal completion:
-{{
-  "reasoning": "All phases done. Build passes. Tests pass. Task verified.",
-  "agents": ["Orchestrator"],
-  "descriptions": ["Task complete"]
-}}
+Instead of generating raw text or JSON, use the `delegate_to_agent` tool to run the required agent(s) for the current phase.
+- You can call `delegate_to_agent` multiple times in a single turn for agents that can run in parallel (parallel-eligible agents in the same turn).
+- Respect the existing PARALLEL PHASE SCHEDULE dependency rules below.
+- When all tasks are fully verified and complete, simply respond to the user with a normal final text summary of the results (do NOT call `delegate_to_agent` anymore, do NOT output JSON, and do NOT use any "Orchestrator" sentinel). The orchestrator loop will automatically end.
 
 PARALLEL PHASE SCHEDULE
 Only run an agent if its prerequisites are in shared_memory.

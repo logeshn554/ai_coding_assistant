@@ -104,7 +104,7 @@ export default function ChatPanel({
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [mode, setMode] = useState<'Auto' | 'Ask' | 'Plan' | 'Agent'>('Auto');
-  const autoApply = false;
+  const [autoApply, setAutoApply] = useState(true);
   const [hunkDecisions, setHunkDecisions] = useState<Record<string, Record<string, boolean>>>({});
   const isProcessRunning = activeProcesses.some(p => p.status === 'running' || p.status === 'starting');
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
@@ -478,7 +478,18 @@ export default function ChatPanel({
             </div>
 
             {/* Right Controls: Mode Selector & Send */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
+              {/* Auto Apply Toggle */}
+              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 hover:text-zinc-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoApply}
+                  onChange={(e) => setAutoApply(e.target.checked)}
+                  className="rounded border-zinc-800 bg-zinc-900 text-violet-600 focus:ring-violet-500 focus:ring-offset-0 w-3 h-3 cursor-pointer"
+                />
+                <span>Auto Apply</span>
+              </label>
+
               {/* Mode Selector */}
               <select
                 value={mode}

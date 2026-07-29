@@ -305,7 +305,7 @@ backend_dev_prompt_template = PromptTemplate.from_template(
     "1. Type hints on every function. Pydantic v2 models for all request/response schemas.\n"
     "2. Architecture: Controllers → Services → Repositories. No business logic in routes.\n"
     "3. Google-style docstrings on all public functions and classes.\n"
-    "4. Structured logging: logger.info('event', extra={'key': value}).\n"
+    "4. Structured logging: logger.info('event', extra={{'key': value}}).\n"
     "5. Typed, domain-specific exceptions. Never bare `except Exception`.\n"
     "6. No hardcoded secrets. All credentials via settings / env vars.\n"
     "7. Read existing routes/services first to match existing patterns.\n"
@@ -700,6 +700,16 @@ class CodingAgent(BaseAgent):
                     lines = lines[:-1]
                 clean_code = "\n".join(lines)
                 
+            return path, clean_code
+
+        # Concurrently generate proposed code for all target files
+        tasks = [process_file(path) for path in target_files]
+        results = await asyncio.gather(*tasks)
+
+        # Apply the changes (either concurrently or sequentially based on auto_apply)
+        auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
+
+        async def write_one_file(path: str, clean_code: str):
             tc_id = f"write_{task_id}_{uuid.uuid4().hex[:6]}"
             await session.send_ws_message({
                 "type": "status",
@@ -707,10 +717,7 @@ class CodingAgent(BaseAgent):
                 "message": f"Writing {path}...",
                 "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": clean_code}}
             })
-            
-            auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
             result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": clean_code}, auto_apply=auto_apply)
-            
             await session.send_ws_message({
                 "type": "tool_result",
                 "tool_call_id": tc_id,
@@ -718,12 +725,13 @@ class CodingAgent(BaseAgent):
                 "status": "success",
                 "result": result
             })
-            
             await self.orchestrator.context.log(f"Coding Agent: Wrote modifications to {path}.")
 
-        # Concurrently process all file modifications
-        tasks = [process_file(path) for path in target_files]
-        await asyncio.gather(*tasks)
+        if auto_apply:
+            await asyncio.gather(*[write_one_file(path, code) for path, code in results])
+        else:
+            for path, code in results:
+                await write_one_file(path, code)
             
         await self.orchestrator.event_bus.emit("FILE_UPDATED", {"task": task_description})
         await self.orchestrator.update_task_progress(task_id, 100, session)
@@ -1084,22 +1092,35 @@ class FrontendDeveloperAgent(BaseAgent):
                 if lines and lines[-1].strip() == "```":
                     lines = lines[:-1]
                 new_code = "\n".join(lines)
+            return path, new_code
 
+        # Concurrently generate proposed code for all frontend files
+        tasks = [process_file(p) for p in frontend_files]
+        results = await asyncio.gather(*tasks)
+
+        # Apply the changes (either concurrently or sequentially based on auto_apply)
+        auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
+
+        async def write_one_file(path: str, clean_code: str):
             tc_id = f"fedev_{task_id}_{uuid.uuid4().hex[:6]}"
             await session.send_ws_message({
                 "type": "status", "status": "tool_executing",
                 "message": f"Frontend Developer writing {path}...",
-                "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": new_code}}
+                "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": clean_code}}
             })
-            auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
-            result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": new_code}, auto_apply=auto_apply)
+            result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": clean_code}, auto_apply=auto_apply)
             await session.send_ws_message({
                 "type": "tool_result", "tool_call_id": tc_id,
                 "name": "write_file", "status": "success", "result": result
             })
             await self.orchestrator.context.log(f"Frontend Developer Agent: Updated {path}.")
 
-        await asyncio.gather(*[process_file(p) for p in frontend_files])
+        if auto_apply:
+            await asyncio.gather(*[write_one_file(path, code) for path, code in results])
+        else:
+            for path, code in results:
+                await write_one_file(path, code)
+
         await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Frontend components implemented."
 
@@ -1149,22 +1170,35 @@ class BackendDeveloperAgent(BaseAgent):
                 if lines and lines[-1].strip() == "```":
                     lines = lines[:-1]
                 new_code = "\n".join(lines)
+            return path, new_code
 
+        # Concurrently generate proposed code for all backend files
+        tasks = [process_file(p) for p in backend_files]
+        results = await asyncio.gather(*tasks)
+
+        # Apply the changes (either concurrently or sequentially based on auto_apply)
+        auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
+
+        async def write_one_file(path: str, clean_code: str):
             tc_id = f"bedev_{task_id}_{uuid.uuid4().hex[:6]}"
             await session.send_ws_message({
                 "type": "status", "status": "tool_executing",
                 "message": f"Backend Developer writing {path}...",
-                "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": new_code}}
+                "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": clean_code}}
             })
-            auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
-            result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": new_code}, auto_apply=auto_apply)
+            result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": clean_code}, auto_apply=auto_apply)
             await session.send_ws_message({
                 "type": "tool_result", "tool_call_id": tc_id,
                 "name": "write_file", "status": "success", "result": result
             })
             await self.orchestrator.context.log(f"Backend Developer Agent: Updated {path}.")
 
-        await asyncio.gather(*[process_file(p) for p in backend_files])
+        if auto_apply:
+            await asyncio.gather(*[write_one_file(path, code) for path, code in results])
+        else:
+            for path, code in results:
+                await write_one_file(path, code)
+
         await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Backend services implemented."
 
@@ -2162,41 +2196,14 @@ class AgentOrchestrator:
             if _parallel_ok:
                 def map_agent_name(name: str) -> str:
                     name_l = name.lower()
-                    if "security" in name_l:
-                        return "security"
-                    elif "performance" in name_l:
-                        return "performance"
-                    elif "debug" in name_l:
-                        return "debug"
-                    elif "database" in name_l or "db" in name_l:
-                        return "database"
-                    elif "api" in name_l:
-                        return "api"
-                    elif "integration" in name_l:
-                        return "integration"
-                    elif "devops" in name_l or "docker" in name_l:
-                        return "devops"
-                    elif "release" in name_l:
-                        return "release"
-                    elif "git" in name_l:
-                        return "git"
-                    elif "terminal" in name_l:
-                        return "terminal"
-                    elif "planner" in name_l or "architect" in name_l:
-                        return "architect"
-                    elif "requirement" in name_l:
-                        return "requirement"
-                    elif "test" in name_l:
+                    if "test" in name_l:
                         return "test"
                     elif "doc" in name_l:
                         return "docs"
                     elif "review" in name_l:
                         return "review"
-                    elif "frontend" in name_l:
-                        return "frontend"
-                    elif "backend" in name_l:
-                        return "backend"
                     return "code"
+
 
                 id_map = {}
                 for st in self.context.subtasks:

@@ -361,8 +361,11 @@ class AgentSession:
     def _get_tools_for_mode(self, mode: str) -> list:
         read_only_tools = {"list_directory", "read_file", "search_codebase", "open_with_live_server"}
         if mode in ("Ask", "Plan"):
-            return [t for t in AVAILABLE_TOOLS if t["name"] in read_only_tools]
-        return AVAILABLE_TOOLS
+            return [t for t in AVAILABLE_TOOLS if t["name"] in read_only_tools and t["name"] != "delegate_to_agent"]
+        elif mode == "Agent":
+            return AVAILABLE_TOOLS
+        else:
+            return [t for t in AVAILABLE_TOOLS if t["name"] != "delegate_to_agent"]
 
 
     def _get_system_prompt(self, mode: str) -> str:
@@ -416,6 +419,17 @@ class AgentSession:
             agent_orchestration_section = AGENT_ORCHESTRATION_SECTION.replace(
                 "{agent_list}", agent_list
             )
+            
+            # Format and append collaboration log
+            if hasattr(self.orchestrator, "context") and self.orchestrator.context:
+                if getattr(self.orchestrator.context, "collaboration_log", None):
+                    log_entries = "\n".join(f"- {entry}" for entry in self.orchestrator.context.collaboration_log)
+                    agent_orchestration_section += f"\n\nCollaboration Log:\n{log_entries}"
+                if getattr(self.orchestrator.context, "memory", None):
+                    # Filter out large file contents to prevent context overflow
+                    clean_mem = {k: v for k, v in self.orchestrator.context.memory.items() if k != "file_contents"}
+                    memory_summary = json.dumps(clean_mem, indent=2)
+                    agent_orchestration_section += f"\n\nShared Memory:\n{memory_summary}"
 
         prompt = render_system_prompt(
             workspace_root=self.workspace_root,
@@ -682,40 +696,104 @@ class AgentSession:
 
                 # 3. Execute tool calls (potentially seeking user confirmation)
                 tool_results = []
+                
+                # Chunk tool_calls_to_run into batches. Consecutive 'delegate_to_agent' tool calls
+                # run concurrently using asyncio.gather, while other tools run sequentially.
+                batches = []
+                current_batch = []
+                is_parallel_batch = False
+
                 for tc in tool_calls_to_run:
-                    tc_id = tc["id"]
-                    tc_name = tc["name"]
-                    tc_args = tc["input"]
+                    is_delegate = (tc["name"] == "delegate_to_agent")
+                    if not current_batch:
+                        current_batch.append(tc)
+                        is_parallel_batch = is_delegate
+                    else:
+                        if is_delegate == is_parallel_batch and is_parallel_batch:
+                            current_batch.append(tc)
+                        else:
+                            batches.append((current_batch, is_parallel_batch))
+                            current_batch = [tc]
+                            is_parallel_batch = is_delegate
+                if current_batch:
+                    batches.append((current_batch, is_parallel_batch))
 
-                    await self.send_ws_message({
-                        "type": "status",
-                        "status": "tool_executing",
-                        "message": f"Preparing tool '{tc_name}'...",
-                        "tool_call": {"id": tc_id, "name": tc_name, "args": tc_args}
-                    })
+                for batch, is_parallel in batches:
+                    if is_parallel:
+                        # Run consecutive delegate_to_agent calls in parallel
+                        async def run_single_tool(tc):
+                            tc_id = tc["id"]
+                            tc_name = tc["name"]
+                            tc_args = tc["input"]
 
-                    try:
-                        result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
-                        status = "success"
-                    except Exception as e:
-                        result = f"Error executing tool '{tc_name}': {str(e)}"
-                        status = "error"
+                            await self.send_ws_message({
+                                "type": "status",
+                                "status": "tool_executing",
+                                "message": f"Preparing tool '{tc_name}'...",
+                                "tool_call": {"id": tc_id, "name": tc_name, "args": tc_args}
+                            })
 
-                    tool_results.append({
-                        "role": "tool",
-                        "tool_call_id": tc_id,
-                        "name": tc_name,
-                        "content": result
-                    })
+                            try:
+                                result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
+                                status = "success"
+                            except Exception as e:
+                                result = f"Error executing tool '{tc_name}': {str(e)}"
+                                status = "error"
 
-                    # Send result back to frontend for chat display
-                    await self.send_ws_message({
-                        "type": "tool_result",
-                        "tool_call_id": tc_id,
-                        "name": tc_name,
-                        "status": status,
-                        "result": result
-                    })
+                            # Send result back to frontend for chat display
+                            await self.send_ws_message({
+                                "type": "tool_result",
+                                "tool_call_id": tc_id,
+                                "name": tc_name,
+                                "status": status,
+                                "result": result
+                            })
+
+                            return {
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "name": tc_name,
+                                "content": result
+                            }
+
+                        results = await asyncio.gather(*(run_single_tool(tc) for tc in batch))
+                        tool_results.extend(results)
+                    else:
+                        # Run sequentially
+                        for tc in batch:
+                            tc_id = tc["id"]
+                            tc_name = tc["name"]
+                            tc_args = tc["input"]
+
+                            await self.send_ws_message({
+                                "type": "status",
+                                "status": "tool_executing",
+                                "message": f"Preparing tool '{tc_name}'...",
+                                "tool_call": {"id": tc_id, "name": tc_name, "args": tc_args}
+                            })
+
+                            try:
+                                result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
+                                status = "success"
+                            except Exception as e:
+                                result = f"Error executing tool '{tc_name}': {str(e)}"
+                                status = "error"
+
+                            tool_results.append({
+                                "role": "tool",
+                                "tool_call_id": tc_id,
+                                "name": tc_name,
+                                "content": result
+                            })
+
+                            # Send result back to frontend for chat display
+                            await self.send_ws_message({
+                                "type": "tool_result",
+                                "tool_call_id": tc_id,
+                                "name": tc_name,
+                                "status": status,
+                                "result": result
+                            })
 
                 # Append tool outputs to history
                 self.conversation_history.extend(tool_results)

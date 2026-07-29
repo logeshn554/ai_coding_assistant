@@ -1,8 +1,8 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '../../types/chat';
-import { Check, User } from 'lucide-react';
+import { Check, User, Copy } from 'lucide-react';
 import { ConfirmDialog } from './ConfirmDialog';
 import { DiffView } from './DiffView';
 import { ThinkingPill } from './ThinkingPill';
@@ -161,6 +161,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   onRunCommand,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -278,14 +279,39 @@ export const MessageList: React.FC<MessageListProps> = ({
                   {/* ── Main Assistant Card ── */}
                   {visible && (
                     <div
-                      className="rounded-2xl transition-all duration-200 group"
+                      className="rounded-2xl transition-all duration-200 group relative"
                       style={{
                         background: 'linear-gradient(160deg, #13151c 0%, #111318 100%)',
                         border: '1px solid rgba(255,255,255,0.05)',
                         boxShadow: '0 4px 24px rgba(0,0,0,0.35), 0 1px 0 rgba(255,255,255,0.03) inset',
                         padding: '20px 22px',
+                        position: 'relative'
                       }}
                     >
+                      {/* Copy Message Button */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(visible);
+                          setCopiedMsgId(msg.id);
+                          setTimeout(() => setCopiedMsgId(null), 1800);
+                        }}
+                        title="Copy message"
+                        className="absolute top-3 right-3 flex items-center justify-center p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-pointer"
+                        style={{
+                          background: 'rgba(255,255,255,0.04)',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          color: copiedMsgId === msg.id ? '#22c55e' : '#757c87',
+                          zIndex: 10
+                        }}
+                      >
+                        {copiedMsgId === msg.id ? (
+                          <Check className="w-3.5 h-3.5" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+
                       {/* Subtle radial gradient glow on hover */}
                       <div
                         className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"

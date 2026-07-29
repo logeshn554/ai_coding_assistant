@@ -162,5 +162,23 @@ AVAILABLE_TOOLS = [
             },
             "required": ["prompt"]
         }
+    },
+    {
+        "name": "delegate_to_agent",
+        "description": (
+            "Delegate a specific, self-contained task to one specialist agent "
+            "(e.g. 'Coding Agent', 'Testing Agent', 'Frontend Developer Agent'). "
+            "Call this once per agent you need this turn; independent agents may be "
+            "called in parallel within the same turn. Call again in later turns as prior "
+            "agents' outputs become available."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "agent_name": {"type": "string", "description": "Exact specialist agent name"},
+                "task_description": {"type": "string", "description": "Specific, actionable task for that agent"}
+            },
+            "required": ["agent_name", "task_description"]
+        }
     }
 ]

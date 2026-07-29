@@ -119,8 +119,8 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ inline, className, childre
           )}
         </div>
 
-        {/* Controls — visible on hover */}
-        <div className="flex items-center gap-1 opacity-0 group-hover/code:opacity-100 transition-opacity duration-150">
+        {/* Controls — always visible, highlight on hover */}
+        <div className="flex items-center gap-1 opacity-65 group-hover/code:opacity-100 transition-opacity duration-150">
           {/* Collapse / Expand */}
           <button
             type="button"

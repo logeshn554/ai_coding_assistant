@@ -78,18 +78,19 @@ class BaseParallelAgent:
 
         async def update_ui(status, progress):
             if session:
+                ui_status = "completed" if status == "success" else status
                 subtask_entry = next((s for s in session.parallel_subtasks if s["id"] == subtask.id), None)
                 if not subtask_entry:
                     subtask_entry = {
                         "id": subtask.id,
                         "agent": self.agent_type.capitalize() + " Agent",
                         "description": subtask.description,
-                        "status": status,
+                        "status": ui_status,
                         "progress": progress
                     }
                     session.parallel_subtasks.append(subtask_entry)
                 else:
-                    subtask_entry["status"] = status
+                    subtask_entry["status"] = ui_status
                     subtask_entry["progress"] = progress
                 
                 log_msg = f"Agent {self.agent_type.capitalize()} (Subtask {subtask.id[:8]}): Iteration {monitor.iterations}, Cost: ${monitor.cost:.3f}"

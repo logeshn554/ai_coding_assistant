@@ -27,6 +27,9 @@ class ChatLogger:
         self._session_id = session_id
         self._in_ai_block = False
         self._has_logged_session_start = False
+        # Create a unique, date-stamped filename per chat session
+        date_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._log_filename = f"chat_log_{date_str}_{session_id}.md"
 
     def _ts(self) -> str:
         return datetime.datetime.now().strftime("%H:%M:%S")
@@ -49,12 +52,13 @@ class ChatLogger:
         try:
             log_dir = os.path.join(root, ".devpilot")
             os.makedirs(log_dir, exist_ok=True)
-            log_path = os.path.join(log_dir, "chat_logs.md")
+            log_path = os.path.join(log_dir, self._log_filename)
             
             if not os.path.exists(log_path):
                 header = (
-                    f"# DevPilot Chat Logs\n"
-                    f"> Generated automatically. Updated live during each chat session.\n\n"
+                    f"# DevPilot Chat Session Log\n"
+                    f"> Session ID: `{self._session_id}`\n"
+                    f"> Created: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                     f"---\n\n"
                 )
                 with open(log_path, "a", encoding="utf-8") as f:

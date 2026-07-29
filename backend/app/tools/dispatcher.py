@@ -129,6 +129,22 @@ async def dispatch_tool(
         server_name = mcp_meta.get("server_name", "MCP Server")
         return f"[MCP Tool '{name}' executed on {server_name}] Arguments: {args}"
 
+    if name == "delegate_to_agent":
+        agent_name = args.get("agent_name", "")
+        task_description = args.get("task_description", "")
+        agent = session.orchestrator.agents.get(agent_name)
+        if agent is None:
+            # case-insensitive fallback match against real keys before giving up
+            match = next((k for k in session.orchestrator.agents if k.lower() == agent_name.lower()), None)
+            agent = session.orchestrator.agents.get(match) if match else None
+        if agent is None:
+            valid = ", ".join(sorted(session.orchestrator.agents.keys()))
+            return f"ERROR: Unknown agent '{agent_name}'. Valid agents: {valid}"
+        task_id = len(session.orchestrator.context.collaboration_log) + 1
+        result = await agent.execute(task_description, session, task_id)
+        await session.orchestrator.context.log(f"{agent_name}: {result}")
+        return result
+
     raise NotImplementedError(f"Tool '{name}' is not supported.")
 
 
