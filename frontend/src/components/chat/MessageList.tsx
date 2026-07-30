@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+﻿import React, { useRef, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '../../types/chat';
@@ -20,7 +20,7 @@ interface MessageListProps {
   onRunCommand?: (command: string) => void;
 }
 
-// ── Premium Status Pill ────────────────────────────────────────────────
+// â”€â”€ Premium Status Pill â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const StatusPill: React.FC<{ elapsed_ms?: number; cost_usd?: number; agents_used?: number }> = ({
   elapsed_ms, cost_usd, agents_used
 }) => {
@@ -52,7 +52,7 @@ const StatusPill: React.FC<{ elapsed_ms?: number; cost_usd?: number; agents_used
   );
 };
 
-// ── Thinking Steps Execution Flow ──────────────────────────────────────
+// â”€â”€ Thinking Steps Execution Flow â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ExecutionFlow: React.FC<{ steps: string[] }> = ({ steps }) => (
   <div
     className="w-full rounded-2xl p-4 mb-3 space-y-2"
@@ -65,7 +65,7 @@ const ExecutionFlow: React.FC<{ steps: string[] }> = ({ steps }) => (
     </div>
     <div className="space-y-1.5 pl-1">
       {steps.map((step, i) => {
-        const isDone = step.startsWith('✓');
+        const isDone = step.startsWith('âœ“');
         const text = isDone ? step.substring(1).trim() : step;
         return (
           <div key={i} className="flex items-center gap-2.5">
@@ -88,7 +88,7 @@ const ExecutionFlow: React.FC<{ steps: string[] }> = ({ steps }) => (
   </div>
 );
 
-// ── Empty State ────────────────────────────────────────────────
+// â”€â”€ Empty State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const EmptyState: React.FC = () => (
   <div className="flex flex-col items-center justify-center h-full gap-5 px-8 py-12 select-none">
     <div className="text-center space-y-1.5 max-w-xs">
@@ -116,9 +116,12 @@ const EmptyState: React.FC = () => (
   </div>
 );
 
-// ── Group messages into render units ────────────────────────────────────────
-// Each unit is either a non-tool message, or a block of consecutive tool
-// messages that will be rendered as a single ReasoningTimeline.
+// â”€â”€ Group messages into render units â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Rules:
+//   â€¢ Consecutive tool messages between two non-tool messages form ONE group.
+//   â€¢ Assistant messages are NEVER merged â€” each is its own unit.
+//   â€¢ The order is strictly preserved so thinkingâ†’toolsâ†’thinkingâ†’tools
+//     renders top-to-bottom as it arrived (not batched at the end).
 interface ToolGroup {
   kind: 'tool_group';
   id: string;
@@ -136,7 +139,7 @@ function groupMessages(messages: ChatMessage[]): RenderUnit[] {
   while (i < messages.length) {
     const m = messages[i];
     if (m.role === 'tool') {
-      // Gather consecutive tool messages
+      // Gather THIS cluster of consecutive tool messages only
       const batch: ChatMessage[] = [];
       while (i < messages.length && messages[i].role === 'tool') {
         batch.push(messages[i]);
@@ -163,10 +166,10 @@ export const MessageList: React.FC<MessageListProps> = ({
   const bottomRef = useRef<HTMLDivElement>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
-  // Auto-scroll to latest message
+  // Auto-scroll whenever messages change (new content or new message)
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages.length]);
+  }, [messages]);
 
   const processMessage = (raw: any): { visible: string; thinkingContent: string | null } => {
     if (raw === null || raw === undefined) return { visible: '', thinkingContent: null };
@@ -186,14 +189,14 @@ export const MessageList: React.FC<MessageListProps> = ({
       className="flex-1 overflow-y-auto select-text"
       style={{ padding: '24px 20px', scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}
     >
-      {/* Centered content wrapper — max 840px */}
+      {/* Centered content wrapper â€” max 840px */}
       <div className="mx-auto space-y-3" style={{ maxWidth: '840px' }}>
         {units.map((unit) => {
-          // ── TOOL GROUP → ReasoningTimeline ────────────────────
+          // â”€â”€ TOOL GROUP â†’ ReasoningTimeline (inline, in order) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (unit.kind === 'tool_group') {
             const rows = toolMessagesToTimelineRows(unit.toolMessages);
             return (
-              <div key={unit.id} className="animate-slide-up">
+              <div key={unit.id} className="animate-slide-up pl-9">
                 <ReasoningTimeline rows={rows} isGenerating={false} />
               </div>
             );
@@ -202,7 +205,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           const msg = unit.msg;
           const isUser = msg.role === 'user';
 
-          // ── 1. USER MESSAGE ───────────────────────────────────
+          // â”€â”€ 1. USER MESSAGE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (isUser) {
             const text = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
             return (
@@ -231,9 +234,9 @@ export const MessageList: React.FC<MessageListProps> = ({
             );
           }
 
-          // role === 'tool' is handled above in the tool_group branch — never reached here.
+          // role === 'tool' handled above in tool_group â€” never reached here.
 
-          // ── 3. PENDING CONFIRMATION ───────────────────────────
+          // â”€â”€ 2. PENDING CONFIRMATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (msg.isConfirmPending || (msg.role === 'assistant' && msg.isConfirmPending)) {
             return (
               <div key={msg.id} className="animate-slide-up">
@@ -249,7 +252,7 @@ export const MessageList: React.FC<MessageListProps> = ({
             );
           }
 
-          // ── 4. ASSISTANT RESPONSE ─────────────────────────────
+          // â”€â”€ 3. ASSISTANT RESPONSE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
           if (msg.role === 'assistant') {
             const { visible, thinkingContent } = processMessage(msg.content);
             const hasThinkingSteps = msg.thinkingSteps && msg.thinkingSteps.length > 0;
@@ -276,7 +279,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                     <ExecutionFlow steps={msg.thinkingSteps || []} />
                   )}
 
-                  {/* ── Main Assistant Card ── */}
+                  {/* â”€â”€ Main Assistant Card â”€â”€ */}
                   {visible && (
                     <div
                       className="rounded-2xl transition-all duration-200 group relative"
@@ -430,7 +433,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                         {visible}
                       </ReactMarkdown>
 
-                      {/* Inline tool call summary — shown if assistant message includes structured tool_calls */}
+                      {/* Inline tool call count â€” only shown when there is no separate tool group below */}
                       {hasToolCalls && (
                         <div className="mt-2 text-[11px]" style={{ color: '#4B5563', fontFamily: 'Inter, sans-serif' }}>
                           {msg.tool_calls!.length} tool call{msg.tool_calls!.length > 1 ? 's' : ''} executed
@@ -449,7 +452,7 @@ export const MessageList: React.FC<MessageListProps> = ({
                     </div>
                   )}
 
-                  {/* If no visible text but has diff, show it */}
+                  {/* If no visible text but has diff, show it standalone */}
                   {!visible && hasDiff && msg.diff && (
                     <DiffView filename={msg.diff.filename} hunks={msg.diff.hunks} />
                   )}

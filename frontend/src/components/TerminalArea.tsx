@@ -109,7 +109,10 @@ function TerminalPane({
     if (!isAgent) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const token = localStorage.getItem('session_token') || '';
-      const wsUrl = `${protocol}//${window.location.host}/ws/terminal?token=${token}${shell ? `&shell=${encodeURIComponent(shell)}` : ''}`;
+      const isDev = import.meta.env.DEV;
+      const wsUrl = isDev
+        ? `${protocol}//${window.location.host}/ws/terminal?token=${token}${shell ? `&shell=${encodeURIComponent(shell)}` : ''}`
+        : `${protocol}//${window.location.hostname}:8001/ws/terminal?token=${token}${shell ? `&shell=${encodeURIComponent(shell)}` : ''}`;
       const socket = new WebSocket(wsUrl);
       ws = socket;
       wsRef.current = socket;
