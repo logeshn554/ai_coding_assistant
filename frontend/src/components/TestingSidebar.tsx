@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Beaker, Play, CheckCircle2, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function TestingSidebar() {
@@ -74,12 +74,12 @@ export default function TestingSidebar() {
       {/* Header */}
       <div className="px-3 py-1.5 border-b border-[#2d2d2d] bg-[var(--dp-bg-dark)] flex items-center justify-between shrink-0">
         <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-          <Beaker className="w-3.5 h-3.5 text-violet-400" />
+          <Beaker className="w-3.5 h-3.5 text-[#4C8DFF]" />
           Test Explorer
         </span>
         <button
           onClick={discoverTests}
-          className="text-[10px] text-violet-400 hover:text-violet-300 cursor-pointer"
+          className="text-[10px] text-[#4C8DFF] hover:text-[#4C8DFF] cursor-pointer"
           title="Refresh tests list"
         >
           Discover
@@ -91,7 +91,7 @@ export default function TestingSidebar() {
         <button
           onClick={handleRunAll}
           disabled={running || tests.length === 0}
-          className="w-full py-1 bg-[var(--dp-accent)] hover:bg-[var(--dp-accent-hover)] disabled:opacity-40 text-white rounded-none text-[10px] font-semibold flex items-center justify-center gap-1 cursor-pointer border border-violet-500/20"
+          className="w-full py-1 bg-[var(--dp-accent)] hover:bg-[var(--dp-accent-hover)] disabled:opacity-40 text-white rounded-none text-[10px] font-semibold flex items-center justify-center gap-1 cursor-pointer border border-[#4C8DFF]/20"
         >
           {running ? (
             <>

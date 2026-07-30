@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+﻿import React, { useEffect, useState, useCallback } from 'react';
 import { Layers, Database, Code2, GitBranch, HardDrive, Play, RefreshCw, Terminal, Package } from 'lucide-react';
 import type { ProjectContextInfo } from '../../types/chat';
 import { useTerminal } from '../../core/terminal/TerminalContext';
@@ -128,7 +128,7 @@ export const ProjectContextPanel: React.FC<ProjectContextPanelProps> = ({
       <div className="flex items-center justify-between pb-2 border-b border-white/5">
         <div className="min-w-0">
           <h4 className="font-bold text-white text-xs flex items-center gap-1.5 truncate">
-            <Layers className="w-4 h-4 text-violet-400 shrink-0" />
+            <Layers className="w-4 h-4 text-[#4C8DFF] shrink-0" />
             {isLoading ? (
               <span className="animate-pulse text-gray-500">Detecting...</span>
             ) : (
@@ -194,7 +194,7 @@ export const ProjectContextPanel: React.FC<ProjectContextPanelProps> = ({
         </div>
 
         <div className="bg-black/30 border border-white/5 p-2 rounded-lg flex items-center gap-2">
-          <Database className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+          <Database className="w-3.5 h-3.5 text-[#4C8DFF] shrink-0" />
           <div className="min-w-0">
             <div className="text-[9px] text-gray-500 font-semibold uppercase">Language</div>
             <div className="font-medium text-white truncate" title={displayLanguage}>
@@ -228,13 +228,13 @@ export const ProjectContextPanel: React.FC<ProjectContextPanelProps> = ({
       {isMultiService && (
         <div className="bg-black/40 border border-white/5 p-2.5 rounded-lg space-y-2">
           <div className="flex items-center gap-1 text-[10px] text-gray-400 font-semibold">
-            <Package className="w-3 h-3 text-violet-400" />
+            <Package className="w-3 h-3 text-[#4C8DFF]" />
             Services ({runnables.length}) — each runs in a split terminal
           </div>
           {runnables.map((r, i) => (
             <div key={i} className="bg-black/50 border border-white/5 rounded p-1.5 space-y-0.5">
               <div className="flex items-center justify-between">
-                <span className="text-violet-300 font-semibold text-[10px]">{r.framework}</span>
+                <span className="text-[#4C8DFF] font-semibold text-[10px]">{r.framework}</span>
                 <span className="text-[9px] text-gray-500 font-mono">{r.dir}</span>
               </div>
               <div className="font-mono text-[10px] text-emerald-300 truncate" title={r.runCommand}>
@@ -249,14 +249,14 @@ export const ProjectContextPanel: React.FC<ProjectContextPanelProps> = ({
       <div className="pt-2 border-t border-white/5 space-y-1.5">
         <div className="flex justify-between text-[10px]">
           <span className="text-gray-400 font-semibold">Model Context Utilization</span>
-          <span className="font-mono text-violet-300">
+          <span className="font-mono text-[#4C8DFF]">
             {contextInfo.tokenUsage.toLocaleString()} / {(contextInfo.tokenBudget || 128000).toLocaleString()} tokens ({percentage}%)
           </span>
         </div>
         <div className="w-full bg-black/40 h-2 rounded-full overflow-hidden border border-white/5">
           <div
             className={`h-full transition-all duration-300 ${
-              percentage > 85 ? 'bg-red-500' : percentage > 60 ? 'bg-amber-400' : 'bg-gradient-to-r from-violet-600 to-indigo-500'
+              percentage > 85 ? 'bg-red-500' : percentage > 60 ? 'bg-amber-400' : 'bg-gradient-to-r from-[#3B7AE8] to-[#4C8DFF]'
             }`}
             style={{ width: `${percentage}%` }}
           />

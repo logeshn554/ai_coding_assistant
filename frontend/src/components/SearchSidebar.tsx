@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { Search, Loader2, FileText } from 'lucide-react';
 
 
@@ -101,7 +101,7 @@ export default function SearchSidebar({ onSelectFile }: SearchSidebarProps) {
             className="w-full bg-transparent text-xs text-white focus:outline-none placeholder:text-gray-650"
             autoFocus
           />
-          {loading && <Loader2 className="w-3.5 h-3.5 text-violet-400 animate-spin shrink-0" />}
+          {loading && <Loader2 className="w-3.5 h-3.5 text-[#4C8DFF] animate-spin shrink-0" />}
         </div>
         {validationError && (
           <span className="text-[9px] text-amber-400/90 font-medium px-1 font-sans">
@@ -135,7 +135,7 @@ export default function SearchSidebar({ onSelectFile }: SearchSidebarProps) {
                 onClick={() => onSelectFile(filePath)}
                 className="flex items-center gap-1.5 px-3 py-0.5 hover:bg-white/5 cursor-pointer text-gray-300 font-sans"
               >
-                <FileText className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                <FileText className="w-3.5 h-3.5 text-[#4C8DFF] shrink-0" />
                 <span className="text-xs font-medium truncate" title={filePath}>{fileName}</span>
                 <span className="text-[9px] text-gray-550 shrink-0 ml-auto bg-[#1e1e1e] border border-[#2d2d2d] px-1 py-0.2 rounded-none font-mono">
                   {fileMatches.length}
@@ -150,7 +150,7 @@ export default function SearchSidebar({ onSelectFile }: SearchSidebarProps) {
                     onClick={() => onSelectFile(match.path)}
                     className="flex items-start gap-2 py-0.5 pl-6 pr-3 hover:bg-white/10 cursor-pointer font-mono text-[9px]"
                   >
-                    <span className="text-violet-405/85 w-6 text-right shrink-0 select-none">
+                    <span className="text-[#4C8DFF]/85 w-6 text-right shrink-0 select-none">
                       {match.line}
                     </span>
                     <span className="text-gray-400 truncate whitespace-nowrap block select-text font-mono" title={match.content}>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import {
   Send, Square, FileText, Folder, Terminal,
   GitBranch, Code2, Layers, ChevronRight, AtSign,
@@ -308,7 +308,7 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
                   {mention.type === 'folder'    && <Folder    className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
                   {mention.type === 'terminal'  && <Terminal  className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
                   {mention.type === 'git'       && <GitBranch className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
-                  {mention.type === 'selection' && <Code2     className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+                  {mention.type === 'selection' && <Code2     className="w-3.5 h-3.5 text-[#4C8DFF] shrink-0" />}
                   {mention.type === 'workspace' && <Layers    className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
                   <div className="min-w-0 flex-1 truncate">
                     <span className="font-mono text-[var(--dp-info)] font-semibold truncate block">
@@ -344,7 +344,7 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
                 {att.previewUrl ? (
                   <img src={att.previewUrl} alt={att.name} className="w-4 h-4 rounded object-cover" />
                 ) : att.type === 'image' ? (
-                  <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
+                  <ImageIcon className="w-3.5 h-3.5 text-[#4C8DFF]" />
                 ) : att.type === 'folder' ? (
                   <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
                 ) : (
@@ -362,7 +362,7 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
               </div>
             ))}
             {isUploading && (
-              <span className="text-[10px] text-violet-400 animate-pulse">Uploading...</span>
+              <span className="text-[10px] text-[#4C8DFF] animate-pulse">Uploading...</span>
             )}
           </div>
         )}
@@ -434,7 +434,7 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
                   type="checkbox"
                   checked={autoApply}
                   onChange={(e) => setAutoApply(e.target.checked)}
-                  className="rounded border-white/10 bg-black/20 text-violet-600 focus:ring-violet-500 focus:ring-offset-0 w-3.5 h-3.5 cursor-pointer"
+                  className="rounded border-white/10 bg-black/20 text-[#3B7AE8] focus:ring-[#4C8DFF] focus:ring-offset-0 w-3.5 h-3.5 cursor-pointer"
                 />
                 <span>Auto Apply</span>
               </label>

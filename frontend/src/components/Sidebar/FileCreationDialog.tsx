@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 
 interface FileCreationDialogProps {
   creatingType: 'file' | 'folder' | null;
@@ -21,7 +21,7 @@ export const FileCreationDialog: React.FC<FileCreationDialogProps> = ({
 
   return (
     <form onSubmit={onSubmit} className="p-2 border-b border-[#2a3142] bg-[#1e2330]">
-      <div className="text-[10px] font-semibold text-[#7C5CFF] uppercase mb-1">
+      <div className="text-[10px] font-semibold text-[#4C8DFF] uppercase mb-1">
         New {creatingType} {creatingInPath ? `in ${creatingInPath}` : 'in Root'}
       </div>
       <div className="flex gap-1">
@@ -31,12 +31,12 @@ export const FileCreationDialog: React.FC<FileCreationDialogProps> = ({
           onChange={e => setNewItemName(e.target.value)}
           placeholder={creatingType === 'file' ? 'filename.ts' : 'folder-name'}
           autoFocus
-          className="flex-1 bg-[#151823] text-white text-[11px] px-2 py-1 rounded border border-[#7C5CFF] focus:outline-none"
+          className="flex-1 bg-[#151823] text-white text-[11px] px-2 py-1 rounded border border-[#4C8DFF] focus:outline-none"
         />
         <button
           type="submit"
           disabled={!newItemName.trim()}
-          className="px-2 py-1 bg-[#7C5CFF] hover:bg-[#9176FF] disabled:opacity-40 text-white text-[10px] font-semibold rounded cursor-pointer transition-colors"
+          className="px-2 py-1 bg-[#4C8DFF] hover:bg-[#9176FF] disabled:opacity-40 text-white text-[10px] font-semibold rounded cursor-pointer transition-colors"
         >
           Create
         </button>

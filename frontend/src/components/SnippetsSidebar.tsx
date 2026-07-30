@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Code, Plus, Copy, Check, Trash2, Search } from 'lucide-react';
 
 interface Snippet {
@@ -89,12 +89,12 @@ export default function SnippetsSidebar() {
       {/* Header */}
       <div className="px-3 py-2 border-b border-zinc-800 bg-[#13141f] flex items-center justify-between shrink-0">
         <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5 font-sans">
-          <Code className="w-4 h-4 text-violet-400" />
+          <Code className="w-4 h-4 text-[#4C8DFF]" />
           Code Snippets
         </span>
         <button
           onClick={() => setShowAddForm(!showAddForm)}
-          className="p-1 hover:bg-zinc-800 text-violet-400 hover:text-violet-300 rounded transition-colors"
+          className="p-1 hover:bg-zinc-800 text-[#4C8DFF] hover:text-[#4C8DFF] rounded transition-colors"
           title="Add New Snippet"
         >
           <Plus className="w-4 h-4" />
@@ -110,7 +110,7 @@ export default function SnippetsSidebar() {
             value={filterText}
             onChange={e => setFilterText(e.target.value)}
             placeholder="Search snippets..."
-            className="w-full pl-8 pr-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-violet-500"
+            className="w-full pl-8 pr-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-[#4C8DFF]"
           />
         </div>
       </div>
@@ -123,7 +123,7 @@ export default function SnippetsSidebar() {
             placeholder="Snippet Title"
             value={newTitle}
             onChange={e => setNewTitle(e.target.value)}
-            className="w-full px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-lg font-sans text-zinc-200 focus:outline-none focus:border-violet-500"
+            className="w-full px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-lg font-sans text-zinc-200 focus:outline-none focus:border-[#4C8DFF]"
           />
           <div className="flex gap-2">
             <input
@@ -131,14 +131,14 @@ export default function SnippetsSidebar() {
               placeholder="Language (e.g. python, ts)"
               value={newLang}
               onChange={e => setNewLang(e.target.value)}
-              className="flex-1 px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-lg font-mono text-zinc-200 focus:outline-none focus:border-violet-500"
+              className="flex-1 px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-lg font-mono text-zinc-200 focus:outline-none focus:border-[#4C8DFF]"
             />
             <input
               type="text"
               placeholder="Description"
               value={newDesc}
               onChange={e => setNewDesc(e.target.value)}
-              className="flex-1 px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-lg font-sans text-zinc-200 focus:outline-none focus:border-violet-500"
+              className="flex-1 px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-lg font-sans text-zinc-200 focus:outline-none focus:border-[#4C8DFF]"
             />
           </div>
           <textarea
@@ -146,7 +146,7 @@ export default function SnippetsSidebar() {
             value={newCode}
             onChange={e => setNewCode(e.target.value)}
             rows={3}
-            className="w-full px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-lg font-mono text-zinc-200 focus:outline-none focus:border-violet-500 resize-none"
+            className="w-full px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-lg font-mono text-zinc-200 focus:outline-none focus:border-[#4C8DFF] resize-none"
           />
           <div className="flex justify-end gap-2">
             <button
@@ -158,7 +158,7 @@ export default function SnippetsSidebar() {
             </button>
             <button
               type="submit"
-              className="px-3 py-1 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-lg text-xs"
+              className="px-3 py-1 bg-[#3B7AE8] hover:bg-[#4C8DFF] text-white font-semibold rounded-lg text-xs"
             >
               Save Snippet
             </button>
@@ -175,7 +175,7 @@ export default function SnippetsSidebar() {
             <div key={snip.id} className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl space-y-2 group shadow-inner">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-xs text-zinc-200 truncate max-w-[160px]">{snip.title}</span>
-                <span className="px-1.5 py-0.5 bg-violet-950/60 text-violet-400 border border-violet-800/40 rounded text-[9.5px] font-mono uppercase font-semibold">
+                <span className="px-1.5 py-0.5 bg-[#1A1B1E]/60 text-[#4C8DFF] border border-[#393B40]/40 rounded text-[9.5px] font-mono uppercase font-semibold">
                   {snip.language}
                 </span>
               </div>

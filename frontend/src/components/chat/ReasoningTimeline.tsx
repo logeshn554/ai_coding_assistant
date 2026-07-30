@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ReasoningTimeline.tsx
  *
  * Clean, timeline-based activity log styled like ChatGPT Codex, Claude Code, and Warp Terminal.
@@ -165,7 +165,7 @@ const TimelineEntryItem: React.FC<{
       style={{ fontFamily: 'Inter, sans-serif' }}
     >
       {/* Main Action Text (15px, #ECECEC, 1.7 line height) */}
-      <div className="text-[15px] leading-[1.7]" style={{ color: '#ECECEC' }}>
+      <div className="text-[15px] leading-[1.7]" style={{ color: '#A9B7C6' }}>
         {row.action}
       </div>
 
@@ -176,7 +176,7 @@ const TimelineEntryItem: React.FC<{
             type="button"
             onClick={onToggleSubstep}
             className="flex items-center gap-1.5 text-[14px] leading-[1.7] cursor-pointer text-left focus:outline-none transition-colors"
-            style={{ color: '#A1A1AA' }}
+            style={{ color: '#5C6370' }}
           >
             <span>{row.substep}</span>
             <span className="text-[10px]" style={{ color: '#6B7280' }}>
@@ -198,7 +198,7 @@ const TimelineEntryItem: React.FC<{
 
       {/* Optional Result Text */}
       {row.resultText && (
-        <div className="text-[15px] leading-[1.7]" style={{ color: '#ECECEC' }}>
+        <div className="text-[15px] leading-[1.7]" style={{ color: '#A9B7C6' }}>
           {row.resultText}
         </div>
       )}
@@ -241,19 +241,19 @@ export const ReasoningTimeline: React.FC<ReasoningTimelineProps> = ({
   if (rows.length === 0 && !isGenerating) return null;
 
   return (
-    <div className="w-full my-3 bg-transparent text-left font-sans select-none" style={{ fontFamily: 'Inter, sans-serif' }}>
+    <div className="w-full my-2 bg-transparent text-left font-sans select-none" style={{ fontFamily: 'Inter, sans-serif' }}>
       {/* ── Header: Worked for 6m > ── */}
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         className="flex items-center gap-1.5 py-1 text-[15px] font-medium transition-colors cursor-pointer focus:outline-none"
-        style={{ color: '#C8C8C8' }}
+        style={{ color: '#808080' }}
       >
         <span>Worked for {formattedHeaderTime}</span>
         <ChevronRight
           className="w-4 h-4 transition-transform duration-180"
           style={{
-            color: '#C8C8C8',
+            color: '#808080',
             transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
           }}
         />
@@ -271,7 +271,7 @@ export const ReasoningTimeline: React.FC<ReasoningTimelineProps> = ({
             />
           ))}
           {isGenerating && rows.length === 0 && (
-            <div className="text-[15px] leading-[1.7] animate-pulse" style={{ color: '#A1A1AA' }}>
+            <div className="text-[15px] leading-[1.7] animate-pulse" style={{ color: '#5C6370' }}>
               Reading project files...
             </div>
           )}

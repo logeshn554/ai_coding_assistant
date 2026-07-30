@@ -108,7 +108,23 @@ async def test_generated_mcp_script_server_registration(tmp_path):
     server_script = tmp_path / "mock_mcp_server.py"
     server_script.write_text(
         "import sys, json\n"
-        "print(json.dumps({'jsonrpc': '2.0', 'id': 1, 'result': {'tools': [{'name': 'mcp_gen_query'}]}}))\n",
+        "for line in sys.stdin:\n"
+        "    try:\n"
+        "        req = json.loads(line)\n"
+        "        req_id = req.get('id')\n"
+        "        method = req.get('method')\n"
+        "        if method == 'initialize':\n"
+        "            res = {'jsonrpc': '2.0', 'id': req_id, 'result': {'protocolVersion': '2025-11-25', 'capabilities': {'tools': {}}, 'serverInfo': {'name': 'mock', 'version': '1.0'}}}\n"
+        "        elif method == 'tools/list':\n"
+        "            res = {'jsonrpc': '2.0', 'id': req_id, 'result': {'tools': [{'name': 'mcp_gen_query', 'description': 'Mock tool', 'inputSchema': {'type': 'object'}}]}}\n"
+        "        elif method.startswith('tools/call'):\n"
+        "            res = {'jsonrpc': '2.0', 'id': req_id, 'result': {'content': [{'type': 'text', 'text': 'Executed successfully'}]}}\n"
+        "        else:\n"
+        "            res = {'jsonrpc': '2.0', 'id': req_id, 'result': {}}\n"
+        "        sys.stdout.write(json.dumps(res) + '\\n')\n"
+        "        sys.stdout.flush()\n"
+        "    except Exception:\n"
+        "        sys.exit(1)\n",
         encoding="utf-8",
     )
 
@@ -127,6 +143,7 @@ async def test_generated_mcp_script_server_registration(tmp_path):
 
     class DummySession:
         workspace_root = str(tmp_path)
+        _monitor_tasks = []
 
     # Execute discovered MCP tool via dispatcher
     exec_res = await dispatch_tool(DummySession(), "tc-mcp-1", tool_name, {"query": "SELECT * FROM users"}, auto_apply=True)

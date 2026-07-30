@@ -10,7 +10,6 @@ from .debug import router as debug_router
 from .extensions import router as extensions_router
 from .testing import router as testing_router
 from .chat import router as chat_router
-from .terminal import router as terminal_router
 from .workspace_symbols import router as workspace_symbols_router
 from .lsp import router as lsp_router
 from .sessions import router as sessions_router
@@ -42,7 +41,6 @@ all_routers = [
     testing_router,
     chat_router,
     sessions_router,
-    terminal_router,
     workspace_symbols_router,
     lsp_router,
     skills_router,

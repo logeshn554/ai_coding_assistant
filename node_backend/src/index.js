@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const { WebSocketServer } = require('ws');
+const { handleTerminalSocket } = require('./sockets/terminalSocket');
 
 const app = express();
 const port = process.env.PORT || 8001;
@@ -129,9 +130,11 @@ app.get('/api/permissions', (req, res) => {
 
 const server = http.createServer(app);
 
-// WebSocket support
-const wss = new WebSocketServer({ server, path: '/ws/chat' });
-wss.on('connection', (ws) => {
+// WebSocket support using multi-path routing
+const wssChat = new WebSocketServer({ noServer: true });
+const wssTerminal = new WebSocketServer({ noServer: true });
+
+wssChat.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'connected', message: 'Connected to DevPilot Node Backend WebSocket' }));
   ws.on('message', (message) => {
     try {
@@ -141,6 +144,32 @@ wss.on('connection', (ws) => {
       ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON payload' }));
     }
   });
+});
+
+wssTerminal.on('connection', (ws, req) => {
+  handleTerminalSocket(ws, req);
+});
+
+server.on('upgrade', (request, socket, head) => {
+  let pathname;
+  try {
+    pathname = new URL(request.url, `http://${request.headers.host || 'localhost'}`).pathname;
+  } catch (err) {
+    // Fallback if URL constructor fails for relative path
+    pathname = request.url.split('?')[0];
+  }
+
+  if (pathname === '/ws/chat') {
+    wssChat.handleUpgrade(request, socket, head, (ws) => {
+      wssChat.emit('connection', ws, request);
+    });
+  } else if (pathname === '/ws/terminal') {
+    wssTerminal.handleUpgrade(request, socket, head, (ws) => {
+      wssTerminal.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
 });
 
 server.listen(port, () => {

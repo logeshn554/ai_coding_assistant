@@ -20,15 +20,15 @@ interface MenuItem {
 }
 
 const MenuDropdown: React.FC<{ items: MenuItem[]; onClose: () => void }> = ({ items, onClose }) => (
-  <div className="absolute left-0 top-full mt-1 w-56 bg-[var(--dp-bg-elevated)] border border-[var(--dp-border)] shadow-[0_16px_48px_rgba(0,0,0,0.7)] py-1.5 z-50 text-xs text-[var(--dp-text-primary)] rounded-xl animate-fade-in">
+  <div className="absolute left-0 top-full mt-0.5 w-56 bg-[var(--dp-bg-elevated)] border border-[var(--dp-border)] shadow-[0_4px_12px_rgba(0,0,0,0.6)] py-1 z-50 text-xs text-[var(--dp-text-primary)] rounded-[4px] animate-fade-in">
     {items.map((item, i) => (
       <React.Fragment key={i}>
         <button
           onClick={() => { onClose(); item.action(); }}
           className={`w-full text-left px-3.5 py-1.5 flex items-center justify-between transition-colors cursor-pointer gap-3 font-sans
             ${item.danger
-              ? 'hover:bg-red-500/10 hover:text-red-400'
-              : 'hover:bg-[#7C5CFF]/15 hover:text-white'
+              ? 'hover:bg-[#FF6B6B]/10 hover:text-[#FF6B6B]'
+              : 'hover:bg-[#4C8DFF]/12 hover:text-white'
             }`}
         >
           <span>{item.label}</span>
@@ -118,10 +118,10 @@ export const TitleBar: React.FC = () => {
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setActiveMenu(activeMenu === id ? null : id); }}
-        className={`px-2 py-1 rounded text-[11.5px] font-medium transition-colors cursor-pointer ${
+        className={`px-2 py-1 text-[11.5px] font-medium transition-colors cursor-pointer ${
           activeMenu === id
-            ? 'bg-white/10 text-white font-semibold'
-            : 'text-[var(--dp-text-secondary)] hover:text-white hover:bg-white/5'
+            ? 'bg-[rgba(76,141,255,0.15)] text-white font-semibold'
+            : 'text-[var(--dp-text-secondary)] hover:text-[var(--dp-text-primary)] hover:bg-white/5'
         }`}
       >
         {label}
@@ -139,12 +139,12 @@ export const TitleBar: React.FC = () => {
   };
 
   return (
-    <div className="h-10 bg-[var(--dp-bg-tertiary)] border-b border-[var(--dp-border)] flex items-center justify-between px-3 select-none shrink-0 z-30 font-sans">
+    <div className="h-10 flex items-center justify-between px-3 select-none shrink-0 z-30 font-sans" style={{ background: "#2B2D30", borderBottom: "1px solid #393B40" }}>
 
       {/* ── Left: Branding + Workspace Selector + Menus ── */}
       <div className="flex items-center gap-2.5">
         {/* DevPilot Logo */}
-        <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-[#7C5CFF] via-purple-600 to-indigo-500 flex items-center justify-center text-white text-[10px] font-extrabold shadow-md shadow-[#7C5CFF]/30 shrink-0 tracking-tighter">
+        <div className="w-5 h-5 rounded-[3px] flex items-center justify-center text-white text-[9px] font-extrabold shrink-0" style={{ background: "#4C8DFF" }}>
           DP
         </div>
         <span className="text-[12px] font-bold text-[var(--dp-text-bright)] tracking-tight">DevPilot</span>
@@ -152,10 +152,10 @@ export const TitleBar: React.FC = () => {
         {/* Workspace Selector Dropdown Badge */}
         <div
           onClick={handleOpenWorkspaceFolder}
-          className="flex items-center gap-1.5 px-2 py-0.5 bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] hover:border-[#7C5CFF]/40 rounded-lg text-[11px] text-[var(--dp-text-primary)] cursor-pointer transition-colors"
+          className="flex items-center gap-1.5 px-2 py-0.5 border border-[var(--dp-border)] hover:bg-[#393B40] rounded-[4px] text-[11px] text-[var(--dp-text-primary)] cursor-pointer transition-colors" style={{ background: "#1E1F22" }}
           title="Switch Workspace Folder"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-[#7C5CFF]" />
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#4C8DFF" }} />
           <span className="font-semibold truncate max-w-[120px] text-[var(--dp-text-primary)]">{getWorkspaceName()}</span>
         </div>
 
@@ -172,10 +172,10 @@ export const TitleBar: React.FC = () => {
       {/* ── Center: Universal Search Trigger ── */}
       <div
         onClick={() => setIsCommandPaletteOpen(true)}
-        className="flex items-center justify-between w-80 max-w-sm h-6.5 px-2.5 bg-[var(--dp-bg-secondary)] hover:bg-[var(--dp-bg-elevated)] border border-[var(--dp-border)] hover:border-[#7C5CFF]/40 rounded-lg text-xs text-[var(--dp-text-muted)] cursor-pointer transition-all duration-150 group shadow-sm"
+        className="flex items-center justify-between w-80 max-w-sm h-7 px-2.5 border border-[var(--dp-border)] rounded-[4px] text-xs text-[var(--dp-text-muted)] cursor-pointer transition-all duration-150 group" style={{ background: "#1E1F22" }}
       >
         <div className="flex items-center gap-2 truncate">
-          <Search className="w-3.5 h-3.5 text-[var(--dp-text-muted)] group-hover:text-[#7C5CFF] transition-colors shrink-0" />
+          <Search className="w-3.5 h-3.5 text-[var(--dp-text-muted)] group-hover:text-[#4C8DFF] transition-colors shrink-0" />
           <span className="truncate text-[11px] text-[var(--dp-text-secondary)]">
             {activeFilePath
               ? `${getWorkspaceName()} › ${activeFilePath.replace(/\\/g, '/').split('/').pop()}`
@@ -193,7 +193,7 @@ export const TitleBar: React.FC = () => {
 
         {/* Git Branch Badge */}
         <div className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--dp-bg-secondary)] border border-[var(--dp-border)] text-[10px] text-[var(--dp-text-secondary)] font-mono">
-          <GitBranch className="w-3 h-3 text-[#7C5CFF]" />
+          <GitBranch className="w-3 h-3 text-[#4C8DFF]" />
           <span className="font-semibold text-[var(--dp-text-bright)]">{statusBarBranch || 'main'}</span>
         </div>
 
@@ -204,9 +204,9 @@ export const TitleBar: React.FC = () => {
             setIsSidebarOpen(true);
           }}
           title="Click to switch AI Profile & Models"
-          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-[#7C5CFF]/15 border border-[#7C5CFF]/30 text-[11px] cursor-pointer hover:bg-[#7C5CFF]/25 transition-all shadow-[0_0_10px_rgba(124,92,255,0.15)]"
+          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-[#4C8DFF]/15 border border-[#4C8DFF]/30 text-[11px] cursor-pointer hover:bg-[#4C8DFF]/25 transition-all shadow-[0_0_10px_rgba(76,141,255,0.15)]"
         >
-          <Cpu className="w-3.5 h-3.5 text-[#7C5CFF]" />
+          <Cpu className="w-3.5 h-3.5 text-[#4C8DFF]" />
           <span className="font-bold text-[var(--dp-text-bright)]">{activeProfileName || 'Groq / Claude 3.5'}</span>
         </div>
 
@@ -218,7 +218,7 @@ export const TitleBar: React.FC = () => {
           <span>{formatTokens(contextTokensRaw)} / 128K</span>
           <div className="w-12 h-1.5 bg-[var(--dp-bg-tertiary)] rounded-full overflow-hidden border border-[var(--dp-border)]">
             <div
-              className="h-full bg-gradient-to-r from-[#7C5CFF] to-blue-500 rounded-full transition-all duration-300"
+              className="h-full bg-gradient-to-r from-[#4C8DFF] to-blue-500 rounded-full transition-all duration-300"
               style={{ width: `${Math.min(100, Math.max(5, contextPercentage || 5))}%` }}
             />
           </div>
@@ -252,14 +252,14 @@ export const TitleBar: React.FC = () => {
         <button
           onClick={() => setIsAiPanelOpen(!isAiPanelOpen)}
           className={`p-1.5 rounded-lg transition-colors cursor-pointer
-            ${isAiPanelOpen ? 'text-[#7C5CFF] bg-[#7C5CFF]/15 border border-[#7C5CFF]/30' : 'text-[var(--dp-text-muted)] hover:text-white hover:bg-white/5'}`}
+            ${isAiPanelOpen ? 'text-[#4C8DFF] bg-[#4C8DFF]/15 border border-[#4C8DFF]/30' : 'text-[var(--dp-text-muted)] hover:text-white hover:bg-white/5'}`}
           title={isAiPanelOpen ? 'Hide AI Workspace' : 'Show AI Workspace'}
         >
           <PanelRight className="w-3.5 h-3.5" />
         </button>
 
         {/* User avatar */}
-        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#7C5CFF] to-indigo-600 flex items-center justify-center text-white text-[9px] font-bold shadow-md cursor-pointer shrink-0">
+        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#4C8DFF] to-indigo-600 flex items-center justify-center text-white text-[9px] font-bold shadow-md cursor-pointer shrink-0">
           U
         </div>
       </div>

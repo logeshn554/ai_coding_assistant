@@ -10,7 +10,8 @@ import {
   FileText,
   Database,
   Globe,
-  FileCode
+  FileCode,
+  AlertCircle
 } from 'lucide-react';
 
 import type { ChatMessage, AgentState, Session, ProcessEntry, ChatMode } from '../types/chat';
@@ -193,28 +194,30 @@ export default function ChatPanel({
   const showTypingIndicator = isGenerating;
 
   return (
-    <div className="flex flex-col h-full bg-[#0d0e15] text-zinc-200 select-none overflow-hidden font-sans border-l border-zinc-800/60">
+    <div className="flex flex-col h-full text-[#ececec] select-none overflow-hidden font-sans" style={{ background: '#2b2b2b', borderLeft: '1px solid #515151' }}>
 
       {/* ── 1. Top Header Bar ── */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-zinc-800/80 bg-[#11131c] shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 shrink-0" style={{ background: '#3c3f41', borderBottom: '1px solid #515151' }}>
         <div className="relative flex items-center gap-2 min-w-0">
-          <Sparkles className="w-4 h-4 text-violet-400 shrink-0" />
+          <Sparkles className="w-4 h-4 shrink-0" style={{ color: '#4C8DFF' }} />
           <button
             onClick={() => setShowHistoryDropdown(!showHistoryDropdown)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100 hover:text-white truncate max-w-[170px] bg-zinc-900/60 hover:bg-zinc-800/60 px-2 py-1 rounded-md border border-zinc-800 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-semibold truncate max-w-[170px] px-2 py-1 rounded-md transition-colors"
+            style={{ color: '#DFE1E5', background: '#3B3D42', border: '1px solid #393B40' }}
           >
             <span className="truncate">{sessionTitle}</span>
-            <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+            <ChevronDown className="w-3.5 h-3.5 shrink-0" style={{ color: '#6F737A' }} />
           </button>
 
           {/* Session History Dropdown */}
           {showHistoryDropdown && (
-            <div className="absolute top-9 left-0 w-64 bg-[#141622] border border-zinc-800 rounded-lg shadow-xl z-50 p-1.5 space-y-1">
-              <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-800">
-                <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Sessions</span>
+            <div className="absolute top-9 left-0 w-64 rounded-xl shadow-2xl z-50 p-1.5 space-y-1" style={{ background: '#2B2D30', border: '1px solid #393B40', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+              <div className="flex items-center justify-between px-2 py-1" style={{ borderBottom: '1px solid #393B40' }}>
+                <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#6F737A' }}>Sessions</span>
                 <button
                   onClick={() => { onNewSession?.(); setShowHistoryDropdown(false); }}
-                  className="flex items-center gap-1 text-[11px] text-violet-400 hover:text-violet-300 font-semibold"
+                  className="flex items-center gap-1 text-[11px] font-semibold transition-colors"
+                  style={{ color: '#4C8DFF' }}
                 >
                   <Plus className="w-3 h-3" /> New
                 </button>
@@ -224,10 +227,16 @@ export default function ChatPanel({
                   <div
                     key={s.id}
                     onClick={() => { onSelectSession?.(s.id); setShowHistoryDropdown(false); }}
-                    className={`flex items-center justify-between px-2 py-1.5 rounded text-xs cursor-pointer ${s.id === activeSessionId ? 'bg-violet-600/20 text-violet-300 font-medium' : 'hover:bg-zinc-800/60 text-zinc-300'}`}
+                    className="flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer transition-colors"
+                    style={s.id === activeSessionId
+                      ? { background: 'rgba(76,141,255,0.18)', color: '#DFE1E5', fontWeight: 600 }
+                      : { color: '#ececec' }
+                    }
+                    onMouseEnter={e => { if (s.id !== activeSessionId) (e.currentTarget as HTMLElement).style.background = '#3B3D42'; }}
+                    onMouseLeave={e => { if (s.id !== activeSessionId) (e.currentTarget as HTMLElement).style.background = ''; }}
                   >
                     <span className="truncate max-w-[170px]">{s.title || 'Untitled Session'}</span>
-                    {s.id === activeSessionId && <Check className="w-3 h-3 text-violet-400 shrink-0" />}
+                    {s.id === activeSessionId && <Check className="w-3 h-3 shrink-0" style={{ color: '#4C8DFF' }} />}
                   </div>
                 ))}
               </div>
@@ -238,14 +247,20 @@ export default function ChatPanel({
         <div className="flex items-center gap-1.5">
           <button
             onClick={onNewSession}
-            className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 rounded transition-colors"
+            className="p-1 rounded transition-colors"
+            style={{ color: '#6F737A' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#3B3D42'; (e.currentTarget as HTMLElement).style.color = '#DFE1E5'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ''; (e.currentTarget as HTMLElement).style.color = '#6F737A'; }}
             title="New Chat Session"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={onOpenSettings}
-            className="p-1 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 rounded transition-colors"
+            className="p-1 rounded transition-colors"
+            style={{ color: '#6F737A' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#3B3D42'; (e.currentTarget as HTMLElement).style.color = '#DFE1E5'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = ''; (e.currentTarget as HTMLElement).style.color = '#6F737A'; }}
             title="Settings & Models"
           >
             <Settings className="w-3.5 h-3.5" />
@@ -254,7 +269,7 @@ export default function ChatPanel({
       </div>
 
       {/* ── 2. Message List Stream ── */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0" style={{ background: '#1E1F22' }}>
         <MessageList
           messages={messages}
           onConfirmTool={onConfirmTool}
@@ -264,22 +279,37 @@ export default function ChatPanel({
           onToggleHunk={handleToggleHunk}
         />
 
+        {/* Agent Failed Alert Banner */}
+        {agents && agents.some(ag => ag.status === 'error') && (
+          <div className="mx-4 my-2 p-3.5 rounded-xl border border-red-500/30 bg-red-950/40 text-red-200 text-xs flex items-center justify-between gap-3 animate-slide-up" style={{ maxWidth: '760px', margin: '10px auto' }}>
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 animate-pulse" />
+              <span className="font-semibold">Agent execution failed</span>
+            </div>
+            <div className="font-mono text-[10px] text-red-300">
+              One or more agents encountered an error. Check logs for details.
+            </div>
+          </div>
+        )}
+
         {/* Streaming Thinking Indicator */}
         {showTypingIndicator && (
-          <div className="flex gap-2.5 max-w-[95%] items-start select-none px-4 mb-3 animate-slide-up">
-            <div className="w-7 h-7 rounded-md bg-zinc-900 border border-zinc-800 text-violet-400 shrink-0 flex items-center justify-center font-bold">
-              <Sparkles className="w-4 h-4 text-violet-400 animate-pulse" />
+          <div className="flex gap-3 items-start px-4 pb-4 animate-slide-up" style={{ maxWidth: '760px', margin: '0 auto' }}>
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+              style={{ background: 'rgba(76,141,255,0.10)', border: '1px solid rgba(76,141,255,0.25)' }}
+            >
+              <Sparkles className="w-3.5 h-3.5 animate-pulse" style={{ color: '#4C8DFF' }} />
             </div>
-            <div className="flex flex-col items-start max-w-[calc(100%-2.25rem)]">
-              <div className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-lg flex items-center gap-2 shadow-md">
-                <span className="relative flex h-2 w-2 shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500"></span>
-                </span>
-                <span className="text-[11.5px] text-zinc-300 font-medium font-sans">
-                  {statusMessage || 'Working...'}
-                </span>
-              </div>
+            <div className="flex items-center gap-2.5 py-2">
+              <span className="flex gap-1">
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: '#4C8DFF', animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: '#4C8DFF', animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: '#4C8DFF', animationDelay: '300ms' }} />
+              </span>
+              <span className="text-[13px]" style={{ color: '#6F737A' }}>
+                {statusMessage || 'Working...'}
+              </span>
             </div>
           </div>
         )}
@@ -288,12 +318,12 @@ export default function ChatPanel({
       </div>
 
       {/* ── 3. Input Area & Rich Action Controls ── */}
-      <div className="p-2.5 border-t border-zinc-800/80 bg-[#11131c] shrink-0 font-sans space-y-2 relative">
+      <div className="px-3 pt-2 pb-3 shrink-0 font-sans space-y-2 relative" style={{ background: '#1E1F22', borderTop: '1px solid #393B40' }}>
 
         {/* Mention (@) Autocomplete Popover */}
         {showMentions && (
-          <div className="absolute bottom-full left-3 mb-2 w-64 bg-[#161824] border border-zinc-700/80 rounded-xl shadow-2xl z-50 p-1 space-y-0.5 animate-slide-up">
-            <div className="px-2 py-1 text-[10px] font-bold text-violet-400 uppercase tracking-wider border-b border-zinc-800">
+          <div className="absolute bottom-full left-3 mb-2 w-64 rounded-xl shadow-2xl z-50 p-1 space-y-0.5 animate-slide-up" style={{ background: '#2B2D30', border: '1px solid #393B40', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: '#4C8DFF', borderBottom: '1px solid #393B40' }}>
               Mention Context
             </div>
             {MENTION_OPTIONS.map((item) => (
@@ -301,10 +331,12 @@ export default function ChatPanel({
                 key={item.trigger}
                 type="button"
                 onClick={() => insertMentionOrSlash(item.trigger)}
-                className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-violet-600/20 hover:text-violet-200 transition-colors flex flex-col gap-0.5 cursor-pointer"
+                className="w-full text-left px-2.5 py-1.5 rounded-lg transition-colors flex flex-col gap-0.5 cursor-pointer"
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(76,141,255,0.12)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}
               >
-                <span className="font-mono font-bold text-xs text-zinc-100">{item.label}</span>
-                <span className="text-[10px] text-zinc-400">{item.description}</span>
+                <span className="font-mono font-bold text-xs" style={{ color: '#DFE1E5' }}>{item.label}</span>
+                <span className="text-[10px]" style={{ color: '#6F737A' }}>{item.description}</span>
               </button>
             ))}
           </div>
@@ -312,10 +344,10 @@ export default function ChatPanel({
 
         {/* Slash (/) Actions Autocomplete Popover */}
         {showSlashMenu && (
-          <div className="absolute bottom-full left-3 mb-2 w-72 bg-[#161824] border border-zinc-700/80 rounded-xl shadow-2xl z-50 p-1 space-y-0.5 animate-slide-up">
-            <div className="px-2 py-1 text-[10px] font-bold text-violet-400 uppercase tracking-wider border-b border-zinc-800 flex items-center justify-between">
+          <div className="absolute bottom-full left-3 mb-2 w-72 rounded-xl shadow-2xl z-50 p-1 space-y-0.5 animate-slide-up" style={{ background: '#2B2D30', border: '1px solid #393B40', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center justify-between" style={{ color: '#4C8DFF', borderBottom: '1px solid #393B40' }}>
               <span>Slash Actions</span>
-              <span className="text-[9px] text-zinc-500 font-mono">Press Tab or Click</span>
+              <span className="text-[9px] font-mono" style={{ color: '#6F737A' }}>Press Tab or Click</span>
             </div>
             <div className="max-h-48 overflow-y-auto space-y-0.5">
               {SLASH_OPTIONS.map((item) => (
@@ -323,10 +355,12 @@ export default function ChatPanel({
                   key={item.trigger}
                   type="button"
                   onClick={() => insertMentionOrSlash(item.trigger)}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-violet-600/20 hover:text-violet-200 transition-colors flex flex-col gap-0.5 cursor-pointer"
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg transition-colors flex flex-col gap-0.5 cursor-pointer"
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(76,141,255,0.12)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ''}
                 >
-                  <span className="font-mono font-bold text-xs text-zinc-100">{item.label}</span>
-                  <span className="text-[10px] text-zinc-400">{item.description}</span>
+                  <span className="font-mono font-bold text-xs" style={{ color: '#DFE1E5' }}>{item.label}</span>
+                  <span className="text-[10px]" style={{ color: '#6F737A' }}>{item.description}</span>
                 </button>
               ))}
             </div>
@@ -343,39 +377,52 @@ export default function ChatPanel({
         />
 
         {/* Quick prompt suggestions */}
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1 px-0.5 text-[10.5px]">
+        <div className="flex items-center gap-1.5 overflow-x-auto py-1 px-0.5 text-[10.5px] no-scrollbar">
           <button
             type="button"
             onClick={() => setInput('/review Perform security & code review on active file')}
-            className="px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg shrink-0 cursor-pointer transition-colors"
+            className="px-2 py-0.5 rounded-md shrink-0 cursor-pointer transition-colors"
+            style={{ background: '#2B2D30', color: '#9DA0A8', border: '1px solid #393B40', borderRadius: '4px' }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#3B3D42'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#2B2D30'}
           >
-            🔍 Review Code
+
+            Review Code
           </button>
           <button
             type="button"
             onClick={() => setInput('Scan workspace for potential bugs and performance risks')}
-            className="px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg shrink-0 cursor-pointer transition-colors"
+            className="px-2 py-0.5 rounded-md shrink-0 cursor-pointer transition-colors"
+            style={{ background: '#2B2D30', color: '#9DA0A8', border: '1px solid #393B40', borderRadius: '4px' }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#3B3D42'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#2B2D30'}
           >
-            🐛 Scan Bugs
+            Scan Bugs
           </button>
           <button
             type="button"
             onClick={() => setInput('Generate unit tests covering happy path and edge cases')}
-            className="px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg shrink-0 cursor-pointer transition-colors"
+            className="px-2 py-0.5 rounded-md shrink-0 cursor-pointer transition-colors"
+            style={{ background: '#2B2D30', color: '#9DA0A8', border: '1px solid #393B40', borderRadius: '4px' }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#3B3D42'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#2B2D30'}
           >
-            🧪 Generate Tests
+            Generate Tests
           </button>
           <button
             type="button"
             onClick={() => setInput('/goal Refactor active file for high performance and clean architecture')}
-            className="px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-lg shrink-0 cursor-pointer transition-colors"
+            className="px-2 py-0.5 rounded-md shrink-0 cursor-pointer transition-colors"
+            style={{ background: '#2B2D30', color: '#9DA0A8', border: '1px solid #393B40', borderRadius: '4px' }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#3B3D42'}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#2B2D30'}
           >
-            ⚡ Refactor
+            Refactor
           </button>
         </div>
 
         {/* Input Box Container */}
-        <form onSubmit={handleSubmit} className="bg-zinc-950 border border-zinc-800 rounded-xl p-2.5 flex flex-col gap-2.5 focus-within:border-violet-500/60 shadow-inner">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-2 p-3 rounded-2xl" style={{ background: '#2B2D30', border: '1px solid #393B40', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
           <textarea
             ref={textareaRef}
             value={input}
@@ -383,118 +430,113 @@ export default function ChatPanel({
             onKeyDown={handleKeyDown}
             placeholder="Ask anything, @ to mention, / for actions"
             rows={2}
-            className="w-full max-h-32 min-h-[42px] bg-transparent text-[13px] text-zinc-100 focus:outline-none resize-none font-sans placeholder:text-zinc-600 p-0.5 scrollbar-none"
+            className="w-full max-h-36 min-h-[44px] bg-transparent text-[13.5px] focus:outline-none resize-none font-sans scrollbar-none p-0"
+            style={{ color: '#DFE1E5' }}
           />
 
-          {/* Action Toolbar Row (Matching user UI screenshot) */}
-          <div className="flex items-center justify-between pt-2 border-t border-zinc-800/80 select-none">
-            
-            {/* Left Tools & Context Attachments */}
+          {/* Action Toolbar Row */}
+          <div className="flex items-center justify-between pt-2 select-none" style={{ borderTop: '1px solid #393B40' }}>
+
+            {/* Left Tools */}
             <div className="flex items-center gap-1.5">
-              {/* Document / File Context */}
               <button
                 type="button"
                 onClick={() => setFileContextActive(!fileContextActive)}
-                className={`relative p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  fileContextActive ? 'bg-zinc-800/80 text-zinc-200 border border-zinc-700' : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
-                }`}
+                className="relative p-1.5 rounded-lg transition-colors cursor-pointer"
+                style={fileContextActive
+                  ? { background: 'rgba(76,141,255,0.15)', color: '#4C8DFF', border: '1px solid rgba(76,141,255,0.35)' }
+                  : { color: '#6F737A' }
+                }
                 title="Toggle active document context"
               >
                 <FileText className="w-3.5 h-3.5" />
-                {fileContextActive && (
-                  <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-blue-400" />
-                )}
               </button>
 
-              {/* Terminal Context */}
               <button
                 type="button"
                 onClick={() => setTerminalContextActive(!terminalContextActive)}
-                className={`relative p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  terminalContextActive ? 'bg-zinc-800/80 text-zinc-200 border border-zinc-700' : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
-                }`}
+                className="relative p-1.5 rounded-lg transition-colors cursor-pointer"
+                style={terminalContextActive
+                  ? { background: 'rgba(76,141,255,0.15)', color: '#4C8DFF', border: '1px solid rgba(76,141,255,0.35)' }
+                  : { color: '#6F737A' }
+                }
                 title="Toggle terminal buffer context"
               >
                 <Terminal className="w-3.5 h-3.5" />
-                {terminalContextActive && (
-                  <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                )}
               </button>
 
-              {/* Database Context */}
               <button
                 type="button"
                 onClick={() => setDbContextActive(!dbContextActive)}
-                className={`relative p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  dbContextActive ? 'bg-zinc-800/80 text-zinc-200 border border-zinc-700' : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
-                }`}
+                className="relative p-1.5 rounded-lg transition-colors cursor-pointer"
+                style={dbContextActive
+                  ? { background: 'rgba(76,141,255,0.15)', color: '#4C8DFF', border: '1px solid rgba(76,141,255,0.35)' }
+                  : { color: '#6F737A' }
+                }
                 title="Toggle database schema context"
               >
                 <Database className="w-3.5 h-3.5" />
-                {dbContextActive && (
-                  <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-blue-400" />
-                )}
               </button>
 
-              {/* Browser Preview Context */}
               <button
                 type="button"
                 onClick={() => setBrowserContextActive(!browserContextActive)}
-                className={`relative p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  browserContextActive ? 'bg-zinc-800/80 text-zinc-200 border border-zinc-700' : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
-                }`}
+                className="relative p-1.5 rounded-lg transition-colors cursor-pointer"
+                style={browserContextActive
+                  ? { background: 'rgba(76,141,255,0.15)', color: '#4C8DFF', border: '1px solid rgba(76,141,255,0.35)' }
+                  : { color: '#6F737A' }
+                }
                 title="Toggle browser preview context"
               >
                 <Globe className="w-3.5 h-3.5" />
-                {browserContextActive && (
-                  <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" />
-                )}
               </button>
 
-              {/* Review Changes Button */}
               <button
                 type="button"
                 onClick={handleOpenReviewPanel}
-                className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-200 font-semibold border border-zinc-800 rounded-lg text-[11px] cursor-pointer transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors"
+                style={{ background: '#2B2D30', color: '#9DA0A8', border: '1px solid #393B40', borderRadius: '4px' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = '#3B3D42'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = '#3B3D42'}
                 title="Open Review Changes Panel"
               >
-                <FileCode className="w-3.5 h-3.5 text-violet-400" />
+                <FileCode className="w-3.5 h-3.5" style={{ color: '#4C8DFF' }} />
                 <span>Review Changes</span>
               </button>
 
-              {/* Running Process Indicator Badge & Quick Stop */}
               {isProcessRunning && (
                 <button
                   type="button"
                   onClick={() => onStopProcess?.()}
-                  className="flex items-center gap-1 px-2 py-1 bg-red-950/60 hover:bg-red-900/60 text-red-300 font-semibold border border-red-800/80 rounded-lg text-[10.5px] cursor-pointer transition-colors"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10.5px] font-semibold cursor-pointer transition-colors"
+                  style={{ background: 'rgba(255,107,107,0.12)', color: '#FF6B6B', border: '1px solid rgba(255,107,107,0.30)' }}
                   title="Click to stop running background server or process"
                 >
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                   <span>Process</span>
-                  <span className="text-[9px] font-bold bg-red-600 text-white px-1 rounded ml-0.5">■ Stop</span>
+                  <span className="text-[9px] font-bold text-white px-1 rounded ml-0.5" style={{ background: '#FF6B6B' }}>Stop</span>
                 </button>
               )}
             </div>
 
-            {/* Right Controls: Mode Selector & Send */}
+            {/* Right Controls */}
             <div className="flex items-center gap-2">
-              {/* Auto Apply Toggle */}
-              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 hover:text-zinc-200 cursor-pointer select-none">
+              <label className="flex items-center gap-1.5 text-[11px] font-medium cursor-pointer select-none" style={{ color: '#6F737A' }}>
                 <input
                   type="checkbox"
                   checked={autoApply}
                   onChange={(e) => setAutoApply(e.target.checked)}
-                  className="rounded border-zinc-800 bg-zinc-900 text-violet-600 focus:ring-violet-500 focus:ring-offset-0 w-3 h-3 cursor-pointer"
+                  className="rounded w-3 h-3 cursor-pointer"
+                  style={{ accentColor: '#4b6eaf' }}
                 />
                 <span>Auto Apply</span>
               </label>
 
-              {/* Mode Selector */}
               <select
                 value={mode}
                 onChange={(e) => setMode(e.target.value as any)}
-                className="px-2 py-1 bg-zinc-900 border border-zinc-800 rounded-lg text-[11px] font-semibold text-zinc-200 focus:outline-none focus:border-violet-500 cursor-pointer"
+                className="px-2 py-1 rounded-lg text-[11px] font-semibold focus:outline-none cursor-pointer"
+                style={{ background: '#2B2D30', border: '1px solid #393B40', color: '#DFE1E5', borderRadius: '4px' }}
               >
                 <option value="Auto">Auto</option>
                 <option value="Ask">Ask</option>
@@ -502,21 +544,25 @@ export default function ChatPanel({
                 <option value="Agent">Agent</option>
               </select>
 
-              {/* Submit / Stop Generation Button */}
               {isGenerating && !input.trim() ? (
                 <button
                   type="button"
                   onClick={onCancelGeneration}
-                  className="p-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg cursor-pointer transition-colors shadow-sm"
+                  className="p-1.5 rounded-lg cursor-pointer transition-all"
+                  style={{ background: 'rgba(255,107,107,0.12)', color: '#FF6B6B', border: '1px solid rgba(255,107,107,0.30)', borderRadius: '4px' }}
                   title="Stop generating"
                 >
-                  <span className="w-3.5 h-3.5 flex items-center justify-center font-bold text-[9px]">■</span>
+                  <span className="w-3.5 h-3.5 flex items-center justify-center font-bold text-[10px]">■</span>
                 </button>
               ) : (
                 <button
                   type="submit"
                   disabled={!input.trim()}
-                  className="p-1.5 bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-800 text-white disabled:text-zinc-600 rounded-lg cursor-pointer disabled:cursor-not-allowed transition-colors shadow-sm"
+                  className="p-1.5 rounded-lg cursor-pointer disabled:cursor-not-allowed transition-all"
+                  style={input.trim()
+                    ? { background: '#4C8DFF', color: '#fff', borderRadius: '4px' }
+                    : { background: '#2B2D30', color: '#6F737A', borderRadius: '4px' }
+                  }
                   title="Send message (Enter)"
                 >
                   <Send className="w-3.5 h-3.5" />

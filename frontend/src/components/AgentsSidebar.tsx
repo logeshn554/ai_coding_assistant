@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import {
   Bot, Cpu, Beaker, CheckCircle2, Loader2, Sparkles,
   Shield, Zap, GitBranch, Terminal, Database, Globe,
@@ -38,7 +38,7 @@ interface AgentMeta {
 const TIERS = ['Planning', 'Architecture', 'Development', 'QA', 'Operations'];
 
 const TIER_COLORS: Record<string, { label: string; dot: string; border: string; header: string }> = {
-  Planning:     { label: 'text-violet-400', dot: 'bg-violet-400',  border: 'border-violet-500/20', header: 'bg-violet-500/5' },
+  Planning:     { label: 'text-[#4C8DFF]', dot: 'bg-[#4C8DFF]',  border: 'border-[#4C8DFF]/20', header: 'bg-[#4C8DFF]/5' },
   Architecture: { label: 'text-blue-400',   dot: 'bg-blue-400',    border: 'border-blue-500/20',   header: 'bg-blue-500/5' },
   Development:  { label: 'text-cyan-400',   dot: 'bg-cyan-400',    border: 'border-cyan-500/20',   header: 'bg-cyan-500/5' },
   QA:           { label: 'text-amber-400',  dot: 'bg-amber-400',   border: 'border-amber-500/20',  header: 'bg-amber-500/5' },
@@ -118,7 +118,7 @@ function AgentCard({ meta, status, task, onClick }: {
           }`}>{meta.name}</span>
           <StatusDot status={status} />
           {meta.is_custom && (
-            <span className="text-[7px] px-1 py-0.2 bg-purple-500/25 border border-purple-500/30 text-purple-300 rounded font-bold uppercase tracking-wider shrink-0 scale-90 origin-left">
+            <span className="text-[7px] px-1 py-0.2 bg-[#4C8DFF]/25 border border-[#4C8DFF]/30 text-[#4C8DFF] rounded font-bold uppercase tracking-wider shrink-0 scale-90 origin-left">
               Custom
             </span>
           )}

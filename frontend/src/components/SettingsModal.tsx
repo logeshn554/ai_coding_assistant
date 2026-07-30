@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, ShieldCheck, Check, AlertCircle, RefreshCw, Bug } from 'lucide-react';
 
 const AGENTS_LIST = [
@@ -47,7 +47,7 @@ function AgentModelRow({ label, value, selectableModels, onChange }: AgentModelR
               onChange(val);
             }
           }}
-          className="flex-1 px-2.5 py-1 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-violet-500"
+          className="flex-1 px-2.5 py-1 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF]"
         >
           <option value="">Default (Use Profile)</option>
           {selectableModels.map(m => (
@@ -60,7 +60,7 @@ function AgentModelRow({ label, value, selectableModels, onChange }: AgentModelR
             type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="flex-1 px-2.5 py-1 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-violet-500 font-mono"
+            className="flex-1 px-2.5 py-1 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF] font-mono"
             placeholder="Type model name..."
           />
         )}
@@ -526,7 +526,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-[#14171f]">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-            <ShieldCheck className="text-violet-400 w-5 h-5" />
+            <ShieldCheck className="text-[#4C8DFF] w-5 h-5" />
             DevPilot Settings
           </h2>
           <button onClick={onClose} className="p-1 rounded hover:bg-white/5 text-gray-400 hover:text-white transition-colors">
@@ -540,7 +540,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             onClick={() => setActiveSettingsTab('profiles')}
             className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
               activeSettingsTab === 'profiles' 
-                ? 'border-violet-500 text-white' 
+                ? 'border-[#4C8DFF] text-white' 
                 : 'border-transparent text-gray-400 hover:text-gray-200'
             }`}
           >
@@ -550,7 +550,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             onClick={() => setActiveSettingsTab('agent_behavior')}
             className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
               activeSettingsTab === 'agent_behavior' 
-                ? 'border-violet-500 text-white' 
+                ? 'border-[#4C8DFF] text-white' 
                 : 'border-transparent text-gray-400 hover:text-gray-200'
             }`}
           >
@@ -560,7 +560,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             onClick={() => setActiveSettingsTab('permissions')}
             className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
               activeSettingsTab === 'permissions' 
-                ? 'border-violet-500 text-white' 
+                ? 'border-[#4C8DFF] text-white' 
                 : 'border-transparent text-gray-400 hover:text-gray-200'
             }`}
           >
@@ -570,7 +570,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             onClick={() => setActiveSettingsTab('keybindings' as any)}
             className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
               (activeSettingsTab as string) === 'keybindings'
-                ? 'border-violet-500 text-white'
+                ? 'border-[#4C8DFF] text-white'
                 : 'border-transparent text-gray-400 hover:text-gray-200'
             }`}
           >
@@ -580,7 +580,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             onClick={() => setActiveSettingsTab('preferences')}
             className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
               activeSettingsTab === 'preferences' 
-                ? 'border-violet-500 text-white' 
+                ? 'border-[#4C8DFF] text-white' 
                 : 'border-transparent text-gray-400 hover:text-gray-200'
             }`}
           >
@@ -590,7 +590,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             onClick={() => setActiveSettingsTab('terminal')}
             className={`py-2 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
               activeSettingsTab === 'terminal'
-                ? 'border-violet-500 text-white'
+                ? 'border-[#4C8DFF] text-white'
                 : 'border-transparent text-gray-400 hover:text-gray-200'
             }`}
           >
@@ -614,7 +614,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     onClick={() => handleSelectProfile(p)}
                     className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer border transition-all ${
                       selectedProfile?.id === p.id
-                        ? 'bg-violet-600/10 border-violet-500/40 text-white'
+                        ? 'bg-[#3B7AE8]/10 border-[#4C8DFF]/40 text-white'
                         : 'bg-white/5 border-transparent hover:bg-white/10 hover:border-white/5 text-gray-300'
                     }`}
                   >
@@ -651,7 +651,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
 
               <button
                 onClick={handleCreateNewProfile}
-                className="mt-4 flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border border-dashed border-white/10 hover:border-violet-500/40 hover:bg-violet-600/5 text-sm text-gray-400 hover:text-violet-400 transition-all font-medium"
+                className="mt-4 flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border border-dashed border-white/10 hover:border-[#4C8DFF]/40 hover:bg-[#3B7AE8]/5 text-sm text-gray-400 hover:text-[#4C8DFF] transition-all font-medium"
               >
                 <Plus className="w-4 h-4" /> Add Profile
               </button>
@@ -673,7 +673,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                         type="text"
                         value={selectedProfile.name}
                         onChange={(e) => setSelectedProfile({ ...selectedProfile, name: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF]"
                         placeholder="e.g. My Anthropic Profile"
                       />
                     </div>
@@ -694,7 +694,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                           setHasFetchedModels(false);
                           setModelOptions([]);
                         }}
-                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500"
+                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF]"
                       >
                         <option value="openai">OpenAI</option>
                         <option value="anthropic">Anthropic (Claude)</option>
@@ -722,7 +722,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                           setHasFetchedModels(false);
                           setModelOptions([]);
                         }}
-                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF]"
                         placeholder="e.g. https://api.openai.com/v1"
                       />
                     </div>
@@ -740,7 +740,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                           setHasFetchedModels(false);
                           setModelOptions([]);
                         }}
-                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+                        className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF]"
                         placeholder={selectedProfile.id ? "••••••••••••••••" : "Paste your API key here"}
                       />
                     </div>
@@ -759,7 +759,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                                  setHasFetchedModels(false);
                                  setModelOptions([]);
                                }}
-                               className="text-[10px] text-violet-400 hover:text-violet-350 cursor-pointer"
+                               className="text-[10px] text-[#4C8DFF] hover:text-[#4C8DFF] cursor-pointer"
                              >
                                Edit Manually
                              </button>
@@ -768,7 +768,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                                type="button"
                                onClick={fetchModels}
                                disabled={isFetchingModels}
-                               className="text-[10px] text-violet-400 hover:text-violet-350 disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                               className="text-[10px] text-[#4C8DFF] hover:text-[#4C8DFF] disabled:opacity-50 flex items-center gap-1 cursor-pointer"
                              >
                                <RefreshCw className={`w-3 h-3 ${isFetchingModels ? 'animate-spin' : ''}`} />
                                {isFetchingModels ? 'Fetching Models...' : 'Fetch & List Models'}
@@ -781,7 +781,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                          <select
                            value={selectedProfile.model_name}
                            onChange={(e) => setSelectedProfile({ ...selectedProfile, model_name: e.target.value })}
-                           className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
+                           className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
                          >
                            {getSelectableModels().map((model) => (
                              <option key={model} value={model}>
@@ -795,7 +795,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                              type="text"
                              value={selectedProfile.model_name}
                              onChange={(e) => setSelectedProfile({ ...selectedProfile, model_name: e.target.value })}
-                             className="flex-1 px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
+                             className="flex-1 px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
                              placeholder="Type model name..."
                            />
                          </div>
@@ -856,7 +856,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                       </button>
                       <button
                         onClick={handleSaveProfile}
-                        className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-xs text-white rounded-lg transition-colors font-medium"
+                        className="px-4 py-2 bg-[#3B7AE8] hover:bg-[#4C8DFF] text-xs text-white rounded-lg transition-colors font-medium"
                       >
                         Save Configuration
                       </button>
@@ -895,7 +895,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     setArtifactReviewPolicy(val);
                     savePreferences(excludeList, autoBackupEnabled, undefined, undefined, val);
                   }}
-                  className="px-3 py-1.5 bg-[#0d0e14] border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-violet-500 cursor-pointer min-w-[130px]"
+                  className="px-3 py-1.5 bg-[#0d0e14] border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-[#4C8DFF] cursor-pointer min-w-[130px]"
                 >
                   <option value="Always Ask">Always Ask</option>
                   <option value="On Demand">On Demand</option>
@@ -911,7 +911,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   Local Permissions
                 </h3>
                 <p className="text-[11px] text-gray-400">
-                  Inherits from <span className="text-violet-400 cursor-pointer hover:underline">global settings</span>. Local permissions have higher priority. <span className="text-violet-400 cursor-pointer hover:underline">Learn more</span>.
+                  Inherits from <span className="text-[#4C8DFF] cursor-pointer hover:underline">global settings</span>. Local permissions have higher priority. <span className="text-[#4C8DFF] cursor-pointer hover:underline">Learn more</span>.
                 </p>
               </div>
 
@@ -999,7 +999,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-xs">
               {/* Project Perms */}
               <div className="space-y-2">
-                <div className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
+                <div className="text-[10px] font-bold text-[#4C8DFF] uppercase tracking-wider">
                   Project Permissions (Saved on Disk)
                 </div>
                 {(!permissions?.project || permissions.project.length === 0) ? (
@@ -1025,7 +1025,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
 
               {/* Session Perms */}
               <div className="space-y-2">
-                <div className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
+                <div className="text-[10px] font-bold text-[#4C8DFF] uppercase tracking-wider">
                   Session Permissions (In-Memory Only)
                 </div>
                 {(!permissions?.session || permissions.session.length === 0) ? (
@@ -1074,7 +1074,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
               ].map((kb, idx) => (
                 <div key={idx} className="p-3 flex items-center justify-between hover:bg-white/[0.02]">
                   <span className="font-sans text-xs font-medium text-gray-200">{kb.command}</span>
-                  <span className="px-2 py-0.5 rounded bg-black/40 border border-white/10 text-violet-300 font-bold text-[11px]">
+                  <span className="px-2 py-0.5 rounded bg-black/40 border border-white/10 text-[#4C8DFF] font-bold text-[11px]">
                     {kb.keybinding}
                   </span>
                 </div>
@@ -1105,7 +1105,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   setExcludeList(items);
                   savePreferences(items, autoBackupEnabled);
                 }}
-                className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
+                className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
                 placeholder="e.g. .git, node_modules, dist"
               />
             </div>
@@ -1125,7 +1125,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   setAgentModelName(val);
                   savePreferences(excludeList, autoBackupEnabled, val);
                 }}
-                className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
+                className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
               >
                 <option value="">Use Active Profile Model (Default)</option>
                 {getSelectableModels().map((model) => (
@@ -1151,7 +1151,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   setImageAnalysisModel(val);
                   savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
                 }}
-                className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 font-mono"
+                className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
               >
                 <option value="">None / Automatic OCR Fallback</option>
                 {getSelectableModels().map((model) => (
@@ -1198,14 +1198,14 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   setAutoBackupEnabled(val);
                   savePreferences(excludeList, val);
                 }}
-                className="accent-violet-500 mt-1 cursor-pointer w-4 h-4 rounded"
+                className="accent-[#4C8DFF] mt-1 cursor-pointer w-4 h-4 rounded"
               />
               <div className="flex flex-col gap-1">
                 <label htmlFor="auto-backups-check" className="text-xs font-semibold text-white cursor-pointer select-none">
                   Enable Automatic File Backups
                 </label>
                 <span className="text-[10px] text-gray-500">
-                  When enabled, DevPilot automatically creates a local timestamped backup of modified files inside the <code className="font-mono text-violet-400">.devpilot/backups/</code> folder before writing new code blocks. This enables easy revert actions.
+                  When enabled, DevPilot automatically creates a local timestamped backup of modified files inside the <code className="font-mono text-[#4C8DFF]">.devpilot/backups/</code> folder before writing new code blocks. This enables easy revert actions.
                 </span>
               </div>
             </div>
@@ -1285,7 +1285,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   setAiInlineEnabled(val);
                   localStorage.setItem('devpilot_ai_inline_completions', val ? 'true' : 'false');
                 }}
-                className="accent-violet-500 mt-1 cursor-pointer w-4 h-4 rounded"
+                className="accent-[#4C8DFF] mt-1 cursor-pointer w-4 h-4 rounded"
               />
               <div className="flex flex-col gap-1">
                 <label htmlFor="ai-inline-completions" className="text-xs font-semibold text-white cursor-pointer select-none">
@@ -1300,7 +1300,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             {/* ── Editor Font Size ── */}
             <div className="space-y-2 border-t border-white/5 pt-5">
               <label className="text-xs font-semibold text-gray-400">
-                Editor Font Size — <span className="text-violet-400 font-mono">{editorFontSize}px</span>
+                Editor Font Size — <span className="text-[#4C8DFF] font-mono">{editorFontSize}px</span>
               </label>
               <div className="flex items-center gap-3">
                 <input
@@ -1315,7 +1315,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     localStorage.setItem('devpilot_editor_font_size', String(val));
                     window.dispatchEvent(new CustomEvent('devpilot_editor_settings', { detail: { fontSize: val } }));
                   }}
-                  className="accent-violet-500 w-48 cursor-pointer"
+                  className="accent-[#4C8DFF] w-48 cursor-pointer"
                 />
                 <span className="text-[10px] text-gray-500 w-6">{editorFontSize}</span>
               </div>
@@ -1343,7 +1343,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   setDefaultShell(val);
                   saveTerminalPrefs(val, termFontSize, termScrollback);
                 }}
-                className="bg-black/40 text-xs border border-white/10 hover:border-violet-500/40 focus:border-violet-500/60 rounded-lg px-3 py-1.5 text-white focus:outline-none transition-all cursor-pointer w-52"
+                className="bg-black/40 text-xs border border-white/10 hover:border-[#4C8DFF]/40 focus:border-[#4C8DFF]/60 rounded-lg px-3 py-1.5 text-white focus:outline-none transition-all cursor-pointer w-52"
               >
                 <option value="">Default (OS shell)</option>
                 <option value="powershell">PowerShell</option>
@@ -1356,7 +1356,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             {/* Font Size */}
             <div className="space-y-2">
               <label className="text-xs font-semibold text-gray-400">
-                Font Size — <span className="text-violet-400 font-mono">{termFontSize}px</span>
+                Font Size — <span className="text-[#4C8DFF] font-mono">{termFontSize}px</span>
               </label>
               <div className="flex items-center gap-3">
                 <input
@@ -1374,7 +1374,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     const val = parseInt((e.target as HTMLInputElement).value, 10);
                     saveTerminalPrefs(defaultShell, val, termScrollback);
                   }}
-                  className="accent-violet-500 w-48 cursor-pointer"
+                  className="accent-[#4C8DFF] w-48 cursor-pointer"
                 />
                 <span className="text-[10px] text-gray-500 w-6">{termFontSize}</span>
               </div>
@@ -1397,7 +1397,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     setTermScrollback(val);
                   }}
                   onBlur={() => saveTerminalPrefs(defaultShell, termFontSize, termScrollback)}
-                  className="bg-black/40 text-xs border border-white/10 hover:border-violet-500/40 focus:border-violet-500/60 rounded-lg px-3 py-1.5 text-white focus:outline-none transition-all w-28"
+                  className="bg-black/40 text-xs border border-white/10 hover:border-[#4C8DFF]/40 focus:border-[#4C8DFF]/60 rounded-lg px-3 py-1.5 text-white focus:outline-none transition-all w-28"
                 />
                 <span className="text-[10px] text-gray-500">lines</span>
               </div>
@@ -1439,7 +1439,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     activeRuleModal === 'terminal' ? 'e.g. npm install or git commit' :
                     activeRuleModal === 'unsandboxed' ? 'e.g. docker run or systemctl' : 'e.g. sqlite/read_query'
                   }
-                  className="flex-1 px-3 py-1.5 bg-[#0d0e14] border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-violet-500 font-mono"
+                  className="flex-1 px-3 py-1.5 bg-[#0d0e14] border border-white/10 rounded-lg text-xs text-white focus:outline-none focus:border-[#4C8DFF] font-mono"
                 />
                 <select
                   value={newRuleType}
@@ -1476,7 +1476,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     }
                     setNewRuleInput('');
                   }}
-                  className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                  className="px-3 py-1.5 bg-[#3B7AE8] hover:bg-[#4C8DFF] text-white rounded-lg text-xs font-semibold cursor-pointer"
                 >
                   Add Rule
                 </button>
@@ -1536,7 +1536,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
               <div className="flex justify-end pt-2 border-t border-white/10">
                 <button
                   onClick={() => setActiveRuleModal(null)}
-                  className="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-lg cursor-pointer"
+                  className="px-4 py-1.5 bg-[#3B7AE8] hover:bg-[#4C8DFF] text-white text-xs font-semibold rounded-lg cursor-pointer"
                 >
                   Done
                 </button>

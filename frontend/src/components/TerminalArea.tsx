@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as TerminalIcon } from 'lucide-react';
@@ -249,13 +249,13 @@ function TerminalPane({
     >
       {/* Pane Toolbar Header */}
       <div className={`flex items-center justify-between px-3 py-1 bg-[#14171f] border-b border-white/5 text-[10px] select-none shrink-0 font-sans ${
-        isActive ? 'text-violet-400 font-semibold' : 'text-gray-550 font-medium'
+        isActive ? 'text-[#4C8DFF] font-semibold' : 'text-gray-550 font-medium'
       }`}>
         <div className="flex items-center gap-1.5 min-w-0">
-          <TerminalIcon className={`w-3 h-3 ${isActive ? 'text-violet-400' : 'text-gray-555'}`} />
+          <TerminalIcon className={`w-3 h-3 ${isActive ? 'text-[#4C8DFF]' : 'text-gray-555'}`} />
           <span className="truncate">{shellName}</span>
           {isActive && (
-            <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse ml-1" />
+            <span className="w-1.5 h-1.5 rounded-full bg-[#4C8DFF] animate-pulse ml-1" />
           )}
         </div>
         <div className="flex items-center gap-1.5">
@@ -484,7 +484,7 @@ export default function TerminalArea({
       {/* Title bar / Controls */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#111318] border-b border-white/5 text-xs text-gray-400 font-medium select-none shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <TerminalIcon className="w-3.5 h-3.5 text-violet-400" />
+          <TerminalIcon className="w-3.5 h-3.5 text-[#4C8DFF]" />
           
           {/* View mode & Terminal Tabs */}
           <div className="flex items-center gap-1 bg-[#181a24] p-0.5 rounded-lg border border-white/5">
@@ -493,7 +493,7 @@ export default function TerminalArea({
                 key={t.id}
                 onClick={() => setActivePaneId(t.id)}
                 className={`px-2 py-0.5 rounded text-[10px] font-mono flex items-center gap-1 cursor-pointer transition-colors ${
-                  activePaneId === t.id ? 'bg-violet-600 text-white font-semibold' : 'text-gray-400 hover:text-white'
+                  activePaneId === t.id ? 'bg-[#3B7AE8] text-white font-semibold' : 'text-gray-400 hover:text-white'
                 }`}
               >
                 <span>{t.name || `Term ${t.id + 1}`}</span>
@@ -501,7 +501,7 @@ export default function TerminalArea({
             ))}
             <button
               onClick={handleAddTerminal}
-              className="px-1.5 py-0.5 text-[10px] text-violet-400 hover:text-violet-300 font-bold"
+              className="px-1.5 py-0.5 text-[10px] text-[#4C8DFF] hover:text-[#4C8DFF] font-bold"
               title="Add Terminal"
             >
               +
@@ -509,7 +509,7 @@ export default function TerminalArea({
           </div>
 
           {activeTerminalStatus === 'running' && (
-            <span className="ml-2 px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-400 font-mono text-[9px] animate-pulse truncate">
+            <span className="ml-2 px-1.5 py-0.5 rounded bg-[#4C8DFF]/20 text-[#4C8DFF] font-mono text-[9px] animate-pulse truncate">
               Running: {activeTerminalCommand} ({activeTerminalElapsed}s)
             </span>
           )}
@@ -533,7 +533,7 @@ export default function TerminalArea({
               setShowHistory(true);
             }}
             onFocus={() => setShowHistory(true)}
-            className="bg-black/40 text-[10px] border border-white/5 hover:border-violet-500/30 focus:border-violet-500/50 rounded px-2 py-0.5 text-white focus:outline-none transition-all w-32"
+            className="bg-black/40 text-[10px] border border-white/5 hover:border-[#4C8DFF]/30 focus:border-[#4C8DFF]/50 rounded px-2 py-0.5 text-white focus:outline-none transition-all w-32"
           />
           <button
             onClick={() => setShowHistory(!showHistory)}
@@ -557,7 +557,7 @@ export default function TerminalArea({
                         handleRunCommand(cmd);
                         setShowHistory(false);
                       }}
-                      className="w-full text-left px-2 py-1 rounded hover:bg-violet-600/20 hover:text-white text-[10px] truncate font-mono block"
+                      className="w-full text-left px-2 py-1 rounded hover:bg-[#3B7AE8]/20 hover:text-white text-[10px] truncate font-mono block"
                     >
                       {cmd}
                     </button>
@@ -570,7 +570,7 @@ export default function TerminalArea({
           <select
             value={selectedShell}
             onChange={(e) => handleShellChange(e.target.value)}
-            className="bg-black/40 text-[10px] border border-white/5 hover:border-violet-500/30 focus:border-violet-500/50 rounded px-2 py-0.5 text-white focus:outline-none transition-all cursor-pointer font-mono"
+            className="bg-black/40 text-[10px] border border-white/5 hover:border-[#4C8DFF]/30 focus:border-[#4C8DFF]/50 rounded px-2 py-0.5 text-white focus:outline-none transition-all cursor-pointer font-mono"
             title="Default shell profile"
           >
             {SHELL_OPTIONS.map(opt => (
@@ -596,7 +596,7 @@ export default function TerminalArea({
             className={`px-2 py-0.5 rounded text-[10px] flex items-center gap-1 font-semibold transition-all cursor-pointer ${
               splitTerminals.length >= 4 
                 ? 'bg-white/5 text-gray-600 cursor-not-allowed'
-                : 'bg-violet-600/80 hover:bg-violet-600 text-white'
+                : 'bg-[#3B7AE8]/80 hover:bg-[#3B7AE8] text-white'
             }`}
             title="Split Terminal side-by-side"
           >

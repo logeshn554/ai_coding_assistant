@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Brain, Plus, Trash2, ToggleLeft, ToggleRight, Sparkles } from 'lucide-react';
 import type { ProjectMemoryItem } from '../../types/chat';
 
@@ -38,13 +38,13 @@ export const ProjectMemoryPanel: React.FC<ProjectMemoryPanelProps> = ({
       <div className="flex items-center justify-between pb-2 border-b border-white/5">
         <div>
           <h4 className="font-bold text-white text-xs flex items-center gap-1.5">
-            <Brain className="w-4 h-4 text-purple-400" /> Persistent Project Memory
+            <Brain className="w-4 h-4 text-[#4C8DFF]" /> Persistent Project Memory
           </h4>
           <p className="text-[10px] text-gray-400">Rules & architectural guidelines enforced on every AI turn</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-1 bg-violet-600 hover:bg-violet-500 text-white px-2.5 py-1 rounded-lg font-semibold text-[10px] shadow-sm transition-all cursor-pointer"
+          className="flex items-center gap-1 bg-[#3B7AE8] hover:bg-[#4C8DFF] text-white px-2.5 py-1 rounded-lg font-semibold text-[10px] shadow-sm transition-all cursor-pointer"
         >
           <Plus className="w-3 h-3" /> Add Rule
         </button>
@@ -68,7 +68,7 @@ export const ProjectMemoryPanel: React.FC<ProjectMemoryPanelProps> = ({
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20 shrink-0">
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-[#4C8DFF]/10 text-[#4C8DFF] border border-[#4C8DFF]/20 shrink-0">
                     {item.category}
                   </span>
                   <span className="font-semibold text-white truncate text-[11px]">{item.title}</span>
@@ -103,7 +103,7 @@ export const ProjectMemoryPanel: React.FC<ProjectMemoryPanelProps> = ({
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#181b26] border border-white/10 rounded-xl w-[400px] p-4 shadow-2xl space-y-3 font-sans">
             <h3 className="font-bold text-white text-sm flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-violet-400" /> Add Persistent Memory Rule
+              <Sparkles className="w-4 h-4 text-[#4C8DFF]" /> Add Persistent Memory Rule
             </h3>
             
             <div className="space-y-2">
@@ -129,7 +129,7 @@ export const ProjectMemoryPanel: React.FC<ProjectMemoryPanelProps> = ({
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g. Use Tailwind CSS with 8px spacing"
-                  className="w-full bg-[#10121a] border border-white/10 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-violet-500"
+                  className="w-full bg-[#10121a] border border-white/10 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#4C8DFF]"
                 />
               </div>
 
@@ -140,7 +140,7 @@ export const ProjectMemoryPanel: React.FC<ProjectMemoryPanelProps> = ({
                   onChange={(e) => setContent(e.target.value)}
                   placeholder="Exact prompt instruction to inject on every task turn..."
                   rows={3}
-                  className="w-full bg-[#10121a] border border-white/10 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-violet-500 resize-none"
+                  className="w-full bg-[#10121a] border border-white/10 rounded-lg p-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#4C8DFF] resize-none"
                 />
               </div>
             </div>
@@ -155,7 +155,7 @@ export const ProjectMemoryPanel: React.FC<ProjectMemoryPanelProps> = ({
               <button
                 onClick={handleCreate}
                 disabled={!title.trim() || !content.trim()}
-                className="px-3 py-1.5 text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white rounded-lg disabled:opacity-40 transition-colors"
+                className="px-3 py-1.5 text-xs font-semibold bg-[#3B7AE8] hover:bg-[#4C8DFF] text-white rounded-lg disabled:opacity-40 transition-colors"
               >
                 Save Rule
               </button>

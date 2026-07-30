@@ -167,14 +167,6 @@ class ActiveProcess:
 
     async def stop(self):
         logger.info(f"Stopping process {self.id} ({self.name})")
-        if self.read_task:
-            self.read_task.cancel()
-            try:
-                await self.read_task
-            except asyncio.CancelledError:
-                pass
-            self.read_task = None
-
         if self.process:
             try:
                 if sys.platform == "win32":
@@ -184,6 +176,16 @@ class ActiveProcess:
                     self.process.terminate()
             except Exception:
                 pass
+
+        if self.read_task:
+            self.read_task.cancel()
+            try:
+                await self.read_task
+            except asyncio.CancelledError:
+                pass
+            self.read_task = None
+
+        if self.process:
             try:
                 await asyncio.wait_for(self.process.wait(), timeout=2.0)
             except Exception:

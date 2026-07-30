@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import {
   Folder, FolderOpen, File as FileIcon, ChevronRight, ChevronDown
 } from 'lucide-react';
@@ -85,7 +85,7 @@ function GitBadge({ status }: { status: string }) {
     A: { label: 'A', cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' },
     D: { label: 'D', cls: 'bg-red-500/15 text-red-400 border-red-500/20' },
     '??': { label: 'U', cls: 'bg-blue-500/15 text-blue-400 border-blue-500/20' },
-    R: { label: 'R', cls: 'bg-purple-500/15 text-purple-400 border-purple-500/20' },
+    R: { label: 'R', cls: 'bg-[#4C8DFF]/15 text-[#4C8DFF] border-[#4C8DFF]/20' },
   };
   const c = config[status] || config['??'];
   return (
@@ -182,7 +182,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
               style={{ paddingLeft: `${depth * 12 + 10}px` }}
               className={`
                 group flex items-center justify-between py-1 pr-2 text-[12px] cursor-pointer transition-colors
-                ${isSelected ? 'bg-[#7C5CFF]/20 text-white font-semibold border-l-2 border-[#7C5CFF]' : 'text-gray-300 hover:bg-white/5 hover:text-white'}
+                ${isSelected ? 'bg-[#4C8DFF]/20 text-white font-semibold border-l-2 border-[#4C8DFF]' : 'text-gray-300 hover:bg-white/5 hover:text-white'}
               `}
             >
               <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -204,7 +204,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
                       onChange={e => setRenameValue(e.target.value)}
                       autoFocus
                       onBlur={() => setRenamingPath(null)}
-                      className="w-full bg-[#151823] text-white text-[11px] px-1 py-0 rounded border border-[#7C5CFF] focus:outline-none"
+                      className="w-full bg-[#151823] text-white text-[11px] px-1 py-0 rounded border border-[#4C8DFF] focus:outline-none"
                     />
                   </form>
                 ) : (

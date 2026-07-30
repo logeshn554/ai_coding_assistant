@@ -5,6 +5,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pytest
 from app.tools.dispatcher import dispatch_tool
 
+@pytest.fixture(autouse=True)
+async def _stop_spawned_processes():
+    yield
+    from app.processes import global_process_manager
+    for proc in list(global_process_manager.get_running_processes()):
+        try:
+            await proc.stop()
+        except Exception:
+            pass
+
 class MockSession:
     def __init__(self, workspace_root: str):
         self.workspace_root = workspace_root

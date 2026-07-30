@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Clock, Cpu } from 'lucide-react';
 import type { AiTaskItem } from '../../types/chat';
 
@@ -8,9 +8,9 @@ interface AiTaskBoardProps {
 
 const PHASES: Array<{ id: AiTaskItem['phase']; title: string; color: string }> = [
   { id: 'planning', title: 'Planning', color: 'border-blue-500/40 text-blue-400' },
-  { id: 'coding', title: 'Coding', color: 'border-violet-500/40 text-violet-400' },
+  { id: 'coding', title: 'Coding', color: 'border-[#4C8DFF]/40 text-[#4C8DFF]' },
   { id: 'testing', title: 'Testing', color: 'border-amber-500/40 text-amber-400' },
-  { id: 'review', title: 'Review', color: 'border-purple-500/40 text-purple-400' },
+  { id: 'review', title: 'Review', color: 'border-[#4C8DFF]/40 text-[#4C8DFF]' },
   { id: 'deployment', title: 'Deployment', color: 'border-emerald-500/40 text-emerald-400' },
 ];
 
@@ -57,7 +57,7 @@ export const AiTaskBoard: React.FC<AiTaskBoardProps> = ({ tasks }) => {
                   phaseTasks.map((task) => (
                     <div 
                       key={task.id}
-                      className="bg-[#181b26] border border-white/5 rounded-lg p-2.5 shadow-sm space-y-2 hover:border-violet-500/30 transition-colors"
+                      className="bg-[#181b26] border border-white/5 rounded-lg p-2.5 shadow-sm space-y-2 hover:border-[#4C8DFF]/30 transition-colors"
                     >
                       <div className="font-medium text-white leading-tight text-[11px]">
                         {task.title}
@@ -70,7 +70,7 @@ export const AiTaskBoard: React.FC<AiTaskBoardProps> = ({ tasks }) => {
                             task.status === 'completed'
                               ? 'bg-emerald-400'
                               : task.status === 'in_progress'
-                              ? 'bg-violet-500 animate-pulse'
+                              ? 'bg-[#4C8DFF] animate-pulse'
                               : task.status === 'failed'
                               ? 'bg-rose-500'
                               : 'bg-gray-600'
@@ -82,7 +82,7 @@ export const AiTaskBoard: React.FC<AiTaskBoardProps> = ({ tasks }) => {
                       {/* Footer Info */}
                       <div className="flex items-center justify-between text-[9px] text-gray-400 pt-1 border-t border-white/5">
                         <span className="flex items-center gap-1">
-                          <Cpu className="w-3 h-3 text-violet-400" />
+                          <Cpu className="w-3 h-3 text-[#4C8DFF]" />
                           {task.owner || 'AI Agent'}
                         </span>
                         {task.estimatedTime && (

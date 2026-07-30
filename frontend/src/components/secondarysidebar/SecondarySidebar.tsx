@@ -67,7 +67,7 @@ function SymbolIcon({ kindName }: { kindName: string }) {
     case 'variable':
       return <Hash className="w-3.5 h-3.5 text-orange-400 shrink-0" />;
     default:
-      return <Braces className="w-3.5 h-3.5 text-violet-400 shrink-0" />;
+      return <Braces className="w-3.5 h-3.5 text-[#4C8DFF] shrink-0" />;
   }
 }
 
@@ -124,7 +124,7 @@ export const SecondarySidebar: React.FC<SecondarySidebarProps> = (props) => {
       {/* ── Top Secondary Header ── */}
       <div className="px-2 pt-2 pb-0 shrink-0 border-b border-[var(--dp-border)] flex items-center justify-between overflow-x-auto">
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-0.5 overflow-x-auto py-0.5">
+        <div className="flex items-center gap-1 overflow-x-auto">
           {tabs.map(t => {
             const Icon = t.icon;
             const isActive = secondarySidebarTab === t.id;
@@ -132,10 +132,10 @@ export const SecondarySidebar: React.FC<SecondarySidebarProps> = (props) => {
               <button
                 key={t.id}
                 onClick={() => setSecondarySidebarTab(t.id)}
-                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[11px] transition-all cursor-pointer whitespace-nowrap border-b-2 ${
                   isActive
-                    ? 'bg-[var(--dp-accent-dim)] text-[var(--dp-accent)] border border-[var(--dp-accent)]/20 shadow-xs'
-                    : 'text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5'
+                    ? 'border-[var(--dp-accent)] text-[var(--dp-text-primary)] font-semibold'
+                    : 'border-transparent text-[var(--dp-text-secondary)] hover:text-[var(--dp-text-primary)] hover:bg-white/5'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -144,6 +144,7 @@ export const SecondarySidebar: React.FC<SecondarySidebarProps> = (props) => {
             );
           })}
         </div>
+
 
         {/* Close Button */}
         <button
@@ -193,7 +194,7 @@ export const SecondarySidebar: React.FC<SecondarySidebarProps> = (props) => {
             <div className="flex items-center justify-between">
               <div>
                 <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
-                  <ListTree className="w-4 h-4 text-violet-400" /> File Outline
+                  <ListTree className="w-4 h-4 text-[#4C8DFF]" /> File Outline
                 </h4>
                 <p className="text-[10px] text-gray-400 mt-0.5 truncate max-w-[240px]">
                   {activeFilePath ? activeFilePath.split(/[\\/]/).pop() : 'No active file'}
@@ -217,7 +218,7 @@ export const SecondarySidebar: React.FC<SecondarySidebarProps> = (props) => {
                 value={symbolQuery}
                 onChange={e => setSymbolQuery(e.target.value)}
                 placeholder="Filter symbols..."
-                className="w-full bg-black/40 border border-white/10 rounded-lg pl-8 pr-2 py-1.5 text-xs text-white placeholder-gray-500 outline-none focus:border-violet-500/50"
+                className="w-full bg-black/40 border border-white/10 rounded-lg pl-8 pr-2 py-1.5 text-xs text-white placeholder-gray-500 outline-none focus:border-[#4C8DFF]/50"
               />
             </div>
 
@@ -225,7 +226,7 @@ export const SecondarySidebar: React.FC<SecondarySidebarProps> = (props) => {
             <div className="flex-1 overflow-y-auto space-y-1 pr-1">
               {symbolsLoading ? (
                 <div className="flex items-center justify-center py-8 text-xs text-gray-500 gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-violet-400" /> Parsing symbols...
+                  <Loader2 className="w-4 h-4 animate-spin text-[#4C8DFF]" /> Parsing symbols...
                 </div>
               ) : filteredSymbols.length === 0 ? (
                 <div className="text-center py-8 text-xs text-gray-500 italic">

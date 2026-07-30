@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Box, Search, Plus, Trash2, RefreshCw } from 'lucide-react';
 
 interface Dependency {
@@ -94,7 +94,7 @@ export default function PackagesSidebar() {
       {/* Header */}
       <div className="px-3 py-1.5 border-b border-[#2d2d2d] bg-[#181818] flex items-center justify-between shrink-0">
         <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-          <Box className="w-3.5 h-3.5 text-violet-400" />
+          <Box className="w-3.5 h-3.5 text-[#4C8DFF]" />
           Project Dependencies
         </span>
       </div>

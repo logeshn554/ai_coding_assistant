@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 
 interface SearchBarProps {
@@ -22,7 +22,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
           placeholder="Filter files..."
-          className="w-full bg-[#1e2330] text-gray-200 placeholder-gray-500 text-[11px] px-2 py-1 rounded border border-[#2a3142] focus:border-[#7C5CFF] focus:outline-none transition-colors"
+          className="w-full bg-[#1e2330] text-gray-200 placeholder-gray-500 text-[11px] px-2 py-1 rounded border border-[#2a3142] focus:border-[#4C8DFF] focus:outline-none transition-colors"
         />
         {searchTerm && (
           <button
@@ -38,7 +38,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         title={showHidden ? 'Hide dotfiles & build dirs' : 'Show dotfiles & build dirs'}
         className={`p-1 rounded cursor-pointer transition-colors ${
           showHidden
-            ? 'bg-[#7C5CFF]/20 text-[#7C5CFF] border border-[#7C5CFF]/30'
+            ? 'bg-[#4C8DFF]/20 text-[#4C8DFF] border border-[#4C8DFF]/30'
             : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
         }`}
       >

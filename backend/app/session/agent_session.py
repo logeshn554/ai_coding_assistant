@@ -70,7 +70,7 @@ class AgentSession:
         self.wasted_turns: int = 0
         # B6: Store background monitor tasks so they can be cancelled in cancel_all().
         self._monitor_tasks: list[asyncio.Task] = []
-        # B9: Cached WorkspaceIndex instance — reused across turns within a session
+        # B9: Cached WorkspaceIndex instance â” reused across turns within a session
         # instead of being re-created on every LLM call (which discards the mtime cache).
         self._workspace_index = None
 
@@ -104,7 +104,7 @@ class AgentSession:
         if self._message_queue.full():
             await self.send_ws_message({
                 "type": "queue_full",
-                "content": "⚠️ Request queue is full. Please wait for current tasks to complete before sending more messages.",
+                "content": "âš ï¸ Request queue is full. Please wait for current tasks to complete before sending more messages.",
                 "queue_depth": self._message_queue.qsize(),
             })
             return
@@ -122,7 +122,7 @@ class AgentSession:
             self._worker_task = asyncio.create_task(self._queue_worker())
 
     async def _queue_worker(self):
-        """Drain the message queue sequentially — one message at a time."""
+        """Drain the message queue sequentially â” one message at a time."""
         while not self._message_queue.empty():
             try:
                 text, mode, auto_apply = await self._message_queue.get()
@@ -139,7 +139,7 @@ class AgentSession:
                 self.active_task = asyncio.current_task()
                 await self.handle_user_message(text, mode, auto_apply)
             except asyncio.CancelledError:
-                # Queue was cleared via cancel — stop worker silently
+                # Queue was cleared via cancel â” stop worker silently
                 break
             except Exception as e:
                 logger.error(f"Queue worker error: {e}")
@@ -333,41 +333,130 @@ class AgentSession:
         history: list,
         system_prompt: str = "",
         tools: list = None,
-        max_chars: int = 20000  # ~5000 tokens at 4 chars/token
+        max_chars: int | None = None
     ) -> list:
         """
-        Trims the conversation history so that the total characters (system prompt +
-        history + tools JSON) stays within max_chars.  Always keeps the last user
-        message and any immediately preceding/following assistant/tool messages so
-        that the current turn is never lost.
-        Drops from the oldest end of the history.
+        Trims conversation history using priority-aware budget allocation.
         """
+        from ..context_config import HISTORY_MAX_CHARS
+        from ..context_helpers import estimate_text_size, truncate_text
+        
+        limit = max_chars or HISTORY_MAX_CHARS
+        reserved_for_next_prompt_chars = 50000
+        effective_budget = max(limit - reserved_for_next_prompt_chars, 10000)
+        
         tools_chars = len(json.dumps(tools or []))
         system_chars = len(system_prompt or "")
-        budget = max(max_chars - system_chars - tools_chars, 2000)
+        budget = max(effective_budget - system_chars - tools_chars, 5000)
+        
+        if not history:
+            return []
+            
+        total_len = len(history)
+        
+        # Identify special indices
+        last_user_idx = -1
+        last_assistant_idx = -1
+        for idx in range(total_len - 1, -1, -1):
+            msg = history[idx]
+            r = msg.get("role", "")
+            if r == "user" and last_user_idx == -1:
+                last_user_idx = idx
+            if r == "assistant" and last_assistant_idx == -1:
+                last_assistant_idx = idx
+                
+        recent_threshold = max(0, total_len - 10)
+        
+        def get_priority(msg: dict, idx: int) -> int:
+            role = msg.get("role", "")
+            content = str(msg.get("content", "")).lower()
+            
+            if role in ("system", "developer"):
+                return 1000
+            if idx == last_user_idx:
+                return 900
+            
+            if role == "user":
+                if any(kw in content for kw in ("confirm", "approve", "reject", "yes", "no", "apply", "cancel")):
+                    return 850
+                    
+            if idx == last_assistant_idx:
+                return 800
+                
+            is_error = msg.get("status") == "error" or "error" in content or "failed" in content
+            if is_error and idx >= recent_threshold:
+                return 750
+                
+            if idx >= recent_threshold:
+                return 650
+                
+            if "[summary" in content or "[prior steps" in content:
+                return 500
+                
+            if role == "tool":
+                return 300
+                
+            return 100
 
-        def msg_chars(m: dict) -> int:
-            return len(json.dumps(m))
-
-        total = sum(msg_chars(m) for m in history)
-        if total <= budget:
-            return history
-
-        # Build a trimmed list by dropping oldest messages first.
-        # Never drop if it would leave the history starting with a non-user role.
-        trimmed = list(history)
-        while trimmed and sum(msg_chars(m) for m in trimmed) > budget:
-            # Drop the oldest message, but keep at least 1 user message
-            user_count = sum(1 for m in trimmed if m.get("role") == "user")
-            if user_count <= 1:
-                break  # Keep the last user message no matter what
-            trimmed.pop(0)
-
-        # Ensure the list doesn't start with an assistant/tool message (invalid)
-        while trimmed and trimmed[0].get("role") in ("assistant", "tool"):
-            trimmed.pop(0)
-
-        return trimmed if trimmed else history[-1:]
+        scored_messages = []
+        for idx, msg in enumerate(history):
+            prio = get_priority(msg, idx)
+            size = estimate_text_size(msg)
+            scored_messages.append((prio, idx, msg, size))
+            
+        sorted_candidates = sorted(scored_messages, key=lambda x: (x[0], x[1]), reverse=True)
+        
+        retained_indices = set()
+        current_used = 0
+        truncated_msg_contents = {}
+        
+        for prio, idx, msg, size in sorted_candidates:
+            is_protected = prio >= 800
+            
+            if is_protected:
+                retained_indices.add(idx)
+                if current_used + size > budget:
+                    content_str = str(msg.get("content", ""))
+                    truncated_content = truncate_text(content_str, 50000, label=f"message {idx}")
+                    truncated_msg_contents[idx] = truncated_content
+                    current_used += estimate_text_size({"role": msg.get("role"), "content": truncated_content})
+                else:
+                    current_used += size
+            else:
+                if current_used + size <= budget:
+                    retained_indices.add(idx)
+                    current_used += size
+                elif current_used < budget:
+                    content_str = str(msg.get("content", ""))
+                    remaining_space = budget - current_used
+                    if remaining_space > 2000:
+                        retained_indices.add(idx)
+                        truncated_content = truncate_text(content_str, remaining_space - 1000, label=f"message {idx}")
+                        truncated_msg_contents[idx] = truncated_content
+                        current_used += estimate_text_size({"role": msg.get("role"), "content": truncated_content})
+                        
+        trimmed_history = []
+        last_was_trim_marker = False
+        
+        for idx in range(total_len):
+            if idx in retained_indices:
+                msg = history[idx]
+                if idx in truncated_msg_contents:
+                    msg_copy = dict(msg)
+                    msg_copy["content"] = truncated_msg_contents[idx]
+                    trimmed_history.append(msg_copy)
+                else:
+                    trimmed_history.append(msg)
+                last_was_trim_marker = False
+            else:
+                if not last_was_trim_marker:
+                    trimmed_history.append({
+                        "role": "system",
+                        "content": "[System Note: Older low-priority history entries truncated to preserve context budget]"
+                    })
+                    last_was_trim_marker = True
+                    
+        return trimmed_history
 
     def _get_adapter(self, is_agent: bool = False):
         from ..adapters.router import ModelRouter
@@ -377,12 +466,19 @@ class AgentSession:
         return router.get_adapter(latest_profile, is_agent=is_agent)
 
     def _get_tools_for_mode(self, mode: str) -> list:
-        read_only_tools = {"list_directory", "read_file", "search_codebase", "open_with_live_server"}
+        read_only_tools = {
+            "list_directory", "read_file", "search_codebase",
+            "open_with_live_server", "glob", "todo_read",
+        }
+        all_agent_tools = {
+            t["name"] for t in AVAILABLE_TOOLS
+        }
         if mode in ("Ask", "Plan"):
-            return [t for t in AVAILABLE_TOOLS if t["name"] in read_only_tools and t["name"] != "delegate_to_agent"]
+            return [t for t in AVAILABLE_TOOLS if t["name"] in read_only_tools]
         elif mode == "Agent":
             return AVAILABLE_TOOLS
         else:
+            # Edit mode: everything except delegation
             return [t for t in AVAILABLE_TOOLS if t["name"] != "delegate_to_agent"]
 
 
@@ -449,9 +545,8 @@ class AgentSession:
                     log_entries = "\n".join(f"- {entry}" for entry in self.orchestrator.context.collaboration_log)
                     agent_orchestration_section += f"\n\nCollaboration Log:\n{log_entries}"
                 if getattr(self.orchestrator.context, "memory", None):
-                    # Filter out large file contents to prevent context overflow
-                    clean_mem = {k: v for k, v in self.orchestrator.context.memory.items() if k != "file_contents"}
-                    memory_summary = json.dumps(clean_mem, indent=2)
+                    from ..context_helpers import build_memory_summary
+                    memory_summary = build_memory_summary(self.orchestrator.context.memory, indent=2)
                     agent_orchestration_section += f"\n\nShared Memory:\n{memory_summary}"
 
         prompt = render_system_prompt(
@@ -471,15 +566,27 @@ class AgentSession:
         """
         self.auto_apply = auto_apply
         if self.is_running:
-            await self.send_ws_message({
-                "type": "text_delta",
-                "content": "\n[Error: Agent is already running another task.]\n"
-            })
-            await self.send_ws_message({
-                "type": "session_done",
-                "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
-            })
-            return
+            # Safety valve: if the agent has been "running" for more than 90 seconds
+            # without completing, it is likely stuck (e.g. the previous WS disconnected
+            # mid-confirmation). Force-reset so the user can send a new message.
+            import time
+            _stuck_since = getattr(self, "_running_since", None)
+            _now = time.monotonic()
+            if _stuck_since is None or (_now - _stuck_since) > 90:
+                # Force-reset the stuck state
+                self.is_running = False
+                self.pending_confirmations.clear()
+                logger.warning("Agent was stuck in is_running state; auto-reset after 90 s grace period.")
+            else:
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": "\n[Agent is already running. Please wait or click Stop to cancel.]\n"
+                })
+                await self.send_ws_message({
+                    "type": "session_done",
+                    "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
+                })
+                return
 
         # Check for Run Agent activation (precise patterns only)
         RUN_PATTERNS = [
@@ -505,11 +612,20 @@ class AgentSession:
                 self.conversation_history.append({"role": "user", "content": text})
                 await self.run_agent_flow(text)
             except Exception as e:
-                logger.exception(f"Run Agent execution failed: {str(e)}")
-                await self.send_ws_message({
-                    "type": "text_delta",
-                    "content": f"\n\n[Run Agent Error: {str(e)}]\n"
-                })
+                import traceback
+                error_type = type(e).__name__
+                error_msg = str(e) or "(no details)"
+                short_tb = "\n".join(traceback.format_exc().splitlines()[-6:])
+                logger.exception(f"Run Agent crashed [{error_type}]: {error_msg}")
+                crash_card = (
+                    f"\n\n[CRASH] **Agent Crashed**\n\n"
+                    f"**Error type:** `{error_type}`\n"
+                    f"**Details:** {error_msg}\n\n"
+                    f"[HINT] Try the command again or check the terminal for more details.\n\n"
+                    f"<details><summary>Stack trace</summary>\n\n"
+                    f"```\n{short_tb}\n```\n</details>"
+                )
+                await self.send_ws_message({"type": "text_delta", "content": crash_card})
             finally:
                 self.is_running = False
                 await self.save_history_to_db()
@@ -520,6 +636,8 @@ class AgentSession:
                 await self.broadcast_processes_state()
             return
 
+        import time
+        self._running_since = time.monotonic()
         self.is_running = True
         try:
             # Append user request to history
@@ -527,10 +645,10 @@ class AgentSession:
 
             # Auto-route mode selection if set to 'Auto'
             if mode == "Auto":
-                # ── Fast-path router: classify trivial inputs without an LLM call ──
+                # â”â” Fast-path router: classify trivial inputs without an LLM call â”â”
                 _t = text.strip().lower().rstrip("!?.,:;")
 
-                # ── Greeting / ack fast-path — no LLM call needed ──
+                # â”â” Greeting / ack fast-path â” no LLM call needed â”â”
                 _GREETINGS = {
                     "hi", "hello", "hey", "yo", "sup", "hiya", "howdy", "greetings",
                     "thanks", "thank you", "ty", "thx", "cheers",
@@ -541,7 +659,7 @@ class AgentSession:
                 if _t in _GREETINGS:
                     mode = "Ask"
 
-                # ── Very short non-action input → Ask ────────────────────
+                # â”â” Very short non-action input â†’ Ask â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
                 elif len(_t) < 12 and not any(
                     kw in _t for kw in [
                         "create", "write", "fix", "run", "build",
@@ -550,7 +668,7 @@ class AgentSession:
                 ):
                     mode = "Ask"
 
-                # ── Explicit action keywords → Agent (no LLM call) ───────
+                # â”â” Explicit action keywords â†’ Agent (no LLM call) â”â”â”â”â”â”â”
                 elif re.search(
                     r'\b(create|write|build|fix|run|start|launch|install|'
                     r'refactor|edit|delete|add|generate|deploy|implement|'
@@ -559,7 +677,7 @@ class AgentSession:
                 ):
                     mode = "Agent"
 
-                # ── Question-word fast-path → Ask (no LLM call) ──────────
+                # â”â” Question-word fast-path â†’ Ask (no LLM call) â”â”â”â”â”â”â”â”â”â”
                 elif re.match(
                     r'^(what|why|how|when|where|who|which|explain|describe|'
                     r'tell me|can you tell|show me how|what is|what are|'
@@ -568,22 +686,22 @@ class AgentSession:
                 ):
                     mode = "Ask"
 
-                # ── Genuinely ambiguous — call LLM classifier ────────────
+                # â”â” Genuinely ambiguous â” call LLM classifier â”â”â”â”â”â”â”â”â”â”â”â”
                 else:
                     _CLASSIFIER_PROMPT = (
                         "You are a query classifier for a coding IDE. "
                         "Read the user's message and return EXACTLY one word: Ask, Plan, or Agent.\n\n"
                         "RULES:\n"
-                        "  Ask   → Greetings, questions, explanations, definitions, code review without changes.\n"
-                        "  Plan  → User explicitly wants a plan, outline, or roadmap WITHOUT implementation.\n"
-                        "  Agent → User wants ACTIONS: create files, edit code, fix bugs, run commands, write tests.\n\n"
+                        "  Ask   â†’ Greetings, questions, explanations, definitions, code review without changes.\n"
+                        "  Plan  â†’ User explicitly wants a plan, outline, or roadmap WITHOUT implementation.\n"
+                        "  Agent â†’ User wants ACTIONS: create files, edit code, fix bugs, run commands, write tests.\n\n"
                         "EXAMPLES:\n"
-                        "  what is a decorator           → Ask\n"
-                        "  review this code              → Ask\n"
-                        "  plan a REST API               → Plan\n"
-                        "  design the database schema    → Plan\n"
-                        "  create a login page           → Agent\n"
-                        "  fix the bug in auth.py        → Agent\n\n"
+                        "  what is a decorator           â†’ Ask\n"
+                        "  review this code              â†’ Ask\n"
+                        "  plan a REST API               â†’ Plan\n"
+                        "  design the database schema    â†’ Plan\n"
+                        "  create a login page           â†’ Agent\n"
+                        "  fix the bug in auth.py        â†’ Agent\n\n"
                         "Reply with ONLY one word. No punctuation. No explanation."
                     )
                     try:
@@ -600,11 +718,11 @@ class AgentSession:
                         elif "agent" in classified.lower():
                             mode = "Agent"
                         else:
-                            mode = "Ask"  # Safe fallback — never default to Agent
+                            mode = "Ask"  # Safe fallback â” never default to Agent
                     except Exception as e:
                         logger.error(f"Auto-classifier LLM call failed: {e}")
                         mode = "Ask"  # Safe fallback
-                logger.info(f"Auto-routed '{text[:60]}' → mode={mode}")
+                logger.info(f"Auto-routed '{text[:60]}' â†’ mode={mode}")
 
             # Direct tool-calling loop for all modes (Ask/Plan/Agent)
             # The multi-agent orchestrator is bypassed because it requires
@@ -671,12 +789,12 @@ class AgentSession:
                                 "data": chunk.get("data", ""),
                             })
                         elif chunk["type"] == "tool_call_error":
-                            # A7: model produced malformed JSON — surface as a tool result error
+                            # A7: model produced malformed JSON surface as a tool result error
                             err_msg = chunk.get("error", "Unknown tool call error")
                             logger.warning(f"A7 tool_call_error: {err_msg}")
                             await self.send_ws_message({
                                 "type": "text_delta",
-                                "content": f"\n\n⚠️ {err_msg}\n"
+                                "content": f"\n\n[WARNING] {err_msg}\n"
                             })
                         elif chunk["type"] == "usage":
                             # B3: Accumulate real API cost from token usage.
@@ -722,7 +840,7 @@ class AgentSession:
                         logger.error(f"Agent session API call timed out: {e}")
                         await self.send_ws_message({
                             "type": "text_delta",
-                            "content": "\n\n⚠️ **API Request Timed Out**: The model provider did not respond within the timeout limit. Please check your network connection, API key, or provider endpoint settings and try again."
+                            "content": "\n\n[WARNING] **API Request Timed Out**: The model provider did not respond within the timeout limit. Please check your network connection, API key, or provider endpoint settings and try again."
                         })
                         await self.send_ws_message({
                             "type": "status",
@@ -831,12 +949,22 @@ class AgentSession:
                                 "result": result
                             })
 
-                            return {
+                            from ..context_helpers import prepare_tool_result_for_history
+                            compact_result = prepare_tool_result_for_history(result, tool_name=tc_name)
+                            
+                            entry = {
                                 "role": "tool",
                                 "tool_call_id": tc_id,
                                 "name": tc_name,
-                                "content": result
+                                "content": compact_result
                             }
+                            if len(str(result)) > len(compact_result):
+                                entry["metadata"] = {
+                                    "truncated": True,
+                                    "original_chars": len(str(result)),
+                                    "retained_chars": len(compact_result)
+                                }
+                            return entry
 
                         results = await asyncio.gather(*(run_single_tool(tc) for tc in batch))
                         tool_results.extend(results)
@@ -865,12 +993,22 @@ class AgentSession:
                                     result = f"Error executing tool '{tc_name}': {str(e)}"
                                     status = "error"
 
-                            tool_results.append({
+                            from ..context_helpers import prepare_tool_result_for_history
+                            compact_result = prepare_tool_result_for_history(result, tool_name=tc_name)
+
+                            entry = {
                                 "role": "tool",
                                 "tool_call_id": tc_id,
                                 "name": tc_name,
-                                "content": result
-                            })
+                                "content": compact_result
+                            }
+                            if len(str(result)) > len(compact_result):
+                                entry["metadata"] = {
+                                    "truncated": True,
+                                    "original_chars": len(str(result)),
+                                    "retained_chars": len(compact_result)
+                                }
+                            tool_results.append(entry)
 
                             # A8: count wasted turns for diagnostics
                             if any(sig.lower() in result.lower() for sig in _wasted_signals):
@@ -896,7 +1034,7 @@ class AgentSession:
                 await self.send_ws_message({
                     "type": "text_delta",
                     "content": (
-                        f"\n\n⚠️ **[Warning: Agent reached the maximum limit of {effective_max_turns} turns.]** "
+                        f"\n\n[WARNING] **Agent reached the maximum limit of {effective_max_turns} turns.** "
                         "To continue, send another message or increase `max_turns` in Settings."
                     )
                 })
@@ -913,18 +1051,68 @@ class AgentSession:
             })
 
         except asyncio.CancelledError:
+            # Agent was stopped by the user - send a clean cancellation notice
+            await self.send_ws_message({
+                "type": "text_delta",
+                "content": "\n\n[STOPPED] **Agent stopped** - task was cancelled. You can send a new message to continue."
+            })
             await self.send_ws_message({
                 "type": "session_done",
                 "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
                 "wasted_turns": getattr(self, "wasted_turns", 0),
             })
             raise
-        except Exception as e:
-            logger.exception(f"Error in handle_user_message agent loop: {str(e)}")
+        except MemoryError:
+            logger.exception("Agent crashed: MemoryError")
             await self.send_ws_message({
                 "type": "text_delta",
-                "content": f"\n\n[Error: {str(e)}]\n"
+                "content": (
+                    "\n\n[OOM] **Agent crashed - Out of Memory**\n\n"
+                    "The agent ran out of memory processing your request. "
+                    "Try a smaller workspace or close other applications."
+                )
             })
+            await self.send_ws_message({
+                "type": "session_done",
+                "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
+                "wasted_turns": getattr(self, "wasted_turns", 0),
+            })
+        except Exception as e:
+            import traceback
+            tb_lines = traceback.format_exc().splitlines()
+            # Show last 6 lines of traceback for context without flooding the chat
+            short_tb = "\n".join(tb_lines[-6:])
+            error_type = type(e).__name__
+            error_msg = str(e) or "(no details)"
+
+            logger.exception(f"Agent crashed [{error_type}]: {error_msg}")
+
+            # Determine a user-friendly hint based on error type
+            if "api" in error_msg.lower() or "key" in error_msg.lower() or "auth" in error_msg.lower():
+                hint = "[HINT] Check your API key in Settings -> Model Configuration."
+            elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                hint = "[HINT] The model provider timed out. Try again or switch to a faster model."
+            elif "rate" in error_msg.lower() or "429" in error_msg:
+                hint = "[HINT] Rate limit hit. Wait a moment then try again."
+            elif "context" in error_msg.lower() or "token" in error_msg.lower() or "413" in error_msg:
+                hint = "[HINT] Context too large. Start a new session or reduce the number of files."
+            elif "NotImplementedError" in error_type:
+                hint = f"[HINT] Tool '{error_msg}' is not yet supported in this mode."
+            elif "connection" in error_msg.lower() or "network" in error_msg.lower():
+                hint = "[HINT] Network error. Check your internet connection and try again."
+            else:
+                hint = "[HINT] Try rephrasing your request or starting a new session."
+
+            crash_card = (
+                f"\n\n[CRASH] **Agent Crashed**\n\n"
+                f"**Error type:** `{error_type}`\n"
+                f"**Details:** {error_msg}\n\n"
+                f"{hint}\n\n"
+                f"<details><summary>Stack trace</summary>\n\n"
+                f"```\n{short_tb}\n```\n</details>"
+            )
+
+            await self.send_ws_message({"type": "text_delta", "content": crash_card})
             await self.send_ws_message({
                 "type": "session_done",
                 "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
@@ -967,11 +1155,29 @@ class AgentSession:
                     "content": response_text
                 })
         except Exception as e:
-            logger.error(f"Error handling simple ask: {str(e)}")
-            await self.send_ws_message({
-                "type": "text_delta",
-                "content": f"\n[Error: {str(e)}]\n"
-            })
+            import traceback
+            error_type = type(e).__name__
+            error_msg = str(e) or "(no details)"
+            short_tb = "\n".join(traceback.format_exc().splitlines()[-6:])
+
+            logger.error(f"Agent crashed in simple ask [{error_type}]: {error_msg}")
+
+            if "api" in error_msg.lower() or "key" in error_msg.lower():
+                hint = "[HINT] Check your API key in Settings."
+            elif "timeout" in error_msg.lower():
+                hint = "[HINT] Request timed out - try again or switch models."
+            else:
+                hint = "[HINT] Try rephrasing your question."
+
+            crash_card = (
+                f"\n\n[CRASH] **Agent Crashed**\n\n"
+                f"**Error type:** `{error_type}`\n"
+                f"**Details:** {error_msg}\n\n"
+                f"{hint}\n\n"
+                f"<details><summary>Stack trace</summary>\n\n"
+                f"```\n{short_tb}\n```\n</details>"
+            )
+            await self.send_ws_message({"type": "text_delta", "content": crash_card})
         finally:
             await self.send_ws_message({
                 "type": "session_done",
@@ -1061,15 +1267,15 @@ class AgentSession:
                     line_lower = line.lower()
                     event_msg = None
                     if "hmr update" in line_lower or "hot update" in line_lower:
-                        event_msg = "✓ Hot Reload completed"
+                        event_msg = "âœ“ Hot Reload completed"
                     elif "compiled successfully" in line_lower:
-                        event_msg = "✓ Build completed successfully"
+                        event_msg = "âœ“ Build completed successfully"
                     elif "database connected" in line_lower or "db connected" in line_lower or "connected to database" in line_lower:
-                        event_msg = "✓ Connected to database"
+                        event_msg = "âœ“ Connected to database"
                     elif "api ready" in line_lower or "api server ready" in line_lower:
-                        event_msg = "✓ API server ready"
+                        event_msg = "âœ“ API server ready"
                     elif "rebuilding" in line_lower or "rebuilt" in line_lower:
-                        event_msg = "✓ Server rebuild complete"
+                        event_msg = "âœ“ Server rebuild complete"
 
                     if event_msg and event_msg not in reported_events:
                         await self.send_ws_message({
@@ -1116,7 +1322,7 @@ class AgentSession:
 
         pkg_details_str = "\n".join(pkg_scripts_summary) if pkg_scripts_summary else "No package.json scripts detected."
 
-        # ── Deterministic Project Type & Command Detection ──
+        # â”â” Deterministic Project Type & Command Detection â”â”
         detected_framework = None
         detected_command = None
 
@@ -1310,8 +1516,8 @@ class AgentSession:
                 p_port = p.port or 8000
                 live_url = f"http://localhost:{p_port}/{target_html_file}" if target_html_file else (p.localhost_url or f"http://localhost:{p_port}")
                 run_response_text = (
-                    f"🚀 **Server is already running for this workspace!**\n\n"
-                    f"🔗 **Preview URL**: [{live_url}]({live_url})\n\n"
+                    f"ðŸš **Server is already running for this workspace!**\n\n"
+                    f"ðŸ”— **Preview URL**: [{live_url}]({live_url})\n\n"
                 )
                 await self.send_ws_message({
                     "type": "text_delta",
@@ -1343,15 +1549,15 @@ class AgentSession:
         if target_html_file:
             live_url = f"http://localhost:{port}/{target_html_file}"
             run_response_text = (
-                f"🚀 **Live Server Started!**\n\n"
-                f"🔗 **Preview URL**: [{live_url}]({live_url})\n\n"
+                f"ðŸš **Live Server Started!**\n\n"
+                f"ðŸ”— **Preview URL**: [{live_url}]({live_url})\n\n"
                 f"```run\n{command}\n```\n"
             )
         else:
             live_url = f"http://localhost:{port}"
             run_response_text = (
-                f"🚀 **Server Started!** ({framework})\n\n"
-                f"🔗 **Localhost URL**: [{live_url}]({live_url})\n\n"
+                f"ðŸš **Server Started!** ({framework})\n\n"
+                f"ðŸ”— **Localhost URL**: [{live_url}]({live_url})\n\n"
                 f"```run\n{command}\n```\n"
             )
 
@@ -1388,7 +1594,7 @@ class AgentSession:
         if proc.port_conflict:
             await self.send_ws_message({
                 "type": "text_delta",
-                "content": f"⚠️ Port conflict detected: Port {proc.port} is already in use.\n"
+                "content": f"âš ï¸ Port conflict detected: Port {proc.port} is already in use.\n"
             })
 
             conflict_pid, conflict_name = get_process_using_port(proc.port)
@@ -1499,7 +1705,7 @@ class AgentSession:
         else:
             await self.send_ws_message({
                 "type": "text_delta",
-                "content": "❌ Application failed to start.\n"
+                "content": "âŒ Application failed to start.\n"
             })
             await self.handle_intelligent_recovery(proc, command, framework)
 
@@ -1652,5 +1858,6 @@ class AgentSession:
             else:
                 await self.send_ws_message({
                     "type": "text_delta",
-                    "content": "❌ Application failed to start after automatic recovery attempt. Please inspect logs.\n"
+                    "content": "âŒ Application failed to start after automatic recovery attempt. Please inspect logs.\n"
                 })
+

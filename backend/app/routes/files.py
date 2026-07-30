@@ -220,9 +220,13 @@ async def upload_attachment(file: UploadFile = File(...)):
         att_dir = os.path.join(root, "artifacts", "attachments")
         await asyncio.to_thread(os.makedirs, att_dir, exist_ok=True)
 
-        filename = file.filename or "pasted_image.png"
+        filename = os.path.basename(file.filename or "pasted_image.png")
         safe_filename = f"{hashlib.md5(filename.encode()).hexdigest()[:8]}_{filename}"
-        target_path = os.path.join(att_dir, safe_filename)
+        target_path = os.path.abspath(os.path.join(att_dir, safe_filename))
+
+        # Defense-in-depth containment check
+        if not target_path.startswith(os.path.abspath(att_dir)):
+            raise HTTPException(status_code=400, detail="Path traversal attempt detected in filename.")
 
         await asyncio.to_thread(_save_uploaded_file, file.file, target_path)
 

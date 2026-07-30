@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { Folder, Search, Settings, GitBranch, Play, Puzzle, Bot, LayoutGrid, User, FlaskConical, Sparkles, Code } from 'lucide-react';
 import { useUI } from '../../core/ui/UIContext';
 import { useSettings } from '../../core/settings/SettingsContext';
@@ -50,7 +50,7 @@ export const ActivityBar: React.FC = () => {
                 className={`
                   relative w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-180 cursor-pointer
                   ${isActive
-                    ? 'bg-[#7C5CFF]/15 text-[#7C5CFF] shadow-[0_0_16px_rgba(124,92,255,0.35)] ring-1 ring-[#7C5CFF]/30'
+                    ? 'bg-[#4C8DFF]/15 text-[#4C8DFF] shadow-[0_0_16px_rgba(76,141,255,0.35)] ring-1 ring-[#4C8DFF]/30'
                     : 'text-[var(--dp-text-muted)] hover:text-white hover:bg-white/5'
                   }
                 `}
@@ -59,12 +59,12 @@ export const ActivityBar: React.FC = () => {
 
                 {/* Rounded active indicator pill on left border */}
                 {isActive && (
-                  <span className="absolute -left-1.5 top-2.5 bottom-2.5 w-1 bg-[#7C5CFF] rounded-r-full shadow-[0_0_10px_#7C5CFF]" />
+                  <span className="absolute -left-1.5 top-2.5 bottom-2.5 w-1 bg-[#4C8DFF] rounded-r-full shadow-[0_0_10px_#4C8DFF]" />
                 )}
 
                 {/* Badge */}
                 {tab.badge != null && tab.badge > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-[#7C5CFF] text-white text-[8px] font-extrabold px-1 leading-none shadow-md">
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-[#4C8DFF] text-white text-[8px] font-extrabold px-1 leading-none shadow-md">
                     {tab.badge > 99 ? '99+' : tab.badge}
                   </span>
                 )}
@@ -89,14 +89,14 @@ export const ActivityBar: React.FC = () => {
             className={`
               w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-180 cursor-pointer
               ${isSidebarOpen && sidebarTab === 'profile'
-                ? 'bg-[#7C5CFF]/15 text-[#7C5CFF]'
+                ? 'bg-[#4C8DFF]/15 text-[#4C8DFF]'
                 : 'text-[var(--dp-text-muted)] hover:text-white hover:bg-white/5'
               }
             `}
           >
             <User className="w-4 h-4" strokeWidth={1.8} />
             {isSidebarOpen && sidebarTab === 'profile' && (
-              <span className="absolute -left-1.5 top-2.5 bottom-2.5 w-1 bg-[#7C5CFF] rounded-r-full" />
+              <span className="absolute -left-1.5 top-2.5 bottom-2.5 w-1 bg-[#4C8DFF] rounded-r-full" />
             )}
           </button>
         </div>
@@ -117,8 +117,8 @@ export const ActivityBar: React.FC = () => {
           onClick={() => handleTabClick('profile')}
           className={`mt-1 w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-md cursor-pointer transition-all duration-180 ${
             isSidebarOpen && sidebarTab === 'profile'
-              ? 'bg-gradient-to-br from-[#7C5CFF] to-indigo-600 ring-2 ring-[#7C5CFF]/50 scale-105'
-              : 'bg-gradient-to-br from-purple-600 to-indigo-600 hover:scale-105 hover:ring-2 hover:ring-[#7C5CFF]/40'
+              ? 'bg-gradient-to-br from-[#4C8DFF] to-indigo-600 ring-2 ring-[#4C8DFF]/50 scale-105'
+              : 'bg-gradient-to-br from-[#4C8DFF] to-indigo-600 hover:scale-105 hover:ring-2 hover:ring-[#4C8DFF]/40'
           }`}
           title="User Profile"
         >

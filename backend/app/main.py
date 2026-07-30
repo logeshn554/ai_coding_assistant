@@ -26,6 +26,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Redis startup check raised unexpectedly: {e}")
     yield
+    # Shutdown: stop any processes we spawned (Live Server, dev servers started
+    # from the Run panel, etc.) so they don't leak as orphans after the backend exits.
+    try:
+        from .processes import global_process_manager
+        for proc in list(global_process_manager.get_running_processes()):
+            try:
+                await proc.stop()
+            except Exception as e:
+                logger.warning(f"Failed to stop process {proc.id} during shutdown: {e}")
+    except Exception as e:
+        logger.warning(f"Process cleanup during shutdown raised unexpectedly: {e}")
 
 # Instantiate FastAPI app with OpenAPI docs and global auth verification
 app = FastAPI(
@@ -75,11 +86,20 @@ def permission_error_handler(request: Request, exc: PermissionError):
 cors_origins = settings.CORS_ORIGINS
 allow_all = "*" in cors_origins
 
+if allow_all:
+    logger.warning(
+        "CORS_ORIGINS includes '*' — serving true wildcard CORS. "
+        "allow_credentials is forced to False in this mode (per CORS spec) "
+        "since combining a reflected wildcard origin with credentials=True "
+        "would let any website make authenticated requests. Auth in this app "
+        "is header/query-token based, not cookie based, so this does not "
+        "affect normal API usage."
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[] if allow_all else cors_origins,
-    allow_origin_regex=".*" if allow_all else None,
-    allow_credentials=True,
+    allow_origins=["*"] if allow_all else cors_origins,
+    allow_credentials=not allow_all,
     allow_methods=["*"],
     allow_headers=["*"],
 )

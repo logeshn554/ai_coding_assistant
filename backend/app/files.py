@@ -4,12 +4,15 @@ import re
 import hashlib
 import time
 import glob
+import logging
 import subprocess
 from .config import ConfigManager
 
 config_manager = ConfigManager()
 
 from pathlib import Path
+
+logger = logging.getLogger("devpilot.files")
 
 def safe_path(workspace_root: str, relative_path: str) -> str:
     """
@@ -81,23 +84,28 @@ def list_workspace_dir(workspace_root: str, relative_path: str = "") -> list:
 
 class FileCacheManager:
     def __init__(self):
-        self.cache = {} # abs_path -> {"content": str, "mtime": float}
+        self.cache = {} # (abs_path, limit) -> {"content": str, "mtime": float}
 
-    def get(self, abs_path: str) -> str | None:
+    def get(self, abs_path: str, limit: int) -> str | None:
         if not os.path.exists(abs_path):
             return None
         try:
             mtime = os.path.getmtime(abs_path)
-            if abs_path in self.cache and self.cache[abs_path]["mtime"] == mtime:
-                return self.cache[abs_path]["content"]
+            key = (abs_path, limit)
+            if key in self.cache and self.cache[key]["mtime"] == mtime:
+                return self.cache[key]["content"]
         except Exception:
             pass
         return None
 
-    def set(self, abs_path: str, content: str):
+    def set(self, abs_path: str, limit: int, content: str):
         try:
             mtime = os.path.getmtime(abs_path)
-            self.cache[abs_path] = {"content": content, "mtime": mtime}
+            key = (abs_path, limit)
+            self.cache[key] = {"content": content, "mtime": mtime}
+            if len(self.cache) > 200:
+                first_key = next(iter(self.cache))
+                self.cache.pop(first_key, None)
         except Exception:
             pass
 
@@ -179,32 +187,153 @@ def rollback_file(workspace_root: str, relative_path: str, timestamp: int = None
         os.remove(latest_backup)
         
         # Invalidate cache
-        if abs_path in file_cache.cache:
-            file_cache.cache.pop(abs_path)
+        keys_to_pop = [k for k in file_cache.cache if k[0] == abs_path]
+        for k in keys_to_pop:
+            file_cache.cache.pop(k, None)
         return True
     except Exception:
         return False
 
-def read_workspace_file(workspace_root: str, relative_path: str) -> str:
+def read_workspace_file(workspace_root: str, relative_path: str, max_chars: int | None = None) -> str:
     """
     Reads the content of a file in the workspace (using in-memory mtime cache).
     """
+    from .context_config import READ_FILE_MAX_CHARS
+    from .context_helpers import truncate_text
+    limit = max_chars or READ_FILE_MAX_CHARS
+    
     target_file = safe_path(workspace_root, relative_path)
     if not os.path.isfile(target_file):
         raise FileNotFoundError(f"File '{relative_path}' not found.")
         
     # Check cache first
-    cached_content = file_cache.get(target_file)
+    cached_content = file_cache.get(target_file, limit)
     if cached_content is not None:
         return cached_content
         
     try:
         with open(target_file, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
-            file_cache.set(target_file, content)
+            content = f.read(limit + 1)
+            
+        if len(content) <= limit:
+            file_cache.set(target_file, limit, content)
             return content
+            
+        # Truncation occurred
+        byte_size = os.path.getsize(target_file)
+        notice = f"\n\n[file '{relative_path}' truncated after {limit} characters; more content remains (file size: {byte_size} bytes)]\n\n"
+        truncated_content = content[:limit]
+        if limit > 200:
+            nl_idx = truncated_content.rstrip().rfind('\n', limit - 200, limit)
+            if nl_idx != -1:
+                truncated_content = truncated_content[:nl_idx + 1]
+                
+        result = f"{truncated_content.rstrip()}{notice}"
+        file_cache.set(target_file, limit, result)
+        return result
     except Exception as e:
         raise IOError(f"Failed to read file: {str(e)}")
+
+def read_workspace_file_range(
+    workspace_root: str,
+    relative_path: str,
+    start_line: int,
+    end_line: int,
+    max_chars: int | None = None,
+) -> str:
+    """
+    Reads a specific line range from a file, bounded by line numbers and max_chars limit.
+    """
+    from .context_config import READ_FILE_MAX_CHARS
+    limit = max_chars or READ_FILE_MAX_CHARS
+
+    if start_line < 1:
+        raise ValueError(f"start_line must be >= 1, got {start_line}")
+    if end_line < start_line:
+        raise ValueError(f"end_line ({end_line}) must be >= start_line ({start_line})")
+
+    target_file = safe_path(workspace_root, relative_path)
+    if not os.path.isfile(target_file):
+        raise FileNotFoundError(f"File '{relative_path}' not found.")
+
+    output_lines = []
+    current_char_count = 0
+    truncation_occurred = False
+
+    try:
+        with open(target_file, "r", encoding="utf-8", errors="replace") as f:
+            for idx, line in enumerate(f, 1):
+                if idx < start_line:
+                    continue
+                if idx > end_line:
+                    break
+                
+                formatted_line = f"{idx}: {line}"
+                line_len = len(formatted_line)
+                if current_char_count + line_len > limit:
+                    truncation_occurred = True
+                    break
+                output_lines.append(formatted_line)
+                current_char_count += line_len
+
+        result_content = "".join(output_lines)
+        if truncation_occurred:
+            byte_size = os.path.getsize(target_file)
+            notice = f"\n\n[file '{relative_path}' range {start_line}-{end_line} truncated after {limit} characters; more lines remain (file size: {byte_size} bytes)]\n\n"
+            result_content = f"{result_content.rstrip()}{notice}"
+        return result_content
+    except Exception as e:
+        raise IOError(f"Failed to read file range: {str(e)}")
+
+def search_workspace_file(
+    workspace_root: str,
+    relative_path: str,
+    query: str,
+    max_matches: int = 20,
+    context_lines: int = 3,
+) -> str:
+    """
+    Searches a workspace file for occurrences of query and returns matching lines with surrounding context.
+    """
+    target_file = safe_path(workspace_root, relative_path)
+    if not os.path.isfile(target_file):
+        raise FileNotFoundError(f"File '{relative_path}' not found.")
+
+    try:
+        with open(target_file, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+            
+        matches = []
+        query_lower = query.lower()
+        for idx, line in enumerate(lines):
+            if query_lower in line.lower():
+                matches.append(idx)
+                if len(matches) >= max_matches:
+                    break
+                    
+        if not matches:
+            return f"No matches found for '{query}' in {relative_path}"
+            
+        output = []
+        last_end = -1
+        for m_idx in matches:
+            start = max(0, m_idx - context_lines)
+            end = min(len(lines) - 1, m_idx + context_lines)
+            
+            if last_end != -1 and start <= last_end:
+                start = last_end + 1
+                
+            if start > 0 and last_end != -1 and start > last_end + 1:
+                output.append("...\n")
+                
+            for idx in range(start, end + 1):
+                output.append(f"{idx + 1}: {lines[idx]}")
+                
+            last_end = end
+            
+        return "".join(output)
+    except Exception as e:
+        raise IOError(f"Failed to search file: {str(e)}")
 
 def write_workspace_file(workspace_root: str, relative_path: str, content: str) -> None:
     """
@@ -222,8 +351,10 @@ def write_workspace_file(workspace_root: str, relative_path: str, content: str) 
         with open(target_file, "w", encoding="utf-8") as f:
             f.write(content)
             
-        # Update cache
-        file_cache.set(target_file, content)
+        # Invalidate cache keys for target_file
+        keys_to_pop = [k for k in file_cache.cache if k[0] == target_file]
+        for k in keys_to_pop:
+            file_cache.cache.pop(k, None)
     except Exception as e:
         raise IOError(f"Failed to write file: {str(e)}")
 
@@ -348,11 +479,14 @@ def search_workspace_codebase(workspace_root: str, query: str) -> list:
                 
     return results
 
-def get_codebase_contents(workspace_root: str) -> str:
+def get_codebase_contents(workspace_root: str, max_chars: int | None = None) -> str:
     """
     Scans the codebase and returns a formatted string containing the names, relative paths,
     and entire content of all source code files in the workspace (excluding binary/excluded directories).
     """
+    from .context_config import CODEBASE_SCAN_MAX_CHARS
+    limit = max_chars or CODEBASE_SCAN_MAX_CHARS
+    
     exclude_dirs = {".git", "node_modules", "venv", "__pycache__", ".devpilot", "dist", "build"}
     exclude_extensions = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}
     
@@ -365,21 +499,29 @@ def get_codebase_contents(workspace_root: str) -> str:
     except Exception:
         pass
 
-    output_lines = []
+    output_parts = []
+    current_total_chars = 0
+    truncated = False
     
     for root, dirs, files in os.walk(workspace_root):
-        # Prune excluded directories
+        if current_total_chars >= limit:
+            truncated = True
+            break
+            
         current_excludes = set(exclude_dirs)
         if is_editor_root and root == os.path.realpath(workspace_root):
             current_excludes.update({"frontend", "backend", "venv"})
             
         dirs[:] = [d for d in dirs if d not in current_excludes]
         
-        # If we are in the root of the editor, filter out editor files
         if is_editor_root and os.path.realpath(root) == os.path.realpath(workspace_root):
             files = [f for f in files if f not in {"requirements.txt", "run.py", "README.md"}]
 
         for file in files:
+            if current_total_chars >= limit:
+                truncated = True
+                break
+                
             ext = os.path.splitext(file)[1].lower()
             if ext in exclude_extensions:
                 continue
@@ -388,7 +530,23 @@ def get_codebase_contents(workspace_root: str) -> str:
             rel_file_path = os.path.relpath(abs_file_path, workspace_root).replace("\\", "/")
             
             try:
-                # Read content
+                file_size = os.path.getsize(abs_file_path)
+                if current_total_chars + file_size > limit:
+                    truncated = True
+                    remaining_budget = limit - current_total_chars
+                    if remaining_budget > 100:
+                        with open(abs_file_path, "r", encoding="utf-8", errors="replace") as f:
+                            content = f.read(remaining_budget)
+                        file_chunk = (
+                            f"===================================================\n"
+                            f"File: {rel_file_path} (truncated)\n"
+                            f"===================================================\n"
+                            f"{content}\n\n"
+                        )
+                        output_parts.append(file_chunk)
+                        current_total_chars += len(file_chunk)
+                    break
+                
                 with open(abs_file_path, "r", encoding="utf-8", errors="replace") as f:
                     content = f.read()
                 
@@ -398,17 +556,15 @@ def get_codebase_contents(workspace_root: str) -> str:
                     f"===================================================\n"
                     f"{content}\n\n"
                 )
-                
-                # Check limit (1MB max text payload)
-                if len("".join(output_lines)) + len(file_chunk) > 1000000:
-                    output_lines.append(f"\n[Truncated: Codebase exceeds 1MB limit]\n")
-                    break
-                    
-                output_lines.append(file_chunk)
+                output_parts.append(file_chunk)
+                current_total_chars += len(file_chunk)
             except Exception:
                 continue
                 
-    return "".join(output_lines)
+    result = "".join(output_parts)
+    if truncated:
+        result += f"\n[codebase scan truncated at {limit} characters; some folders not scanned]\n"
+    return result
 
 def scan_workspace_for_bugs(workspace_root: str) -> str:
     """

@@ -32,20 +32,27 @@ export const DebugControlBar: React.FC = () => {
   };
 
   return (
-    <div className="absolute top-3 right-6 z-40 flex items-center gap-1 px-3 py-1.5 bg-[#12131d]/90 backdrop-blur-md border border-violet-500/40 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] text-xs text-zinc-200 animate-in fade-in slide-in-from-top-2 duration-200 select-none">
-      <div className="flex items-center gap-1.5 pr-2 border-r border-zinc-800">
+    <div
+      className="absolute top-2 right-6 z-40 flex items-center gap-1 px-2.5 py-1 backdrop-blur-sm border rounded-[4px] shadow-md text-xs select-none"
+      style={{
+        background: '#2B2D30',
+        borderColor: '#393B40',
+        color: '#DFE1E5',
+      }}
+    >
+      <div className="flex items-center gap-1.5 pr-2 border-r border-[var(--dp-border)]">
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
         </span>
-        <span className="font-mono text-[10.5px] text-zinc-300 font-medium truncate max-w-[140px]">
+        <span className="font-mono text-[10.5px] text-[var(--dp-text-primary)] font-medium truncate max-w-[140px]">
           {activeFrame || 'Debugging'}
         </span>
       </div>
 
       <button
         onClick={() => handleAction('continue')}
-        className="p-1.5 hover:bg-violet-600/30 text-emerald-400 hover:text-emerald-300 rounded-lg transition-colors cursor-pointer"
+        className="p-1 hover:bg-white/5 text-emerald-400 hover:text-emerald-300 rounded-[3px] transition-colors cursor-pointer border-0 bg-transparent"
         title="Continue (F5)"
       >
         <Play className="w-3.5 h-3.5 fill-current" />
@@ -53,7 +60,7 @@ export const DebugControlBar: React.FC = () => {
 
       <button
         onClick={() => handleAction('pause')}
-        className="p-1.5 hover:bg-violet-600/30 text-amber-400 hover:text-amber-300 rounded-lg transition-colors cursor-pointer"
+        className="p-1 hover:bg-white/5 text-amber-400 hover:text-amber-300 rounded-[3px] transition-colors cursor-pointer border-0 bg-transparent"
         title="Pause (F6)"
       >
         <Pause className="w-3.5 h-3.5 fill-current" />
@@ -61,7 +68,7 @@ export const DebugControlBar: React.FC = () => {
 
       <button
         onClick={() => handleAction('step-over')}
-        className="p-1.5 hover:bg-violet-600/30 text-blue-400 hover:text-blue-300 rounded-lg transition-colors cursor-pointer"
+        className="p-1 hover:bg-white/5 text-[#4C8DFF] hover:text-[#6AA3FF] rounded-[3px] transition-colors cursor-pointer border-0 bg-transparent"
         title="Step Over (F10)"
       >
         <CornerDownRight className="w-3.5 h-3.5" />
@@ -69,7 +76,7 @@ export const DebugControlBar: React.FC = () => {
 
       <button
         onClick={() => handleAction('step-into')}
-        className="p-1.5 hover:bg-violet-600/30 text-indigo-400 hover:text-indigo-300 rounded-lg transition-colors cursor-pointer"
+        className="p-1 hover:bg-white/5 text-[#4C8DFF] hover:text-[#6AA3FF] rounded-[3px] transition-colors cursor-pointer border-0 bg-transparent"
         title="Step Into (F11)"
       >
         <CornerRightDown className="w-3.5 h-3.5" />
@@ -77,7 +84,7 @@ export const DebugControlBar: React.FC = () => {
 
       <button
         onClick={() => handleAction('step-out')}
-        className="p-1.5 hover:bg-violet-600/30 text-purple-400 hover:text-purple-300 rounded-lg transition-colors cursor-pointer"
+        className="p-1 hover:bg-white/5 text-[#4C8DFF] hover:text-[#6AA3FF] rounded-[3px] transition-colors cursor-pointer border-0 bg-transparent"
         title="Step Out (Shift+F11)"
       >
         <CornerUpLeft className="w-3.5 h-3.5" />
@@ -85,7 +92,7 @@ export const DebugControlBar: React.FC = () => {
 
       <button
         onClick={() => handleAction('start')}
-        className="p-1.5 hover:bg-violet-600/30 text-zinc-300 hover:text-white rounded-lg transition-colors cursor-pointer"
+        className="p-1 hover:bg-white/5 text-[var(--dp-text-primary)] hover:text-white rounded-[3px] transition-colors cursor-pointer border-0 bg-transparent"
         title="Restart"
       >
         <RotateCcw className="w-3.5 h-3.5" />
@@ -93,7 +100,7 @@ export const DebugControlBar: React.FC = () => {
 
       <button
         onClick={() => handleAction('stop')}
-        className="p-1.5 hover:bg-red-600/30 text-red-400 hover:text-red-300 rounded-lg transition-colors cursor-pointer"
+        className="p-1 hover:bg-red-500/10 text-[#FF6B6B] hover:text-red-300 rounded-[3px] transition-colors cursor-pointer border-0 bg-transparent"
         title="Stop Debugger (Shift+F5)"
       >
         <Square className="w-3.5 h-3.5 fill-current" />
@@ -101,3 +108,4 @@ export const DebugControlBar: React.FC = () => {
     </div>
   );
 };
+

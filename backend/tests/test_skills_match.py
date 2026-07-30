@@ -179,7 +179,7 @@ def test_skills_match_endpoint_python_task(tmp_path):
 
     client = TestClient(app)
 
-    with patch("app.skills_loader.load_skills", return_value={"Python Best Practices": "Use type hints.", "General": "Write tests."}):
+    with patch("app.routes.skills.load_skills", return_value={"Python Best Practices": "Use type hints.", "General": "Write tests."}):
         with patch("app.state.workspace_state") as mock_ws:
             mock_ws.root = str(tmp_path)
             response = client.get("/api/skills/match", params={"task": "write a python function"})
@@ -200,7 +200,7 @@ def test_skills_match_endpoint_returns_empty_without_skills_md(tmp_path):
 
     client = TestClient(app)
 
-    with patch("app.skills_loader.load_skills", return_value={}):
+    with patch("app.routes.skills.load_skills", return_value={}):
         with patch("app.state.workspace_state") as mock_ws:
             mock_ws.root = str(tmp_path)
             response = client.get("/api/skills/match", params={"task": "anything"})

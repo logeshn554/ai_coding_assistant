@@ -476,14 +476,14 @@ export default function EditorArea({
                 className={`
                   group flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer border shrink-0 font-mono
                   ${isActive
-                    ? 'bg-[#1A1F2E] text-white border-[#7C5CFF]/40 shadow-sm font-semibold'
+                    ? 'bg-[#1A1F2E] text-white border-[#4C8DFF]/40 shadow-sm font-semibold'
                     : 'bg-transparent text-[var(--dp-text-muted)] border-transparent hover:text-white hover:bg-white/5'
                   }
                 `}
               >
-                <FileCode className={`w-3.5 h-3.5 ${isActive ? 'text-[#7C5CFF]' : 'text-gray-500'}`} />
+                <FileCode className={`w-3.5 h-3.5 ${isActive ? 'text-[#4C8DFF]' : 'text-gray-500'}`} />
                 <span className="truncate max-w-[160px]">{tab.name}</span>
-                {tab.isDirty && <span className="w-1.5 h-1.5 rounded-full bg-[#7C5CFF]" title="Unsaved changes" />}
+                {tab.isDirty && <span className="w-1.5 h-1.5 rounded-full bg-[#4C8DFF]" title="Unsaved changes" />}
                 <button
                   onClick={(e) => { e.stopPropagation(); onFileClose(tab.path); }}
                   className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-white/10 hover:text-white transition-opacity"
@@ -545,7 +545,7 @@ export default function EditorArea({
                             <button
                               key={bak.timestamp}
                               onClick={() => handleRollback(bak.timestamp)}
-                              className="w-full text-left px-3 py-1.5 hover:bg-[#7C5CFF]/15 hover:text-[#7C5CFF] text-gray-300 transition-colors flex justify-between items-center cursor-pointer font-sans"
+                              className="w-full text-left px-3 py-1.5 hover:bg-[#4C8DFF]/15 hover:text-[#4C8DFF] text-gray-300 transition-colors flex justify-between items-center cursor-pointer font-sans"
                             >
                               <span>{new Date(bak.timestamp).toLocaleTimeString()}</span>
                               <span className="text-[9px] text-gray-500 font-mono">#{bak.timestamp.toString().slice(-4)}</span>
@@ -560,7 +560,7 @@ export default function EditorArea({
                 {activeTab.isDirty && (
                   <button
                     onClick={handleSaveActiveFile}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#7C5CFF]/15 text-[#7C5CFF] border border-[#7C5CFF]/30 text-[10px] font-bold hover:bg-[#7C5CFF]/25 transition-colors cursor-pointer"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#4C8DFF]/15 text-[#4C8DFF] border border-[#4C8DFF]/30 text-[10px] font-bold hover:bg-[#4C8DFF]/25 transition-colors cursor-pointer"
                   >
                     <Save className="w-3 h-3" /> Save
                   </button>
@@ -576,7 +576,7 @@ export default function EditorArea({
               {showDiff && proposedDiff && (
                 <div className="bg-[#151823] border-b border-[#2A3146] px-4 py-2 flex items-center justify-between z-10 shrink-0 select-none">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-[#7C5CFF] animate-pulse" />
+                    <span className="w-2 h-2 rounded-full bg-[#4C8DFF] animate-pulse" />
                     <span className="text-xs font-bold text-white">AI Proposed Code Changes</span>
                     <span className="text-[10px] font-mono text-[var(--dp-text-muted)] bg-white/5 px-2 py-0.5 rounded border border-white/5">
                       {proposedDiff.path}
@@ -603,7 +603,7 @@ export default function EditorArea({
                     </button>
                     <button
                       onClick={handleRegenerateDiff}
-                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[#7C5CFF] rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                      className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[#4C8DFF] rounded-lg text-xs font-medium transition-colors cursor-pointer"
                     >
                       🔄 Regenerate
                     </button>
@@ -647,73 +647,136 @@ export default function EditorArea({
             </div>
           </div>
         ) : (
-          /* ── WORLD-CLASS WELCOME DASHBOARD (no file open) ── */
-          <div className="h-full bg-[#0E1016] p-8 overflow-y-auto font-sans select-none">
-            <div className="max-w-5xl mx-auto space-y-8 my-auto py-4">
-
-              {/* Hero Banner */}
-              <div className="flex items-center justify-between p-6 rounded-2xl bg-gradient-to-r from-[#151823] via-[#1A1F2E] to-[#151823] border border-[#2A3146] shadow-xl">
-                <div className="space-y-2">
+          /* ── JETBRAINS STYLE WELCOME DASHBOARD (no file open) ── */
+          <div className="h-full p-8 overflow-y-auto font-sans select-none" style={{ background: '#1E1F22', color: '#DFE1E5' }}>
+            <div className="max-w-4xl mx-auto grid grid-cols-3 gap-6 my-auto py-6" style={{ height: 'calc(100% - 20px)' }}>
+              
+              {/* Left Column: Menu Actions */}
+              <div className="col-span-1 flex flex-col justify-between p-5 border rounded-[4px] space-y-4" style={{ background: '#2B2D30', borderColor: '#393B40' }}>
+                <div className="space-y-6">
+                  {/* Branding */}
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-[#7C5CFF] to-indigo-600 flex items-center justify-center shadow-md shadow-[#7C5CFF]/30">
-                      <Sparkles className="w-4 h-4 text-white" />
+                    <div className="w-8 h-8 rounded-[4px] flex items-center justify-center text-white text-[12px] font-black" style={{ background: '#4C8DFF' }}>
+                      DP
                     </div>
-                    <h1 className="text-xl font-black text-white tracking-tight">DevPilot AI Editor</h1>
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#7C5CFF]/20 text-[#7C5CFF] border border-[#7C5CFF]/30">
-                      AI-Native IDE
-                    </span>
+                    <div>
+                      <h1 className="text-sm font-bold text-white tracking-tight">DevPilot IDE</h1>
+                      <span className="text-[9px] font-bold text-[#4C8DFF] uppercase tracking-wider">
+                        AI-Native Platform
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-xs text-[var(--dp-text-secondary)]">
-                    Workspace: <span className="text-white font-mono font-semibold">{getWorkspaceName()}</span> · Multi-Agent Engineering Environment
-                  </p>
-                </div>
 
-                <button
-                  onClick={onOpenFolder}
-                  className="flex items-center gap-2 px-4 py-2 bg-[#7C5CFF] hover:bg-[#9176FF] text-white text-xs font-bold rounded-xl shadow-lg shadow-[#7C5CFF]/30 transition-all cursor-pointer"
-                >
-                  <Folder className="w-4 h-4" /> Open Folder
-                </button>
-              </div>
-
-              {/* Center aligned Quick Actions Card */}
-              <div className="max-w-md mx-auto">
-                <div className="dp-card p-6 space-y-4 shadow-2xl border border-[#2A3146] bg-[#121522]/90 backdrop-blur-md rounded-2xl">
-                  <div className="flex items-center justify-between text-sm font-bold text-white border-b border-[#2A3146] pb-3">
-                    <span className="flex items-center gap-2">
-                      <Zap className="w-4.5 h-4.5 text-[#7C5CFF]" /> Quick Actions
-                    </span>
-                  </div>
-                  <div className="space-y-2.5">
+                  {/* Primary Actions */}
+                  <div className="space-y-2">
                     <button
                       onClick={onOpenFolder}
-                      className="w-full flex items-center justify-between p-3 rounded-xl bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer shadow-sm group"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-white rounded-[4px] transition-colors cursor-pointer"
+                      style={{ background: '#4C8DFF' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#6AA3FF'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#4C8DFF'; }}
                     >
-                      <span className="flex items-center gap-2.5 font-medium group-hover:text-[#7C5CFF] transition-colors">
-                        <Folder className="w-4 h-4 text-[#7C5CFF]" /> Open Folder
-                      </span>
-                      <kbd className="text-[10px] font-mono bg-white/10 px-2 py-0.5 rounded border border-white/5 text-slate-300">Ctrl+O</kbd>
+                      <Plus className="w-4 h-4" /> New Project
                     </button>
 
                     <button
-                      onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))}
-                      className="w-full flex items-center justify-between p-3 rounded-xl bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer shadow-sm group"
+                      onClick={onOpenFolder}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-[4px] border border-[var(--dp-border)] transition-colors cursor-pointer"
+                      style={{ background: 'transparent', color: '#DFE1E5' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#3B3D42'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
-                      <span className="flex items-center gap-2.5 font-medium group-hover:text-[#7C5CFF] transition-colors">
-                        <Search className="w-4 h-4 text-[#7C5CFF]" /> Universal Search
-                      </span>
-                      <kbd className="text-[10px] font-mono bg-white/10 px-2 py-0.5 rounded border border-white/5 text-slate-300">Ctrl+K</kbd>
+                      <Folder className="w-4 h-4 text-[#4C8DFF]" /> Open Folder
                     </button>
 
                     <button
-                      onClick={() => handleSendMessage('Scan the full workspace for bugs and provide a concise bug report.', 'Ask', false)}
-                      className="w-full flex items-center justify-between p-3 rounded-xl bg-[#151823] hover:bg-[#7C5CFF]/15 border border-[#2A3146] hover:border-[#7C5CFF]/40 text-xs text-white transition-all cursor-pointer shadow-sm group"
+                      onClick={() => handleSendMessage('Explain how to write a new backend endpoint', 'Ask', false)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold rounded-[4px] border border-[var(--dp-border)] transition-colors cursor-pointer"
+                      style={{ background: 'transparent', color: '#DFE1E5' }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#3B3D42'; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                     >
-                      <span className="flex items-center gap-2.5 font-medium group-hover:text-[#7C5CFF] transition-colors">
-                        <Sparkles className="w-4 h-4 text-amber-400" /> AI Bug Scan
-                      </span>
-                      <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/20">SCAN</span>
+                      <Zap className="w-4 h-4 text-[#FFB74D]" /> Get from VCS / Clone
                     </button>
+                  </div>
+                </div>
+
+                {/* Footer notes */}
+                <div className="text-[10px] text-[var(--dp-text-secondary)] space-y-1">
+                  <div>Workspace: {getWorkspaceName()}</div>
+                  <div>AI Runtime: Connected</div>
+                </div>
+              </div>
+
+              {/* Right Column: Recent Activity */}
+              <div className="col-span-2 space-y-5">
+                {/* Recent Projects */}
+                <div className="p-4 border rounded-[4px] space-y-2.5" style={{ background: '#2B2D30', borderColor: '#393B40' }}>
+                  <div className="text-[11px] font-bold text-white uppercase tracking-wider pb-1.5 border-b border-[var(--dp-border)]">
+                    Recent Projects
+                  </div>
+                  <div className="space-y-1">
+                    {[
+                      { name: 'java-samples', path: 'E:/odoo/java-samples' },
+                      { name: 'backend-api', path: 'E:/projects/backend-api' },
+                      { name: 'ecommerce-store', path: 'E:/web/ecommerce' },
+                      { name: 'portfolio', path: 'E:/personal/portfolio' }
+                    ].map((p, idx) => (
+                      <div
+                        key={idx}
+                        onClick={onOpenFolder}
+                        className="flex items-center justify-between p-2 rounded-[3px] hover:bg-white/5 cursor-pointer transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-white truncate">{p.name}</div>
+                          <div className="text-[10px] text-[var(--dp-text-secondary)] truncate font-mono mt-0.5">{p.path}</div>
+                        </div>
+                        <span className="text-[9px] text-[var(--dp-text-secondary)]">2 hours ago</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Recent Branches & AI Chats */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Recent Files */}
+                  <div className="p-4 border rounded-[4px] space-y-2" style={{ background: '#2B2D30', borderColor: '#393B40' }}>
+                    <div className="text-[10px] font-bold text-white uppercase tracking-wider pb-1 border-b border-[var(--dp-border)]">
+                      Recent Branches
+                    </div>
+                    <div className="space-y-1">
+                      {['main', 'feat/login-flow', 'fix/lsp-crash'].map((branch, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-1 text-[11px] hover:text-white transition-colors cursor-pointer text-[var(--dp-text-secondary)] font-mono">
+                          <span>git: {branch}</span>
+                          <span className="text-[9px]">active</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Recent Chats / AI tasks */}
+                  <div className="p-4 border rounded-[4px] space-y-2" style={{ background: '#2B2D30', borderColor: '#393B40' }}>
+                    <div className="text-[10px] font-bold text-white uppercase tracking-wider pb-1 border-b border-[var(--dp-border)]">
+                      AI Actions & Tasks
+                    </div>
+                    <div className="space-y-1">
+                      {[
+                        { title: 'Security scan', type: 'Review' },
+                        { title: 'Explain regex engine', type: 'Explain' },
+                        { title: 'Generate unit tests', type: 'Test' }
+                      ].map((t, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => handleSendMessage(t.title, 'Ask', false)}
+                          className="flex items-center justify-between p-1 text-[11px] hover:text-white transition-colors cursor-pointer text-[var(--dp-text-secondary)]"
+                        >
+                          <span className="truncate">{t.title}</span>
+                          <span className="text-[8px] font-bold text-[#4C8DFF] uppercase tracking-wider bg-[#4C8DFF]/10 px-1.5 py-0.5 rounded-[2px] border border-[#4C8DFF]/20">
+                            {t.type}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>

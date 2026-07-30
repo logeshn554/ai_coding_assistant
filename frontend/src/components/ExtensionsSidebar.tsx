@@ -116,11 +116,11 @@ export default function ExtensionsSidebar() {
   }, []);
 
   return (
-    <div className="h-full flex flex-col bg-[#0d0e15] text-[#c8ccd8] font-sans select-none border-r border-zinc-800">
+    <div className="h-full flex flex-col font-sans select-none border-r border-[var(--dp-border)]" style={{ background: '#1E1F22', color: '#DFE1E5' }}>
       {/* Header */}
-      <div className="px-3 py-2 border-b border-zinc-800 bg-[#11131c] flex items-center justify-between shrink-0">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5 font-sans">
-          <Puzzle className="w-4 h-4 text-violet-400" />
+      <div className="px-3 py-2 border-b border-[var(--dp-border)] flex items-center justify-between shrink-0" style={{ background: '#2B2D30' }}>
+        <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--dp-text-primary)] flex items-center gap-1.5 font-sans">
+          <Puzzle className="w-4 h-4 text-[#4C8DFF]" />
           Extension Marketplace
         </span>
         <div className="flex items-center gap-1.5">
@@ -133,15 +133,18 @@ export default function ExtensionsSidebar() {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-violet-300 rounded-lg text-[10.5px] font-medium flex items-center gap-1 cursor-pointer transition-colors"
+            className="px-2 py-0.5 text-[10.5px] font-medium flex items-center gap-1 cursor-pointer transition-colors border border-[var(--dp-border)] rounded-[4px]"
+            style={{ background: '#2B2D30', color: '#DFE1E5' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#3B3D42'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#2B2D30'; }}
             title="Install from VSIX / ZIP package"
           >
-            <Upload className="w-3 h-3 text-violet-400" /> VSIX
+            <Upload className="w-3 h-3 text-[#4C8DFF]" /> VSIX
           </button>
           <button
             onClick={fetchExtensions}
             disabled={loading}
-            className="p-1 text-zinc-400 hover:text-zinc-200 rounded cursor-pointer transition-colors"
+            className="p-1 text-[var(--dp-text-secondary)] hover:text-[var(--dp-text-primary)] rounded cursor-pointer transition-colors"
             title="Refresh Marketplace"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -151,13 +154,13 @@ export default function ExtensionsSidebar() {
 
       {/* Upload Notification */}
       {uploadStatus && (
-        <div className="px-3 py-1.5 bg-violet-950/60 border-b border-violet-800/40 text-[10.5px] text-violet-300 font-medium truncate">
+        <div className="px-3 py-1.5 border-b text-[10.5px] font-medium truncate" style={{ background: 'rgba(76,141,255,0.12)', borderColor: '#393B40', color: '#4C8DFF' }}>
           {uploadStatus}
         </div>
       )}
 
       {/* Category Tabs */}
-      <div className="flex border-b border-zinc-800 bg-[#0b0c14] text-[11px] font-semibold px-2 pt-1 gap-1">
+      <div className="flex border-b border-[var(--dp-border)] text-[11px] font-semibold px-2 pt-1 gap-1" style={{ background: '#1A1B1E' }}>
         {[
           { id: 'all', label: 'All' },
           { id: 'installed', label: `Installed (${extensions.filter(e => e.installed).length})` },
@@ -166,10 +169,10 @@ export default function ExtensionsSidebar() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`px-2.5 py-1.5 rounded-t-lg transition-colors cursor-pointer ${
+            className={`px-2.5 py-1.5 transition-colors cursor-pointer border-b-2 ${
               activeTab === tab.id
-                ? 'bg-[#11131c] text-violet-300 border-t border-x border-zinc-800'
-                : 'text-zinc-500 hover:text-zinc-300'
+                ? 'border-[var(--dp-accent)] text-[var(--dp-text-primary)] font-semibold'
+                : 'border-transparent text-[var(--dp-text-secondary)] hover:text-[var(--dp-text-primary)]'
             }`}
           >
             {tab.label}
@@ -178,15 +181,15 @@ export default function ExtensionsSidebar() {
       </div>
 
       {/* Search Input */}
-      <div className="p-2.5 border-b border-zinc-800 bg-[#11131c] shrink-0">
-        <div className="relative flex items-center bg-zinc-950 border border-zinc-800 hover:border-violet-500/50 rounded-xl px-2.5 py-1.5 gap-2 focus-within:border-violet-500/80">
-          <Search className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+      <div className="p-2.5 border-b border-[var(--dp-border)] shrink-0" style={{ background: '#2B2D30' }}>
+        <div className="relative flex items-center border border-[var(--dp-border)] rounded-[4px] px-2.5 py-1.5 gap-2" style={{ background: '#1E1F22' }}>
+          <Search className="w-3.5 h-3.5 text-[var(--dp-text-muted)] shrink-0" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search extension name, ID, category..."
-            className="w-full bg-transparent text-xs text-zinc-100 focus:outline-none placeholder:text-zinc-600 font-sans"
+            className="w-full bg-transparent text-xs text-[var(--dp-text-primary)] focus:outline-none placeholder-[var(--dp-text-muted)] font-sans"
           />
         </div>
       </div>
@@ -196,49 +199,50 @@ export default function ExtensionsSidebar() {
         {filteredExtensions.map((ext) => (
           <div
             key={ext.id}
-            className={`p-3 bg-zinc-950 border rounded-xl space-y-2 transition-all ${
+            className={`p-3 border rounded-[4px] space-y-2 transition-all ${
               ext.installed
                 ? ext.enabled !== false
-                  ? 'border-violet-500/40 shadow-sm'
-                  : 'border-zinc-800 opacity-60'
-                : 'border-zinc-800 hover:border-zinc-700'
+                  ? 'border-[#4C8DFF]/40 shadow-xs'
+                  : 'border-[var(--dp-border)] opacity-60'
+                : 'border-[var(--dp-border)] hover:border-[var(--dp-border-mid)]'
             }`}
+            style={{ background: '#2B2D30' }}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-zinc-100 truncate">{ext.name}</span>
+                  <span className="text-xs font-bold text-[var(--dp-text-primary)] truncate">{ext.name}</span>
                   {ext.category && (
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-400 border border-zinc-800">
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-[var(--dp-border)] text-[var(--dp-text-secondary)]" style={{ background: '#1E1F22' }}>
                       {ext.category}
                     </span>
                   )}
                 </div>
-                <div className="text-[10px] text-zinc-500 font-mono mt-0.5">{ext.publisher || 'verified'} • {ext.version}</div>
+                <div className="text-[10px] text-[var(--dp-text-secondary)] font-mono mt-0.5">{ext.publisher || 'verified'} • {ext.version}</div>
               </div>
 
               {/* Status Badge */}
               <div className="flex items-center gap-1 shrink-0">
-                <span className="text-[9px] text-emerald-400 font-semibold bg-emerald-950/40 border border-emerald-800/40 px-1.5 py-0.5 rounded-md flex items-center gap-1 font-mono">
-                  <ShieldCheck className="w-3 h-3 text-emerald-400" /> Verified
+                <span className="text-[9px] text-[#62D26F] font-semibold bg-[#62D26F]/10 border border-[#62D26F]/20 px-1.5 py-0.5 rounded-[3px] flex items-center gap-1 font-mono">
+                  <ShieldCheck className="w-3 h-3 text-[#62D26F]" /> Verified
                 </span>
               </div>
             </div>
 
-            <p className="text-[11px] text-zinc-400 leading-relaxed font-sans line-clamp-2">
+            <p className="text-[11px] text-[var(--dp-text-secondary)] leading-relaxed font-sans line-clamp-2">
               {ext.description}
             </p>
 
             {/* Actions Bar */}
-            <div className="flex items-center justify-between pt-1 border-t border-zinc-900 select-none">
+            <div className="flex items-center justify-between pt-1 border-t border-[var(--dp-border)] select-none">
               <div className="flex items-center gap-1.5">
                 {ext.installed && (
                   <button
                     onClick={() => handleToggleEnable(ext)}
-                    className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold cursor-pointer transition-colors ${
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded-[4px] text-[10px] font-semibold cursor-pointer transition-colors ${
                       ext.enabled !== false
-                        ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/40'
-                        : 'bg-zinc-900 text-zinc-500 border border-zinc-800'
+                        ? 'bg-[#62D26F]/10 text-[#62D26F] border border-[#62D26F]/20'
+                        : 'bg-transparent text-[var(--dp-text-muted)] border border-[var(--dp-border)]'
                     }`}
                     title={ext.enabled !== false ? 'Disable extension' : 'Enable extension'}
                   >
@@ -250,10 +254,10 @@ export default function ExtensionsSidebar() {
 
               <button
                 onClick={() => handleToggleInstall(ext)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer transition-colors shadow-sm ${
+                className={`px-2.5 py-1 rounded-[4px] text-[11px] font-semibold cursor-pointer transition-colors ${
                   ext.installed
-                    ? 'bg-zinc-900 hover:bg-red-950/60 text-zinc-400 hover:text-red-300 border border-zinc-800 hover:border-red-800/40'
-                    : 'bg-violet-600 hover:bg-violet-500 text-white'
+                    ? 'bg-transparent hover:bg-[#FF6B6B]/10 text-[var(--dp-text-secondary)] hover:text-[#FF6B6B] border border-[var(--dp-border)] hover:border-[#FF6B6B]/30'
+                    : 'bg-[#4C8DFF] hover:bg-[#6AA3FF] text-white'
                 }`}
               >
                 {ext.installed ? 'Uninstall' : 'Install'}
@@ -263,12 +267,13 @@ export default function ExtensionsSidebar() {
         ))}
 
         {filteredExtensions.length === 0 && (
-          <div className="py-10 text-center text-xs text-zinc-500 italic font-sans space-y-2">
-            <Puzzle className="w-6 h-6 text-zinc-700 mx-auto" />
+          <div className="py-10 text-center text-xs text-[var(--dp-text-secondary)] italic font-sans space-y-2">
+            <Puzzle className="w-6 h-6 text-[var(--dp-text-muted)] mx-auto" />
             <div>No extensions found matching your search.</div>
           </div>
         )}
       </div>
     </div>
   );
-}
+}
+

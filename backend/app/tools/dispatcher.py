@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from . import file_tools, search_tool, terminal_tool, spawn_subagent as _spawn_subagent_mod
+from . import search_tool, terminal_tool, spawn_subagent as _spawn_subagent_mod
+from .read_tool import read_file as _read_file
+from .write_tool import write_or_edit_file as _write_or_edit_file
+from .list_tool import list_directory as _list_directory
+from .live_server_tool import open_with_live_server as _open_with_live_server
 
 
 async def dispatch_tool(
@@ -17,13 +21,13 @@ async def dispatch_tool(
     """Dispatch a single tool call to the appropriate implementation.
 
     Mutative tools (write/edit) and terminal commands may prompt the user
-    for confirmation via the session's pending_confirmations map unless
+    for confirmation via the session pending_confirmations map unless
     auto_apply / permission rules allow them through.
 
     Args:
         session: Active AgentSession instance.
         tc_id: Tool call identifier.
-        name: Tool name (e.g. ``read_file``, ``run_terminal_command``).
+        name: Tool name (e.g. read_file, run_terminal_command).
         args: Parsed tool arguments.
         auto_apply: When True, skip file-edit confirmation dialogs.
 
@@ -31,11 +35,12 @@ async def dispatch_tool(
         Tool result string for the model / chat history.
 
     Raises:
-        NotImplementedError: If ``name`` is not a supported tool.
+        NotImplementedError: If name is not a supported tool.
         ValueError: Propagated from edit uniqueness checks.
     """
     # Tool Name Normalization / Aliases for LLM compatibility
     TOOL_ALIASES = {
+        # list_directory aliases
         "list_files": "list_directory",
         "list_dir": "list_directory",
         "dir": "list_directory",
@@ -45,19 +50,23 @@ async def dispatch_tool(
         "view_files": "list_directory",
         "see_files": "list_directory",
         "workspace_files": "list_directory",
+        # read_file aliases
         "view_file": "read_file",
         "get_file": "read_file",
         "read_workspace_file": "read_file",
         "open_file": "read_file",
         "cat_file": "read_file",
+        # search_codebase aliases
         "find_files": "search_codebase",
         "search_files": "search_codebase",
         "search_code": "search_codebase",
         "grep": "search_codebase",
+        # run_terminal_command aliases
         "execute_command": "run_terminal_command",
         "run_command": "run_terminal_command",
         "terminal": "run_terminal_command",
         "shell_command": "run_terminal_command",
+        # live server aliases
         "live_server": "open_with_live_server",
         "start_live_server": "open_with_live_server",
         "open_live_server": "open_with_live_server",
@@ -65,34 +74,86 @@ async def dispatch_tool(
         "run_html": "open_with_live_server",
         "preview_html": "open_with_live_server",
         "open_with_live_server": "open_with_live_server",
+        # glob aliases
+        "glob_search": "glob",
+        "find_pattern": "glob",
+        "glob_files": "glob",
+        # web_fetch aliases
+        "fetch_url": "web_fetch",
+        "fetch": "web_fetch",
+        "http_get": "web_fetch",
+        "get_url": "web_fetch",
+        "read_url": "web_fetch",
+        # apply_patch aliases
+        "patch": "apply_patch",
+        "apply_diff": "apply_patch",
+        "apply_git_diff": "apply_patch",
+        # todo aliases
+        "write_todo": "todo_write",
+        "update_todo": "todo_write",
+        "set_todos": "todo_write",
+        "read_todo": "todo_read",
+        "get_todos": "todo_read",
+        "list_todos": "todo_read",
+        # question aliases
+        "ask_user": "question",
+        "ask_question": "question",
+        "clarify": "question",
+        "prompt_user": "question",
     }
     name = TOOL_ALIASES.get(name.lower(), name)
 
     # A. File write/edit safety check
     if name in ("write_file", "edit_file"):
-        return await file_tools.write_or_edit_file(session, tc_id, name, args, auto_apply)
+        return await _write_or_edit_file(session, tc_id, name, args, auto_apply)
 
-    # B. Destructive/Terminal Command safety check
+    # B. Terminal Command safety check
     if name == "run_terminal_command":
         return await terminal_tool.run_terminal_command(session, tc_id, args, auto_apply)
 
-    # C. Read-only / Live Server tools (no approval required)
+    # C. Apply Patch – requires confirmation like write_file
+    if name == "apply_patch":
+        from .patch_tool import apply_patch
+        return await apply_patch(session, tc_id, args, auto_apply)
+
+    # D. Read-only / utility tools (no approval required)
     if name == "list_directory":
-        return await file_tools.list_directory(session, args)
+        return await _list_directory(session, args)
 
     if name == "read_file":
-        return await file_tools.read_file(session, args)
+        return await _read_file(session, args)
 
     if name == "search_codebase":
         return await search_tool.search_codebase(session, args)
 
     if name == "open_with_live_server":
-        return await file_tools.open_with_live_server(session, args)
+        return await _open_with_live_server(session, args)
 
+    if name == "glob":
+        from .glob_tool import glob_search
+        return await glob_search(session, args)
+
+    if name == "web_fetch":
+        from .web_fetch_tool import web_fetch
+        return await web_fetch(session, args)
+
+    if name == "todo_write":
+        from .todo_tool import todo_write
+        return await todo_write(session, args)
+
+    if name == "todo_read":
+        from .todo_tool import todo_read
+        return await todo_read(session, args)
+
+    if name == "question":
+        from .question_tool import ask_question
+        return await ask_question(session, tc_id, args)
+
+    # E. Sub-agent / delegation tools
     if name == "spawn_subagent":
         prompt = args.get("prompt", "")
         if not prompt:
-            raise ValueError("spawn_subagent requires a non-empty 'prompt' argument.")
+            raise ValueError("spawn_subagent requires a non-empty prompt argument.")
         return await _spawn_subagent_mod.spawn_subagent(session, prompt)
 
     if name in ("search_web", "tavily_search", "web_search"):
@@ -109,14 +170,12 @@ async def dispatch_tool(
         formatted = "\n\n".join([f"### {r.title}\nURL: {r.url}\n{r.snippet}" for r in results])
         return f"## Web Search Results for '{query_str}':\n\n" + formatted
 
-    # D. Discovered MCP Tools routing with permission checks
+    # F. Discovered MCP Tools routing with permission checks
     from ..mcp_client import MCP_DISCOVERED_TOOLS
     if name in MCP_DISCOVERED_TOOLS or name.startswith("mcp_"):
-        # Check mcp_tool_rules permissions
         if hasattr(session, "permission_manager") and session.permission_manager:
             is_approved, risk, reason = session.permission_manager.check_permission(f"mcp:{name}")
             if not is_approved:
-                # Check config mcp_tool_rules directly
                 mcp_rules = session.permission_manager.config.get_mcp_tool_rules()
                 rule_match = any(
                     r.get("target") in (name, "*", f"mcp:{name}") and r.get("action") == "deny"
@@ -135,12 +194,12 @@ async def dispatch_tool(
         except Exception as e:
             return f"Error executing MCP tool '{name}': {str(e)}"
 
+    # G. Agent delegation
     if name == "delegate_to_agent":
         agent_name = args.get("agent_name", "")
         task_description = args.get("task_description", "")
         agent = session.orchestrator.agents.get(agent_name)
         if agent is None:
-            # case-insensitive fallback match against real keys before giving up
             match = next((k for k in session.orchestrator.agents if k.lower() == agent_name.lower()), None)
             agent = session.orchestrator.agents.get(match) if match else None
         if agent is None:
@@ -152,5 +211,3 @@ async def dispatch_tool(
         return result
 
     raise NotImplementedError(f"Tool '{name}' is not supported.")
-
-

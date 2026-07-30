@@ -49,6 +49,7 @@ class MCPClientManager:
 
     def __init__(self):
         self._connected_servers: Dict[str, Dict[str, Any]] = {}
+        self._bg_tasks: Dict[str, asyncio.Task] = {}
 
     def list_servers(self) -> List[Dict[str, Any]]:
         """Return list of configured MCP servers with active connection status."""
@@ -62,6 +63,146 @@ class MCPClientManager:
             item["tools_count"] = len(self._connected_servers.get(sid, {}).get("tools", []))
             result.append(item)
         return result
+
+    async def _run_server(self, server_id: str, server_config: Dict[str, Any], future_conn: asyncio.Future):
+        server_name = server_config.get("name", server_id)
+        command = server_config.get("command", "")
+        args = server_config.get("args", [])
+        url = server_config.get("url", "")
+
+        try:
+            if command:
+                from mcp import ClientSession, StdioServerParameters
+                from mcp.client.stdio import stdio_client
+
+                env = os.environ.copy()
+                if server_config.get("env") and isinstance(server_config["env"], dict):
+                    env.update(server_config["env"])
+
+                server_params = StdioServerParameters(
+                    command=command,
+                    args=list(args),
+                    env=env,
+                )
+                logger.info("MCP: Connecting to stdio server '%s': %s %s", server_name, command, args)
+
+                async with stdio_client(server_params) as transport:
+                    read_stream, write_stream = transport
+                    async with ClientSession(read_stream, write_stream) as session:
+                        await session.initialize()
+                        
+                        # Discover tools from the live server
+                        tools_response = await session.list_tools()
+                        raw_tools = getattr(tools_response, "tools", [])
+
+                        discovered_tools = []
+                        for tool in raw_tools:
+                            t_name = tool.name
+                            t_desc = getattr(tool, "description", "") or ""
+                            t_schema = {}
+                            if hasattr(tool, "inputSchema") and tool.inputSchema:
+                                try:
+                                    t_schema = dict(tool.inputSchema)
+                                except Exception:
+                                    t_schema = {}
+                            discovered_tools.append({
+                                "name": t_name,
+                                "description": t_desc,
+                                "input_schema": t_schema,
+                            })
+
+                        # Register discovered tools into global registries
+                        self._connected_servers[server_id] = {
+                            "config": server_config,
+                            "tools": discovered_tools,
+                            "session": session,
+                            "connected_at": asyncio.get_event_loop().time(),
+                        }
+                        for tool in discovered_tools:
+                            t_name = tool["name"]
+                            MCP_DISCOVERED_TOOLS[t_name] = {
+                                "server_id": server_id,
+                                "server_name": server_name,
+                                "name": t_name,
+                                "description": tool["description"],
+                                "input_schema": tool.get("input_schema", {}),
+                                "config": server_config,
+                            }
+
+                        logger.info("MCP: Connected server '%s', registered %d tools.", server_name, len(discovered_tools))
+                        future_conn.set_result(discovered_tools)
+
+                        # Keep the connection task alive
+                        while True:
+                            await asyncio.sleep(3600)
+
+            elif url:
+                from mcp import ClientSession
+                from mcp.client.sse import sse_client
+
+                logger.info("MCP: Connecting to SSE server '%s': %s", server_name, url)
+                async with sse_client(url) as transport:
+                    read_stream, write_stream = transport
+                    async with ClientSession(read_stream, write_stream) as session:
+                        await session.initialize()
+                        
+                        # Discover tools from the live server
+                        tools_response = await session.list_tools()
+                        raw_tools = getattr(tools_response, "tools", [])
+
+                        discovered_tools = []
+                        for tool in raw_tools:
+                            t_name = tool.name
+                            t_desc = getattr(tool, "description", "") or ""
+                            t_schema = {}
+                            if hasattr(tool, "inputSchema") and tool.inputSchema:
+                                try:
+                                    t_schema = dict(tool.inputSchema)
+                                except Exception:
+                                    t_schema = {}
+                            discovered_tools.append({
+                                "name": t_name,
+                                "description": t_desc,
+                                "input_schema": t_schema,
+                            })
+
+                        # Register discovered tools into global registries
+                        self._connected_servers[server_id] = {
+                            "config": server_config,
+                            "tools": discovered_tools,
+                            "session": session,
+                            "connected_at": asyncio.get_event_loop().time(),
+                        }
+                        for tool in discovered_tools:
+                            t_name = tool["name"]
+                            MCP_DISCOVERED_TOOLS[t_name] = {
+                                "server_id": server_id,
+                                "server_name": server_name,
+                                "name": t_name,
+                                "description": tool["description"],
+                                "input_schema": tool.get("input_schema", {}),
+                                "config": server_config,
+                            }
+
+                        logger.info("MCP: Connected server '%s', registered %d tools.", server_name, len(discovered_tools))
+                        future_conn.set_result(discovered_tools)
+
+                        # Keep the connection task alive
+                        while True:
+                            await asyncio.sleep(3600)
+
+            else:
+                raise ValueError("MCP server configuration must specify either 'command' or 'url'.")
+
+        except Exception as conn_err:
+            logger.error("Failed to connect MCP server '%s': %s", server_name, conn_err)
+            if not future_conn.done():
+                future_conn.set_exception(conn_err)
+        finally:
+            self._connected_servers.pop(server_id, None)
+            tools_to_remove = [k for k, v in MCP_DISCOVERED_TOOLS.items() if v.get("server_id") == server_id]
+            for k in tools_to_remove:
+                MCP_DISCOVERED_TOOLS.pop(k, None)
 
     async def connect_server(self, server_config: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Connect to an MCP server using the real mcp Python SDK, discover tools,
@@ -87,106 +228,34 @@ class MCPClientManager:
             )
 
         server_id = server_config.get("id") or server_config.get("name", "server")
-        server_name = server_config.get("name", server_id)
-        command = server_config.get("command", "")
-        args = server_config.get("args", [])
-        url = server_config.get("url", "")
+        
+        if server_id in self._connected_servers:
+            return self._connected_servers[server_id]["tools"]
 
-        discovered_tools: List[Dict[str, Any]] = []
-        session_obj = None
-        transport_obj = None
+        if server_id in self._bg_tasks:
+            task = self._bg_tasks.pop(server_id)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        loop = asyncio.get_running_loop()
+        future_conn = loop.create_future()
+        task = asyncio.create_task(self._run_server(server_id, server_config, future_conn))
+        self._bg_tasks[server_id] = task
 
         try:
-            if command:
-                # Stdio-based server
-                from mcp import ClientSession, StdioServerParameters
-                from mcp.client.stdio import stdio_client
-
-                env = os.environ.copy()
-                if server_config.get("env") and isinstance(server_config["env"], dict):
-                    env.update(server_config["env"])
-
-                server_params = StdioServerParameters(
-                    command=command,
-                    args=list(args),
-                    env=env,
-                )
-                logger.info("MCP: Connecting to stdio server '%s': %s %s", server_name, command, args)
-
-                stdio_transport = await asyncio.wait_for(
-                    stdio_client(server_params).__aenter__(),
-                    timeout=30,
-                )
-                transport_obj = stdio_transport
-                read_stream, write_stream = stdio_transport
-                session_obj = ClientSession(read_stream, write_stream)
-                await asyncio.wait_for(session_obj.__aenter__(), timeout=15)
-                await asyncio.wait_for(session_obj.initialize(), timeout=15)
-
-            elif url:
-                # SSE/HTTP-based server
-                from mcp import ClientSession
-                from mcp.client.sse import sse_client
-
-                logger.info("MCP: Connecting to SSE server '%s': %s", server_name, url)
-                sse_transport = await asyncio.wait_for(
-                    sse_client(url).__aenter__(),
-                    timeout=30,
-                )
-                transport_obj = sse_transport
-                read_stream, write_stream = sse_transport
-                session_obj = ClientSession(read_stream, write_stream)
-                await asyncio.wait_for(session_obj.__aenter__(), timeout=15)
-                await asyncio.wait_for(session_obj.initialize(), timeout=15)
-
-            else:
-                raise ValueError("MCP server configuration must specify either 'command' or 'url'.")
-
-            # Discover tools from the live server
-            tools_response = await asyncio.wait_for(session_obj.list_tools(), timeout=15)
-            raw_tools = getattr(tools_response, "tools", [])
-
-            for tool in raw_tools:
-                t_name = tool.name
-                t_desc = getattr(tool, "description", "") or ""
-                t_schema = {}
-                if hasattr(tool, "inputSchema") and tool.inputSchema:
-                    try:
-                        t_schema = dict(tool.inputSchema)
-                    except Exception:
-                        t_schema = {}
-                discovered_tools.append({
-                    "name": t_name,
-                    "description": t_desc,
-                    "input_schema": t_schema,
-                })
-
-        except Exception as conn_err:
-            logger.error("Failed to connect MCP server '%s': %s", server_name, conn_err)
-            raise RuntimeError(f"MCP server '{server_name}' connection failed: {conn_err}") from conn_err
-
-        # Register discovered tools into global MCP_DISCOVERED_TOOLS
-        for tool in discovered_tools:
-            t_name = tool["name"]
-            MCP_DISCOVERED_TOOLS[t_name] = {
-                "server_id": server_id,
-                "server_name": server_name,
-                "name": t_name,
-                "description": tool["description"],
-                "input_schema": tool.get("input_schema", {}),
-                "config": server_config,
-            }
-
-        self._connected_servers[server_id] = {
-            "config": server_config,
-            "tools": discovered_tools,
-            "session": session_obj,
-            "transport": transport_obj,
-            "connected_at": asyncio.get_event_loop().time(),
-        }
-
-        logger.info("MCP: Connected server '%s', registered %d tools.", server_name, len(discovered_tools))
-        return discovered_tools
+            discovered_tools = await asyncio.wait_for(future_conn, timeout=30)
+            return discovered_tools
+        except Exception as e:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            self._bg_tasks.pop(server_id, None)
+            raise RuntimeError(f"MCP server '{server_config.get('name', server_id)}' connection failed: {e}") from e
 
     async def call_tool(self, server_id: str, tool_name: str, arguments: Dict[str, Any]) -> str:
         """Call a tool on a connected MCP server and return the result as a string.
@@ -214,10 +283,9 @@ class MCPClientManager:
             raise RuntimeError(f"MCP server '{server_id}' has no active session.")
 
         try:
-            result = await asyncio.wait_for(
-                session_obj.call_tool(tool_name, arguments=arguments),
-                timeout=60,
-            )
+            from anyio import fail_after
+            with fail_after(60):
+                result = await session_obj.call_tool(tool_name, arguments=arguments)
             # Extract text content from MCP result
             content_parts = getattr(result, "content", None) or []
             parts = []
@@ -236,25 +304,13 @@ class MCPClientManager:
 
     async def disconnect_server(self, server_id: str) -> bool:
         """Disconnect an MCP server, close the session, and unregister its tools."""
-        if server_id in self._connected_servers:
-            entry = self._connected_servers.pop(server_id)
-            # Close session gracefully
-            session_obj = entry.get("session")
-            if session_obj is not None:
-                try:
-                    await asyncio.wait_for(session_obj.__aexit__(None, None, None), timeout=10)
-                except Exception:
-                    pass
-            transport_obj = entry.get("transport")
-            if transport_obj is not None:
-                try:
-                    await asyncio.wait_for(transport_obj.__aexit__(None, None, None), timeout=10)
-                except Exception:
-                    pass
-            # Unregister tools
-            tools_to_remove = [k for k, v in MCP_DISCOVERED_TOOLS.items() if v.get("server_id") == server_id]
-            for k in tools_to_remove:
-                MCP_DISCOVERED_TOOLS.pop(k, None)
+        task = self._bg_tasks.pop(server_id, None)
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
             logger.info("MCP: Disconnected server '%s'", server_id)
             return True
         return False

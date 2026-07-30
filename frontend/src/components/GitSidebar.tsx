@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import {
   GitBranch, ArrowUp, ArrowDown, GitCommit,
   ChevronRight, ChevronDown, Sparkles, Plus, Minus, Loader2,
@@ -403,7 +403,7 @@ export default function GitSidebar() {
                   <button
                     onClick={() => handleResolveConflict(cf.path, 'both')}
                     disabled={resolvingPath === cf.path}
-                    className="flex-1 py-1 bg-violet-600/80 hover:bg-violet-500 text-white rounded text-[9px] font-sans font-bold cursor-pointer"
+                    className="flex-1 py-1 bg-[#3B7AE8]/80 hover:bg-[#4C8DFF] text-white rounded text-[9px] font-sans font-bold cursor-pointer"
                   >
                     Accept Both
                   </button>

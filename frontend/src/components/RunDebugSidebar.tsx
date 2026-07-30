@@ -184,24 +184,24 @@ export default function RunDebugSidebar() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0f1017] text-[#c8ccd8] font-sans select-none border-r border-zinc-800">
+    <div className="h-full flex flex-col font-sans select-none border-r border-[var(--dp-border)]" style={{ background: '#1E1F22', color: '#DFE1E5' }}>
       {/* Header */}
-      <div className="px-3 py-2 border-b border-zinc-800 bg-[#13141f] flex items-center justify-between shrink-0">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-300 flex items-center gap-1.5 font-sans">
-          <Bug className="w-4 h-4 text-violet-400" />
+      <div className="px-3 py-2 border-b border-[var(--dp-border)] flex items-center justify-between shrink-0" style={{ background: '#2B2D30' }}>
+        <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--dp-text-primary)] flex items-center gap-1.5 font-sans">
+          <Bug className="w-4 h-4 text-[#4C8DFF]" />
           Run & Debug
         </span>
-        <span className="text-[10px] font-mono text-zinc-400 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
+        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-[2px] border" style={isRunning ? { background: 'rgba(98,210,111,0.15)', borderColor: '#62D26F', color: '#62D26F' } : { background: '#2B2D30', borderColor: '#393B40', color: '#6F737A' }}>
           {isRunning ? 'RUNNING' : 'STOPPED'}
         </span>
       </div>
 
       {/* Control Action Toolbar */}
-      <div className="p-2 border-b border-zinc-800 bg-[#11121a] flex gap-1.5 shrink-0">
+      <div className="p-2 border-b border-[var(--dp-border)] flex gap-1.5 shrink-0" style={{ background: '#2B2D30' }}>
         {!isRunning ? (
           <button
             onClick={handleStart}
-            className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+            className="flex-1 py-1.5 bg-[#62D26F] hover:bg-[#82F28F] text-white rounded-[4px] text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
           >
             <Play className="w-3.5 h-3.5 fill-current" /> Run Project
           </button>
@@ -209,13 +209,16 @@ export default function RunDebugSidebar() {
           <>
             <button
               onClick={handleStop}
-              className="flex-1 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-sm"
+              className="flex-1 py-1.5 bg-[#FF6B6B] hover:bg-red-500 text-white rounded-[4px] text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
             >
               <Square className="w-3.5 h-3.5 fill-current" /> Stop
             </button>
             <button
               onClick={handleRestart}
-              className="py-1.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-lg text-[11px] font-semibold flex items-center justify-center cursor-pointer transition-colors"
+              className="py-1.5 px-3 border rounded-[4px] text-[11px] font-semibold flex items-center justify-center cursor-pointer transition-colors"
+              style={{ background: '#2B2D30', color: '#DFE1E5', borderColor: '#393B40' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#3B3D42'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = '#2B2D30'; }}
               title="Restart Session"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -224,7 +227,7 @@ export default function RunDebugSidebar() {
         )}
         <button
           onClick={fetchBugReport}
-          className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors shadow-sm"
+          className="px-3 py-1.5 bg-[#4C8DFF] hover:bg-[#6AA3FF] text-white rounded-[4px] text-[11px] font-semibold flex items-center justify-center gap-1 cursor-pointer transition-colors"
           title="Scan workspace for bugs"
         >
           <Bug className="w-3.5 h-3.5" /> Scan
@@ -236,21 +239,21 @@ export default function RunDebugSidebar() {
         
         {/* 1. Variables & Scope */}
         <div className="space-y-1.5">
-          <div className="text-[10.5px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Cpu className="w-3.5 h-3.5 text-violet-400" /> Variables & Scope
+          <div className="text-[10.5px] font-bold text-[var(--dp-text-secondary)] uppercase tracking-wider flex items-center gap-1.5">
+            <Cpu className="w-3.5 h-3.5 text-[#4C8DFF]" /> Variables & Scope
           </div>
-          <div className="p-2.5 bg-zinc-950 border border-zinc-800/80 rounded-xl font-mono text-[10.5px] text-zinc-300 space-y-1 shadow-inner">
-            <div className="flex justify-between items-center"><span className="text-violet-400 font-semibold">active_frame:</span> <span className="text-zinc-300">{activeFrame}</span></div>
-            <div className="flex justify-between items-center"><span className="text-violet-400 font-semibold">is_running:</span> <span className={isRunning ? 'text-emerald-400 font-bold' : 'text-zinc-500'}>{isRunning ? 'true' : 'false'}</span></div>
-            <div className="flex justify-between items-center"><span className="text-violet-400 font-semibold">breakpoints:</span> <span className="text-zinc-300">{breakpoints.length} active</span></div>
+          <div className="p-2.5 border border-[var(--dp-border)] rounded-[4px] font-mono text-[10.5px] text-[var(--dp-text-primary)] space-y-1" style={{ background: '#2B2D30' }}>
+            <div className="flex justify-between items-center"><span className="text-[#4C8DFF] font-semibold">active_frame:</span> <span className="text-[var(--dp-text-primary)]">{activeFrame}</span></div>
+            <div className="flex justify-between items-center"><span className="text-[#4C8DFF] font-semibold">is_running:</span> <span className={isRunning ? 'text-[#62D26F] font-bold' : 'text-[var(--dp-text-muted)]'}>{isRunning ? 'true' : 'false'}</span></div>
+            <div className="flex justify-between items-center"><span className="text-[#4C8DFF] font-semibold">breakpoints:</span> <span className="text-[var(--dp-text-primary)]">{breakpoints.length} active</span></div>
           </div>
         </div>
 
         {/* 2. Watch Expressions */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <div className="text-[10.5px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Eye className="w-3.5 h-3.5 text-blue-400" /> Watch
+            <div className="text-[10.5px] font-bold text-[var(--dp-text-secondary)] uppercase tracking-wider flex items-center gap-1.5">
+              <Eye className="w-3.5 h-3.5 text-[#4C8DFF]" /> Watch
             </div>
           </div>
           <form onSubmit={handleAddWatch} className="flex gap-1">
@@ -259,15 +262,16 @@ export default function RunDebugSidebar() {
               value={newWatchInput}
               onChange={e => setNewWatchInput(e.target.value)}
               placeholder="Add watch expression (e.g. state.root)"
-              className="flex-1 px-2 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-violet-500"
+              className="flex-1 px-2 py-1 border border-[var(--dp-border)] rounded-[4px] text-[11px] font-mono text-[var(--dp-text-primary)] focus:outline-none focus:border-[#4C8DFF]"
+              style={{ background: '#1E1F22' }}
             />
-            <button type="submit" className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-xs font-bold cursor-pointer">+</button>
+            <button type="submit" className="px-2.5 py-1 border border-[var(--dp-border)] rounded-[4px] text-xs font-bold cursor-pointer" style={{ background: '#2B2D30', color: '#DFE1E5' }}>+</button>
           </form>
           <div className="space-y-1">
             {watchExprs.map(w => (
-              <div key={w.id} className="flex items-center justify-between p-2 bg-zinc-950 border border-zinc-800/80 rounded-xl text-[10.5px] font-mono">
-                <span className="text-violet-300 truncate max-w-[140px]">{w.expr}</span>
-                <span className="text-zinc-400 truncate max-w-[100px]">{w.val}</span>
+              <div key={w.id} className="flex items-center justify-between p-2 border border-[var(--dp-border)] rounded-[4px] text-[10.5px] font-mono" style={{ background: '#2B2D30' }}>
+                <span className="text-[#4C8DFF] truncate max-w-[140px]">{w.expr}</span>
+                <span className="text-[var(--dp-text-secondary)] truncate max-w-[100px]">{w.val}</span>
               </div>
             ))}
           </div>
@@ -275,17 +279,17 @@ export default function RunDebugSidebar() {
 
         {/* 3. Call Stack */}
         <div className="space-y-1.5">
-          <div className="text-[10.5px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-amber-400" /> Call Stack
+          <div className="text-[10.5px] font-bold text-[var(--dp-text-secondary)] uppercase tracking-wider flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5 text-[#FFB74D]" /> Call Stack
           </div>
           <div className="space-y-1">
             {callstack.length === 0 ? (
-              <div className="p-2 bg-zinc-950 border border-zinc-800/80 rounded-xl text-[10.5px] text-zinc-500 italic">No stack frame active.</div>
+              <div className="p-2 border border-[var(--dp-border)] rounded-[4px] text-[10.5px] text-[var(--dp-text-muted)] italic" style={{ background: '#2B2D30' }}>No stack frame active.</div>
             ) : (
               callstack.map(frame => (
-                <div key={frame.id} className="flex items-center justify-between p-2 bg-zinc-950 border border-zinc-800/80 rounded-xl text-[10.5px] font-mono">
-                  <span className="font-bold text-zinc-200">{frame.name}()</span>
-                  <span className="text-zinc-400 text-[9.5px] truncate max-w-[150px]">{frame.file.split('/').pop()}:L{frame.line}</span>
+                <div key={frame.id} className="flex items-center justify-between p-2 border border-[var(--dp-border)] rounded-[4px] text-[10.5px] font-mono" style={{ background: '#2B2D30' }}>
+                  <span className="font-bold text-[var(--dp-text-primary)]">{frame.name}()</span>
+                  <span className="text-[var(--dp-text-secondary)] text-[9.5px] truncate max-w-[150px]">{frame.file.split('/').pop()}:L{frame.line}</span>
                 </div>
               ))
             )}
@@ -295,12 +299,12 @@ export default function RunDebugSidebar() {
         {/* 4. Breakpoints Management */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <div className="text-[10.5px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-              <List className="w-3.5 h-3.5 text-violet-400" /> Breakpoints
+            <div className="text-[10.5px] font-bold text-[var(--dp-text-secondary)] uppercase tracking-wider flex items-center gap-1.5">
+              <List className="w-3.5 h-3.5 text-[#4C8DFF]" /> Breakpoints
             </div>
             <button
               onClick={() => setShowAddBp(!showAddBp)}
-              className="text-violet-400 hover:text-violet-300 text-xs font-bold p-0.5"
+              className="text-[#4C8DFF] hover:text-[#6AA3FF] text-xs font-bold p-0.5"
               title="Add Breakpoint"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -308,13 +312,14 @@ export default function RunDebugSidebar() {
           </div>
 
           {showAddBp && (
-            <form onSubmit={handleAddBreakpoint} className="p-2 bg-zinc-900 border border-zinc-800 rounded-xl space-y-1.5">
+            <form onSubmit={handleAddBreakpoint} className="p-2 border border-[var(--dp-border)] rounded-[4px] space-y-1.5" style={{ background: '#2B2D30' }}>
               <input
                 type="text"
                 placeholder="File path (e.g. main.py)"
                 value={newBpFile}
                 onChange={e => setNewBpFile(e.target.value)}
-                className="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-violet-500"
+                className="w-full px-2 py-1 border border-[var(--dp-border)] rounded-[3px] text-[11px] font-mono text-[var(--dp-text-primary)] focus:outline-none focus:border-[#4C8DFF]"
+                style={{ background: '#1E1F22' }}
               />
               <div className="flex gap-1.5">
                 <input
@@ -322,9 +327,10 @@ export default function RunDebugSidebar() {
                   placeholder="Line #"
                   value={newBpLine}
                   onChange={e => setNewBpLine(e.target.value)}
-                  className="w-20 px-2 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-violet-500"
+                  className="w-20 px-2 py-1 border border-[var(--dp-border)] rounded-[3px] text-[11px] font-mono text-[var(--dp-text-primary)] focus:outline-none focus:border-[#4C8DFF]"
+                  style={{ background: '#1E1F22' }}
                 />
-                <button type="submit" className="flex-1 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-[11px] font-semibold cursor-pointer">
+                <button type="submit" className="flex-1 py-1 bg-[#4C8DFF] hover:bg-[#6AA3FF] text-white rounded-[3px] text-[11px] font-semibold cursor-pointer border-0">
                   Add
                 </button>
               </div>
@@ -336,13 +342,14 @@ export default function RunDebugSidebar() {
               <div
                 key={bp.id}
                 onClick={() => handleToggleBreakpoint(bp.id)}
-                className="flex items-center justify-between p-2 bg-zinc-950 hover:bg-zinc-900 border border-zinc-800/80 rounded-xl text-[10.5px] font-mono cursor-pointer transition-colors"
+                className="flex items-center justify-between p-2 hover:bg-white/5 border border-[var(--dp-border)] rounded-[4px] text-[10.5px] font-mono cursor-pointer transition-colors"
+                style={{ background: '#2B2D30' }}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${bp.enabled !== false ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-zinc-600'}`} />
-                  <span className={`truncate ${bp.enabled !== false ? 'text-zinc-200' : 'text-zinc-500 line-through'}`}>{bp.file}:{bp.line}</span>
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${bp.enabled !== false ? 'bg-[#FF6B6B] shadow-[0_0_8px_rgba(255,107,107,0.8)]' : 'bg-[var(--dp-text-muted)]'}`} />
+                  <span className={`truncate ${bp.enabled !== false ? 'text-[var(--dp-text-primary)]' : 'text-[var(--dp-text-muted)] line-through'}`}>{bp.file}:{bp.line}</span>
                 </div>
-                <span className="text-[9.5px] text-zinc-500 font-sans">{bp.enabled !== false ? 'Active' : 'Disabled'}</span>
+                <span className="text-[9.5px] text-[var(--dp-text-secondary)] font-sans">{bp.enabled !== false ? 'Active' : 'Disabled'}</span>
               </div>
             ))}
           </div>
@@ -350,18 +357,18 @@ export default function RunDebugSidebar() {
 
         {/* 5. Debug REPL Console */}
         <div className="space-y-1.5">
-          <div className="text-[10.5px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Terminal className="w-3.5 h-3.5 text-emerald-400" /> Debug Console
+          <div className="text-[10.5px] font-bold text-[var(--dp-text-secondary)] uppercase tracking-wider flex items-center gap-1.5">
+            <Terminal className="w-3.5 h-3.5 text-[#62D26F]" /> Debug Console
           </div>
-          <div className="p-2 bg-zinc-950 border border-zinc-800/80 rounded-xl font-mono text-[10px] text-zinc-400 h-28 overflow-y-auto space-y-1 pr-1 scrollbar-none">
+          <div className="p-2 border border-[var(--dp-border)] rounded-[4px] font-mono text-[10px] text-[var(--dp-text-secondary)] h-28 overflow-y-auto space-y-1 pr-1 scrollbar-none" style={{ background: '#2B2D30' }}>
             {replHistory.length === 0 ? (
-              <div className="text-zinc-600 italic">Enter python or expression query below to evaluate in debug context.</div>
+              <div className="text-[var(--dp-text-muted)] italic">Enter python or expression query below to evaluate in debug context.</div>
             ) : (
               replHistory.map((item, idx) => (
                 <div key={idx} className="space-y-0.5">
-                  <div className="text-violet-400 font-semibold">&gt; {item.query}</div>
-                  {item.result && <div className="text-zinc-200 pl-2">{item.result}</div>}
-                  {item.error && <div className="text-red-400 pl-2">{item.error}</div>}
+                  <div className="text-[#4C8DFF] font-semibold">&gt; {item.query}</div>
+                  {item.result && <div className="text-[var(--dp-text-primary)] pl-2">{item.result}</div>}
+                  {item.error && <div className="text-[#FF6B6B] pl-2">{item.error}</div>}
                 </div>
               ))
             )}
@@ -372,9 +379,10 @@ export default function RunDebugSidebar() {
               value={replInput}
               onChange={e => setReplInput(e.target.value)}
               placeholder="Evaluate expression (e.g. sys.version)"
-              className="flex-1 px-2.5 py-1 bg-zinc-950 border border-zinc-800 rounded-lg text-[11px] font-mono text-zinc-200 focus:outline-none focus:border-violet-500"
+              className="flex-1 px-2.5 py-1 border border-[var(--dp-border)] rounded-[4px] text-[11px] font-mono text-[var(--dp-text-primary)] focus:outline-none focus:border-[#4C8DFF]"
+              style={{ background: '#1E1F22' }}
             />
-            <button type="submit" className="px-2.5 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-semibold cursor-pointer">
+            <button type="submit" className="px-2.5 py-1 bg-[#4C8DFF] hover:bg-[#6AA3FF] text-white rounded-[4px] text-xs font-semibold cursor-pointer border-0">
               Eval
             </button>
           </form>
@@ -382,15 +390,15 @@ export default function RunDebugSidebar() {
 
         {/* 6. Console Output Stream */}
         <div className="space-y-1.5">
-          <div className="text-[10.5px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-            <Terminal className="w-3.5 h-3.5 text-blue-400" /> Stdout Logs
+          <div className="text-[10.5px] font-bold text-[var(--dp-text-secondary)] uppercase tracking-wider flex items-center gap-1.5">
+            <Terminal className="w-3.5 h-3.5 text-[#4C8DFF]" /> Stdout Logs
           </div>
-          <div className="p-2 bg-zinc-950 border border-zinc-800/80 rounded-xl font-mono text-[9.5px] text-zinc-400 h-24 overflow-y-auto space-y-1 pr-1 select-text scrollbar-none">
+          <div className="p-2 border border-[var(--dp-border)] rounded-[4px] font-mono text-[9.5px] text-[var(--dp-text-secondary)] h-24 overflow-y-auto space-y-1 pr-1 select-text scrollbar-none" style={{ background: '#2B2D30' }}>
             {consoleLogs.length === 0 ? (
-              <div className="text-zinc-600 italic">No output logged yet.</div>
+              <div className="text-[var(--dp-text-muted)] italic">No output logged yet.</div>
             ) : (
               consoleLogs.map((log, idx) => (
-                <div key={idx} className="leading-relaxed whitespace-pre-wrap break-all text-zinc-300">{log}</div>
+                <div key={idx} className="leading-relaxed whitespace-pre-wrap break-all text-[var(--dp-text-primary)]">{log}</div>
               ))
             )}
           </div>
@@ -399,12 +407,12 @@ export default function RunDebugSidebar() {
         {/* 7. Bug Scanner Report */}
         {bugReport.length > 0 && (
           <div className="space-y-1.5">
-            <div className="text-[10.5px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Bug className="w-3.5 h-3.5 text-violet-400" /> Bug Scan Report
+            <div className="text-[10.5px] font-bold text-[var(--dp-text-secondary)] uppercase tracking-wider flex items-center gap-1.5">
+              <Bug className="w-3.5 h-3.5 text-[#4C8DFF]" /> Bug Scan Report
             </div>
-            <div className="p-2 bg-zinc-950 border border-zinc-800/80 rounded-xl font-mono text-[9.5px] text-zinc-300 h-24 overflow-y-auto space-y-1 pr-1 select-text scrollbar-none">
+            <div className="p-2 border border-[var(--dp-border)] rounded-[4px] font-mono text-[9.5px] text-[var(--dp-text-primary)] h-24 overflow-y-auto space-y-1 pr-1 select-text scrollbar-none" style={{ background: '#2B2D30' }}>
               {bugReport.map((item, idx) => (
-                <div key={idx} className="leading-relaxed whitespace-pre-wrap break-all text-zinc-300">{item}</div>
+                <div key={idx} className="leading-relaxed whitespace-pre-wrap break-all text-[var(--dp-text-primary)]">{item}</div>
               ))}
             </div>
           </div>

@@ -141,12 +141,12 @@ coding_prompt_template = PromptTemplate.from_template(
     "precisely and completely.\n\n"
     "Task: {task_description}\n"
     "Target file: {path}\n"
-    "Original content:\n{original}\n\n"
+    "File context (targeted excerpts):\n{file_context}\n\n"
     "RULES:\n"
-    "1. Read the file contents above BEFORE making any changes.\n"
+    "1. Read the file context above BEFORE making any changes.\n"
     "2. Use edit_file for targeted changes to existing files.\n"
     "3. Use write_file only for new files or complete rewrites.\n"
-    "4. NEVER truncate code. Output complete file contents.\n"
+    "4. NEVER truncate code in your output. Output complete modifications.\n"
     "5. NEVER use placeholder comments like '# TODO' or '... rest of code'.\n"
     "6. Add type hints to every function you write.\n"
     "7. Follow the existing code style in each file.\n"
@@ -637,20 +637,46 @@ class FileSystemAgent(BaseAgent):
             return "No files to read."
 
         from .async_files import async_read_workspace_file
+        from .context_config import READ_FILE_MAX_CHARS, MAX_TARGET_FILES_WITH_CONTENT
+        import re
+
+        # Concurrency limit
+        semaphore = asyncio.Semaphore(4)
+        
+        # Relevance scoring to identify top files
+        query_words = set(re.findall(r"\b[A-Za-z0-9_]{3,}\b", task_description.lower()))
+        common_stops = {"the", "and", "for", "class", "def", "function", "import", "from", "file", "code", "change", "create", "modify", "write", "read", "update", "implement"}
+        query_words = {w for w in query_words if w not in common_stops}
+        
+        scored_files = []
+        for p in target_files:
+            basename = os.path.basename(p).lower()
+            basename_words = set(re.findall(r"\b[A-Za-z0-9_]{3,}\b", basename))
+            score = len(query_words.intersection(basename_words)) * 5
+            scored_files.append((score, p))
+            
+        scored_files.sort(key=lambda x: x[0], reverse=True)
+        top_files = {p for _, p in scored_files[:MAX_TARGET_FILES_WITH_CONTENT]}
 
         async def _read_one(path: str) -> tuple:
-            """Read a single file; return (path, content) or (path, None) on error."""
-            try:
-                content = await async_read_workspace_file(session.workspace_root, path)
-                await self.orchestrator.context.log(f"File System Agent: \u2713 Read {path}")
-                return path, content
-            except Exception as e:
-                await self.orchestrator.context.log(
-                    f"File System Agent: \u26a0 Could not read {path}: {e}"
-                )
-                return path, None
+            async with semaphore:
+                try:
+                    if path in top_files:
+                        content = await async_read_workspace_file(session.workspace_root, path, max_chars=READ_FILE_MAX_CHARS)
+                        await self.orchestrator.context.log(f"File System Agent: \u2713 Read {path} (content)")
+                    else:
+                        abs_path = os.path.join(session.workspace_root, path)
+                        size_bytes = os.path.getsize(abs_path) if os.path.exists(abs_path) else 0
+                        content = f"[File metadata: path={path}, size={size_bytes} bytes; content omitted due to file-limit constraints]"
+                        await self.orchestrator.context.log(f"File System Agent: \u2713 Read {path} (metadata only)")
+                    return path, content
+                except Exception as e:
+                    await self.orchestrator.context.log(
+                        f"File System Agent: \u26a0 Could not read {path}: {e}"
+                    )
+                    return path, None
 
-        # Read all files concurrently
+        # Read all files concurrently with semaphore
         results = await asyncio.gather(*[_read_one(p) for p in target_files])
 
         file_contents = {path: content for path, content in results if content is not None}
@@ -678,12 +704,24 @@ class CodingAgent(BaseAgent):
             
         async def process_file(path: str):
             original = file_contents.get(path, "")
+            from .context_config import CODING_ORIGINAL_MAX_CHARS
+            from .context_helpers import build_relevant_file_context
+            file_context = build_relevant_file_context(
+                path=path,
+                content=original,
+                task_description=task_description,
+                max_chars=CODING_ORIGINAL_MAX_CHARS
+            )
             
             chat_prompt = ChatPromptTemplate.from_messages([
                 ("system", "You are a master software engineer. Output ONLY the raw, complete code. No formatting."),
                 ("human", "{prompt_content}")
             ])
-            prompt_content = coding_prompt_template.format(task_description=task_description, path=path, original=original)
+            prompt_content = coding_prompt_template.format(
+                task_description=task_description,
+                path=path,
+                file_context=file_context
+            )
             
             llm = DevPilotChatModel(session=session, agent_name=self.name)
             chain = chat_prompt | llm
@@ -861,8 +899,8 @@ class DebuggingAgent(BaseAgent):
         build_error = "\n".join(self.orchestrator.context.collaboration_log[-5:])
         recent_commits = self.orchestrator.context.memory.get("git_log", "N/A")
         file_contents = str(self.orchestrator.context.memory.get("file_contents", ""))[:3000]
-        other_mem = {k: v for k, v in self.orchestrator.context.memory.items() if k != "file_contents"}
-        shared_memory = json.dumps(other_mem, default=str)[:2000]
+        from .context_helpers import build_memory_summary
+        shared_memory = build_memory_summary(self.orchestrator.context.memory, max_chars=2000)
         
         chat_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a senior debugging engineer. Analyze the output and suggest fixes."),
@@ -942,8 +980,9 @@ class CodeReviewAgent(BaseAgent):
         await self.orchestrator.update_task_progress(task_id, 30, session)
         
         target_files = self.orchestrator.context.memory.get("target_files", [])
-        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description)
-        chunks = chunked_codebase(file_contents)
+        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description, session=session)
+        _, max_chars = get_dynamic_limits_from_session(session)
+        chunks = chunked_codebase(file_contents, max_chars=max_chars, query=task_description)
         
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         findings = []
@@ -1336,8 +1375,9 @@ class SecurityAgent(BaseAgent):
         await self.orchestrator.update_task_progress(task_id, 20, session)
 
         target_files = self.orchestrator.context.memory.get("target_files", [])
-        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description)
-        chunks = chunked_codebase(file_contents)
+        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description, session=session)
+        _, max_chars = get_dynamic_limits_from_session(session)
+        chunks = chunked_codebase(file_contents, max_chars=max_chars, query=task_description)
 
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         findings = []
@@ -1347,8 +1387,8 @@ class SecurityAgent(BaseAgent):
                 ("system", "You are a senior application security engineer. Perform thorough OWASP-based security audits."),
                 ("human", "{prompt_content}")
             ])
-            other_mem = {k: v for k, v in self.orchestrator.context.memory.items() if k != "file_contents"}
-            shared_memory = json.dumps(other_mem, default=str)[:1500]
+            from .context_helpers import build_memory_summary
+            shared_memory = build_memory_summary(self.orchestrator.context.memory, max_chars=1500)
             prompt_content = security_prompt_template.format(
                 task_description=task_description,
                 file_contents=chunk,
@@ -1391,8 +1431,9 @@ class PerformanceAgent(BaseAgent):
         await self.orchestrator.update_task_progress(task_id, 20, session)
 
         target_files = self.orchestrator.context.memory.get("target_files", [])
-        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description)
-        chunks = chunked_codebase(file_contents)
+        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description, session=session)
+        _, max_chars = get_dynamic_limits_from_session(session)
+        chunks = chunked_codebase(file_contents, max_chars=max_chars, query=task_description)
 
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         findings = []
@@ -1442,8 +1483,9 @@ class AIReviewerAgent(BaseAgent):
         await self.orchestrator.update_task_progress(task_id, 20, session)
 
         target_files = self.orchestrator.context.memory.get("target_files", [])
-        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description)
-        chunks = chunked_codebase(file_contents)
+        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description, session=session)
+        _, max_chars = get_dynamic_limits_from_session(session)
+        chunks = chunked_codebase(file_contents, max_chars=max_chars, query=task_description)
 
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         findings = []
@@ -1551,8 +1593,214 @@ class ReleaseAgent(BaseAgent):
         await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Release package prepared."
 
+class RefactoringAgent(BaseAgent):
+    """Analyzes code for structural improvements: dead code, duplication, SOLID violations.
+    Writes REFACTORING_REPORT.md and applies approved refactors."""
+    def __init__(self, orchestrator):
+        super().__init__("Refactoring Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Refactoring Agent: Analyzing code structure for improvements...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        target_files = self.orchestrator.context.memory.get("target_files", [])
+        file_contents = await async_get_codebase_dict(session.workspace_root, target_files, task_description, session=session)
+        _, max_chars = get_dynamic_limits_from_session(session)
+        chunks = chunked_codebase(file_contents, max_chars=max_chars, query=task_description)
+
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        findings = []
+        for i, chunk in enumerate(chunks):
+            await self.orchestrator.context.log(f"Refactoring Agent: Reviewing chunk {i+1}/{len(chunks)}...")
+            chat_prompt = ChatPromptTemplate.from_messages([
+                ("system", (
+                    "You are a principal engineer specializing in code refactoring and clean architecture. "
+                    "Identify: dead code, code duplication (DRY violations), SOLID principle violations, "
+                    "over-complex functions (cyclomatic complexity > 10), magic numbers/strings, "
+                    "poor naming, and missing abstractions. For each issue provide: location, severity "
+                    "(High/Medium/Low), description, and a concrete refactoring suggestion with code example."
+                )),
+                ("human", "{prompt_content}")
+            ])
+            prompt_content = (
+                f"Task: {task_description}\n\n"
+                f"Codebase to analyze:\n{chunk}\n\n"
+                "Produce a structured refactoring report grouped by severity."
+            )
+            chain = chat_prompt | llm
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            findings.append(response_msg.content)
+
+        refactor_report = "\n\n---\n\n".join(findings)
+        self.orchestrator.context.memory["refactor_report"] = refactor_report
+        await self.orchestrator.update_task_progress(task_id, 70, session)
+
+        path = "REFACTORING_REPORT.md"
+        tc_id = f"refactor_{task_id}_{uuid.uuid4().hex[:6]}"
+        await session.send_ws_message({
+            "type": "status", "status": "tool_executing",
+            "message": f"Writing refactoring report to {path}...",
+            "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": refactor_report}}
+        })
+        auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
+        result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": refactor_report}, auto_apply=auto_apply)
+        await session.send_ws_message({
+            "type": "tool_result", "tool_call_id": tc_id,
+            "name": "write_file", "status": "success", "result": result
+        })
+        await self.orchestrator.context.log(f"Refactoring Agent: Report written to {path}.")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Refactoring analysis complete."
+
+
+class ContextCompactionAgent(BaseAgent):
+    """Compresses the current conversation and codebase context into a compact
+    digest to reduce token usage for long sessions (like OpenCode's Compaction agent)."""
+    def __init__(self, orchestrator):
+        super().__init__("Context Compaction Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Context Compaction Agent: Compacting session context...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        # Gather conversation history
+        history = getattr(session, "conversation_history", [])
+        collab_log = self.orchestrator.context.collaboration_log or []
+        memory_keys = [k for k in self.orchestrator.context.memory.keys() if not k.startswith("__")]
+
+        history_text = "\n".join([
+            f"{msg.get('role','?').upper()}: {str(msg.get('content',''))[:500]}"
+            for msg in history[-30:]  # last 30 messages
+        ])
+        collab_text = "\n".join([str(e)[:300] for e in collab_log[-20:]])
+        memory_text = "\n".join([f"{k}: {str(v)[:200]}" for k, v in self.orchestrator.context.memory.items() if not k.startswith("__")])
+
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", (
+                "You are an expert at summarizing technical conversations and code context. "
+                "Create a compact, information-dense summary that preserves all important decisions, "
+                "completed work, pending tasks, and key code changes. "
+                "The summary will replace the full context to save tokens."
+            )),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = (
+            f"Compact this session context into a dense summary:\n\n"
+            f"## Recent Conversation ({len(history)} messages)\n{history_text}\n\n"
+            f"## Agent Collaboration Log\n{collab_text}\n\n"
+            f"## Session Memory\n{memory_text}\n\n"
+            f"Task context: {task_description}\n\n"
+            "Write a structured summary covering: what was accomplished, key decisions made, "
+            "current state, and what remains to be done."
+        )
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        compact_summary = response_msg.content
+
+        # Store compact summary in memory
+        self.orchestrator.context.memory["__compacted_context__"] = compact_summary
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        await self.orchestrator.context.log("Context Compaction Agent: Context compacted successfully.")
+        return f"Context compacted. Summary:\n\n{compact_summary[:500]}..."
+
+
+class TitleAgent(BaseAgent):
+    """Generates a concise, descriptive conversation title from the session's first exchange."""
+    def __init__(self, orchestrator):
+        super().__init__("Title Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Title Agent: Generating conversation title...")
+
+        history = getattr(session, "conversation_history", [])
+        first_exchange = "\n".join([
+            f"{msg.get('role','?')}: {str(msg.get('content',''))[:300]}"
+            for msg in history[:4]
+        ]) or task_description
+
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", (
+                "Generate a short, descriptive title (3-7 words) for this conversation. "
+                "It should capture the main topic or goal. Return ONLY the title, no punctuation at the end."
+            )),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = f"Conversation:\n{first_exchange}"
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        title = response_msg.content.strip().strip('"').strip("'")
+
+        self.orchestrator.context.memory["__session_title__"] = title
+        await session.send_ws_message({"type": "session_title", "title": title})
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return title
+
+
+class SummaryAgent(BaseAgent):
+    """Generates a structured summary of what was accomplished in a session,
+    including files changed, decisions made, and next steps."""
+    def __init__(self, orchestrator):
+        super().__init__("Summary Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Summary Agent: Generating session summary...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+
+        history = getattr(session, "conversation_history", [])
+        collab_log = self.orchestrator.context.collaboration_log or []
+        memory = self.orchestrator.context.memory
+
+        history_text = "\n".join([
+            f"{msg.get('role','?').upper()}: {str(msg.get('content',''))[:400]}"
+            for msg in history[-40:]
+        ])
+        collab_text = "\n".join([str(e)[:400] for e in collab_log])
+
+        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        chat_prompt = ChatPromptTemplate.from_messages([
+            ("system", (
+                "You are a technical writer. Produce a clear, structured session summary "
+                "in Markdown format with sections: ## What Was Accomplished, "
+                "## Files Modified, ## Key Decisions, ## Next Steps. "
+                "Be specific and actionable."
+            )),
+            ("human", "{prompt_content}")
+        ])
+        prompt_content = (
+            f"Task: {task_description}\n\n"
+            f"Session history:\n{history_text}\n\n"
+            f"Agent work log:\n{collab_text}"
+        )
+        chain = chat_prompt | llm
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        summary = response_msg.content
+
+        self.orchestrator.context.memory["__session_summary__"] = summary
+        await self.orchestrator.update_task_progress(task_id, 70, session)
+
+        path = "SESSION_SUMMARY.md"
+        tc_id = f"summary_{task_id}_{uuid.uuid4().hex[:6]}"
+        await session.send_ws_message({
+            "type": "status", "status": "tool_executing",
+            "message": f"Writing session summary to {path}...",
+            "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": summary}}
+        })
+        auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
+        result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": summary}, auto_apply=auto_apply)
+        await session.send_ws_message({
+            "type": "tool_result", "tool_call_id": tc_id,
+            "name": "write_file", "status": "success", "result": result
+        })
+        await self.orchestrator.context.log(f"Summary Agent: Summary written to {path}.")
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return f"Session summary complete.\n\n{summary[:600]}..."
+
+
 class CustomAgent(BaseAgent):
     """A user-defined custom agent that runs a dynamic prompt template."""
+
     def __init__(self, name: str, orchestrator, prompt_template, system_prompt: str, role: str):
         super().__init__(name, orchestrator)
         self.prompt_template = prompt_template
@@ -1626,6 +1874,10 @@ def apply_custom_agents_and_overrides(orchestrator_instance=None):
         "DevOps Agent": devops_prompt_template,
         "Release Agent": release_prompt_template,
         "Orchestrator Agent": orchestrator_prompt_template,
+        "Refactoring Agent": review_prompt_template,         # inherits review base prompt
+        "Context Compaction Agent": orchestrator_prompt_template,
+        "Title Agent": orchestrator_prompt_template,
+        "Summary Agent": documentation_prompt_template,      # inherits documentation base prompt
     }
     
     for name, prompt_str in prompt_overrides.items():
@@ -1682,8 +1934,14 @@ def reduce_log(left: list, right: list) -> list:
     agents at different points in time are preserved, since a set-based global
     dedup would silently swallow them and corrupt routing decisions.
     """
-    combined = list(left or [])
-    for item in (right or []):
+    if not left:
+        return list(right or [])
+    if not right:
+        return list(left or [])
+    if len(right) >= len(left) and right[:len(left)] == left:
+        return list(right)
+    combined = list(left)
+    for item in right:
         if not combined or combined[-1] != item:
             combined.append(item)
     return combined
@@ -1710,7 +1968,41 @@ class AgentState(TypedDict):
 
 MAX_CHARS = 8000
 
-async def async_get_codebase_dict(workspace_root: str, target_files: list = None, task_description: str = "") -> dict:
+def get_dynamic_limits_from_session(session: Any) -> tuple[int, int]:
+    """
+    Returns (file_limit, max_chars) based on the session's active model context window.
+    This enables large-context models (like Gemini or Claude) to read more files and utilize
+    KV Cache Transfer/Migration context efficiently without aggressive chunking.
+    """
+    model_name = ""
+    if session and hasattr(session, "profile") and isinstance(session.profile, dict):
+        model_name = session.profile.get("model_name") or session.profile.get("model") or ""
+    
+    from .adapters.router import get_model_capabilities
+    caps = get_model_capabilities(model_name)
+    context_window = caps.get("context_window", 8192)
+    
+    # Scale limits based on context window size
+    if context_window >= 1000000:
+        # e.g., Gemini 1.5 Pro / Flash, Gemini 2.0
+        file_limit = 500      # Analyze up to 500 files
+        max_chars = 1000000   # 1 Million chars chunk size
+    elif context_window >= 128000:
+        # e.g., Claude 3.5, GPT-4o, o1
+        file_limit = 100      # Analyze up to 100 files
+        max_chars = 200000    # 200k chars chunk size
+    elif context_window >= 32000:
+        # e.g., Llama 3 8B, Qwen
+        file_limit = 40
+        max_chars = 64000
+    else:
+        # Standard context fallback
+        file_limit = 20
+        max_chars = 8000      # Default 8000 chars (MAX_CHARS)
+        
+    return file_limit, max_chars
+
+async def async_get_codebase_dict(workspace_root: str, target_files: list = None, task_description: str = "", session: Any = None) -> dict:
     exclude_dirs = {".git", "node_modules", "venv", "__pycache__", ".devpilot", "dist", "build"}
     exclude_extensions = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}
 
@@ -1730,6 +2022,11 @@ async def async_get_codebase_dict(workspace_root: str, target_files: list = None
                     pass
         if file_dict:
             return file_dict
+
+    # Determine dynamic file limit based on active model's capability
+    file_limit = 20
+    if session:
+        file_limit, _ = get_dynamic_limits_from_session(session)
 
     # 2. Retrieval-based fallback or full scan if target_files is empty
     def _sync_scan() -> dict:
@@ -1761,7 +2058,7 @@ async def async_get_codebase_dict(workspace_root: str, target_files: list = None
                 file_list.append(rel_file_path)
 
         # RAG Search: Filter files based on task relevance
-        if task_description and len(file_list) > 15:
+        if task_description and len(file_list) > file_limit:
             import re
             task_words = [w.lower() for w in re.findall(r'[a-zA-Z0-9_]+', task_description) if len(w) > 2]
             scored_files = []
@@ -1777,9 +2074,9 @@ async def async_get_codebase_dict(workspace_root: str, target_files: list = None
                 scored_files.append((score, f))
             
             scored_files.sort(key=lambda x: x[0], reverse=True)
-            selected_files = [f for _, f in scored_files[:15]]
+            selected_files = [f for _, f in scored_files[:file_limit]]
         else:
-            selected_files = file_list[:20]
+            selected_files = file_list[:file_limit]
 
         file_dict = {}
         for rel_file_path in selected_files:
@@ -1795,18 +2092,65 @@ async def async_get_codebase_dict(workspace_root: str, target_files: list = None
     return await loop.run_in_executor(None, _sync_scan)
 
 
-def chunked_codebase(file_contents: dict, max_chars=MAX_CHARS):
-    chunks, current, size = [], [], 0
+def chunked_codebase(file_contents: dict, max_chars=None, query: str = ""):
+    from .context_config import CODE_CHUNK_MAX_CHARS, MAX_CODE_CHUNKS
+    limit = max_chars or CODE_CHUNK_MAX_CHARS
+
+    raw_chunks = []
     for path, content in file_contents.items():
-        entry = f"### {path}\n{content}\n"
-        if size + len(entry) > max_chars and current:
-            chunks.append("\n".join(current))
-            current, size = [], 0
-        current.append(entry)
-        size += len(entry)
-    if current:
-        chunks.append("\n".join(current))
-    return chunks
+        if not content:
+            continue
+        pattern = r"(?=class\s+\w+|def\s+\w+|function\s+\w+|const\s+\w+\s*=\s*\()"
+        blocks = re.split(pattern, content)
+        
+        current_block = ""
+        for block in blocks:
+            if not block.strip():
+                continue
+            if len(current_block) + len(block) < 15000:
+                current_block += block
+            else:
+                if current_block:
+                    raw_chunks.append((path, current_block))
+                current_block = block
+        if current_block:
+            raw_chunks.append((path, current_block))
+            
+    combined_chunks = []
+    current_chunk = []
+    current_size = 0
+    
+    for path, text in raw_chunks:
+        entry = f"### FILE: {path}\n{text}\n"
+        if current_size + len(entry) > limit and current_chunk:
+            combined_chunks.append("\n".join(current_chunk))
+            current_chunk = []
+            current_size = 0
+        current_chunk.append(entry)
+        current_size += len(entry)
+    if current_chunk:
+        combined_chunks.append("\n".join(current_chunk))
+        
+    if not combined_chunks:
+        return []
+        
+    if query:
+        query_words = set(re.findall(r"\b[A-Za-z0-9_]{3,}\b", query.lower()))
+        common_stops = {"the", "and", "for", "class", "def", "function", "import", "from", "file", "code", "change", "create", "modify", "write", "read", "update", "implement"}
+        query_words = {w for w in query_words if w not in common_stops}
+        
+        scored_chunks = []
+        for idx, chunk in enumerate(combined_chunks):
+            chunk_words = set(re.findall(r"\b[A-Za-z0-9_]{3,}\b", chunk.lower()))
+            score = len(query_words.intersection(chunk_words))
+            scored_chunks.append((score, -idx, chunk))
+            
+        scored_chunks.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        selected = scored_chunks[:MAX_CODE_CHUNKS]
+        selected.sort(key=lambda x: -x[1])
+        return [chunk for _, _, chunk in selected]
+        
+    return combined_chunks[:MAX_CODE_CHUNKS]
 
 async def maybe_summarise_log(state: AgentState, session) -> AgentState:
     log = state.get("collaboration_log", [])
@@ -1870,7 +2214,8 @@ async def orchestrator_node(state: AgentState) -> AgentState:
         agents_description = "No description available."
 
     history_summary = "\n".join(state["collaboration_log"])
-    memory_summary = json.dumps(state["memory"])
+    from .context_helpers import build_memory_summary
+    memory_summary = build_memory_summary(state["memory"])
     
     completed_agents = [
         t.get("agent") for t in state.get("subtasks", [])
@@ -2121,6 +2466,11 @@ class AgentOrchestrator:
             "Terminal Agent": TerminalAgent(self),
             "DevOps Agent": DevOpsAgent(self),
             "Release Agent": ReleaseAgent(self),
+            # Tier 6: Utility / Meta-Agents
+            "Refactoring Agent": RefactoringAgent(self),
+            "Context Compaction Agent": ContextCompactionAgent(self),
+            "Title Agent": TitleAgent(self),
+            "Summary Agent": SummaryAgent(self),
         }
         apply_custom_agents_and_overrides(self)
         agent_names = list(self.agents.keys())

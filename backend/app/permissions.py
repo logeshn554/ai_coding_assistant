@@ -63,6 +63,15 @@ class PermissionManager:
             r"\bdd\s+if=",
             r"\bmkfs\b",
             r"\btruncate\s+table\b",
+            # Remote code execution / piping web inputs into interpreters
+            r"\b(curl|wget)\b.*\b(sh|bash|powershell|pwsh)\b",
+            r"\|\s*(sh|bash|powershell|pwsh)\b",
+            # Fork bombs
+            r":\(\)\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:",
+            # Destructive redirects to core system/auth files
+            r">\s*.*\.ssh/authorized_keys",
+            r">\s*.*etc/passwd",
+            r">\s*.*\.(bashrc|bash_profile|zshrc|profile|profile_history)",
         ]
         if any(re.search(pat, cmd) for pat in destructive_patterns):
             return RISK_DESTRUCTIVE

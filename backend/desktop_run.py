@@ -75,6 +75,31 @@ if __name__ == "__main__":
     t = threading.Thread(target=start_server, args=(port,), daemon=True)
     t.start()
     
+    # Start Node backend sidecar
+    node_dir = os.path.join(project_root, "node_backend")
+    npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+    env = os.environ.copy()
+    
+    # Try to load session token so it matches between backends
+    from pathlib import Path
+    token_file = Path.home() / ".devpilot" / "session_token.txt"
+    session_token = "devpilot-session-token-change-me"
+    if token_file.is_file():
+        try:
+            session_token = token_file.read_text(encoding="utf-8").strip()
+        except Exception:
+            pass
+    env["SESSION_TOKEN"] = session_token
+
+    print("Starting Node Backend...")
+    node_proc = subprocess.Popen(
+        [npm_cmd, "start"],
+        cwd=node_dir,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+    
     # Poll HTTP health endpoint until backend is fully ready
     print(f"Waiting for backend HTTP server readiness on http://127.0.0.1:{port}/...")
     start_time = time.time()
@@ -104,3 +129,13 @@ if __name__ == "__main__":
         webview.start(gui=gui_engine, debug=True)
     except Exception:
         webview.start(debug=True)
+    finally:
+        print("Shutting down Node Backend...")
+        try:
+            node_proc.terminate()
+            node_proc.wait(timeout=2)
+        except Exception:
+            try:
+                node_proc.kill()
+            except Exception:
+                pass

@@ -26,13 +26,26 @@ class ModelAdapter:
 AVAILABLE_TOOLS = [
     {
         "name": "list_directory",
-        "description": "Lists the files and subfolders in a specific workspace directory (relative path). Returns name, relative path, size, and whether it's a directory.",
+        "description": (
+            "List files and subfolders in a workspace directory. "
+            "Set recursive=true to walk ALL sub-folders in one call — use this when the project "
+            "has many folders so you see the full structure without multiple round-trips. "
+            "Returns name, path, is_dir, size, mtime, and child_count for each entry."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Relative path of the directory to list (e.g. '.', 'src', 'backend'). Defaults to '.'."
+                    "description": "Relative path to list (e.g. '.', 'src', 'backend'). Defaults to workspace root."
+                },
+                "recursive": {
+                    "type": "boolean",
+                    "description": "If true, walk all sub-folders recursively and return the full tree. Default false (one level only)."
+                },
+                "depth": {
+                    "type": "integer",
+                    "description": "Maximum folder depth for recursive listing (default 4, max 10)."
                 }
             }
         }
@@ -184,5 +197,148 @@ AVAILABLE_TOOLS = [
             },
             "required": ["agent_name", "task_description"]
         }
+    },
+    {
+        "name": "glob",
+        "description": (
+            "Find files matching a glob pattern inside the workspace. "
+            "Supports standard wildcards: * (any chars in one path segment), "
+            "** (any path depth), ? (single char). "
+            "Examples: '**/*.py', 'src/**/*.tsx', '*.json', 'backend/**/*.py'. "
+            "Returns a list of relative file paths. Use this to discover files "
+            "before reading them."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Glob pattern to match, e.g. '**/*.py', 'src/**/*.tsx'."
+                },
+                "base_path": {
+                    "type": "string",
+                    "description": "Optional sub-directory to search within (relative to workspace root). Defaults to workspace root."
+                }
+            },
+            "required": ["pattern"]
+        }
+    },
+    {
+        "name": "web_fetch",
+        "description": (
+            "Fetch the content of any public URL and return it as readable plain text. "
+            "Strips HTML tags and formatting. Use this to read documentation pages, "
+            "API references, GitHub files, StackOverflow answers, or any web resource. "
+            "Note: requires network access and respects robots.txt."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "Full URL to fetch (must start with http:// or https://)."
+                },
+                "max_chars": {
+                    "type": "integer",
+                    "description": "Maximum characters to return (default 40000, max 40000)."
+                }
+            },
+            "required": ["url"]
+        }
+    },
+    {
+        "name": "apply_patch",
+        "description": (
+            "Apply a unified diff (patch) to one or more workspace files. "
+            "The patch must be in standard unified diff format as produced by 'git diff' or 'diff -u'. "
+            "Supports multi-file patches. Will ask for user confirmation before writing, "
+            "unless auto-apply is enabled. Use this to apply large, structured changes "
+            "across multiple files at once."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "patch": {
+                    "type": "string",
+                    "description": "The full unified diff text to apply (--- a/file, +++ b/file, @@ ... hunk format)."
+                }
+            },
+            "required": ["patch"]
+        }
+    },
+    {
+        "name": "todo_write",
+        "description": (
+            "Create or update your structured agent todo list to track tasks. "
+            "Each item has 'text' (description), 'id' (auto-assigned if omitted), "
+            "and 'status' ('pending', 'in_progress', or 'done'). "
+            "Use this at the start of complex tasks to plan your steps, and update "
+            "statuses as you complete them. Set merge=true to update specific items "
+            "without replacing the whole list."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "todos": {
+                    "type": "array",
+                    "description": "Array of todo items. Each item: {text: string, id?: string, status?: 'pending'|'in_progress'|'done'}.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "text": {"type": "string"},
+                            "id": {"type": "string"},
+                            "status": {"type": "string", "enum": ["pending", "in_progress", "done"]}
+                        },
+                        "required": ["text"]
+                    }
+                },
+                "merge": {
+                    "type": "boolean",
+                    "description": "If true, merge with existing list. If false (default), replace entirely."
+                }
+            },
+            "required": ["todos"]
+        }
+    },
+    {
+        "name": "todo_read",
+        "description": (
+            "Read your current agent todo list. Returns all tasks with their "
+            "status (pending, in_progress, done). Call this to check what you "
+            "still need to do in a multi-step task."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "name": "question",
+        "description": (
+            "Ask the user a clarifying question and wait for their answer before continuing. "
+            "Use this when you genuinely cannot proceed without user input — for example, "
+            "when requirements are ambiguous, a critical decision requires human judgment, "
+            "or you need credentials/secrets. Do NOT overuse this; resolve ambiguity "
+            "from context when possible. Provide options[] to make answering easier."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The clarifying question to ask the user."
+                },
+                "options": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional list of suggested answer choices."
+                },
+                "context": {
+                    "type": "string",
+                    "description": "Optional additional context shown below the question."
+                }
+            },
+            "required": ["question"]
+        }
     }
-]
+]

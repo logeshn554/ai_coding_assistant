@@ -64,6 +64,7 @@ async def test_mcp_permission_block():
 
 def test_mcp_routes_list_and_add():
     """GET and POST /api/mcp/servers routes work correctly."""
+    from unittest.mock import AsyncMock, patch
     client = TestClient(app)
 
     # 1. GET /api/mcp/servers
@@ -79,7 +80,9 @@ def test_mcp_routes_list_and_add():
         "command": "python",
         "args": ["-m", "mcp_server"],
     }
-    res2 = client.post("/api/mcp/servers", json=new_srv)
+    mock_tools = [{"name": "mcp_tool_1", "description": "Mock Tool", "input_schema": {}}]
+    with patch("app.routes.mcp_route.global_mcp_manager.connect_server", new_callable=AsyncMock, return_value=mock_tools):
+        res2 = client.post("/api/mcp/servers", json=new_srv)
     assert res2.status_code == 200
     data2 = res2.json()
     assert data2["success"] is True

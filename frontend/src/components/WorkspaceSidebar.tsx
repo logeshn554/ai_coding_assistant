@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { Database, Network, Clock, BarChart2, GitBranch, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 import { useWorkspace } from '../core/workspace/WorkspaceContext';
 import { useGit } from '../core/git/GitContext';
@@ -282,16 +282,16 @@ export default function WorkspaceSidebar() {
                   console.error(e);
                 }
               }}
-              className="text-[10px] text-violet-400 hover:text-violet-300 font-bold cursor-pointer"
+              className="text-[10px] text-[#4C8DFF] hover:text-[#4C8DFF] font-bold cursor-pointer"
             >
               + Add Folder
             </button>
           </div>
 
           <div className="bg-[var(--dp-bg-tertiary)] border border-[var(--dp-border)] rounded-lg p-2 space-y-1.5 font-mono text-[10.5px]">
-            <div className="flex items-center justify-between text-white font-semibold p-1.5 rounded bg-violet-600/20 border border-violet-500/30">
+            <div className="flex items-center justify-between text-white font-semibold p-1.5 rounded bg-[#3B7AE8]/20 border border-[#4C8DFF]/30">
               <span className="truncate" title={workspacePath || ''}>📁 {getWorkspaceName()}</span>
-              <span className="text-[9px] text-violet-300 font-bold uppercase px-1 rounded bg-violet-500/20">Active</span>
+              <span className="text-[9px] text-[#4C8DFF] font-bold uppercase px-1 rounded bg-[#4C8DFF]/20">Active</span>
             </div>
           </div>
         </div>

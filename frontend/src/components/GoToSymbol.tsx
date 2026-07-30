@@ -1,4 +1,4 @@
-/**
+﻿/**
  * GoToSymbol.tsx — Ctrl+Shift+O symbol picker
  *
  * Lists code symbols (classes, functions, interfaces, etc.) extracted from
@@ -50,7 +50,7 @@ function SymbolIcon({ kindName }: { kindName: string }) {
     case 'variable':
       return <Hash className="w-3.5 h-3.5 text-orange-400 shrink-0" />;
     default:
-      return <Braces className="w-3.5 h-3.5 text-violet-400 shrink-0" />;
+      return <Braces className="w-3.5 h-3.5 text-[#4C8DFF] shrink-0" />;
   }
 }
 
@@ -175,7 +175,7 @@ export default function GoToSymbol({
                 type="button"
                 onClick={() => setScope('file')}
                 className={`px-2.5 py-0.5 rounded-md transition-colors cursor-pointer ${
-                  scope === 'file' ? 'bg-violet-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+                  scope === 'file' ? 'bg-[#3B7AE8] text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 Current File Symbols
@@ -184,7 +184,7 @@ export default function GoToSymbol({
                 type="button"
                 onClick={() => setScope('global')}
                 className={`px-2.5 py-0.5 rounded-md transition-colors cursor-pointer ${
-                  scope === 'global' ? 'bg-violet-600 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
+                  scope === 'global' ? 'bg-[#3B7AE8] text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 Global Workspace Symbols
@@ -198,9 +198,9 @@ export default function GoToSymbol({
 
           <div className="flex items-center gap-2.5 px-3 py-1.5 bg-[#181926] border border-[#2d2f45] rounded-lg">
             {loading ? (
-              <Loader2 className="w-4 h-4 text-violet-400 shrink-0 animate-spin" />
+              <Loader2 className="w-4 h-4 text-[#4C8DFF] shrink-0 animate-spin" />
             ) : (
-              <Search className="w-4 h-4 text-violet-400 shrink-0" />
+              <Search className="w-4 h-4 text-[#4C8DFF] shrink-0" />
             )}
             <input
               ref={inputRef}
@@ -235,7 +235,7 @@ export default function GoToSymbol({
           {filtered.map((sym, idx) => {
             const isSelected = idx === selected;
             const kindLabel = KIND_LABEL[sym.kindName] ?? '?';
-            const kindColour = KIND_COLOUR[sym.kindName] ?? 'bg-violet-500/15 text-violet-400 border-violet-500/20';
+            const kindColour = KIND_COLOUR[sym.kindName] ?? 'bg-[#4C8DFF]/15 text-[#4C8DFF] border-[#4C8DFF]/20';
             return (
               <div
                 key={`${sym.file || ''}-${sym.name}-${sym.line}-${idx}`}
@@ -243,7 +243,7 @@ export default function GoToSymbol({
                 onMouseEnter={() => setSelected(idx)}
                 className={`flex items-center gap-2.5 px-3.5 py-2 cursor-pointer transition-colors ${
                   isSelected
-                    ? 'bg-violet-600/20 border-l-2 border-violet-500'
+                    ? 'bg-[#3B7AE8]/20 border-l-2 border-[#4C8DFF]'
                     : 'hover:bg-white/5 border-l-2 border-transparent'
                 }`}
                 id={`goto-symbol-result-${idx}`}

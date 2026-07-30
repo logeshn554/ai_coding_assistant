@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GitBranch, AlertCircle, AlertTriangle, Zap, Cpu, CheckCircle2, Globe } from 'lucide-react';
+import { GitBranch, AlertCircle, AlertTriangle, Zap, Cpu, CheckCircle2 } from 'lucide-react';
 import { useWorkspace } from '../../core/workspace/WorkspaceContext';
 import { useGit } from '../../core/git/GitContext';
 import { useSettings } from '../../core/settings/SettingsContext';
@@ -34,10 +34,7 @@ export const StatusBar: React.FC = () => {
     return () => window.removeEventListener('editor-diagnostics' as any, handler);
   }, []);
 
-  const getWorkspaceName = () => {
-    if (!workspacePath) return 'No Folder';
-    return workspacePath.replace(/\\/g, '/').split('/').pop() || workspacePath;
-  };
+
 
   const getFileLanguage = () => {
     if (!activeFilePath) return '';
@@ -55,115 +52,114 @@ export const StatusBar: React.FC = () => {
 
   return (
     <div
-      className="h-[26px] flex items-center justify-between px-3 shrink-0 select-none font-sans z-30 text-[11px]"
+      className="h-[22px] flex items-center justify-between px-2 shrink-0 select-none font-sans z-30 text-[11px]"
       style={{
-        background: 'linear-gradient(90deg, #12082e 0%, #080e20 50%, #0a0e1a 100%)',
-        borderTop: '1px solid rgba(124,106,240,0.18)',
+        background: '#1A1B1E',
+        borderTop: '1px solid #393B40',
+        color: '#9DA0A8',
       }}
     >
-      {/* ── Left ── */}
-      <div className="flex items-center gap-3">
+      {/* â”€â”€ Left â”€â”€ */}
+      <div className="flex items-center gap-0">
 
-        {/* Workspace */}
-        {workspacePath && (
-          <div className="flex items-center gap-1.5 text-violet-300/70 hover:text-violet-200 cursor-default transition-colors" title="Workspace">
-            <Globe className="w-3 h-3" />
-            <span className="font-mono text-[10px]">{getWorkspaceName()}</span>
-          </div>
-        )}
-
-        {/* Git Branch */}
+        {/* Git Branch â€” JetBrains style accent chip on far left */}
         {workspacePath && statusBarBranch && (
-          <div className="flex items-center gap-1 text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] cursor-pointer transition-colors" title="Git Branch">
+          <div
+            className="flex items-center gap-1 px-2 h-[22px] cursor-pointer transition-colors"
+            style={{ background: '#4C8DFF', color: '#fff' }}
+            title="Git Branch"
+          >
             <GitBranch className="w-3 h-3" />
-            <span className="text-[10px] font-mono">{statusBarBranch}</span>
+            <span className="text-[11px] font-medium">{statusBarBranch}</span>
           </div>
         )}
 
         {/* Diagnostics */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 px-3">
           <div
-            className={`flex items-center gap-0.5 ${diagnostics.errors > 0 ? 'text-[var(--dp-error)]' : 'text-[var(--dp-text-muted)]'}`}
+            className={`flex items-center gap-1 cursor-pointer hover:text-[var(--dp-text-primary)] transition-colors ${diagnostics.errors > 0 ? 'text-[#FF6B6B]' : ''}`}
             title={`${diagnostics.errors} Error(s)`}
           >
             <AlertCircle className="w-3 h-3" />
-            <span className="text-[10px] font-mono">{diagnostics.errors}</span>
+            <span className="font-mono">{diagnostics.errors}</span>
           </div>
           <div
-            className={`flex items-center gap-0.5 ${diagnostics.warnings > 0 ? 'text-[var(--dp-warning)]' : 'text-[var(--dp-text-muted)]'}`}
+            className={`flex items-center gap-1 cursor-pointer hover:text-[var(--dp-text-primary)] transition-colors ${diagnostics.warnings > 0 ? 'text-[#FFB74D]' : ''}`}
             title={`${diagnostics.warnings} Warning(s)`}
           >
             <AlertTriangle className="w-3 h-3" />
-            <span className="text-[10px] font-mono">{diagnostics.warnings}</span>
+            <span className="font-mono">{diagnostics.warnings}</span>
           </div>
         </div>
 
         {/* Run status */}
         {statusBarDebug === 'Running' && (
-          <div className="flex items-center gap-1 text-[var(--dp-success)]">
+          <div className="flex items-center gap-1 px-2" style={{ color: '#62D26F' }}>
             <CheckCircle2 className="w-3 h-3" />
-            <span className="text-[10px] font-semibold">Running</span>
+            <span className="font-medium">Running</span>
           </div>
         )}
       </div>
 
-      {/* ── Right ── */}
-      <div className="flex items-center gap-3">
+      {/* â”€â”€ Right â”€â”€ */}
+      <div className="flex items-center gap-0 h-full">
 
         {/* WS disconnected */}
         {!isWsConnected && (
-          <div className="flex items-center gap-1 text-[var(--dp-error)] animate-pulse" title="Disconnected">
+          <div className="flex items-center gap-1 px-2 animate-pulse" style={{ color: '#FF6B6B' }} title="Backend Disconnected">
             <AlertCircle className="w-3 h-3" />
-            <span className="text-[10px] font-semibold">Disconnected</span>
+            <span>Disconnected</span>
           </div>
         )}
 
         {/* Model fallback */}
         {isModelFallback && (
-          <div className="flex items-center gap-1 text-[var(--dp-warning)]">
+          <div className="flex items-center gap-1 px-2" style={{ color: '#FFB74D' }}>
             <AlertTriangle className="w-3 h-3" />
-            <span className="text-[10px] font-semibold">Fallback</span>
+            <span>Fallback</span>
           </div>
         )}
 
         {/* AI Status */}
         {isGenerating ? (
-          <div className="flex items-center gap-1.5 animate-pulse-subtle">
-            <Zap className="w-3 h-3 text-[var(--dp-accent)]" />
-            <span className="text-[10px] font-medium animate-shimmer">AI Generating...</span>
+          <div className="flex items-center gap-1 px-2 h-full" style={{ color: '#4C8DFF' }}>
+            <Zap className="w-3 h-3 animate-pulse" />
+            <span>Generating...</span>
           </div>
         ) : (
           <div
             onClick={() => { setSidebarTab('profile'); setIsSidebarOpen(true); }}
-            className="flex items-center gap-1 text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] transition-colors cursor-pointer"
-            title="Active Model (Click to open Developer Profile)"
+            className="flex items-center gap-1 px-2 h-full cursor-pointer transition-colors hover:bg-white/5"
+            title="Active Model"
           >
-            <Cpu className="w-3 h-3 text-[var(--dp-accent)]" />
-            <span className="text-[10px] font-medium">{activeProfileName || 'Claude Sonnet 4.6'}</span>
+            <Cpu className="w-3 h-3" style={{ color: '#4C8DFF' }} />
+            <span>{activeProfileName || 'DevPilot AI'}</span>
           </div>
-        )}
-
-
-
-        {/* Cursor position */}
-        {activeFilePath && (
-          <span className="text-[10px] font-mono text-[var(--dp-text-muted)] cursor-default" title="Cursor Position">
-            Ln {cursorInfo.line}, Col {cursorInfo.column}
-          </span>
         )}
 
         {/* Language */}
         {getFileLanguage() && (
-          <span className="text-[10px] font-mono text-[var(--dp-text-muted)] hover:text-[var(--dp-text-secondary)] cursor-pointer transition-colors">
-            {getFileLanguage()}
-          </span>
+          <div className="flex items-center px-2 h-full cursor-pointer hover:bg-white/5 transition-colors">
+            <span>{getFileLanguage()}</span>
+          </div>
+        )}
+
+        {/* Cursor position */}
+        {activeFilePath && (
+          <div className="flex items-center px-2 h-full cursor-default">
+            <span className="font-mono">{cursorInfo.line}:{cursorInfo.column}</span>
+          </div>
         )}
 
         {/* Encoding */}
-        <span className="text-[10px] text-[var(--dp-text-muted)]">UTF-8</span>
+        <div className="flex items-center px-2 h-full">
+          <span>UTF-8</span>
+        </div>
 
-        {/* Spaces */}
-        <span className="text-[10px] text-[var(--dp-text-muted)]">Spaces: 2</span>
+        {/* Indent */}
+        <div className="flex items-center px-2 h-full">
+          <span>Spaces: 2</span>
+        </div>
       </div>
     </div>
   );

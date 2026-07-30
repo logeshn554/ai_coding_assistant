@@ -1,4 +1,4 @@
-/**
+﻿/**
  * QuickOpen.tsx — Ctrl+P fuzzy file picker
  *
  * Opened via Ctrl+P. Fuzzy-searches workspace files using fuse.js.
@@ -24,7 +24,7 @@ function FileIcon({ path }: { path: string }) {
     ext === 'py' ? 'text-green-400' :
     ext === 'css' || ext === 'scss' ? 'text-pink-400' :
     ext === 'json' ? 'text-orange-400' :
-    ext === 'md' ? 'text-purple-300' :
+    ext === 'md' ? 'text-[#4C8DFF]' :
     ext === 'html' ? 'text-red-400' :
     'text-gray-400';
 
@@ -44,7 +44,7 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
   if (idx !== -1) {
     parts.push(text.slice(last, idx));
     parts.push(
-      <span key="hl" className="text-violet-300 font-semibold">
+      <span key="hl" className="text-[#4C8DFF] font-semibold">
         {text.slice(idx, idx + query.length)}
       </span>
     );
@@ -182,9 +182,9 @@ export default function QuickOpen({ isOpen, onClose, onOpenFile, recentFiles = [
         {/* Search Input */}
         <div className="flex items-center gap-2.5 px-3.5 py-2.5 border-b border-[#2d2f45] bg-[#13141f]">
           {loading ? (
-            <FolderOpen className="w-4 h-4 text-violet-400 shrink-0 animate-pulse" />
+            <FolderOpen className="w-4 h-4 text-[#4C8DFF] shrink-0 animate-pulse" />
           ) : (
-            <Search className="w-4 h-4 text-violet-400 shrink-0" />
+            <Search className="w-4 h-4 text-[#4C8DFF] shrink-0" />
           )}
           <input
             ref={inputRef}
@@ -226,7 +226,7 @@ export default function QuickOpen({ isOpen, onClose, onOpenFile, recentFiles = [
                 onClick={() => handleSelect(entry.path)}
                 className={`flex items-center gap-2.5 px-3.5 py-1.5 cursor-pointer transition-colors ${
                   isSelected
-                    ? 'bg-violet-600/20 border-l-2 border-violet-500'
+                    ? 'bg-[#3B7AE8]/20 border-l-2 border-[#4C8DFF]'
                     : 'hover:bg-white/5 border-l-2 border-transparent'
                 }`}
                 onMouseEnter={() => setSelected(idx)}

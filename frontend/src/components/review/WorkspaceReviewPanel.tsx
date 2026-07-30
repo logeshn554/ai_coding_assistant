@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo } from 'react';
 import {
   ShieldAlert,
   AlertTriangle,
@@ -131,7 +131,7 @@ export const WorkspaceReviewPanel: React.FC = () => {
       {/* ── Header ── */}
       <div className="flex items-center justify-between pb-2 border-b border-white/5">
         <div className="flex items-center gap-2">
-          <ShieldAlert className="w-4 h-4 text-violet-400" />
+          <ShieldAlert className="w-4 h-4 text-[#4C8DFF]" />
           <div>
             <h4 className="font-bold text-white text-xs">AI Code Review & Security Audit</h4>
             <p className="text-[10px] text-gray-400">
@@ -221,7 +221,7 @@ export const WorkspaceReviewPanel: React.FC = () => {
               onClick={() => setFilterCategory(cat)}
               className={`px-2 py-0.5 rounded text-[10px] font-mono capitalize transition-colors cursor-pointer shrink-0 ${
                 filterCategory === cat
-                  ? 'bg-violet-600/30 text-violet-300 border border-violet-500/40 font-bold'
+                  ? 'bg-[#3B7AE8]/30 text-[#4C8DFF] border border-[#4C8DFF]/40 font-bold'
                   : 'bg-black/30 text-zinc-400 border border-white/5 hover:text-white'
               }`}
             >
@@ -235,7 +235,7 @@ export const WorkspaceReviewPanel: React.FC = () => {
       <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-none">
         {loading ? (
           <div className="flex items-center justify-center py-12 text-xs text-gray-500 gap-2">
-            <RefreshCw className="w-4 h-4 animate-spin text-violet-400" /> Scanning workspace codebase...
+            <RefreshCw className="w-4 h-4 animate-spin text-[#4C8DFF]" /> Scanning workspace codebase...
           </div>
         ) : filteredFindings.length === 0 ? (
           <div className="text-center py-12 text-xs text-gray-500 italic">
@@ -282,7 +282,7 @@ export const WorkspaceReviewPanel: React.FC = () => {
               </div>
 
               <p className="text-[11px] text-gray-300 leading-relaxed">{f.description}</p>
-              <div className="text-[10px] text-violet-300 font-mono bg-violet-500/10 p-1.5 rounded border border-violet-500/20">
+              <div className="text-[10px] text-[#4C8DFF] font-mono bg-[#4C8DFF]/10 p-1.5 rounded border border-[#4C8DFF]/20">
                 💡 {f.suggestion}
               </div>
             </div>
