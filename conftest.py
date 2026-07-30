@@ -6,6 +6,10 @@ import sys
 
 # Set DEVPILOT_TEST_MODE for backend test stub imports
 os.environ["DEVPILOT_TEST_MODE"] = "1"
+# Disable HTTP token auth in the test environment so TestClient calls don't
+# need to supply a bearer token. Auth is tested at the WS level with the
+# S1 fix. HTTP-level auth (verify_token) is a deployment concern.
+os.environ.setdefault("DEVPILOT_NO_AUTH", "true")
 
 # When running parallel_agent_system tests, ensure real langgraph package takes precedence
 if any("parallel_agent_system" in arg for arg in sys.argv):

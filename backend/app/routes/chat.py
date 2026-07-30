@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import secrets
 import datetime
 import asyncio
 from typing import Optional
@@ -515,6 +516,13 @@ async def websocket_chat(
     session_id: Optional[str] = Query(None)
 ):
     await request.accept()
+    # S1: Validate bearer token before doing anything else.
+    # SESSION_TOKEN is generated at startup and stored in ~/.devpilot/session_token.txt.
+    # Use secrets.compare_digest to prevent timing-based token guessing.
+    if not token or not secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+        await request.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid or missing token."}))
+        await request.close(code=4401)
+        return
     active_profile = config_manager.get_active_profile()
 
     # If no session_id provided, resume the last session for this workspace.

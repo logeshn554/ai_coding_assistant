@@ -1,4 +1,5 @@
 import json
+import secrets
 from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from ..state import workspace_state, SESSION_TOKEN, logger
@@ -9,6 +10,11 @@ router = APIRouter()
 @router.websocket("/ws/terminal")
 async def websocket_terminal(websocket: WebSocket, token: Optional[str] = Query(None), shell: Optional[str] = Query(None)):
     await websocket.accept()
+    # S1: Validate bearer token — the terminal exposes a full interactive PTY.
+    if not token or not secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+        await websocket.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid or missing token."}))
+        await websocket.close(code=4401)
+        return
     
     async def send_to_client(data: str):
         try:

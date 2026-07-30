@@ -68,6 +68,11 @@ class AgentSession:
         self.open_files: list[str] = []
         # A8: Count turns wasted on timeouts, cancellations, and edit mismatches.
         self.wasted_turns: int = 0
+        # B6: Store background monitor tasks so they can be cancelled in cancel_all().
+        self._monitor_tasks: list[asyncio.Task] = []
+        # B9: Cached WorkspaceIndex instance — reused across turns within a session
+        # instead of being re-created on every LLM call (which discards the mtime cache).
+        self._workspace_index = None
 
         # Request queue: new messages are enqueued while the agent is busy.
         # Each item is a tuple of (text, mode, auto_apply).
@@ -168,6 +173,17 @@ class AgentSession:
         # 3. Cancel the active handle_user_message task if running separately
         if self.active_task and not self.active_task.done():
             self.active_task.cancel()
+
+        # 4. B2: Clear pending confirmations so stale events cannot fire on
+        #    the next request. Any tool awaiting confirmation will be cancelled
+        #    by task cancellation above; the dict entry is now removed cleanly.
+        self.pending_confirmations.clear()
+
+        # 5. B6: Cancel any orphaned process-monitor background tasks.
+        for t in list(self._monitor_tasks):
+            if not t.done():
+                t.cancel()
+        self._monitor_tasks.clear()
 
         await self.send_ws_message({
             "type": "queue_status",
@@ -382,12 +398,17 @@ class AgentSession:
         workspace_context = ""
         from ..workspace_index import WorkspaceIndex
         try:
-            ws_indexer = WorkspaceIndex(self.workspace_root)
-            context = ws_indexer.get_prompt_context(max_tokens=800)
+            # B9: Reuse the cached WorkspaceIndex instance across turns.
+            # Creating a new instance on every LLM call discards the mtime cache
+            # and triggers a full os.walk on the workspace each turn.
+            if self._workspace_index is None:
+                self._workspace_index = WorkspaceIndex(self.workspace_root)
+            context = self._workspace_index.get_prompt_context(max_tokens=800)
             if context:
                 workspace_context = context
         except Exception as e:
             logger.error(f"Failed to load workspace context: {e}")
+            self._workspace_index = None  # reset so it retries next turn
 
         skills_section = ""
         try:
@@ -595,7 +616,9 @@ class AgentSession:
             system_prompt = self._get_system_prompt(mode)
             tools = self._get_tools_for_mode(mode)
 
-            effective_max_turns = 10000 if mode in ("Agent", "Goal") else self.max_turns
+            effective_max_turns = min(self.max_turns * 4, 200) if mode in ("Agent", "Goal") else self.max_turns
+            # B1: Previously 10000 in Agent mode, which could run API costs into
+            # hundreds of dollars silently. Now capped at max_turns*4 (ceiling 200).
             turn = 0
             while turn < effective_max_turns:
                 turn += 1
@@ -654,6 +677,19 @@ class AgentSession:
                             await self.send_ws_message({
                                 "type": "text_delta",
                                 "content": f"\n\n⚠️ {err_msg}\n"
+                            })
+                        elif chunk["type"] == "usage":
+                            # B3: Accumulate real API cost from token usage.
+                            # Pricing for claude-opus-4-5: $15/MTok input, $75/MTok output.
+                            # Other models will be under-counted but this is safe.
+                            input_tok = chunk.get("input_tokens", 0) or 0
+                            output_tok = chunk.get("output_tokens", 0) or 0
+                            turn_cost = (input_tok * 15 + output_tok * 75) / 1_000_000
+                            self.total_cost_usd = getattr(self, "total_cost_usd", 0.0) + turn_cost
+                            await self.send_ws_message({
+                                "type": "cost_update",
+                                "total_cost_usd": round(self.total_cost_usd, 6),
+                                "turn_cost_usd": round(turn_cost, 6),
                             })
                         elif chunk["type"] == "done":
                             stop_reason = chunk["stop_reason"]
@@ -856,10 +892,13 @@ class AgentSession:
                 # Continue loop if more turns are needed
                 # (implicitly handled by presence of tool calls)
 
-            if turn >= self.max_turns:
+            if turn >= effective_max_turns:
                 await self.send_ws_message({
                     "type": "text_delta",
-                    "content": "\n\n[Warning: Agent reached the maximum limit of 25 turns.]"
+                    "content": (
+                        f"\n\n⚠️ **[Warning: Agent reached the maximum limit of {effective_max_turns} turns.]** "
+                        "To continue, send another message or increase `max_turns` in Settings."
+                    )
                 })
             try:
                 from ..project_detector import detect_project_metadata
@@ -1336,7 +1375,8 @@ class AgentSession:
         })
 
         proc = await global_process_manager.start_process(command, self.workspace_root, name=framework)
-        asyncio.create_task(self.monitor_and_stream_events(proc))
+        # B6: Store task handle so cancel_all() can cancel it if the user cancels.
+        self._monitor_tasks.append(asyncio.create_task(self.monitor_and_stream_events(proc)))
 
         for _ in range(40):
             await asyncio.sleep(0.25)
@@ -1394,7 +1434,8 @@ class AgentSession:
                     "content": f"Retrying run command: `{command}`\n"
                 })
                 proc = await global_process_manager.start_process(command, self.workspace_root, name=framework)
-                asyncio.create_task(self.monitor_and_stream_events(proc))
+                # B6: Store task handle so cancel_all() can cancel it if the user cancels.
+                self._monitor_tasks.append(asyncio.create_task(self.monitor_and_stream_events(proc)))
                 for _ in range(40):
                     await asyncio.sleep(0.25)
                     if proc.startup_success_event.is_set():
@@ -1421,7 +1462,8 @@ class AgentSession:
                 })
                 await global_process_manager.stop_process(proc.id)
                 proc = await global_process_manager.start_process(new_command, self.workspace_root, name=framework)
-                asyncio.create_task(self.monitor_and_stream_events(proc))
+                # B6: Store task handle so cancel_all() can cancel it if the user cancels.
+                self._monitor_tasks.append(asyncio.create_task(self.monitor_and_stream_events(proc)))
                 for _ in range(40):
                     await asyncio.sleep(0.25)
                     if proc.startup_success_event.is_set():
@@ -1580,7 +1622,8 @@ class AgentSession:
 
             await global_process_manager.stop_process(proc.id)
             proc = await global_process_manager.start_process(original_command, self.workspace_root, name=framework)
-            asyncio.create_task(self.monitor_and_stream_events(proc))
+            # B6: Store task handle so cancel_all() can cancel it if the user cancels.
+            self._monitor_tasks.append(asyncio.create_task(self.monitor_and_stream_events(proc)))
 
             for _ in range(40):
                 await asyncio.sleep(0.25)

@@ -10,6 +10,7 @@ Supported languages:
   javascript  -> typescript-language-server --stdio
 
 Security:
+  - Validates bearer token before accepting the connection.
   - Only proxies JSON-RPC messages; no shell execution.
   - Validates workspace URIs in textDocument/* notifications.
   - Enforces workspace root confinement for all file URIs.
@@ -19,14 +20,15 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import shutil
 import sys
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
-from ..state import workspace_state
+from ..state import workspace_state, SESSION_TOKEN
 
 router = APIRouter()
 logger = logging.getLogger("devpilot.routes.lsp")
@@ -174,7 +176,9 @@ async def _proxy_lsp(websocket: WebSocket, language: str):
                 pass
         stderr_task = asyncio.create_task(drain_stderr())
 
-        # Buffer for partial LSP frames coming from server stdout
+        # B7: Buffers are declared INSIDE the restart loop so they reset to
+        # empty on each server restart — a partial frame from a crashed session
+        # cannot bleed into the next one.
         header_buf = b""
         body_buf = b""
         expected_len: Optional[int] = None
@@ -264,7 +268,7 @@ async def _proxy_lsp(websocket: WebSocket, language: str):
 
 
 @router.websocket("/ws/lsp/{language}")
-async def lsp_websocket(websocket: WebSocket, language: str):
+async def lsp_websocket(websocket: WebSocket, language: str, token: Optional[str] = Query(None)):
     """
     WebSocket endpoint that proxies JSON-RPC between Monaco and a language server.
     Supported: python, typescript, javascript.
@@ -278,6 +282,12 @@ async def lsp_websocket(websocket: WebSocket, language: str):
         return
 
     await websocket.accept()
+    # S1: Validate bearer token before proxying any LSP traffic.
+    if not token or not secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+        await websocket.send_text(json.dumps({"error": "Unauthorized: invalid or missing token."}))
+        await websocket.close(code=4401)
+        return
+
     logger.info(f"LSP WebSocket connection: language={language}")
     try:
         await _proxy_lsp(websocket, language)

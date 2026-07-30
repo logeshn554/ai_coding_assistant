@@ -281,23 +281,28 @@ def evaluate_expression(req: EvaluateRequest):
     if not expr:
         return {"result": None}
 
+    # S2: Only evaluate via a connected DAP adapter — never fall back to
+    # Python eval() with user-supplied expressions, which would allow RCE
+    # (e.g. os.system("rm -rf /"), open("/etc/passwd").read(), etc.).
     if dap_client.connected:
         eval_resp = dap_client.send_request("evaluate", {"expression": expr, "context": "repl"})
         if eval_resp and eval_resp.get("success"):
             res_val = eval_resp.get("body", {}).get("result", "None")
             return {"expression": expr, "result": str(res_val), "status": "success"}
+        # DAP responded but evaluation failed (e.g. NameError in the debuggee)
+        err_body = eval_resp.get("body", {}) if eval_resp else {}
+        return {
+            "expression": expr,
+            "error": err_body.get("error", {}).get("format", "Evaluation failed in debug adapter."),
+            "status": "error"
+        }
 
-    eval_globals = {
-        "workspace_state": workspace_state,
-        "global_process_manager": global_process_manager,
-        "os": os,
-        "sys": sys
+    # No active debug session — safe refusal
+    return {
+        "expression": expr,
+        "error": "No active debug session. Start a debug session first.",
+        "status": "no_session"
     }
-    try:
-        val = eval(expr, eval_globals)
-        return {"expression": expr, "result": str(val), "status": "success"}
-    except Exception as e:
-        return {"expression": expr, "error": str(e), "status": "error"}
 
 @router.get("/api/debug/callstack")
 def get_callstack():

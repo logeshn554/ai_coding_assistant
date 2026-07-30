@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     git \
     curl \
+    ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy backend requirements and install them

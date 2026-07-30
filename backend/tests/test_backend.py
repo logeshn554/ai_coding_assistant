@@ -19,15 +19,26 @@ def test_path_traversal():
         safe_path(outside_path, workspace)
 
 def test_api_authentication():
-    client = TestClient(app)
-    
-    # Without token, must be 401 Unauthorized
-    res = client.get("/api/workspace")
-    assert res.status_code == 401
+    # Temporarily re-enable auth to verify the 401 behaviour.
+    # conftest.py sets DEVPILOT_NO_AUTH=true globally for other tests;
+    # this test exists specifically to validate the auth mechanism itself.
+    import os as _os
+    orig = _os.environ.pop("DEVPILOT_NO_AUTH", None)
+    try:
+        client = TestClient(app)
 
-    # With valid token, must succeed
-    res = client.get("/api/workspace", headers={"Authorization": f"Bearer {SESSION_TOKEN}"})
-    assert res.status_code == 200
+        # Without token, must be 401 Unauthorized
+        res = client.get("/api/workspace")
+        assert res.status_code == 401
+
+        # With valid token, must succeed
+        res = client.get("/api/workspace", headers={"Authorization": f"Bearer {SESSION_TOKEN}"})
+        assert res.status_code == 200
+    finally:
+        if orig is not None:
+            _os.environ["DEVPILOT_NO_AUTH"] = orig
+        else:
+            _os.environ.pop("DEVPILOT_NO_AUTH", None)
 
 def test_auth_token():
     client = TestClient(app)

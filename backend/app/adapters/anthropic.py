@@ -195,6 +195,15 @@ class AnthropicAdapter(ModelAdapter):
                         yield {"type": "done", "stop_reason": "tool_use"}
                     elif stop_reason in ("end_turn", "stop_sequence"):
                         yield {"type": "done", "stop_reason": "stop"}
+                    # B3: Emit token usage so AgentSession can accumulate real cost.
+                    # The usage block is available on message_delta events.
+                    if hasattr(chunk, "usage") and chunk.usage:
+                        usage = chunk.usage
+                        yield {
+                            "type": "usage",
+                            "input_tokens": getattr(usage, "input_tokens", 0) or 0,
+                            "output_tokens": getattr(usage, "output_tokens", 0) or 0,
+                        }
                         
             # In case stream finishes without explicit message_delta stop_reason
             yield {"type": "done", "stop_reason": "stop"}

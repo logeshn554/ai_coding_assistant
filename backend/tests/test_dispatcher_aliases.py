@@ -8,6 +8,7 @@ from app.tools.dispatcher import dispatch_tool
 class MockSession:
     def __init__(self, workspace_root: str):
         self.workspace_root = workspace_root
+        self._monitor_tasks = []  # B6: required by file_tools monitor task tracking
 
     async def send_ws_message(self, msg):
         pass
