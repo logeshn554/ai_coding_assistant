@@ -570,13 +570,35 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (evt) => {
       if (wsRef.current !== ws) {
         // This close was intentional (cleanup) or a new socket is already active
         return;
       }
       setIsWsConnected(false);
-      logger.info(`Chat socket closed. Reconnecting in ${reconnectDelayRef.current}ms...`);
+      logger.info(`Chat socket closed (code=${evt.code}). Reconnecting in ${reconnectDelayRef.current}ms...`);
+
+      // On 4401 Unauthorized: re-fetch the auth token then reconnect
+      if (evt.code === 4401) {
+        logger.info('Chat socket rejected (Unauthorized). Re-fetching auth token...');
+        fetch('/auth/token')
+          .then(r => r.ok ? r.json() : Promise.reject(r.status))
+          .then(data => {
+            if (data?.token) {
+              localStorage.setItem('session_token', data.token);
+            }
+          })
+          .catch(e => logger.info(`Failed to refresh auth token: ${e}`))
+          .finally(() => {
+            setTimeout(() => {
+              if (wsRef.current !== ws) return;
+              connectChatSocket(guard);
+            }, reconnectDelayRef.current);
+            reconnectDelayRef.current = Math.min(16000, reconnectDelayRef.current * 2);
+          });
+        return;
+      }
+
       setTimeout(() => {
         if (wsRef.current !== ws) return;
         connectChatSocket(guard);

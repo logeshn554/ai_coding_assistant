@@ -32,15 +32,17 @@ window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
   return originalFetch(input, init)
 }
 
-// Global WebSocket interceptor
+// Global WebSocket interceptor — auto-injects auth token into every WebSocket URL
 const OriginalWebSocket = window.WebSocket
 class PatchedWebSocket extends OriginalWebSocket {
   constructor(url: string | URL, protocols?: string | string[]) {
-    if (sessionToken) {
+    // Prefer the in-memory sessionToken; fall back to localStorage for reconnect retries
+    const activeToken = sessionToken || localStorage.getItem('session_token') || ''
+    if (activeToken) {
       try {
         const base = window.location.href.replace(/^http/, 'ws')
         const urlObj = new URL(url.toString(), base)
-        urlObj.searchParams.set('token', sessionToken)
+        urlObj.searchParams.set('token', activeToken)
         url = urlObj.toString()
       } catch (e) {
         console.error('Failed to patch WebSocket URL:', e)
@@ -59,6 +61,10 @@ async function initApp() {
     if (res.ok) {
       const data = await res.json()
       sessionToken = data.token
+      // Store in localStorage so reconnect retries and other components can read it
+      if (sessionToken) {
+        localStorage.setItem('session_token', sessionToken)
+      }
     }
   } catch (e) {
     console.error('Failed to fetch auth token:', e)

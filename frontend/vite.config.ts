@@ -23,17 +23,13 @@ export default defineConfig({
         changeOrigin: true
       },
       '/ws/terminal': {
-        target: 'ws://127.0.0.1:8001',
+        target: 'ws://127.0.0.1:8000',
         ws: true,
         changeOrigin: true
       },
       '/ws': {
         target: 'ws://127.0.0.1:8000',
         ws: true,
-        changeOrigin: true
-      },
-      '/node-api': {
-        target: 'http://127.0.0.1:8001',
         changeOrigin: true
       }
     }

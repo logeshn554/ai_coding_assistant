@@ -12,8 +12,8 @@
 import { useState, useEffect, useRef } from 'react';
 import Editor, { DiffEditor } from '@monaco-editor/react';
 import {
-  X, Save, RotateCcw, Play, Folder, Search,
-  Sparkles, Zap, FileCode, Check
+  X, Save, RotateCcw, Play, Folder,
+  Zap, FileCode, Check, Plus
 } from 'lucide-react';
 import { useLSP } from '../core/lsp/LSPContext';
 import { InlineChatPopover } from './editor/InlineChatPopover';

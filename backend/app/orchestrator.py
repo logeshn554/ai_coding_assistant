@@ -2433,7 +2433,7 @@ from agent_os.providers.interfaces import IModelRouter
 class AgentOSModelRouterBridge(IModelRouter):
     def __init__(self, session):
         self.session = session
-        from app.adapters.router import ModelRouter as BackendModelRouter
+        from .adapters.router import ModelRouter as BackendModelRouter
         self.backend_router = BackendModelRouter()
         self._provider_health = {
             "anthropic": True,

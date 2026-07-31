@@ -42,9 +42,11 @@ def main():
     env["SESSION_TOKEN"] = session_token
     
     print(f"Starting Backend via {python_bin}...")
+    backend_dir = os.path.join(project_root, "backend")
     backend_proc = subprocess.Popen(
-        [python_bin, "-m", "uvicorn", "backend.app.main:app", "--host", "127.0.0.1", "--port", "8000"],
-        env=env
+        [python_bin, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+        env=env,
+        cwd=backend_dir
     )
     
     # 2. Start Vite dev server in frontend
@@ -60,16 +62,6 @@ def main():
             ["npm", "run", "dev"],
             cwd=frontend_dir
         )
-
-    # 3. Start Node backend
-    node_dir = os.path.join(os.getcwd(), "node_backend")
-    print("Starting Node Backend...")
-    npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
-    node_proc = subprocess.Popen(
-        [npm_cmd, "start"],
-        cwd=node_dir,
-        env=env
-    )
         
     # Graceful shutdown handler
     def cleanup(signum=None, frame=None):
@@ -77,18 +69,15 @@ def main():
         try:
             frontend_proc.terminate()
             backend_proc.terminate()
-            node_proc.terminate()
         except Exception:
             pass
         try:
             frontend_proc.wait(timeout=2)
             backend_proc.wait(timeout=2)
-            node_proc.wait(timeout=2)
         except subprocess.TimeoutExpired:
             try:
                 frontend_proc.kill()
                 backend_proc.kill()
-                node_proc.kill()
             except Exception:
                 pass
         print("Launcher shutdown complete.")
@@ -121,9 +110,6 @@ def main():
         if frontend_proc.poll() is not None:
             print("Error: Frontend process exited prematurely.")
             cleanup()
-        if node_proc.poll() is not None:
-            print("Error: Node Backend process exited prematurely.")
-            cleanup()
             
         time.sleep(0.5)
         
@@ -137,7 +123,7 @@ def main():
     try:
         while True:
             # Check processes periodically
-            if backend_proc.poll() is not None or frontend_proc.poll() is not None or node_proc.poll() is not None:
+            if backend_proc.poll() is not None or frontend_proc.poll() is not None:
                 cleanup()
             time.sleep(1)
     except KeyboardInterrupt:

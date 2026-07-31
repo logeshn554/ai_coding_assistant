@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as TerminalIcon } from 'lucide-react';
@@ -109,10 +109,7 @@ function TerminalPane({
     if (!isAgent) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const token = localStorage.getItem('session_token') || '';
-      const isDev = import.meta.env.DEV;
-      const wsUrl = isDev
-        ? `${protocol}//${window.location.host}/ws/terminal?token=${token}${shell ? `&shell=${encodeURIComponent(shell)}` : ''}`
-        : `${protocol}//${window.location.hostname}:8001/ws/terminal?token=${token}${shell ? `&shell=${encodeURIComponent(shell)}` : ''}`;
+      const wsUrl = `${protocol}//${window.location.host}/ws/terminal?token=${token}${shell ? `&shell=${encodeURIComponent(shell)}` : ''}`;
       const socket = new WebSocket(wsUrl);
       ws = socket;
       wsRef.current = socket;
