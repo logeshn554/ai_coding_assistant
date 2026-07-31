@@ -15,9 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.adapters.anthropic import AnthropicAdapter
 from app.adapters.base import AVAILABLE_TOOLS
-from app.adapters.openai import OpenAIAdapter
+from app.adapters.llm import LLMAdapter
 from app.mcp_client import MCP_DISCOVERED_TOOLS, MCPClientManager
 from app.prompts.modes import (
     AGENT_MODE_INSTRUCTIONS,
@@ -211,7 +210,7 @@ async def test_a5_mcp_real_sdk_flow(tmp_path):
 @pytest.mark.asyncio
 async def test_a6_anthropic_thinking_blocks_preservation():
     """Simulate a two-turn Agent-mode conversation with Anthropic extended thinking."""
-    adapter = AnthropicAdapter(api_key="test-key", base_url="", model_name="claude-3-7-sonnet")
+    adapter = LLMAdapter(api_key="test-key", base_url="", model_name="claude-3-7-sonnet", provider="anthropic")
 
     # Turn 1 internal message with thinking blocks
     turn1_msg = {
@@ -252,7 +251,7 @@ async def test_a6_anthropic_thinking_blocks_preservation():
 @pytest.mark.asyncio
 async def test_a7_malformed_json_tool_arguments():
     """Malformed tool JSON short-circuits with clear error message and prevents execution."""
-    adapter = OpenAIAdapter(api_key="dummy", base_url="", model_name="gpt-4o")
+    adapter = LLMAdapter(api_key="dummy", base_url="", model_name="gpt-4o", provider="openai")
 
     # Mock chunk stream yielding malformed JSON for run_terminal_command
     class DummyDeltaFunc:

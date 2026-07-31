@@ -1,7 +1,6 @@
 import logging
 from typing import Dict, Any, List, Optional
-from .openai import OpenAIAdapter
-from .anthropic import AnthropicAdapter
+from .llm import LLMAdapter
 from ..tools.scan_for_bugs import generate_bug_report_async
 
 logger = logging.getLogger("devpilot.router")
@@ -103,24 +102,24 @@ class ModelRouter:
             logger.info(f"ModelRouter: Detected provider prefix '{provider}' for model '{model_name}'")
             
             if provider == "anthropic" or "claude" in model_name.lower():
-                return AnthropicAdapter(key, url, model_name)
+                return LLMAdapter(key, url, model_name, provider="anthropic")
             elif provider in ("google", "models") or "gemini" in model.lower():
                 if not url or "openai" not in url_l:
                     url = "https://generativelanguage.googleapis.com/v1beta/openai/"
-                return OpenAIAdapter(key, url, model)
+                return LLMAdapter(key, url, model, provider="openai")
             else:
-                return OpenAIAdapter(key, url, model)
+                return LLMAdapter(key, url, model, provider="openai")
 
         # Standard routing based on api_format, base_url or model name
         fmt = (profile.get("api_format") or "").lower()
         if fmt == "anthropic" or "anthropic.com" in url_l or "claude" in model_l:
-            return AnthropicAdapter(key, url, model)
+            return LLMAdapter(key, url, model, provider="anthropic")
         elif fmt == "google" or "generativelanguage.googleapis.com" in url_l:
             if "openai" not in url_l:
                 url = "https://generativelanguage.googleapis.com/v1beta/openai/"
-            return OpenAIAdapter(key, url, model)
+            return LLMAdapter(key, url, model, provider="openai")
 
-        return OpenAIAdapter(key, url, model)
+        return LLMAdapter(key, url, model, provider="openai")
 
     _fallback_listeners = []
 

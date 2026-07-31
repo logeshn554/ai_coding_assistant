@@ -1,4 +1,5 @@
 from typing import AsyncGenerator, List, Dict, Any, Optional, Tuple
+import asyncio
 import json
 import logging
 import os
@@ -9,10 +10,10 @@ class ModelAdapter:
     """
     Base class for all provider adapters.
 
-    Design rule: the ONLY thing a subclass (AnthropicAdapter, OpenAIAdapter, ...)
-    should implement is the actual call to that provider's API and translating
-    that provider's native streaming events into calls to the shared helpers
-    below. Tool-call JSON parsing, chunk formatting, error handling, and the
+    Design rule: there is exactly one subclass — LLMAdapter (adapters/llm.py) —
+    covering every provider. Providers differ only by config (api_key,
+    base_url, model_name, provider string), never by a separate class or
+    file. Tool-call JSON parsing, chunk formatting, error handling, and the
     bug-scan injection are common to every provider and live here so they
     behave identically no matter which model API is being called.
     """
@@ -95,6 +96,31 @@ class ModelAdapter:
     @staticmethod
     def build_done_chunk(stop_reason: str) -> Dict[str, Any]:
         return {"type": "done", "stop_reason": stop_reason}
+
+    async def generate_bug_report(self) -> str:
+        """
+        Scans the entire workspace for bugs using the `scan_for_bugs` tool and
+        returns a concise JSON report. Identical for every provider, so it
+        lives here once instead of being copy-pasted into each adapter.
+        """
+        from ..tools.scan_for_bugs import scan_for_bugs_sync as scan_for_bugs
+        try:
+            loop = asyncio.get_event_loop()
+            bug_data = await loop.run_in_executor(None, scan_for_bugs, os.getcwd())
+        except Exception as e:
+            logger.error(f"Failed to execute scan_for_bugs: {e}")
+            raise
+
+        try:
+            report = json.dumps(bug_data, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Failed to serialize bug data to JSON: {e}")
+            raise
+
+        max_length = 2000  # characters
+        if len(report) > max_length:
+            report = report[: max_length - 3] + "..."
+        return report
 
     @staticmethod
     async def maybe_inject_bug_scan(

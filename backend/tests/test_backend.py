@@ -118,9 +118,9 @@ def test_workspace_context_indexer(tmp_path):
 @pytest.mark.asyncio
 async def test_openai_adapter_non_stream_fallback():
     from unittest.mock import MagicMock, AsyncMock, patch
-    from app.adapters.openai import OpenAIAdapter
+    from app.adapters.llm import LLMAdapter
 
-    adapter = OpenAIAdapter(api_key="test_key", base_url="http://test", model_name="nova-micro")
+    adapter = LLMAdapter(api_key="test_key", base_url="http://test", model_name="nova-micro", provider="openai")
 
     mock_msg = MagicMock()
     mock_msg.content = "Fallback response"
@@ -131,7 +131,7 @@ async def test_openai_adapter_non_stream_fallback():
     mock_non_stream = MagicMock()
     mock_non_stream.choices = [mock_choice]
 
-    with patch("app.adapters.openai.AsyncOpenAI") as mock_client_cls:
+    with patch("app.adapters.llm.AsyncOpenAI") as mock_client_cls:
         mock_client = MagicMock()
         mock_client_cls.return_value = mock_client
         
