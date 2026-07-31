@@ -276,7 +276,7 @@ async def test_a7_malformed_json_tool_arguments():
     async def mock_stream():
         yield DummyChunk()
 
-    with patch("app.adapters.openai.AsyncOpenAI") as mock_openai_cls:
+    with patch("app.adapters.llm.AsyncOpenAI") as mock_openai_cls:
         mock_client = MagicMock()
         mock_openai_cls.return_value = mock_client
         mock_client.chat.completions.create = AsyncMock(return_value=mock_stream())

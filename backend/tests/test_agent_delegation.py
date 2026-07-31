@@ -130,6 +130,26 @@ async def test_delegate_to_agent_unknown_agent():
 
 
 @pytest.mark.asyncio
+async def test_delegate_to_agent_domain_fallback():
+    session = MockSession()
+    mock_agent = MagicMock()
+    mock_agent.execute = AsyncMock(return_value="Game built successfully")
+    session.orchestrator.agents["Frontend Developer Agent"] = mock_agent
+
+    result = await dispatch_tool(
+        session,
+        "tc-1",
+        "delegate_to_agent",
+        {"agent_name": "Game Development Agent", "task_description": "Create Flappy Bird"},
+        auto_apply=True
+    )
+
+    assert result == "Game built successfully"
+    mock_agent.execute.assert_called_once_with("Create Flappy Bird", session, 1)
+
+
+
+@pytest.mark.asyncio
 async def test_agent_session_tool_calling_loop():
     session = MockSession()
     

@@ -95,6 +95,19 @@ async def dispatch_tool(
         "read_todo": "todo_read",
         "get_todos": "todo_read",
         "list_todos": "todo_read",
+        # write_file aliases
+        "create_file": "write_file",
+        "write_to_file": "write_file",
+        "save_file": "write_file",
+        "make_file": "write_file",
+        "new_file": "write_file",
+        # delegate_to_agent aliases
+        "delegate_agent": "delegate_to_agent",
+        "delegate": "delegate_to_agent",
+        "run_agent": "delegate_to_agent",
+        "call_agent": "delegate_to_agent",
+        "agent_delegate": "delegate_to_agent",
+        "agent": "delegate_to_agent",
         # question aliases
         "ask_user": "question",
         "ask_question": "question",
@@ -202,6 +215,16 @@ async def dispatch_tool(
         if agent is None:
             match = next((k for k in session.orchestrator.agents if k.lower() == agent_name.lower()), None)
             agent = session.orchestrator.agents.get(match) if match else None
+        if agent is None:
+            # Fallback routing for domain-specific agent names (e.g. Game Development Agent, UI Agent)
+            agent_lower = agent_name.lower()
+            if any(w in agent_lower for w in ["game", "frontend", "gui", "ui", "web"]):
+                fallback = "Frontend Developer Agent"
+            elif any(w in agent_lower for w in ["backend", "server", "db", "database"]):
+                fallback = "Backend Developer Agent"
+            else:
+                fallback = "Coding Agent"
+            agent = session.orchestrator.agents.get(fallback)
         if agent is None:
             valid = ", ".join(sorted(session.orchestrator.agents.keys()))
             return f"ERROR: Unknown agent '{agent_name}'. Valid agents: {valid}"

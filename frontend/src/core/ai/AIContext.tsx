@@ -171,7 +171,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         const data = await res.json();
         setSessions(data.sessions || []);
         if (syncActive && data.active_session_id) {
-          setActiveSessionId(data.active_session_id);
+          setActiveSessionId((prev) => prev || data.active_session_id);
         }
       }
     } catch (e) {
@@ -181,12 +181,13 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const fetchChatHistory = async () => {
     try {
-      const res = await fetch('/api/chat/history');
+      const url = activeSessionId ? `/api/chat/history?session_id=${activeSessionId}` : '/api/chat/history';
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages || []);
       }
-      await fetchSessions(true);
+      await fetchSessions(false);
     } catch (e) {
       console.error('Failed to load chat history:', e);
     }
@@ -218,10 +219,10 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.success) {
+        if (data.success && data.session?.id) {
           setActiveSessionId(data.session.id);
           setMessages([]);
-          await fetchSessions();
+          await fetchSessions(false);
         }
       }
     } catch (e) {

@@ -475,10 +475,21 @@ class AgentSession:
                 lines = lines[:-1]
             clean_text = "\n".join(lines).strip()
             
+        def _normalize_tool_dict(data: dict) -> dict | None:
+            name = data.get("name") or data.get("function_name") or data.get("function")
+            args = data.get("arguments") or data.get("input") or data.get("parameters")
+            if name and isinstance(name, str) and (args is not None or "agent_name" in data or "task_description" in data):
+                if args is None:
+                    args = {k: v for k, v in data.items() if k not in ("name", "function_name", "function", "type")}
+                return {"name": name, "arguments": args, "input": args}
+            return None
+
         try:
             data = json.loads(clean_text)
-            if isinstance(data, dict) and "name" in data and ("arguments" in data or "input" in data):
-                return data
+            if isinstance(data, dict):
+                norm = _normalize_tool_dict(data)
+                if norm:
+                    return norm
         except Exception:
             pass
             
@@ -487,8 +498,10 @@ class AgentSession:
         if match:
             try:
                 data = json.loads(match.group(1))
-                if isinstance(data, dict) and "name" in data and ("arguments" in data or "input" in data):
-                    return data
+                if isinstance(data, dict):
+                    norm = _normalize_tool_dict(data)
+                    if norm:
+                        return norm
             except Exception:
                 pass
         return None

@@ -708,7 +708,27 @@ class CodingAgent(BaseAgent):
         file_contents = self.orchestrator.context.memory.get("file_contents", {})
         
         if not target_files:
-            await self.orchestrator.context.log("Coding Agent: No target files identified. Asking Planner to refine list.")
+            # Infer target files from task_description or standard game/project structure
+            infer_prompt = (
+                f"Identify relative file paths that need to be created or modified for this task:\n"
+                f"Task: {task_description}\n\n"
+                "Output ONLY a JSON array of string file paths, e.g. [\"index.html\", \"style.css\", \"script.js\", \"README.md\"]."
+            )
+            try:
+                llm = DevPilotChatModel(session=session, agent_name=self.name)
+                res = await llm.ainvoke([("system", "Output ONLY a valid JSON array of string file paths."), ("human", infer_prompt)])
+                clean_res = res.content.strip()
+                if clean_res.startswith("```"):
+                    lines = [l for l in clean_res.split("\n") if not l.startswith("```")]
+                    clean_res = "\n".join(lines).strip()
+                inferred = json.loads(clean_res)
+                if isinstance(inferred, list) and inferred:
+                    target_files = [str(f) for f in inferred]
+            except Exception as e:
+                logger.warning(f"Failed to infer target files for Coding Agent: {e}")
+
+        if not target_files:
+            await self.orchestrator.context.log("Coding Agent: No target files identified.")
             await self.orchestrator.update_task_progress(task_id, 100, session)
             return "No files to modify"
             
@@ -1164,14 +1184,26 @@ class FrontendDeveloperAgent(BaseAgent):
         target_files = self.orchestrator.context.memory.get("target_files", [])
         file_contents = self.orchestrator.context.memory.get("file_contents", {})
 
-        frontend_prefixes = ("frontend/", "src/", "components/", "pages/", "app/", ".tsx", ".ts", ".jsx", ".js", ".css", ".html")
+        frontend_prefixes = ("frontend/", "src/", "components/", "pages/", "app/", ".tsx", ".ts", ".jsx", ".js", ".css", ".html", ".md")
         frontend_files = [f for f in target_files if any(f.startswith(p) or f.endswith(p) for p in frontend_prefixes)]
         if not frontend_files:
-            await self.orchestrator.context.log(
-                "Frontend Developer Agent: No frontend files in target list — skipping."
+            infer_prompt = (
+                f"Identify relative frontend file paths that need to be created or modified for this task:\n"
+                f"Task: {task_description}\n\n"
+                "Output ONLY a JSON array of string file paths, e.g. [\"index.html\", \"style.css\", \"script.js\", \"README.md\"]."
             )
-            await self.orchestrator.update_task_progress(task_id, 100, session)
-            return "No frontend files to modify."
+            try:
+                llm = DevPilotChatModel(session=session, agent_name=self.name)
+                res = await llm.ainvoke([("system", "Output ONLY a valid JSON array of string file paths."), ("human", infer_prompt)])
+                clean_res = res.content.strip()
+                if clean_res.startswith("```"):
+                    lines = [l for l in clean_res.split("\n") if not l.startswith("```")]
+                    clean_res = "\n".join(lines).strip()
+                inferred = json.loads(clean_res)
+                if isinstance(inferred, list) and inferred:
+                    frontend_files = [str(f) for f in inferred]
+            except Exception as e:
+                logger.warning(f"Failed to infer target files for Frontend Developer Agent: {e}")
 
         if not frontend_files:
             await self.orchestrator.context.log("Frontend Developer Agent: No frontend files to modify.")
