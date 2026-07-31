@@ -141,26 +141,33 @@ async def test_e2e_create_flappy_bird(tmp_path):
 
     orchestrator = AgentOrchestrator()
 
-    # ModelRouter completion mock responses in sequence:
-    # 1. Planner Agent -> returns single subtask JSON so graph fallback runs
-    # 2. Orchestrator Turn 1 -> calls Requirement Analysis Agent
-    # 3. Requirement Analysis Agent -> returns ['index.html']
-    # 4. Orchestrator Turn 2 -> calls Frontend Developer Agent
-    # 5. Frontend Developer Agent -> returns HTML code
-    # 6. Orchestrator Turn 3 -> calls Orchestrator (done)
-    # 7. Summary -> returns final summary
-    responses = [
-        '[{"id": 1, "agent": "Frontend Developer Agent", "description": "create flappy bird", "dependencies": []}]',
-        '{"agents": ["Requirement Analysis Agent"], "reasoning": "Determine target files", "descriptions": ["Find files"]}',
-        '["index.html"]',
-        '{"agents": ["Frontend Developer Agent"], "reasoning": "Create HTML file", "descriptions": ["Build flappy bird"]}',
-        '<!DOCTYPE html><html><head><title>Flappy Bird</title></head><body><h1>Flappy Bird</h1></body></html>',
-        '{"agents": ["Orchestrator"], "reasoning": "Done", "descriptions": ["Done"]}',
-        'Created flappy bird game in index.html'
-    ]
+    # ModelRouter completion mock responses dynamically:
+    # 1. Requirement Analysis Agent -> returns ['index.html']
+    # 2. Planner Agent -> returns a single subtask plan for Frontend Developer Agent
+    # 3. Frontend Developer Agent -> returns HTML code
+    # 4. Summarize (Orchestrator Agent) -> returns final summary
+    async def dynamic_completion(*args, **kwargs):
+        task_type = args[4] if len(args) > 4 else kwargs.get("task_type", "")
+        task_type_lower = (task_type or "").lower()
+        
+        messages = args[1] if len(args) > 1 else kwargs.get("messages", [])
+        user_msg = messages[-1]["content"].lower() if messages else ""
+        system_prompt = args[2] if len(args) > 2 else kwargs.get("system_prompt", "")
+        sys_prompt_lower = (system_prompt or "").lower()
+        
+        if "planner" in task_type_lower or ("planner" in sys_prompt_lower and "requirement" not in sys_prompt_lower):
+            return '[{"id": 1, "agent": "Frontend Developer Agent", "description": "create flappy bird", "dependencies": []}]'
+        elif "requirement" in task_type_lower or "requirement" in sys_prompt_lower:
+            return '["index.html"]'
+        elif "frontend" in task_type_lower or "frontend" in sys_prompt_lower:
+            return '<!DOCTYPE html><html><head><title>Flappy Bird</title></head><body><h1>Flappy Bird</h1></body></html>'
+        elif "summarize" in sys_prompt_lower or "summary" in task_type_lower:
+            return 'Created flappy bird game in index.html'
+        else:
+            return "Success/Completed"
 
     with patch("app.adapters.router.ModelRouter.completion", new_callable=AsyncMock) as mock_completion:
-        mock_completion.side_effect = responses
+        mock_completion.side_effect = dynamic_completion
         try:
             res = await orchestrator.run_task("create a flappy bird game in a single HTML file", session)
         except Exception as ex:

@@ -5,11 +5,6 @@ import uuid
 import time
 import re
 import os
-import importlib.util
-
-# Feature flag: set to False if parallel_agent_system package is absent.
-# This prevents a hard ImportError from crashing every multi-agent task.
-PARALLEL_AGENTS_AVAILABLE = importlib.util.find_spec("parallel_agent_system") is not None
 from typing import List, Dict, Any, TypedDict, Optional
 from pydantic import BaseModel, Field, ValidationError
 from langgraph.graph import StateGraph, START, END
@@ -2432,8 +2427,51 @@ def route_next(state: AgentState):
         return valid_agents[0]
     return valid_agents
 
+import typing
+from agent_os.providers.interfaces import IModelRouter
+
+class AgentOSModelRouterBridge(IModelRouter):
+    def __init__(self, session):
+        self.session = session
+        from app.adapters.router import ModelRouter as BackendModelRouter
+        self.backend_router = BackendModelRouter()
+        self._provider_health = {
+            "anthropic": True,
+            "openai": True,
+            "gemini": True,
+            "groq": True,
+            "ollama": True
+        }
+
+    def health_check(self, provider_name: str) -> bool:
+        return self._provider_health.get(provider_name.lower(), False)
+
+    def set_provider_health(self, provider_name: str, healthy: bool) -> None:
+        self._provider_health[provider_name.lower()] = healthy
+
+    def cancel(self, task_id: str) -> None:
+        pass
+
+    async def generate(self, prompt: str, system_prompt: str = "", model_name: str = "default") -> str:
+        messages = [{"role": "user", "content": prompt}]
+        res = await self.backend_router.completion(
+            profile=self.session.profile,
+            messages=messages,
+            system_prompt=system_prompt,
+            is_agent=True,
+            task_type=model_name
+        )
+        return res
+
+    async def stream(self, prompt: str, system_prompt: str = "", model_name: str = "default") -> typing.AsyncGenerator[str, None]:
+        messages = [{"role": "user", "content": prompt}]
+        adapter = self.backend_router.get_adapter(self.session.profile, is_agent=True, task_type=model_name)
+        async for chunk in adapter.stream_chat(messages, [], system_prompt):
+            if chunk["type"] == "text":
+                yield chunk["content"]
+
 class AgentOrchestrator:
-    def __init__(self, max_steps: int = 10000):
+    def __init__(self, session=None, max_steps: int = 10000):
         self.max_steps = max_steps
         self.context = SharedContext()
         self.event_bus = EventBus()
@@ -2477,6 +2515,71 @@ class AgentOrchestrator:
         if len(agent_names) != len(set(agent_names)):
             logger.warning("Duplicate agent mappings detected in orchestrator registry!")
 
+        self.session = session
+        if session is not None:
+            self._init_kernel(session)
+
+    def _init_kernel(self, session):
+        # 1. Initialize AgentOS kernel & core modules
+        from agent_os.core.registry import ServiceRegistry
+        from agent_os.core.event_bus import EventBus as AOSEventBus
+        from agent_os.core.config import DictionaryConfig
+        from agent_os.core.logging import StandardLogger
+        from agent_os.kernel.kernel import Kernel
+        from agent_os.kernel.state_machine import TaskStateMachine
+        from agent_os.skills.scheduler import SkillScheduler
+        from agent_os.execution.engine import TransactionalExecutionEngine
+        from agent_os.compiler.prompt_compiler import PromptCompiler
+        from agent_os.context.virtual_memory import VirtualMemoryContextManager
+        from agent_os.learning.memory_kernel import MemoryKernelManager
+        from agent_os.learning.engine import LearningEngine
+        from agent_os.learning.optimizer import PerformanceOptimizer
+        from agent_os.repository.repository import RepositoryKernel
+
+        from agent_os.repository.interfaces import IRepository
+        from agent_os.learning.interfaces import IMemoryManager, ILearningEngine, IPerformanceOptimizer
+        from agent_os.execution.interfaces import ITransactionalExecutionEngine
+        from agent_os.compiler.interfaces import IPromptCompiler
+        from agent_os.providers.interfaces import IModelRouter
+        from agent_os.kernel.interfaces import ITaskStateMachine
+        from agent_os.skills.interfaces import ISkillScheduler
+
+        self.registry = ServiceRegistry()
+        self.aos_event_bus = AOSEventBus()
+        self.config = DictionaryConfig(session.profile)
+        self.logger_os = StandardLogger("AgentOS")
+
+        self.kernel = Kernel(self.registry, self.aos_event_bus, self.config, self.logger_os)
+
+        # Instantiate kernels & services
+        self.repo_kernel = RepositoryKernel(db_path=":memory:")
+        self.memory_manager = MemoryKernelManager()
+        self.exec_engine = TransactionalExecutionEngine()
+        self.compiler = PromptCompiler()
+        self.router = AgentOSModelRouterBridge(session)
+        self.state_machine = TaskStateMachine(event_bus=self.aos_event_bus)
+        self.scheduler = SkillScheduler()
+        self.learning_engine = LearningEngine()
+        self.optimizer = PerformanceOptimizer()
+
+        # Register singletons
+        self.registry.register_singleton(IRepository, self.repo_kernel)
+        self.registry.register_singleton(IMemoryManager, self.memory_manager)
+        self.registry.register_singleton(ITransactionalExecutionEngine, self.exec_engine)
+        self.registry.register_singleton(IPromptCompiler, self.compiler)
+        self.registry.register_singleton(IModelRouter, self.router)
+        self.registry.register_singleton(ITaskStateMachine, self.state_machine)
+        self.registry.register_singleton(ISkillScheduler, self.scheduler)
+        self.registry.register_singleton(ILearningEngine, self.learning_engine)
+        self.registry.register_singleton(IPerformanceOptimizer, self.optimizer)
+
+        # Boot Kernel
+        self.kernel.boot()
+
+        # Scan workspace directories using RepositoryKernel and store symbols in SQLite memory database on start
+        if session.workspace_root:
+            self.repo_kernel.scan_workspace(session.workspace_root)
+
     async def update_task_progress(self, task_id: int, progress: int, session, status: str = None):
         task = next((t for t in self.context.subtasks if t["id"] == task_id), None)
         if task:
@@ -2495,7 +2598,6 @@ class AgentOrchestrator:
                 "status": task["status"]
             })
             
-            # Send standard thinking event for this step
             agent_name = task.get("agent", "Agent")
             desc = task.get("description", "")
             if progress == 100:
@@ -2535,185 +2637,156 @@ class AgentOrchestrator:
                 await session.send_ws_message({"type": "session_done"})
                 return ""
 
-        await self.context.log("Orchestrator: Initializing dynamic agent router session plan...")
+        await self.context.log("AgentOS: Initializing AgentOS Kernel dynamic session plan...")
         self.context.subtasks = []
-        global PARALLEL_AGENTS_AVAILABLE  # allow fallback assignment inside try/except
-        
-        # 1. Run Planner Agent first to plan subtasks
-        planner = self.agents["Planner Agent"]
-        await planner.execute(task_description, session, task_id=0)
-        
-        if len(self.context.subtasks) > 1 and PARALLEL_AGENTS_AVAILABLE:
-            await self.context.log("Orchestrator: Multiple independent subtasks planned. Delegating to LangGraph supervisor...")
-            _parallel_ok = False
-            try:
-                from parallel_agent_system.core.state import SubTask as ParallelSubTask, GraphState as ParallelGraphState
-                from parallel_agent_system.graph.supervisor import build_supervisor_graph
-                from parallel_agent_system.core.config import SystemConfig
-                from parallel_agent_system.runtime.secret_registry import SecretRegistry
-                _parallel_ok = True
-            except ImportError:
-                PARALLEL_AGENTS_AVAILABLE = False
-                await self.context.log("Orchestrator: parallel_agent_system unavailable - falling back to sequential routing.")
+        self.context.collaboration_log = []
 
-            if _parallel_ok:
-                def map_agent_name(name: str) -> str:
-                    name_l = name.lower().replace(" agent", "").strip()
-                    valid_types = {
-                        "code", "frontend", "backend", "test", "docs", "review",
-                        "security", "performance", "debug", "database", "api",
-                        "integration", "devops", "release", "git", "terminal",
-                        "planner", "architect", "requirement"
-                    }
-                    if name_l in valid_types:
-                        return name_l
-                    if "test" in name_l:
-                        return "test"
-                    elif "doc" in name_l:
-                        return "docs"
-                    elif "review" in name_l:
-                        return "review"
-                    elif "frontend" in name_l:
-                        return "frontend"
-                    elif "backend" in name_l:
-                        return "backend"
-                    elif "security" in name_l:
-                        return "security"
-                    elif "performance" in name_l:
-                        return "performance"
-                    elif "database" in name_l or "db" in name_l:
-                        return "database"
-                    elif "devops" in name_l:
-                        return "devops"
-                    return "code"
+        # 1. Initialize AgentOS kernel & core modules if not already done
+        if not hasattr(self, "kernel") or self.session is not session:
+            self._init_kernel(session)
 
+        kernel = self.kernel
+        repo_kernel = self.repo_kernel
+        exec_engine = self.exec_engine
+        state_machine = self.state_machine
 
-                id_map = {}
-                for st in self.context.subtasks:
-                    id_map[st["id"]] = f"task_{uuid.uuid4().hex[:8]}"
-
-                parallel_subtasks = []
-                for st in self.context.subtasks:
-                    new_id = id_map[st["id"]]
-                    depends_on_list = []
-                    for dep_id in st.get("dependencies", []):
-                        if dep_id in id_map:
-                            depends_on_list.append(id_map[dep_id])
-                    p_task = ParallelSubTask(
-                        id=new_id,
-                        agent_type=map_agent_name(st["agent"]),
-                        description=st["description"],
-                        workspace_dir=f"./workspace/agent-{new_id[:8]}",
-                        depends_on=depends_on_list
-                    )
-                    parallel_subtasks.append(p_task)
-
-                api_key = session.profile.get("api_key") or ""
-                SecretRegistry.register("LLM_API_KEY", api_key)
-                config = SystemConfig()
-                graph = build_supervisor_graph(config)
-                initial_state: ParallelGraphState = {
-                    "run_id": f"run_{uuid.uuid4().hex[:8]}",
-                    "goal": task_description,
-                    "subtasks": parallel_subtasks,
-                    "results": [],
-                    "global_cost_usd": 0.0,
-                    "iteration": 1,
-                    "status": "pending",
-                    "human_confirmation_required": False,
-                    "messages": [],
-                    "session": session,
-                    "refinement_cycles": 0
-                }
-                session.parallel_subtasks = []
-                for st in parallel_subtasks:
-                    session.parallel_subtasks.append({
-                        "id": st.id,
-                        "agent": st.agent_type.capitalize() + " Agent",
-                        "description": st.description,
-                        "status": "pending",
-                        "progress": 0
-                    })
-                await session.send_ws_message({
-                    "type": "agent_state",
-                    "active_agent": "Orchestrator Agent",
-                    "active_task": "Starting parallel graph execution...",
-                    "subtasks": session.parallel_subtasks,
-                    "collaboration_log": session.collaboration_log
-                })
-                thread_id = f"thread_{uuid.uuid4().hex[:8]}"
-                final_state = await graph.ainvoke(
-                    initial_state,
-                    config={"configurable": {"thread_id": thread_id}, "recursion_limit": 150}
-                )
-                self.context.subtasks = session.parallel_subtasks
-                self.context.collaboration_log = session.collaboration_log
-                await session.send_ws_message({
-                    "type": "agent_state",
-                    "active_agent": "Orchestrator",
-                    "active_task": "All parallel tasks completed",
-                    "subtasks": self.context.subtasks,
-                    "collaboration_log": self.context.collaboration_log
-                })
-                return  # parallel path complete; skip sequential
-
-        # Fallback to default sequential routing workflow
-        # Initialize graph state
-        initial_state: AgentState = {
-            "task_description": task_description,
-            "collaboration_log": self.context.collaboration_log,
-            "memory": self.context.memory,
-            "subtasks": self.context.subtasks,
-            "active_agent": "Orchestrator",
-            "active_task": "Deciding next agent...",
-            "next_agents": ["Orchestrator"],
-            "agent_tasks": {},
-            "session": session,
-            "task_id_counter": 1,
-            "step_count": 0,
-            "orchestrator": self
-        }
-        
-        # Compile graph
-        workflow = StateGraph(AgentState)
-        workflow.add_node("Orchestrator", orchestrator_node)
-        for name in self.agents:
-            workflow.add_node(name, make_agent_node(name))
+        # Setup state machine EventBus updates to broadcast to WebSocket
+        async def on_state_changed(payload):
+            old = payload.get("old_state")
+            new = payload.get("new_state")
             
-        workflow.add_edge(START, "Orchestrator")
-        workflow.add_conditional_edges(
-            "Orchestrator",
-            route_next,
-            {
-                "end": END,
-                **{name: name for name in self.agents}
+            agent_mapping = {
+                "NEW": ("Orchestrator Agent", "Task received"),
+                "UNDERSTAND": ("Requirement Analysis Agent", "Analyzing task requirements"),
+                "SEARCH": ("File System Agent", "Scanning repository structures and symbol declarations"),
+                "PLAN": ("Planner Agent", "Formulating multi-agent subtask execution plan"),
+                "EDIT": ("Coding Agent", "Executing scheduled developer skills and codebase writes"),
+                "VERIFY": ("Integration Agent", "Verifying patches and running build checks"),
+                "TEST": ("Testing Agent", "Running test suite validating modifications"),
+                "REVIEW": ("Code Review Agent", "Running quality assurance patch review"),
+                "DONE": ("Orchestrator Agent", "Task execution finished"),
+                "FAILED": ("Orchestrator Agent", "Task execution failed")
             }
-        )
-        for name in self.agents:
-            workflow.add_edge(name, "Orchestrator")
+            mapped_agent, mapped_task = agent_mapping.get(new, ("Orchestrator Agent", f"Transitioned to {new}"))
             
-        compiled_graph = workflow.compile()
-        final_state = await compiled_graph.ainvoke(
-            initial_state,
-            config={"recursion_limit": 150}
-        )
-        
-        # Update our context from final state
-        self.context.collaboration_log = final_state["collaboration_log"]
-        self.context.memory = final_state["memory"]
-        self.context.subtasks = final_state["subtasks"]
-        
-        self.context.active_agent = "Orchestrator"
-        await self.context.log("Orchestrator: Dynamic routing session finished.")
-        
+            await session.send_ws_message({
+                "type": "agent_state",
+                "active_agent": mapped_agent,
+                "active_task": mapped_task,
+                "subtasks": self.context.subtasks,
+                "collaboration_log": self.context.collaboration_log
+            })
+
+        self.aos_event_bus.subscribe("task_state_changed", on_state_changed)
+
+        try:
+            # 1. State: NEW -> UNDERSTAND
+            state_machine.transition_to("UNDERSTAND")
+            await self.context.log(f"AgentOS: Transitioned to UNDERSTAND. Task: {task_description}")
+            req_agent = self.agents["Requirement Analysis Agent"]
+            req_res = await req_agent.execute(task_description, session, task_id=1)
+            await self.context.log(f"Requirement Analysis: {req_res}")
+
+            # 2. State: UNDERSTAND -> SEARCH
+            state_machine.transition_to("SEARCH")
+            await self.context.log("AgentOS: Transitioned to SEARCH. Scanning workspace...")
+            repo_kernel.scan_workspace(session.workspace_root)
+            files = repo_kernel.list_files()
+            await self.context.log(f"Repository Kernel indexed {len(files)} files.")
+
+            # 3. State: SEARCH -> PLAN
+            state_machine.transition_to("PLAN")
+            await self.context.log("AgentOS: Transitioned to PLAN. Generating subtask plan...")
+            planner = self.agents["Planner Agent"]
+            plan_res = await planner.execute(task_description, session, task_id=2)
+            await self.context.log(f"Planner: {plan_res}")
+
+            # Send immediate updates containing planned subtasks
+            await session.send_ws_message({
+                "type": "agent_state",
+                "active_agent": "Planner Agent",
+                "active_task": "Subtask plan generated",
+                "subtasks": self.context.subtasks,
+                "collaboration_log": self.context.collaboration_log
+            })
+
+            # 4. State: PLAN -> EDIT
+            state_machine.transition_to("EDIT")
+            await self.context.log("AgentOS: Transitioned to EDIT. Processing subtasks transactionally...")
+
+            subtasks = self.context.subtasks
+            for i, st in enumerate(subtasks):
+                st_id = st.get("id") or (i + 1)
+                st_agent_name = st.get("agent")
+                st_desc = st.get("description", "")
+
+                await self.update_task_progress(st_id, 20, session, status="running")
+
+                specialist = self.agents.get(st_agent_name)
+                if specialist is None:
+                    match = next((k for k in self.agents if k.lower() == st_agent_name.lower()), None)
+                    specialist = self.agents.get(match) if match else self.agents["Coding Agent"]
+
+                await self.context.log(f"Starting subtask: {st_desc} with {specialist.name}")
+
+                # Wrap changes in transactional engine
+                tx = exec_engine.create_transaction()
+                tx.begin()
+                try:
+                    result = await specialist.execute(st_desc, session, st_id)
+                    tx.commit()
+                    await self.update_task_progress(st_id, 100, session, status="completed")
+                    await self.context.log(f"Subtask completed successfully: {result}")
+                except Exception as st_err:
+                    tx.rollback()
+                    await self.update_task_progress(st_id, 0, session, status="failed")
+                    await self.context.log(f"Subtask failed (rolled back changes): {str(st_err)}")
+                    raise st_err
+
+            # 5. State: EDIT -> VERIFY
+            state_machine.transition_to("VERIFY")
+            await self.context.log("AgentOS: Transitioned to VERIFY. Running integration check...")
+            verify_agent = self.agents["Integration Agent"]
+            verify_res = await verify_agent.execute(task_description, session, task_id=len(subtasks)+3)
+            await self.context.log(f"Integration Check: {verify_res}")
+
+            # 6. State: VERIFY -> TEST
+            state_machine.transition_to("TEST")
+            await self.context.log("AgentOS: Transitioned to TEST. Running test suite...")
+            testing_agent = self.agents["Testing Agent"]
+            test_res = await testing_agent.execute(task_description, session, task_id=len(subtasks)+4)
+            await self.context.log(f"Test Suite: {test_res}")
+
+            # 7. State: TEST -> REVIEW
+            state_machine.transition_to("REVIEW")
+            await self.context.log("AgentOS: Transitioned to REVIEW. Performing patch review...")
+            review_agent = self.agents["Code Review Agent"]
+            review_res = await review_agent.execute(task_description, session, task_id=len(subtasks)+5)
+            await self.context.log(f"Patch Review: {review_res}")
+
+            # 8. State: REVIEW -> DONE
+            state_machine.transition_to("DONE")
+            await self.context.log("AgentOS: Transitioned to DONE. Dynamic routing session completed successfully.")
+
+        except Exception as e:
+            if state_machine.current_state != "FAILED":
+                try:
+                    state_machine.transition_to("FAILED")
+                except Exception:
+                    pass
+            await self.context.log(f"AgentOS failed: {str(e)}")
+            raise e
+        finally:
+            kernel.shutdown()
+
         await session.send_ws_message({
             "type": "agent_state",
-            "active_agent": "Orchestrator",
+            "active_agent": "Orchestrator Agent",
             "active_task": "All tasks completed",
             "subtasks": self.context.subtasks,
             "collaboration_log": self.context.collaboration_log
         })
-            
+
         final_history_summary = "\n".join(self.context.collaboration_log)
         chat_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are the head Orchestrator assistant. Summarize the task outcome clearly."),
@@ -2723,7 +2796,7 @@ class AgentOrchestrator:
             task_description=task_description,
             final_history_summary=final_history_summary
         )
-        
+
         llm = DevPilotChatModel(session=session, agent_name="Orchestrator Agent")
         chain = chat_prompt | llm
         try:
@@ -2742,5 +2815,5 @@ class AgentOrchestrator:
                 "type": "text_delta",
                 "content": fallback_text
             })
-            
+
         return "Dynamic routing session completed."

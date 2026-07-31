@@ -51,7 +51,7 @@ class AgentSession:
         self.profile = profile
         self.send_ws_message = send_ws_message
         self.permission_manager = permission_manager
-        self.orchestrator = AgentOrchestrator()
+        self.orchestrator = AgentOrchestrator(session=self)
         self.conversation_history = []
         self.pending_confirmations = {}  # tool_call_id -> {"event": asyncio.Event(), "approved": bool}
         max_turns_config = profile.get("max_turns") or profile.get("max_orchestrator_steps") or 25

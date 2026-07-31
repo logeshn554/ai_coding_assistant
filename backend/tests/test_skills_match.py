@@ -3,7 +3,6 @@
 Covers:
 - Python/FastAPI task_description matches relevant sections, respects limits.
 - Unrelated task_description does NOT pull in the full section body.
-- parallel_agent_system SkillsLoader.load_for_task no longer returns skeleton.
 - /api/skills/match endpoint returns matched sections and inferred languages.
 - select_relevant_sections discriminates between two different skills files.
 """
@@ -131,47 +130,9 @@ def test_unrelated_task_does_not_pull_extra_sections(tmp_path):
 
 
 # ===========================================================================
-# 4 — SkillsLoader.load_for_task no longer returns the skeleton string
-# ===========================================================================
-def test_parallel_agent_skills_loader_not_skeleton(tmp_path):
-    """SkillsLoader.load_for_task no longer returns the hardcoded skeleton."""
-    # Write a minimal skills.md to the tmp workspace.
-    (tmp_path / "skills.md").write_text(_SAMPLE_SKILLS_MD, encoding="utf-8")
-
-    from parallel_agent_system.runtime.skills_loader import SkillsLoader
-
-    original_root = SkillsLoader.workspace_root
-    SkillsLoader.workspace_root = str(tmp_path)
-    try:
-        result = SkillsLoader.load_for_task("Write a Python function with type hints.")
-    finally:
-        SkillsLoader.workspace_root = original_root
-
-    skeleton_line = "- Follow standard clean code principles."
-    assert skeleton_line not in result, (
-        "SkillsLoader.load_for_task still returns the hardcoded skeleton."
-    )
-    # Should return something meaningful (the skills file was not empty).
-    assert len(result) > 0, "Expected non-empty skills content for a python task."
-
-
-def test_parallel_agent_skills_loader_empty_when_no_skills_md(tmp_path):
-    """SkillsLoader.load_for_task returns empty string when skills.md is absent."""
-    from parallel_agent_system.runtime.skills_loader import SkillsLoader
-
-    original_root = SkillsLoader.workspace_root
-    SkillsLoader.workspace_root = str(tmp_path)  # no skills.md here
-    try:
-        result = SkillsLoader.load_for_task("Do something.")
-    finally:
-        SkillsLoader.workspace_root = original_root
-
-    assert result == "", f"Expected empty string, got: {result!r}"
-
-
-# ===========================================================================
 # 5 — /api/skills/match endpoint returns matched sections and languages
 # ===========================================================================
+
 def test_skills_match_endpoint_python_task(tmp_path):
     """GET /api/skills/match?task=... returns matched sections for python tasks."""
     from unittest.mock import patch

@@ -24,8 +24,7 @@ from app.mcp_client import MCP_DISCOVERED_TOOLS, global_mcp_manager
 from app.rag import chunk_file, embed_and_index, query
 from app.tools.dispatcher import dispatch_tool
 from app.vision import VisionResult, analyze_image
-from parallel_agent_system.core.state import AgentResult, SubTask
-from parallel_agent_system.monitor.stuck_detector import StuckDetector, normalize_error_signature
+
 
 
 @pytest.mark.asyncio
@@ -150,32 +149,3 @@ async def test_generated_mcp_script_server_registration(tmp_path):
     assert "Executed" in exec_res or "Arguments" in exec_res
 
 
-@pytest.mark.asyncio
-async def test_generated_error_log_tavily_fallback(tmp_path):
-    """Generates log files with repeating errors and verifies StuckDetector & web search query formatting."""
-    log_file = tmp_path / "error_trace.log"
-    log_content = (
-        "2026-07-27T18:10:00 [ERROR] main.py:45 - ConnectionRefusedError: [Errno 111] Connection refused at 0x7f88\n"
-        "2026-07-27T18:10:05 [ERROR] main.py:90 - ConnectionRefusedError: [Errno 111] Connection refused at 0x90a1\n"
-    )
-    log_file.write_text(log_content, encoding="utf-8")
-
-    lines = log_file.read_text(encoding="utf-8").strip().split("\n")
-    sig1 = normalize_error_signature(lines[0])
-    sig2 = normalize_error_signature(lines[1])
-
-    assert sig1 == sig2
-    assert "ConnectionRefusedError" in sig1
-    assert "0x7f88" not in sig1
-    assert "0x90a1" not in sig1
-
-    detector = StuckDetector()
-    subtask = SubTask(id="sub-101", agent_type="backend", description="Fix DB connection error", workspace_dir=str(tmp_path))
-    detector.record_debugging_attempt("sub-101")
-
-    res1 = AgentResult(subtask_id="sub-101", agent_type="backend", status="failed", output=lines[0], event_log_key="events:sub-101")
-    res2 = AgentResult(subtask_id="sub-101", agent_type="backend", status="failed", output=lines[1], event_log_key="events:sub-101")
-
-    check_res = detector.check_detailed([subtask], [res1, res2], repeat_error_threshold=2)
-    assert "sub-101" in check_res["web_search_task_ids"]
-    assert "ConnectionRefusedError" in check_res["error_signatures"]["sub-101"]

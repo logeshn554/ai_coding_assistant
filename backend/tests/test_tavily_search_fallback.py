@@ -11,54 +11,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.tools.web_search_tool import SearchResult, search_web
-from parallel_agent_system.core.state import AgentResult, SubTask
-from parallel_agent_system.monitor.stuck_detector import (
-    StuckDetector,
-    normalize_error_signature,
-)
-
-
-def test_error_signature_normalization():
-    """Two errors differing only by line number/timestamp produce identical signatures."""
-    err1 = (
-        "2026-07-27T18:04:13 File '/app/src/main.py', line 42, in run\n"
-        "TypeError: Cannot read property 'map' of undefined at 0x7fa8b9c10"
-    )
-    err2 = (
-        "2026-07-27T19:15:00 File 'C:\\Users\\admin\\project\\main.py', line 99, in run\n"
-        "TypeError: Cannot read property 'map' of undefined at 0x10b98a0"
-    )
-
-    sig1 = normalize_error_signature(err1)
-    sig2 = normalize_error_signature(err2)
-
-    assert sig1 == sig2
-    assert "TypeError: Cannot read property 'map' of undefined" in sig1
-    assert "line 42" not in sig1
-    assert "0x7fa8b9c10" not in sig1
-
-    diff_err = "ValueError: Invalid input parameter provided"
-    assert normalize_error_signature(diff_err) != sig1
-
-
-def test_stuck_detector_requires_debugging_agent_first():
-    """StuckDetector flags web search only after threshold repeats AND debugging agent attempt."""
-    detector = StuckDetector()
-    subtask = SubTask(id="task-1", agent_type="code", description="Fix map error", workspace_dir="/tmp/workspace")
-    err_output = "TypeError: Cannot read property 'map' of undefined"
-    res1 = AgentResult(subtask_id="task-1", agent_type="code", status="failed", output=err_output, event_log_key="events:task-1")
-    res2 = AgentResult(subtask_id="task-1", agent_type="code", status="failed", output=err_output, event_log_key="events:task-1")
-
-    # 1. 2 errors but NO debugging agent attempt -> no web search
-    det1 = detector.check_detailed([subtask], [res1, res2], repeat_error_threshold=2)
-    assert "task-1" not in det1["web_search_task_ids"]
-
-    # 2. Record Debugging Agent attempt
-    detector.record_debugging_attempt("task-1")
-
-    # 3. 2 errors + Debugging Agent attempted -> web search triggered!
-    det2 = detector.check_detailed([subtask], [res1, res2], repeat_error_threshold=2)
-    assert "task-1" in det2["web_search_task_ids"]
 
 
 @pytest.mark.asyncio

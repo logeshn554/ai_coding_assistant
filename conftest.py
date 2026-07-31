@@ -10,11 +10,3 @@ os.environ["DEVPILOT_TEST_MODE"] = "1"
 # need to supply a bearer token. Auth is tested at the WS level with the
 # S1 fix. HTTP-level auth (verify_token) is a deployment concern.
 os.environ.setdefault("DEVPILOT_NO_AUTH", "true")
-
-# When running parallel_agent_system tests, ensure real langgraph package takes precedence
-if any("parallel_agent_system" in arg for arg in sys.argv):
-    os.environ.pop("DEVPILOT_TEST_MODE", None)
-    workspace_root = os.path.dirname(os.path.abspath(__file__))
-    while workspace_root in sys.path:
-        sys.path.remove(workspace_root)
-    sys.path.append(workspace_root)
