@@ -39,6 +39,23 @@ async def open_with_live_server(session: Any, args: Dict[str, Any]) -> str:
     Returns:
         Message containing the Live Server localhost preview URL.
     """
+    # Runtime Guard: Check if this is a modern build-based project (e.g. React/Vite/Next)
+    pkg_json_path = os.path.join(session.workspace_root, "package.json")
+    if os.path.exists(pkg_json_path):
+        try:
+            import json
+            with open(pkg_json_path, "r", encoding="utf-8") as f:
+                pkg_data = json.load(f)
+            scripts = pkg_data.get("scripts", {})
+            if "dev" in scripts or "start" in scripts:
+                return (
+                    "Error: This project has a package.json containing a build/dev script (e.g. 'dev' or 'start'). "
+                    "This is a modern framework project, NOT a static HTML site. "
+                    "Do NOT use open_with_live_server. Use run_terminal_command with 'npm run dev' or 'npm start' instead to launch the dev server."
+                )
+        except Exception:
+            pass
+
     rel_path = args.get("path") or args.get("file") or args.get("filepath") or ""
 
     if not rel_path or not rel_path.endswith((".html", ".htm")):

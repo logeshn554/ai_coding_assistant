@@ -1,6 +1,4 @@
-import json
 import logging
-import uuid
 from typing import AsyncGenerator, List, Dict, Any
 
 logger = logging.getLogger("devpilot.adapters.anthropic")
@@ -15,57 +13,26 @@ except ImportError:
         async def messages(self, *args, **kwargs):
             raise NotImplementedError("Anthropic SDK not available.")
 
-# Attempt to import the scan_for_bugs tool if it exists.
-# The tool may be synchronous or asynchronous.
-_scan_for_bugs_func = None
-try:
-    from ..tools.scan_for_bugs import scan_for_bugs as _scan_for_bugs_func  # type: ignore
-except Exception as import_err:
-    logger.debug(f"scan_for_bugs tool not available: {import_err}")
-    _scan_for_bugs_func = None
-
 from .base import ModelAdapter
 
 class AnthropicAdapter(ModelAdapter):
+    """
+    Anthropic-specific adapter. Only responsible for: building the Anthropic
+    client, making the actual streaming API call, and translating Anthropic's
+    native stream events (content_block_start/delta/stop, message_delta) into
+    the shared chunk format via the base-class helpers. Tool-argument parsing,
+    error formatting, and bug-scan injection all live in ModelAdapter — do not
+    re-implement them here.
+    """
     async def stream_chat(
         self, 
         messages: List[Dict[str, Any]], 
         tools: List[Dict[str, Any]], 
         system_prompt: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """
-        Streams chat completions from Anthropic, handling tool calls.
-        Additionally, if the `scan_for_bugs` tool is available, it is invoked
-        automatically before the LLM generates a response, and its concise
-        bug report is injected as an assistant message at the start of the
-        conversation.
-        """
-        # Auto‑invoke the scan_for_bugs tool if it was supplied.
-        if any(tool.get("name") == "scan_for_bugs" for tool in tools) and _scan_for_bugs_func:
-            try:
-                # Support both async and sync implementations.
-                result = _scan_for_bugs_func()
-                if hasattr(result, "__await__"):
-                    bug_report = await result  # type: ignore
-                else:
-                    bug_report = result
-                bug_report = str(bug_report).strip()
-                # Inject as a user message AFTER the first user turn so the
-                # conversation always starts with role="user" (Anthropic requirement).
-                report_message = {
-                    "role": "user",
-                    "content": (
-                        "[AUTOMATED WORKSPACE SCAN — do not reference this as a user request]\n"
-                        f"Bug scan results for context:\n{bug_report}"
-                    )
-                }
-                msg_list = list(messages)
-                if msg_list:
-                    messages = [msg_list[0], report_message] + msg_list[1:]
-                else:
-                    messages = [report_message]
-            except Exception as e:
-                logger.error(f"Failed to run scan_for_bugs tool: {e}")
+        """Streams chat completions from Anthropic, handling tool calls."""
+        # Shared: auto-invoke scan_for_bugs and inject its report if requested.
+        messages = await self.maybe_inject_bug_scan(messages, tools)
 
         # Initialize the Anthropic client
         # If base_url is the default anthropic URL, we use standard. If custom (e.g. proxy), it handles it.
@@ -133,7 +100,7 @@ class AnthropicAdapter(ModelAdapter):
                     idx = chunk.index
                     delta = chunk.delta
                     if delta.type == "text_delta":
-                        yield {"type": "text", "content": delta.text}
+                        yield self.build_text_chunk(delta.text)
                     elif delta.type == "input_json_delta":
                         if idx in current_tool_calls and "input_accumulator" in current_tool_calls[idx]:
                             current_tool_calls[idx]["input_accumulator"] += delta.partial_json
@@ -164,49 +131,27 @@ class AnthropicAdapter(ModelAdapter):
                                 }
                             del current_tool_calls[idx]
                         else:
-                            # Regular tool call — parse JSON (A7)
+                            # Regular tool call — shared parsing (base class)
                             raw_json = tc["input_accumulator"]
-                            error_msg = None
-                            try:
-                                parsed_input = json.loads(raw_json)
-                            except Exception:
-                                try:
-                                    parsed_input = json.loads(raw_json.strip())
-                                except Exception:
-                                    parsed_input = {"raw_input": raw_json}
-                                    error_msg = (
-                                        f"Error: model produced malformed JSON arguments for tool '{tc['name']}': "
-                                        f"{raw_json[:200]}. Tool was not executed."
-                                    )
-
-                            chunk_dict = {
-                                "type": "tool_call",
-                                "id": tc["id"],
-                                "name": tc["name"],
-                                "input": parsed_input
-                            }
-                            if error_msg:
-                                chunk_dict["error"] = error_msg
-                            yield chunk_dict
+                            parsed_input, error_msg = self.parse_tool_arguments(tc["name"], raw_json)
+                            yield self.build_tool_call_chunk(tc["id"], tc["name"], parsed_input, error_msg)
                             del current_tool_calls[idx]
                 elif chunk.type == "message_delta":
                     stop_reason = getattr(chunk.delta, "stop_reason", None)
                     if stop_reason == "tool_use":
-                        yield {"type": "done", "stop_reason": "tool_use"}
+                        yield self.build_done_chunk("tool_use")
                     elif stop_reason in ("end_turn", "stop_sequence"):
-                        yield {"type": "done", "stop_reason": "stop"}
+                        yield self.build_done_chunk("stop")
                     # B3: Emit token usage so AgentSession can accumulate real cost.
                     # The usage block is available on message_delta events.
                     if hasattr(chunk, "usage") and chunk.usage:
                         usage = chunk.usage
-                        yield {
-                            "type": "usage",
-                            "input_tokens": getattr(usage, "input_tokens", 0) or 0,
-                            "output_tokens": getattr(usage, "output_tokens", 0) or 0,
-                        }
+                        yield self.build_usage_chunk(
+                            getattr(usage, "input_tokens", 0), getattr(usage, "output_tokens", 0)
+                        )
                         
             # In case stream finishes without explicit message_delta stop_reason
-            yield {"type": "done", "stop_reason": "stop"}
+            yield self.build_done_chunk("stop")
             
         except Exception as e:
             logger.error(f"Anthropic API Error: {str(e)}")

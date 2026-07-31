@@ -4,6 +4,8 @@ const os = require('os');
 const path = require('path');
 const url = require('url');
 const pty = require('node-pty');
+const fs = require('fs');
+const { getCurrentWorkspacePath } = require('../routes/workspace');
 
 const SESSION_TOKEN = process.env.SESSION_TOKEN || 'devpilot-session-token-change-me';
 
@@ -36,6 +38,7 @@ function handleTerminalSocket(ws, req) {
   const parsedUrl = url.parse(req.url, true);
   const token = parsedUrl.query.token;
   const requestedShell = parsedUrl.query.shell;
+  const requestedWorkspace = parsedUrl.query.workspace;
 
   if (process.env.NODE_ENV === 'production' && (!token || token !== SESSION_TOKEN)) {
     try {
@@ -46,7 +49,10 @@ function handleTerminalSocket(ws, req) {
   }
 
   const shellCmd = getShellCommand(requestedShell);
-  const cwd = process.cwd() || os.homedir();
+  const workspacePath = requestedWorkspace || getCurrentWorkspacePath();
+  const cwd = (workspacePath && fs.existsSync(workspacePath) && fs.statSync(workspacePath).isDirectory())
+    ? workspacePath
+    : os.homedir();
 
   let ptyProcess;
   try {

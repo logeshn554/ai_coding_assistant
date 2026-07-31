@@ -1,6 +1,8 @@
 from agent_os.kernel.interfaces import IKernel, IKernelService, ITaskStateMachine, ITaskStateObserver
 from agent_os.kernel.kernel import Kernel
 from agent_os.kernel.state_machine import TaskStateMachine
+from agent_os.kernel.state_manager import StateManager
+from agent_os.kernel.scheduler import DependencyScheduler
 
 __all__ = [
     "IKernel",
@@ -8,5 +10,9 @@ __all__ = [
     "ITaskStateMachine",
     "ITaskStateObserver",
     "Kernel",
-    "TaskStateMachine"
+    "TaskStateMachine",
+    "StateManager",
+    "DependencyScheduler"
 ]
+
+

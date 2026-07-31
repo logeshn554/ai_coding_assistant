@@ -38,7 +38,7 @@ class RepositoryKernel(IRepository):
         
         for root, dirs, filenames in os.walk(workspace_root):
             # Ignore standard directories
-            dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "dist", "build", "target", "__pycache__"}]
+            dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "dist", "build", "target", "__pycache__", "venv", ".venv", "env", ".env"}]
             
             for filename in filenames:
                 full_path = os.path.join(root, filename)

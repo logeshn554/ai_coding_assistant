@@ -8,6 +8,12 @@ const savedTheme = localStorage.getItem('devpilot_theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);
 
 
+let devpilotSessionId = localStorage.getItem('devpilot_session_id');
+if (!devpilotSessionId) {
+  devpilotSessionId = crypto.randomUUID();
+  localStorage.setItem('devpilot_session_id', devpilotSessionId);
+}
+
 let sessionToken = ""
 
 // Global fetch interceptor
@@ -17,9 +23,9 @@ window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
   if (url.includes('/auth/token')) {
     return originalFetch(input, init)
   }
+  init = init || {}
+  init.headers = init.headers || {}
   if (sessionToken) {
-    init = init || {}
-    init.headers = init.headers || {}
     if (init.headers instanceof Headers) {
       init.headers.set('X-Session-Token', sessionToken)
     } else if (Array.isArray(init.headers)) {
@@ -27,6 +33,17 @@ window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
     } else {
       // @ts-ignore
       init.headers['X-Session-Token'] = sessionToken
+    }
+  }
+  const activeSessionId = localStorage.getItem('devpilot_session_id')
+  if (activeSessionId) {
+    if (init.headers instanceof Headers) {
+      init.headers.set('X-Session-ID', activeSessionId)
+    } else if (Array.isArray(init.headers)) {
+      init.headers.push(['X-Session-ID', activeSessionId])
+    } else {
+      // @ts-ignore
+      init.headers['X-Session-ID'] = activeSessionId
     }
   }
   return originalFetch(input, init)

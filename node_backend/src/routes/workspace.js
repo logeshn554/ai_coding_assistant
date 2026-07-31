@@ -196,4 +196,9 @@ router.get('/api/files/search', (req, res) => {
   res.json(results.slice(0, 100));
 });
 
+function getCurrentWorkspacePath() {
+  return currentWorkspacePath;
+}
+
 module.exports = router;
+module.exports.getCurrentWorkspacePath = getCurrentWorkspacePath;

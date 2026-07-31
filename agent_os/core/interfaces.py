@@ -69,3 +69,23 @@ class IServiceRegistry(ABC):
     @abstractmethod
     def resolve(self, service_type: Type[T]) -> T:
         pass
+
+
+class ICache(ABC):
+    """Caching service for embeddings, search results, and LLM responses."""
+    @abstractmethod
+    def get(self, category: str, key: str) -> Any:
+        pass
+
+    @abstractmethod
+    def set(self, category: str, key: str, value: Any, ttl: float | None = None) -> None:
+        pass
+
+    @abstractmethod
+    def delete(self, category: str, key: str) -> None:
+        pass
+
+    @abstractmethod
+    def clear(self) -> None:
+        pass
+

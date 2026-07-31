@@ -1,4 +1,3 @@
-import json
 import logging
 import asyncio
 import os
@@ -16,23 +15,27 @@ except ImportError:
         async def chat(self, *args, **kwargs):
             raise NotImplementedError("OpenAI SDK not available.")
 
-# Attempt to import the scan_for_bugs tool; if unavailable, define a placeholder.
-try:
-    from ..tools import scan_for_bugs_sync as scan_for_bugs  # Adjust relative import as needed
-except Exception:
-    def scan_for_bugs(root_path: str) -> Dict[str, Any]:
-        """Placeholder implementation if the real tool is not available."""
-        return {"error": "scan_for_bugs tool not found"}
-
 from .base import ModelAdapter
+# Kept only for generate_bug_report()'s executor call further down this file.
+from ..tools.scan_for_bugs import scan_for_bugs_sync as scan_for_bugs
 
 class OpenAIAdapter(ModelAdapter):
+    """
+    OpenAI-specific adapter. Only responsible for: building the OpenAI client,
+    making the actual streaming API call, and translating OpenAI's native
+    stream events (delta.content / delta.tool_calls) into the shared chunk
+    format via the base-class helpers. Tool-argument parsing, error
+    formatting, and bug-scan injection all live in ModelAdapter — do not
+    re-implement them here.
+    """
     async def stream_chat(
         self, 
         messages: List[Dict[str, Any]], 
         tools: List[Dict[str, Any]], 
         system_prompt: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
+        # Shared: auto-invoke scan_for_bugs and inject its report if requested.
+        messages = await self.maybe_inject_bug_scan(messages, tools)
         # Initialize AsyncOpenAI client with configurable timeout (default 60s)
         base_url = self.base_url if self.base_url else None
         api_key = self.api_key if self.api_key else "dummy-key"
@@ -76,7 +79,7 @@ class OpenAIAdapter(ModelAdapter):
                     
                     # Check for content delta
                     if getattr(delta, "content", None) is not None:
-                        yield {"type": "text", "content": delta.content}
+                        yield self.build_text_chunk(delta.content)
                     
                     # Check for tool call delta
                     if getattr(delta, "tool_calls", None) is not None:
@@ -119,48 +122,26 @@ class OpenAIAdapter(ModelAdapter):
                                     tool_calls_accum[idx]["thought_signature"] = sig
                             except Exception as e:
                                 logger.debug(f"Failed to extract thought_signature: {e}")
-
-                # Yield completed tool calls after streaming terminates
+ 
+                # Yield completed tool calls after streaming terminates (shared parsing)
                 for idx, tc in tool_calls_accum.items():
                     tc_id = tc["id"] or f"call_{idx}"
-                    tc_name = tc["name"]
-                    tc_args = tc["arguments"]
-                    
-                    error_msg = None
-                    try:
-                        parsed_input = json.loads(tc_args)
-                    except Exception:
-                        try:
-                            parsed_input = json.loads(tc_args.strip())
-                        except Exception:
-                            parsed_input = {"raw_input": tc_args}
-                            error_msg = (
-                                f"Error: model produced malformed JSON arguments for tool '{tc_name}': "
-                                f"{tc_args[:200]}. Tool was not executed."
-                            )
-
-                    chunk_dict = {
-                        "type": "tool_call",
-                        "id": tc_id,
-                        "name": tc_name,
-                        "input": parsed_input,
-                        "thought_signature": tc.get("thought_signature")
-                    }
-                    if error_msg:
-                        chunk_dict["error"] = error_msg
-                    yield chunk_dict
-
+                    parsed_input, error_msg = self.parse_tool_arguments(tc["name"], tc["arguments"])
+                    yield self.build_tool_call_chunk(
+                        tc_id, tc["name"], parsed_input, error_msg, tc.get("thought_signature")
+                    )
+ 
                 stop_reason = "tool_use" if tool_calls_accum else "stop"
-                yield {"type": "done", "stop_reason": stop_reason}
-
+                yield self.build_done_chunk(stop_reason)
+ 
             except Exception as stream_err:
                 err_str = str(stream_err).lower()
                 is_timeout = "timeout" in err_str or "timed out" in err_str or "connecttimeout" in err_str
-
+ 
                 if is_timeout:
                     logger.error(f"OpenAI API request timed out ({stream_err})")
                     raise TimeoutError(f"Request timed out connecting to provider ({base_url or 'OpenAI API'}). Please check network or model endpoint.") from stream_err
-
+ 
                 # If streaming fails for non-timeout reason (e.g. Bedrock/LiteLLM tool use stream error),
                 # fallback to non-streaming request if tools were provided.
                 if openai_tools:
@@ -169,42 +150,25 @@ class OpenAIAdapter(ModelAdapter):
                     try:
                         non_stream_resp = await client.chat.completions.create(**kwargs)
                         if not non_stream_resp.choices:
-                            yield {"type": "done", "stop_reason": "stop"}
+                            yield self.build_done_chunk("stop")
                             return
-
+ 
                         choice = non_stream_resp.choices[0]
                         msg = choice.message
                         if getattr(msg, "content", None):
-                            yield {"type": "text", "content": msg.content}
+                            yield self.build_text_chunk(msg.content)
                         
                         tcs = getattr(msg, "tool_calls", None)
                         if tcs:
                             for idx, tc in enumerate(tcs):
                                 tc_id = tc.id or f"call_{idx}"
-                                tc_name = tc.function.name
-                                tc_args = tc.function.arguments
-                                error_msg = None
-                                try:
-                                    parsed_input = json.loads(tc_args)
-                                except Exception:
-                                    parsed_input = {"raw_input": tc_args}
-                                    error_msg = (
-                                        f"Error: model produced malformed JSON arguments for tool '{tc_name}': "
-                                        f"{tc_args[:200]}. Tool was not executed."
-                                    )
-                                chunk_dict = {
-                                    "type": "tool_call",
-                                    "id": tc_id,
-                                    "name": tc_name,
-                                    "input": parsed_input,
-                                    "thought_signature": None
-                                }
-                                if error_msg:
-                                    chunk_dict["error"] = error_msg
-                                yield chunk_dict
-                            yield {"type": "done", "stop_reason": "tool_use"}
+                                parsed_input, error_msg = self.parse_tool_arguments(
+                                    tc.function.name, tc.function.arguments
+                                )
+                                yield self.build_tool_call_chunk(tc_id, tc.function.name, parsed_input, error_msg)
+                            yield self.build_done_chunk("tool_use")
                         else:
-                            yield {"type": "done", "stop_reason": choice.finish_reason or "stop"}
+                            yield self.build_done_chunk(choice.finish_reason or "stop")
                     except Exception as fallback_err:
                         logger.error(f"Non-streaming fallback failed: {fallback_err}")
                         raise fallback_err

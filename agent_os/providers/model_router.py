@@ -1,3 +1,5 @@
+"""# reference implementation — not wired into production"""
+
 import time
 import asyncio
 from typing import AsyncGenerator, Dict, List, Set, Any

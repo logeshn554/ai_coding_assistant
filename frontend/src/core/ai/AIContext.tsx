@@ -8,6 +8,12 @@ import { useToast } from '../toast/ToastContext';
 
 import type { ChatMessage, Session, SubTask, ChatMode, ToolExecutionItem } from '../../types/chat';
 
+// Module-level logger — must be defined before the component to avoid temporal dead zone
+const logger = {
+  info: (msg: string) => console.log(`[AIContext] INFO: ${msg}`),
+  error: (msg: string) => console.error(`[AIContext] ERROR: ${msg}`)
+};
+
 interface LiveFileChange { path: string; added: number; removed: number; }
 
 interface AIContextType {
@@ -835,8 +841,4 @@ export const useAI = () => {
   return context;
 };
 
-// Global logger helper
-const logger = {
-  info: (msg: string) => console.log(`[AIContext] INFO: ${msg}`),
-  error: (msg: string) => console.error(`[AIContext] ERROR: ${msg}`)
-};
+

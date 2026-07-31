@@ -200,6 +200,8 @@ class AgentSession:
                 res = await db.execute(stmt)
                 session_obj = res.scalar()
                 if session_obj:
+                    if session_obj.mode:
+                        self.last_mode = session_obj.mode
                     raw_history = []
                     for m in session_obj.messages:
                         raw_content = m.content  # May be None or string from DB
@@ -458,6 +460,39 @@ class AgentSession:
                     
         return trimmed_history
 
+    def _extract_tool_call_from_text(self, text: str) -> dict | None:
+        """Fallback parser to extract tool calls formatted as plain JSON in the text response."""
+        if not text:
+            return None
+        clean_text = text.strip()
+        
+        # Remove markdown code fences if present
+        if clean_text.startswith("```"):
+            lines = clean_text.split("\n")
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            clean_text = "\n".join(lines).strip()
+            
+        try:
+            data = json.loads(clean_text)
+            if isinstance(data, dict) and "name" in data and ("arguments" in data or "input" in data):
+                return data
+        except Exception:
+            pass
+            
+        # Regex fallback for embedded JSON object
+        match = re.search(r"(\{.*\})", clean_text, re.DOTALL)
+        if match:
+            try:
+                data = json.loads(match.group(1))
+                if isinstance(data, dict) and "name" in data and ("arguments" in data or "input" in data):
+                    return data
+            except Exception:
+                pass
+        return None
+
     def _get_adapter(self, is_agent: bool = False):
         from ..adapters.router import ModelRouter
         from ..state import config_manager
@@ -645,6 +680,11 @@ class AgentSession:
 
             # Auto-route mode selection if set to 'Auto'
             if mode == "Auto":
+                if getattr(self, "last_mode", None) == "Agent" and len(text_lower) < 30:
+                    mode = "Agent"
+                    logger.info(f"Auto-inherited Agent mode for short follow-up: '{text[:40]}'")
+
+            if mode == "Auto":
                 # â”â” Fast-path router: classify trivial inputs without an LLM call â”â”
                 _t = text.strip().lower().rstrip("!?.,:;")
 
@@ -723,6 +763,8 @@ class AgentSession:
                         logger.error(f"Auto-classifier LLM call failed: {e}")
                         mode = "Ask"  # Safe fallback
                 logger.info(f"Auto-routed '{text[:60]}' â†’ mode={mode}")
+
+            self.last_mode = mode
 
             # Direct tool-calling loop for all modes (Ask/Plan/Agent)
             # The multi-agent orchestrator is bypassed because it requires
@@ -850,6 +892,25 @@ class AgentSession:
                     else:
                         raise e
 
+
+                # Fallback: if no native tool calls were found, try to parse a JSON tool call from the response text.
+                if not tool_calls_to_run and response_text:
+                    parsed_tc = self._extract_tool_call_from_text(response_text)
+                    if parsed_tc:
+                        tc_name = parsed_tc.get("name")
+                        tc_input = parsed_tc.get("arguments") or parsed_tc.get("input") or {}
+                        if tc_name:
+                            import uuid
+                            mock_id = f"call_{uuid.uuid4().hex[:8]}"
+                            tool_calls_to_run.append({
+                                "type": "tool_call",
+                                "id": mock_id,
+                                "name": tc_name,
+                                "input": tc_input
+                            })
+                            # Clean response_text so we don't display raw JSON to user as text
+                            if response_text.strip().startswith("{") and response_text.strip().endswith("}"):
+                                response_text = f"Calling tool `{tc_name}`..."
 
                 # 2. Append assistant response to history
                 assistant_msg = {

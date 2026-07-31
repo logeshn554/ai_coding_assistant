@@ -425,7 +425,22 @@ release_prompt_template = PromptTemplate.from_template(
     "Output a professional RELEASE_NOTES.md document."
 )
 
+search_prompt_template = PromptTemplate.from_template(
+    "You are the Search Agent. Your responsibility is to locate relevant code, symbols, and files in the workspace.\n\n"
+    "Task: {task_description}\n"
+    "Search Query: {search_query}\n\n"
+    "Use search tools to find relevant items. Do not edit any files. Return a summary of your search findings."
+)
+
+memory_prompt_template = PromptTemplate.from_template(
+    "You are the Memory Agent. Your responsibility is to retrieve past conversation contexts and project memories.\n\n"
+    "Task: {task_description}\n"
+    "Context: {context_data}\n\n"
+    "Summarize and package the context for the Coding agent. Do not modify any files."
+)
+
 logger = logging.getLogger("devpilot.orchestrator")
+
 
 ASK_MODE_SYSTEM_PROMPT = (
     "You are DevPilot, an expert AI coding assistant. "
@@ -1019,7 +1034,50 @@ class GitAgent(BaseAgent):
 
 # ── New Specialized Agents (LangGraph nodes) ─────────────────────────────────
 
+class SearchAgent(BaseAgent):
+    """Semantic search, symbol lookup, dependency lookup, and workspace retrieval agent."""
+    def __init__(self, orchestrator):
+        super().__init__("Search Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Search Agent: Locating files and symbols in workspace...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+        
+        repo_kernel = getattr(self.orchestrator, "repo_kernel", None)
+        found_files = []
+        if repo_kernel:
+            import re
+            words = re.findall(r"\b[A-Za-z0-9_]{3,}\b", task_description.lower())
+            for word in words[:3]:
+                files = repo_kernel.find_file(f"%{word}%")
+                found_files.extend(files)
+                
+        summary = f"Found {len(found_files)} potential target files in workspace."
+        self.orchestrator.context.memory["search_summary"] = summary
+        
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return summary
+
+class MemoryAgent(BaseAgent):
+    """Retrieves previous conversations, project memory, and packages task context."""
+    def __init__(self, orchestrator):
+        super().__init__("Memory Agent", orchestrator)
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        await self.orchestrator.context.log("Memory Agent: Retrieving history and packaging context...")
+        await self.orchestrator.update_task_progress(task_id, 20, session)
+        
+        history = getattr(session, "conversation_history", [])
+        history_text = "\n".join([f"{msg.get('role', '?').upper()}: {str(msg.get('content', ''))[:400]}" for msg in history[-10:]])
+        
+        context_package = f"Task Description:\n{task_description}\n\nRecent History:\n{history_text}"
+        self.orchestrator.context.memory["context_package"] = context_package
+        
+        await self.orchestrator.update_task_progress(task_id, 100, session)
+        return "Context package built."
+
 class FrontendPlannerAgent(BaseAgent):
+
     """Plans UI architecture, component hierarchy, state management, and design system."""
     def __init__(self, orchestrator):
         super().__init__("Frontend Planner Agent", orchestrator)
@@ -2373,16 +2431,54 @@ def make_agent_node(agent_name: str):
             "subtasks": state["subtasks"],
             "collaboration_log": state["collaboration_log"]
         })
+
+        # State Manager tracking
+        if hasattr(orchestrator, "state_manager") and orchestrator.state_manager:
+            orchestrator.state_manager.add_active_agent(agent_name)
         
+        # Publish AgentStarted event
+        if hasattr(orchestrator, "event_bus"):
+            try:
+                await orchestrator.event_bus.publish("AgentStarted", {"agent": agent_name, "task": agent_description})
+            except Exception:
+                pass
+
+        # Concurrency File Lock Management
+        is_writer = "coding" in agent_name.lower() or "developer" in agent_name.lower()
+        target_files = state["memory"].get("target_files", [])
+        if is_writer and hasattr(orchestrator, "lock_manager") and orchestrator.lock_manager:
+            for path in target_files:
+                orchestrator.lock_manager.acquire_lock(path, agent_name, exclusive=True)
+                
         agent = orchestrator.agents[agent_name]
         status = "completed"
         progress = 100
         try:
             await agent.execute(agent_description, session, subtask_id)
+            if hasattr(orchestrator, "state_manager") and orchestrator.state_manager:
+                orchestrator.state_manager.add_completed_step(agent_description, agent_name, "success")
         except Exception as e:
             status = "failed"
             progress = 100
             await orchestrator.context.log(f"Orchestrator: Error executing agent {agent_name}: {str(e)}")
+            if hasattr(orchestrator, "state_manager") and orchestrator.state_manager:
+                orchestrator.state_manager.add_error(str(e))
+        finally:
+            # Release Locks
+            if is_writer and hasattr(orchestrator, "lock_manager") and orchestrator.lock_manager:
+                for path in target_files:
+                    orchestrator.lock_manager.release_lock(path, agent_name)
+                    
+            # Remove active agent
+            if hasattr(orchestrator, "state_manager") and orchestrator.state_manager:
+                orchestrator.state_manager.remove_active_agent(agent_name)
+                
+            # Publish AgentFinished event
+            if hasattr(orchestrator, "event_bus"):
+                try:
+                    await orchestrator.event_bus.publish("AgentFinished", {"agent": agent_name, "status": status})
+                except Exception:
+                    pass
             
         # Emit WebSocket event at the end of agent node
         if not is_mock:
@@ -2413,6 +2509,7 @@ def make_agent_node(agent_name: str):
                 logger.error(f"Failed to persist context to Redis in agent turn: {e}")
 
         return state
+
     return node
 
 def route_next(state: AgentState):
@@ -2475,6 +2572,20 @@ class AgentOrchestrator:
         self.max_steps = max_steps
         self.context = SharedContext()
         self.event_bus = EventBus()
+
+        # Instantiate new Agent OS components
+        from agent_os.core.cache import CacheService
+        from agent_os.execution.lock_manager import FileLockManager
+        from agent_os.kernel.state_manager import StateManager
+        from agent_os.context.context_manager import WorkspaceContextManager
+        from agent_os.kernel.scheduler import DependencyScheduler
+
+        self.cache = CacheService()
+        self.lock_manager = FileLockManager()
+        self.state_manager = StateManager(None)
+        self.context_manager = WorkspaceContextManager()
+        self.scheduler_concurrent = DependencyScheduler()
+
         self.agents = {
             # Tier 1: Planning
             "Planner Agent": PlannerAgent(self),
@@ -2509,6 +2620,10 @@ class AgentOrchestrator:
             "Context Compaction Agent": ContextCompactionAgent(self),
             "Title Agent": TitleAgent(self),
             "Summary Agent": SummaryAgent(self),
+            # Tier 7: Next-Gen Reasoning Agents
+            "Search Agent": SearchAgent(self),
+            "Memory Agent": MemoryAgent(self),
+            "Code Agent": CodingAgent(self),
         }
         apply_custom_agents_and_overrides(self)
         agent_names = list(self.agents.keys())
@@ -2518,6 +2633,7 @@ class AgentOrchestrator:
         self.session = session
         if session is not None:
             self._init_kernel(session)
+
 
     def _init_kernel(self, session):
         # 1. Initialize AgentOS kernel & core modules
@@ -2551,16 +2667,47 @@ class AgentOrchestrator:
 
         self.kernel = Kernel(self.registry, self.aos_event_bus, self.config, self.logger_os)
 
+        # Compute persistent directory inside ~/.devpilot/<workspace-hash>/
+        import os
+        import hashlib
+        workspace_root = getattr(session, "workspace_root", None) or ""
+        workspace_hash = hashlib.md5(workspace_root.encode("utf-8")).hexdigest() if workspace_root else "default"
+        workspace_dir = os.path.join(os.path.expanduser("~"), ".devpilot", workspace_hash)
+        os.makedirs(workspace_dir, exist_ok=True)
+
+        repo_db_path = os.path.join(workspace_dir, "repo.db")
+        learning_db_path = os.path.join(workspace_dir, "learning.db")
+        self.memory_json_path = os.path.join(workspace_dir, "memory.json")
+
         # Instantiate kernels & services
-        self.repo_kernel = RepositoryKernel(db_path=":memory:")
+        self.repo_kernel = RepositoryKernel(db_path=repo_db_path)
         self.memory_manager = MemoryKernelManager()
+        if os.path.exists(self.memory_json_path):
+            try:
+                self.memory_manager.load_from_disk(self.memory_json_path)
+            except Exception as load_err:
+                self.logger_os.error(f"Failed to load memory state: {load_err}")
+
         self.exec_engine = TransactionalExecutionEngine()
         self.compiler = PromptCompiler()
         self.router = AgentOSModelRouterBridge(session)
         self.state_machine = TaskStateMachine(event_bus=self.aos_event_bus)
+        
+        # Inject state machine into StateManager
+        from agent_os.kernel.state_manager import StateManager
+        self.state_manager = StateManager(self.state_machine)
+
         self.scheduler = SkillScheduler()
-        self.learning_engine = LearningEngine()
+        self.learning_engine = LearningEngine(db_path=learning_db_path)
         self.optimizer = PerformanceOptimizer()
+
+        # Import Interfaces
+        from agent_os.core.interfaces import ICache
+        from agent_os.execution.interfaces import IFileLockManager
+        from agent_os.context.interfaces import IContextManager
+
+        # Wire context_mgr alias to satisfy DI and name conventions
+        self.context_mgr = self.context_manager
 
         # Register singletons
         self.registry.register_singleton(IRepository, self.repo_kernel)
@@ -2572,13 +2719,23 @@ class AgentOrchestrator:
         self.registry.register_singleton(ISkillScheduler, self.scheduler)
         self.registry.register_singleton(ILearningEngine, self.learning_engine)
         self.registry.register_singleton(IPerformanceOptimizer, self.optimizer)
+        self.registry.register_singleton(ICache, self.cache)
+        self.registry.register_singleton(IFileLockManager, self.lock_manager)
+        self.registry.register_singleton(IContextManager, self.context_mgr)
+        self.registry.register_singleton(StateManager, self.state_manager)
+
 
         # Boot Kernel
         self.kernel.boot()
 
-        # Scan workspace directories using RepositoryKernel and store symbols in SQLite memory database on start
+        # Scan workspace directories using RepositoryKernel and store symbols in SQLite memory database on start in a background thread
         if session.workspace_root:
-            self.repo_kernel.scan_workspace(session.workspace_root)
+            import threading
+            threading.Thread(
+                target=self.repo_kernel.scan_workspace,
+                args=(session.workspace_root,),
+                daemon=True
+            ).start()
 
     async def update_task_progress(self, task_id: int, progress: int, session, status: str = None):
         task = next((t for t in self.context.subtasks if t["id"] == task_id), None)
@@ -2641,6 +2798,23 @@ class AgentOrchestrator:
         self.context.subtasks = []
         self.context.collaboration_log = []
 
+        # Initialize or reset ContextManager and StateManager
+        if hasattr(self, "state_manager") and self.state_manager:
+            self.state_manager.clear()
+            self.state_manager.set_current_task(task_description)
+            
+        if hasattr(self, "context_manager") and self.context_manager:
+            self.context_manager.clear()
+            self.context_manager.workspace_root = session.workspace_root if session else ""
+            self.context_manager.add_message("user", task_description)
+
+        # Publish TaskStarted event
+        if hasattr(self, "event_bus"):
+            try:
+                await self.event_bus.publish("TaskStarted", {"task": task_description})
+            except Exception:
+                pass
+
         # 1. Initialize AgentOS kernel & core modules if not already done
         if not hasattr(self, "kernel") or self.session is not session:
             self._init_kernel(session)
@@ -2652,6 +2826,7 @@ class AgentOrchestrator:
 
         # Setup state machine EventBus updates to broadcast to WebSocket
         async def on_state_changed(payload):
+
             old = payload.get("old_state")
             new = payload.get("new_state")
             
@@ -2715,20 +2890,43 @@ class AgentOrchestrator:
             await self.context.log("AgentOS: Transitioned to EDIT. Processing subtasks transactionally...")
 
             subtasks = self.context.subtasks
-            for i, st in enumerate(subtasks):
-                st_id = st.get("id") or (i + 1)
+            
+            async def execute_one_subtask(st):
+                st_id = st.get("id") or (subtasks.index(st) + 1)
                 st_agent_name = st.get("agent")
                 st_desc = st.get("description", "")
-
+                
                 await self.update_task_progress(st_id, 20, session, status="running")
-
+                
                 specialist = self.agents.get(st_agent_name)
                 if specialist is None:
                     match = next((k for k in self.agents if k.lower() == st_agent_name.lower()), None)
                     specialist = self.agents.get(match) if match else self.agents["Coding Agent"]
-
+                    
                 await self.context.log(f"Starting subtask: {st_desc} with {specialist.name}")
+                
+                # Context Manager tracking
+                if hasattr(self, "context_manager") and self.context_manager:
+                    self.context_manager.add_active_symbol(st_agent_name)
+                    
+                # State Manager active agents
+                if hasattr(self, "state_manager") and self.state_manager:
+                    self.state_manager.add_active_agent(st_agent_name)
+                    
+                # Publish AgentStarted event
+                if hasattr(self, "event_bus"):
+                    try:
+                        await self.event_bus.publish("AgentStarted", {"agent": st_agent_name, "task": st_desc})
+                    except Exception:
+                        pass
 
+                # Concurrency File Lock check
+                is_writer = "coding" in st_agent_name.lower() or "developer" in st_agent_name.lower()
+                target_files = self.context.memory.get("target_files", [])
+                if is_writer and hasattr(self, "lock_manager") and self.lock_manager:
+                    for path in target_files:
+                        self.lock_manager.acquire_lock(path, st_agent_name, exclusive=True)
+                        
                 # Wrap changes in transactional engine
                 tx = exec_engine.create_transaction()
                 tx.begin()
@@ -2737,11 +2935,47 @@ class AgentOrchestrator:
                     tx.commit()
                     await self.update_task_progress(st_id, 100, session, status="completed")
                     await self.context.log(f"Subtask completed successfully: {result}")
+                    
+                    # Update State Manager completed steps
+                    if hasattr(self, "state_manager") and self.state_manager:
+                        self.state_manager.add_completed_step(st_desc, st_agent_name, "success")
+                        
+                    # Publish AgentFinished event
+                    if hasattr(self, "event_bus"):
+                        try:
+                            await self.event_bus.publish("AgentFinished", {"agent": st_agent_name, "status": "completed"})
+                        except Exception:
+                            pass
+                    return result
                 except Exception as st_err:
                     tx.rollback()
                     await self.update_task_progress(st_id, 0, session, status="failed")
                     await self.context.log(f"Subtask failed (rolled back changes): {str(st_err)}")
+                    
+                    # Update State Manager error
+                    if hasattr(self, "state_manager") and self.state_manager:
+                        self.state_manager.add_error(str(st_err))
+                        
+                    # Publish AgentFinished event
+                    if hasattr(self, "event_bus"):
+                        try:
+                            await self.event_bus.publish("AgentFinished", {"agent": st_agent_name, "status": "failed"})
+                        except Exception:
+                            pass
                     raise st_err
+                finally:
+                    # Release Locks
+                    if is_writer and hasattr(self, "lock_manager") and self.lock_manager:
+                        for path in target_files:
+                            self.lock_manager.release_lock(path, st_agent_name)
+                            
+                    # Remove active agent from State Manager
+                    if hasattr(self, "state_manager") and self.state_manager:
+                        self.state_manager.remove_active_agent(st_agent_name)
+
+            # Execute graph via the concurrency scheduler
+            await self.scheduler_concurrent.execute_graph(subtasks, execute_one_subtask)
+
 
             # 5. State: EDIT -> VERIFY
             state_machine.transition_to("VERIFY")
@@ -2777,6 +3011,13 @@ class AgentOrchestrator:
             await self.context.log(f"AgentOS failed: {str(e)}")
             raise e
         finally:
+            if hasattr(self, "memory_manager") and self.memory_manager and hasattr(self, "memory_json_path") and self.memory_json_path:
+                try:
+                    self.memory_manager.set_current_task(task_description)
+                    self.memory_manager.add_event("TaskFinished", {"task": task_description, "state": state_machine.current_state})
+                    self.memory_manager.persist_to_disk(self.memory_json_path)
+                except Exception as persist_err:
+                    logger.error(f"Failed to persist memory state: {persist_err}")
             kernel.shutdown()
 
         await session.send_ws_message({

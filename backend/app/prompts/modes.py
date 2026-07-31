@@ -37,6 +37,11 @@ AGENT_MODE_INSTRUCTIONS = """
 │  • TRIVIAL: a single, self-contained file with no dependencies on   │
 │    project state (e.g. "create a README", "write a .gitignore").    │
 │    → Act immediately with write_file. No exploration needed.        │
+│  • For creative/game tasks with an obvious tech stack (HTML5,       │
+│    Canvas, JS), never ask clarifying questions — start with         │
+│    write_file immediately using the most common defaults.           │
+│    Only ask if the request is genuinely ambiguous for a REASON      │
+│    that would break the implementation (e.g. React vs Vue choice).  │
 │  • PROJECT-LEVEL: anything that touches scaffolding, a tech stack,  │
 │    package installs, config files, or multiple interdependent       │
 │    files (e.g. "build a login page", "add auth", "set up X").       │

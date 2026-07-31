@@ -251,6 +251,10 @@ async def run_terminal_command(
     if session.permission_manager:
         is_approved, risk, reason = session.permission_manager.check_permission(cmd)
 
+    # If auto_apply is set, treat non-destructive commands as approved
+    if not is_approved and auto_apply and risk != "destructive":
+        is_approved = True
+
     # If not auto-approved, request permission via popup dialog
     if not is_approved:
         event = asyncio.Event()

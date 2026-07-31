@@ -31,7 +31,7 @@ from app.tools.file_tools import (
     _check_missing_packages,
     write_or_edit_file,
 )
-from app.tools.terminal_tool import _resolve_timeout, run_shell_command
+from app.tools.terminal_tool import _resolve_timeout, run_shell_command, run_terminal_command
 
 
 class MockSession:
@@ -369,3 +369,64 @@ async def test_terminal_self_healing(tmp_path):
     session._run_llm_query.assert_called_once()
     # Check that exit_code was tracked (the retried exit code will also be 1 in this real run)
     assert getattr(session, "last_exit_code", 0) == 1
+
+
+@pytest.mark.asyncio
+async def test_fallback_json_tool_call_parsing(tmp_path):
+    """Verify that AgentSession correctly extracts and executes fallback JSON tool calls from text response."""
+    session = AgentSession(str(tmp_path), {"max_turns": 5}, AsyncMock())
+    
+    # Mock text response containing JSON tool call
+    json_text = '''{
+  "name": "list_directory",
+  "arguments": {
+    "recursive": true,
+    "depth": 4
+  }
+}'''
+    
+    parsed = session._extract_tool_call_from_text(json_text)
+    assert parsed is not None
+    assert parsed["name"] == "list_directory"
+    assert parsed["arguments"]["recursive"] is True
+    assert parsed["arguments"]["depth"] == 4
+
+
+@pytest.mark.asyncio
+async def test_last_mode_inheritance_for_short_replies(tmp_path):
+    """Verify that short user follow-ups in Auto mode inherit the previous Agent mode."""
+    session = AgentSession(str(tmp_path), {"max_turns": 5}, AsyncMock())
+    session.last_mode = "Agent"
+    
+    # We mock _run_llm_query just in case, but it shouldn't be called since it inherits Agent
+    session._run_llm_query = AsyncMock(return_value="Ask")
+    
+    # When user replies with "html" (length < 30) in "Auto" mode, it should inherit "Agent"
+    await session.handle_user_message("html", mode="Auto")
+    assert session.last_mode == "Agent"
+    session._run_llm_query.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_terminal_auto_apply_bypass(tmp_path):
+    """Verify that run_terminal_command bypasses the permission prompt if auto_apply is True for non-destructive commands."""
+    session = AgentSession(str(tmp_path), {"max_turns": 5}, AsyncMock())
+    
+    class MockPermissionManager:
+        def check_permission(self, cmd):
+            # Command is mutative but not destructive, and not auto-approved by default
+            return False, "mutative", "Needs prompt"
+            
+    session.permission_manager = MockPermissionManager()
+    
+    # We mock the actual shell execution
+    with patch("app.tools.terminal_tool.run_shell_command", AsyncMock(return_value="success")):
+        res = await run_terminal_command(
+            session=session,
+            tc_id="tc_auto_1",
+            args={"command": "npm run build"},
+            auto_apply=True
+        )
+        assert res == "success"
+        # No pending confirmations should be created
+        assert "tc_auto_1" not in session.pending_confirmations

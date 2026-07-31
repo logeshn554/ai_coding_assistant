@@ -120,8 +120,12 @@ function TerminalPane({
       }
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const token = localStorage.getItem('session_token') || '';
-      const wsUrl = `${protocol}//${window.location.host}/ws/terminal?token=${token}${shell ? `&shell=${encodeURIComponent(shell)}` : ''}`;
+      const sessionId = localStorage.getItem('devpilot_session_id') || '';
+      const params = new URLSearchParams();
+      if (shell) params.set('shell', shell);
+      if (workspacePath) params.set('workspace', workspacePath);
+      if (sessionId) params.set('session_id', sessionId);
+      const wsUrl = `${protocol}//${window.location.host}/ws/terminal?${params.toString()}`;
       const socket = new WebSocket(wsUrl);
       ws = socket;
       wsRef.current = socket;
@@ -262,12 +266,13 @@ function TerminalPane({
       window.removeEventListener('devpilot_terminal_stream', handleAgentStream);
       term.dispose();
       resizeObserver.disconnect();
-      if (ws) {
-        ws.onmessage = null;
-        ws.onerror = null;
-        ws.onclose = null;
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close();
+      const activeWs = wsRef.current || ws;
+      if (activeWs) {
+        activeWs.onmessage = null;
+        activeWs.onerror = null;
+        activeWs.onclose = null;
+        if (activeWs.readyState === WebSocket.OPEN) {
+          activeWs.close();
         }
       }
     };

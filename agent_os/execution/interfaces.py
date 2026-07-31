@@ -52,3 +52,19 @@ class ITransactionalExecutionEngine(ABC):
     def validate_patch(self, file_path: str, current_content: str, target_content: str, replacement_content: str) -> str:
         """Validates syntax, conflict detection, and formatting. Returns the patched code on success."""
         pass
+
+
+class IFileLockManager(ABC):
+    """File Lock Manager interface to coordinate concurrent file access between agents."""
+    @abstractmethod
+    def acquire_lock(self, file_path: str, agent_name: str, exclusive: bool = True) -> bool:
+        pass
+
+    @abstractmethod
+    def release_lock(self, file_path: str, agent_name: str) -> bool:
+        pass
+
+    @abstractmethod
+    def is_locked(self, file_path: str) -> bool:
+        pass
+

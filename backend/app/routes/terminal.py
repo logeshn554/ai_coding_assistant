@@ -9,13 +9,25 @@ from ..terminal import TerminalManager
 router = APIRouter()
 
 @router.websocket("/ws/terminal")
-async def websocket_terminal(websocket: WebSocket, token: Optional[str] = Query(None), shell: Optional[str] = Query(None)):
+async def websocket_terminal(
+    websocket: WebSocket,
+    token: Optional[str] = Query(None),
+    shell: Optional[str] = Query(None),
+    session_id: Optional[str] = Query(None),
+):
     await websocket.accept()
     # S1: Validate bearer token — the terminal exposes a full interactive PTY.
     if not token or not secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         await websocket.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid or missing token."}))
         await websocket.close(code=4401)
         return
+    
+    # NOTE: app.middleware("http") does NOT run for websocket connections,
+    # so session_id_var is never populated here by session_middleware.
+    # Set it explicitly from the query param so workspace_state.root resolves
+    # to this session's actual opened folder instead of the global default.
+    from ..state import session_id_var
+    session_token = session_id_var.set(session_id)
     
     async def send_to_client(data: str):
         try:
@@ -42,6 +54,7 @@ async def websocket_terminal(websocket: WebSocket, token: Optional[str] = Query(
         except (json.JSONDecodeError, TypeError):
             first_data = raw
     except WebSocketDisconnect:
+        session_id_var.reset(session_token)
         return
 
     await term_manager.start(cols=initial_cols, rows=initial_rows)
@@ -87,3 +100,4 @@ async def websocket_terminal(websocket: WebSocket, token: Optional[str] = Query(
     finally:
         hb_task.cancel()
         await term_manager.stop()
+        session_id_var.reset(session_token)

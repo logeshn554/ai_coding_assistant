@@ -6,8 +6,14 @@ import subprocess
 import webbrowser
 import signal
 def is_port_open(port):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(('127.0.0.1', port)) == 0
+    # Try both IPv4 (127.0.0.1) and localhost (IPv4/IPv6)
+    for host in ('127.0.0.1', 'localhost'):
+        try:
+            with socket.create_connection((host, port), timeout=0.2) as s:
+                return True
+        except Exception:
+            continue
+    return False
 
 def get_python_executable():
     # Resolve local virtual env python executable
