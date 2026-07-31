@@ -54,20 +54,34 @@ class PatchedWebSocket extends OriginalWebSocket {
 // @ts-ignore
 window.WebSocket = PatchedWebSocket
 
+async function fetchTokenWithRetry(retries = 5, delay = 1000): Promise<string> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await originalFetch('/auth/token');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.token) return data.token;
+      }
+    } catch (e) {
+      console.warn(`Auth token fetch attempt ${i + 1} failed:`, e);
+    }
+    if (i < retries - 1) {
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  return '';
+}
+
 // Fetch session token on startup, then mount the React application
 async function initApp() {
   try {
-    const res = await originalFetch('/auth/token')
-    if (res.ok) {
-      const data = await res.json()
-      sessionToken = data.token
-      // Store in localStorage so reconnect retries and other components can read it
-      if (sessionToken) {
-        localStorage.setItem('session_token', sessionToken)
-      }
+    sessionToken = await fetchTokenWithRetry();
+    // Store in localStorage so reconnect retries and other components can read it
+    if (sessionToken) {
+      localStorage.setItem('session_token', sessionToken);
     }
   } catch (e) {
-    console.error('Failed to fetch auth token:', e)
+    console.error('Failed to fetch auth token:', e);
   }
 
   createRoot(document.getElementById('root')!).render(

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import secrets
 from typing import Optional
@@ -49,6 +50,15 @@ async def websocket_terminal(websocket: WebSocket, token: Optional[str] = Query(
     if first_data is not None:
         await term_manager.write(first_data)
     
+    async def heartbeat():
+        while True:
+            await asyncio.sleep(20)
+            try:
+                await websocket.send_text(json.dumps({"type": "ping"}))
+            except Exception:
+                break
+
+    hb_task = asyncio.create_task(heartbeat())
     try:
         while True:
             raw = await websocket.receive_text()
@@ -57,11 +67,14 @@ async def websocket_terminal(websocket: WebSocket, token: Optional[str] = Query(
             if raw.startswith("{"):
                 try:
                     msg = json.loads(raw)
-                    if isinstance(msg, dict) and msg.get("type") == "resize":
-                        cols = msg.get("cols", 120)
-                        rows = msg.get("rows", 30)
-                        await term_manager.resize(cols, rows)
-                        continue
+                    if isinstance(msg, dict):
+                        if msg.get("type") == "resize":
+                            cols = msg.get("cols", 120)
+                            rows = msg.get("rows", 30)
+                            await term_manager.resize(cols, rows)
+                            continue
+                        elif msg.get("type") == "pong":
+                            continue
                 except (json.JSONDecodeError, TypeError):
                     pass  # Not valid JSON — treat as regular terminal input
             
@@ -72,4 +85,5 @@ async def websocket_terminal(websocket: WebSocket, token: Optional[str] = Query(
     except Exception as e:
         logger.error(f"Terminal WebSocket error: {str(e)}")
     finally:
+        hb_task.cancel()
         await term_manager.stop()

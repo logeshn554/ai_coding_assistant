@@ -105,8 +105,20 @@ function TerminalPane({
 
     let ws: WebSocket | null = null;
     let disposable: any = null;
+    let reconnectAttempts = 0;
+    let reconnectTimeout: any = null;
 
-    if (!isAgent) {
+    const connectTerminal = () => {
+      if (guard.cancelled) return;
+
+      // Close previous socket if still lingering
+      if (ws) {
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        try { ws.close(); } catch {}
+      }
+
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const token = localStorage.getItem('session_token') || '';
       const wsUrl = `${protocol}//${window.location.host}/ws/terminal?token=${token}${shell ? `&shell=${encodeURIComponent(shell)}` : ''}`;
@@ -130,6 +142,7 @@ function TerminalPane({
           try { socket.close(); } catch {}
           return;
         }
+        reconnectAttempts = 0; // reset attempts on successful connection
         sendResize();
 
         if (pendingCommandRef.current) {
@@ -139,23 +152,57 @@ function TerminalPane({
       };
 
       socket.onmessage = (event) => {
+        // Intercept ping from server
+        if (typeof event.data === 'string' && event.data.startsWith('{"type":')) {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'ping') {
+              socket.send(JSON.stringify({ type: 'pong' }));
+              return;
+            }
+          } catch {}
+        }
         term.write(event.data);
         checkOutputForLocalhost(String(event.data || ''));
       };
 
-      socket.onclose = () => {
-        term.write('\r\n\x1b[90mTerminal session ended.\x1b[0m\r\n');
+      socket.onclose = (event) => {
+        if (guard.cancelled) return;
+
+        // Don't auto-reconnect if token is invalid/unauthorized
+        if (event.code === 4401) {
+          term.write('\r\n\x1b[31mTerminal session unauthorized. Please reload.\x1b[0m\r\n');
+          return;
+        }
+
+        if (reconnectAttempts >= 5) {
+          term.write('\r\n\x1b[31mTerminal disconnected. Refresh to reconnect.\x1b[0m\r\n');
+          return;
+        }
+
+        const delay = Math.min(500 * 2 ** reconnectAttempts, 8000);
+        reconnectAttempts++;
+        term.write(`\r\n\x1b[90mReconnecting in ${delay}ms (attempt ${reconnectAttempts})...\x1b[0m\r\n`);
+        
+        reconnectTimeout = setTimeout(() => {
+          if (!guard.cancelled) connectTerminal();
+        }, delay);
       };
 
       socket.onerror = () => {
         term.write('\r\n\x1b[31mTerminal connection error.\x1b[0m\r\n');
       };
 
+      if (disposable) disposable.dispose();
       disposable = term.onData((data) => {
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(data);
         }
       });
+    };
+
+    if (!isAgent) {
+      connectTerminal();
     } else {
       term.write('\x1b[35m[DevPilot Agent Terminal Ready]\x1b[0m\r\n');
     }
@@ -179,8 +226,8 @@ function TerminalPane({
 
     // Send resize events when xterm's dimensions change (from fitAddon)
     const resizeDisposable = term.onResize(({ cols, rows }) => {
-      if (!isAgent && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+      if (!isAgent && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'resize', cols, rows }));
       }
     });
 
@@ -209,6 +256,7 @@ function TerminalPane({
     return () => {
       guard.cancelled = true;
       clearTimeout(timer);
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (disposable) disposable.dispose();
       resizeDisposable.dispose();
       window.removeEventListener('devpilot_terminal_stream', handleAgentStream);

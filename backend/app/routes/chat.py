@@ -614,6 +614,15 @@ async def websocket_chat(
     except Exception as e:
         logger.error(f"Failed to restore context from Redis: {e}")
     
+    async def heartbeat():
+        while True:
+            await asyncio.sleep(20)
+            try:
+                await request.send_text(json.dumps({"type": "ping"}))
+            except Exception:
+                break
+
+    hb_task = asyncio.create_task(heartbeat())
     try:
         from ..processes import global_process_manager
         while True:
@@ -621,6 +630,9 @@ async def websocket_chat(
             msg = json.loads(raw_msg)
             msg_type = msg.get("type")
             
+            if msg_type == "pong":
+                continue
+                
             if msg_type == "user_message":
                 text = msg.get("text", "")
                 mode = msg.get("mode", "Ask")
@@ -701,4 +713,6 @@ async def websocket_chat(
             item["event"].set()
     except Exception as e:
         logger.error(f"Chat WebSocket error: {str(e)}")
+    finally:
+        hb_task.cancel()
 

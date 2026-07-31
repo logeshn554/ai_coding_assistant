@@ -297,6 +297,9 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       switch (data.type) {
+        case 'ping':
+          wsRef.current?.send(JSON.stringify({ type: 'pong' }));
+          break;
         case 'text_delta':
           const currentAssistantId = lastAssistantMsgIdRef.current;
           if (currentAssistantId) {
