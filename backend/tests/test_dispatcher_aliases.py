@@ -26,6 +26,9 @@ class MockSession:
     async def monitor_and_stream_events(self, proc):
         pass
 
+    def log_audit(self, *args, **kwargs):
+        pass
+
 @pytest.mark.asyncio
 async def test_tool_name_aliases(tmp_path):
     session = MockSession(str(tmp_path))
@@ -52,3 +55,14 @@ async def test_open_with_live_server_tool(tmp_path):
     assert "Live Server Started" in res
     import re
     assert re.search(r"http://localhost:\d+/index.html", res) is not None
+
+@pytest.mark.asyncio
+async def test_delete_file_tool(tmp_path):
+    session = MockSession(str(tmp_path))
+    test_file = tmp_path / "index.html"
+    test_file.write_text("<h1>Test Delete</h1>", encoding="utf-8")
+    assert test_file.exists()
+
+    res = await dispatch_tool(session, "tc-delete-1", "delete", {"path": "index.html"}, auto_apply=True)
+    assert "Successfully deleted" in res
+    assert not test_file.exists()

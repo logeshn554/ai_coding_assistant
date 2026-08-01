@@ -10,6 +10,7 @@ interface FileContextMenuProps {
   onStartCreateInFolder: (dirPath: string, type: 'file' | 'folder') => void;
   onStartRename: (item: FileItem) => void;
   onDelete: (item: FileItem) => void;
+  selectedCount?: number;
 }
 
 export const FileContextMenu: React.FC<FileContextMenuProps> = ({
@@ -18,6 +19,7 @@ export const FileContextMenu: React.FC<FileContextMenuProps> = ({
   onStartCreateInFolder,
   onStartRename,
   onDelete,
+  selectedCount = 1,
 }) => {
   const { setBottomTab, setActiveTerminalCommand } = useTerminal();
 
@@ -56,7 +58,7 @@ export const FileContextMenu: React.FC<FileContextMenuProps> = ({
     },
     { type: 'divider' },
     {
-      label: 'Delete',
+      label: selectedCount > 1 ? `Delete Selected (${selectedCount})` : 'Delete',
       destructive: true,
       onClick: () => onDelete(item),
     },

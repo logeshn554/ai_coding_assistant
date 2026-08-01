@@ -94,20 +94,15 @@ planner_prompt_template = PromptTemplate.from_template(
     "Request: {task_description}\n\n"
     "RULES:\n"
     "- Include ONLY agents that are needed for this specific request.\n"
-    "- Simple single-file changes: [Requirement Analysis Agent → File System Agent → "
-    "one coding agent]. Do NOT add Terminal, Testing, or Documentation unless the task needs them.\n"
-    "- Include Terminal Agent ONLY when compilation/build verification is meaningful "
-    "(e.g., new dependencies, build config changes, TypeScript changes).\n"
-    "- Include Testing Agent ONLY when tests exist or are being written.\n"
-    "- Include Documentation Agent ONLY for new features or API changes.\n"
+    "- Simple single-file changes: [Requirement Analysis Agent → File System Agent → one coding agent].\n"
     "- Tasks with empty dependencies[] can run in parallel.\n"
-    "- Use exactly ONE of: Coding Agent, Frontend Developer Agent, or Backend Developer Agent "
-    "(choose based on what files change — never two on the same files).\n\n"
-    "Output ONLY a JSON array with no other text:\n"
+    "- Decompose large tasks (e.g. game builds or multi-file projects) into separate one-file-per-LLM-call subtasks (e.g., one subtask for creating index.html, one subtask for style.css, one subtask for script.js, one subtask for README.md). Do not group multiple code files into a single subtask.\n"
+    "- Use exactly ONE of: Coding Agent, Frontend Developer Agent, or Backend Developer Agent (choose based on what files change).\n\n"
+    "Output ONLY a JSON array of objects, with no extra formatting, markdown tags, or headers:\n"
     "[\n"
-    '  {{"id": 1, "agent": "Requirement Analysis Agent", "description": "...", "dependencies": []}},\n'
-    '  {{"id": 2, "agent": "File System Agent", "description": "...", "dependencies": [1]}},\n'
-    '  {{"id": 3, "agent": "Backend Developer Agent", "description": "...", "dependencies": [2]}}\n'
+    '  {{"id": 1, "agent": "Requirement Analysis Agent", "description": "Identify files to read/modify", "dependencies": []}},\n'
+    '  {{"id": 2, "agent": "File System Agent", "description": "Read file contents", "dependencies": [1]}},\n'
+    '  {{"id": 3, "agent": "Coding Agent", "description": "Create or modify flappy-bird/index.html", "dependencies": [2]}}\n'
     "]\n\n"
     "Available agents: Planner Agent, Requirement Analysis Agent, Coding Agent, "
     "Frontend Developer Agent, Backend Developer Agent, File System Agent, Software Architect Agent, "
@@ -117,18 +112,18 @@ planner_prompt_template = PromptTemplate.from_template(
 )
 
 requirement_prompt_template = PromptTemplate.from_template(
-    "You are the Requirement Analysis Agent. Walk the live workspace file tree and identify "
-    "exactly which files need to be read or modified for this task.\n\n"
+    "You are the Requirement Analysis Agent (Research Agent). Walk the live workspace file tree and identify "
+    "exactly which files need to be read or modified for this task, and generate a markdown report of findings.\n\n"
     "Task: {task_description}\n\n"
     "Workspace files:\n{codebase_details}\n\n"
-    "Rules:\n"
-    "- Output a JSON list of relative file paths. No other text.\n"
-    "- Only include files that are directly relevant to the task.\n"
-    "- If a config file (tsconfig.json, package.json, requirements.txt) is affected, include it.\n"
-    "- Do not include test files unless the task is specifically about tests.\n"
-    "- Max 10 files. If you need more, the task should be broken into subtasks.\n\n"
-    "Example output: [\"src/components/Auth.tsx\", \"backend/app/routes/auth.py\"]\n\n"
-    "Store result in shared_memory[\"target_files\"] ."
+    "RULES:\n"
+    "1. You must output ONLY a valid JSON object. No other text or markdown wrapper.\n"
+    "2. The JSON object must be structured exactly as follows:\n"
+    "{{\n"
+    "  \"report\": \"# Research Findings and analysis details...\",\n"
+    "  \"target_files\": [\"relative/path/to/file1\", \"relative/path/to/file2\"]\n"
+    "}}\n"
+    "3. Limit to relevant files."
 )
 
 coding_prompt_template = PromptTemplate.from_template(
@@ -138,36 +133,50 @@ coding_prompt_template = PromptTemplate.from_template(
     "Target file: {path}\n"
     "File context (targeted excerpts):\n{file_context}\n\n"
     "RULES:\n"
-    "1. Read the file context above BEFORE making any changes.\n"
-    "2. Use edit_file for targeted changes to existing files.\n"
-    "3. Use write_file only for new files or complete rewrites.\n"
-    "4. NEVER truncate code in your output. Output complete modifications.\n"
-    "5. NEVER use placeholder comments like '# TODO' or '... rest of code'.\n"
-    "6. Add type hints to every function you write.\n"
-    "7. Follow the existing code style in each file.\n"
-    "8. After changes, run the appropriate build/lint command to verify."
+    "1. You must output ONLY a valid JSON object. No other text or markdown wrapper.\n"
+    "2. The JSON object must be structured exactly as follows:\n"
+    "{{\n"
+    "  \"files\": [\n"
+    "    {{\n"
+    "      \"path\": \"{path}\",\n"
+    "      \"content\": \"complete, untruncated file content\"\n"
+    "    }}\n"
+    "  ]\n"
+    "}}\n"
+    "3. NEVER use placeholder comments like '# TODO' or '... rest of code'. Write production-ready code."
 )
 
 terminal_prompt_template = PromptTemplate.from_template(
-    "Name a logical terminal command (e.g. 'npm run build', 'npm run test', 'pytest') "
-    "to verify this task:\n\n"
+    "You are the Terminal Agent. Specify the shell commands to execute for verifying the task:\n\n"
     "Task: {task_description}\n\n"
-    "Respond with ONLY the command string. If no command is needed, output 'NONE'."
+    "RULES:\n"
+    "1. You must output ONLY a valid JSON object. No other text or markdown wrapper.\n"
+    "2. The JSON object must be structured exactly as follows:\n"
+    "{{\n"
+    "  \"commands\": [\"command1\", \"command2\"]\n"
+    "}}\n"
+    "If no commands are needed, return an empty array []."
 )
 
 debugging_prompt_template = PromptTemplate.from_template(
-    "You are the Debugging Agent — a principal engineer who diagnoses and fixes issues.\n\n"
+    "You are the Debug Agent — a principal engineer who diagnoses and fixes issues.\n\n"
     "Task: {task_description}\n"
     "Error output: {build_error}\n"
     "Recent changes: {recent_commits}\n"
     "File contents: {file_contents}\n\n"
-    "PROCESS:\n"
-    "1. State the root cause in ONE sentence (file:line — what and why).\n"
-    "2. Apply the minimal surgical fix using edit_file. Never rewrite unrelated code.\n"
-    "3. Explain why the bug existed (the mechanism, not just 'it was wrong').\n"
-    "4. Suggest ONE concrete prevention (lint rule, type check, test) for this bug class.\n"
-    "5. Re-run the failing command to confirm the fix works.\n\n"
-    "Shared memory context:\n{shared_memory}"
+    "RULES:\n"
+    "1. You must output ONLY a valid JSON object. No other text or markdown wrapper.\n"
+    "2. The JSON object must be structured exactly as follows:\n"
+    "{{\n"
+    "  \"explanation\": \"Brief description of why the bug existed\",\n"
+    "  \"fixes\": [\n"
+    "    {{\n"
+    "      \"path\": \"relative/path/to/buggy_file\",\n"
+    "      \"content\": \"complete corrected file contents\"\n"
+    "    }}\n"
+    "  ]\n"
+    "}}\n"
+    "3. Minimize changes, only correct the buggy lines."
 )
 
 documentation_prompt_template = PromptTemplate.from_template(
@@ -486,6 +495,51 @@ class BaseAgent:
     async def execute(self, task_description: str, session, task_id: int) -> str:
         raise NotImplementedError
 
+class ParallelAgentAdapter(BaseAgent):
+    def __init__(self, name: str, orchestrator, agent_cls_name: str):
+        super().__init__(name, orchestrator)
+        self.agent_cls_name = agent_cls_name
+
+    async def execute(self, task_description: str, session, task_id: int) -> str:
+        from parallel_agent_system.core.config import SystemConfig
+        from parallel_agent_system.core.state import SubTask
+        
+        # Late imports
+        if self.agent_cls_name == "CodeAgent":
+            from parallel_agent_system.agents.code_agent import CodeAgent
+            agent_cls = CodeAgent
+        elif self.agent_cls_name == "DocsAgent":
+            from parallel_agent_system.agents.docs_agent import DocsAgent
+            agent_cls = DocsAgent
+        elif self.agent_cls_name == "ReviewAgent":
+            from parallel_agent_system.agents.review_agent import ReviewAgent
+            agent_cls = ReviewAgent
+        elif self.agent_cls_name == "TestAgent":
+            from parallel_agent_system.agents.test_agent import TestAgent
+            agent_cls = TestAgent
+        else:
+            raise ValueError(f"Unknown parallel agent: {self.agent_cls_name}")
+            
+        parallel_agent = agent_cls(SystemConfig())
+        
+        subtask = SubTask(
+            id=f"subtask_{task_id}_{uuid.uuid4().hex[:6]}",
+            agent_type=parallel_agent.agent_type,
+            description=task_description,
+            dependencies=[],
+            workspace_dir=getattr(session, "workspace_root", "./") or "./"
+        )
+        
+        await self.orchestrator.context.log(f"ParallelAgentAdapter ({self.name}): Executing via parallel agent system runtime...")
+        res = await parallel_agent.run(subtask, session)
+        
+        if res.status == "success":
+            await self.orchestrator.context.log(f"ParallelAgentAdapter ({self.name}): Execution success. Output: {res.output}")
+            return res.output
+        else:
+            await self.orchestrator.context.log(f"ParallelAgentAdapter ({self.name}): Execution failed: {res.output}")
+            return f"Failed: {res.output}"
+
 class PlannerAgent(BaseAgent):
     """Breaks down requests into a logical sequence of subtasks with dependencies."""
     def __init__(self, orchestrator):
@@ -495,7 +549,7 @@ class PlannerAgent(BaseAgent):
         await self.orchestrator.context.log("Planner Agent: Formulating execution plan...")
         
         chat_prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a master software architect planner. Output ONLY valid JSON."),
+            ("system", "You are a master software architect planner. Output ONLY a valid JSON array of subtask objects."),
             ("human", "{prompt_content}")
         ])
         prompt_content = planner_prompt_template.format(task_description=task_description)
@@ -518,15 +572,26 @@ class PlannerAgent(BaseAgent):
         response = response_msg.content
         try:
             clean_res = response.strip()
-            if clean_res.startswith("```json"):
-                clean_res = clean_res[7:]
-            if clean_res.endswith("```"):
-                clean_res = clean_res[:-3]
+            if "```json" in clean_res:
+                clean_res = clean_res.split("```json")[1].split("```")[0].strip()
+            elif "```" in clean_res:
+                clean_res = clean_res.split("```")[1].split("```")[0].strip()
+            
+            # Find bracket boundaries
+            start_idx = clean_res.find('[')
+            end_idx = clean_res.rfind(']')
+            if start_idx != -1 and end_idx != -1:
+                clean_res = clean_res[start_idx:end_idx+1]
+                
             subtasks = json.loads(clean_res.strip())
-            self.orchestrator.context.subtasks = subtasks
-            await self.orchestrator.context.log(f"Planner Agent: Formulated plan containing {len(subtasks)} subtasks.")
-            return f"Plan formulated with {len(subtasks)} subtasks."
-        except Exception:
+            if isinstance(subtasks, list):
+                self.orchestrator.context.subtasks = subtasks
+                await self.orchestrator.context.log(f"Planner Agent: Formulated plan containing {len(subtasks)} subtasks.")
+                return f"Plan formulated with {len(subtasks)} subtasks."
+            else:
+                raise ValueError("Parsed JSON is not a list")
+        except Exception as e:
+            logger.error(f"Planner JSON parsing failed: {e}. Raw response: {response}")
             self.orchestrator.context.subtasks = [
                 {"id": 1, "agent": "Requirement Analysis Agent", "description": "Formulate exact file modifications and target list", "dependencies": []},
                 {"id": 2, "agent": "File System Agent", "description": "Locate files and read their contents", "dependencies": [1]},
@@ -601,7 +666,7 @@ class RequirementAnalysisAgent(BaseAgent):
             logger.error(f"Error listing workspace files: {e}")
             
         chat_prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a master requirement analysis engineer. Output ONLY valid JSON array of strings."),
+            ("system", "You are a master requirement analysis engineer. Output ONLY a valid JSON object."),
             ("human", "{prompt_content}")
         ])
         prompt_content = requirement_prompt_template.format(task_description=task_description, codebase_details=codebase_details)
@@ -615,17 +680,41 @@ class RequirementAnalysisAgent(BaseAgent):
         
         try:
             clean_res = response.strip()
-            if clean_res.startswith("```json"):
-                clean_res = clean_res[7:]
-            if clean_res.endswith("```"):
-                clean_res = clean_res[:-3]
-            files = json.loads(clean_res.strip())
-            if isinstance(files, list):
-                self.orchestrator.context.memory["target_files"] = files
-                await self.orchestrator.context.log(f"Requirement Analysis Agent: Identified target files: {files}")
+            if "```json" in clean_res:
+                clean_res = clean_res.split("```json")[1].split("```")[0].strip()
+            elif "```" in clean_res:
+                clean_res = clean_res.split("```")[1].split("```")[0].strip()
+            
+            indices = [i for i in [clean_res.find('{'), clean_res.find('[')] if i != -1]
+            first_idx = min(indices) if indices else -1
+            r_indices = [i for i in [clean_res.rfind('}'), clean_res.rfind(']')] if i != -1]
+            last_idx = max(r_indices) if r_indices else -1
+            if first_idx != -1 and last_idx != -1:
+                clean_res = clean_res[first_idx:last_idx+1]
+                
+            data = json.loads(clean_res.strip())
+            report = ""
+            target_files = []
+            if isinstance(data, dict):
+                report = data.get("report", "")
+                target_files = data.get("target_files", [])
+            elif isinstance(data, list):
+                target_files = data
+            
+            # Save research findings report to RESEARCH_REPORT.md
+            if report:
+                report_path = os.path.join(session.workspace_root, "RESEARCH_REPORT.md")
+                with open(report_path, "w", encoding="utf-8") as f:
+                    f.write(report)
+                await self.orchestrator.context.log(f"Requirement Analysis Agent: Saved research report to RESEARCH_REPORT.md")
+                
+            if isinstance(target_files, list):
+                self.orchestrator.context.memory["target_files"] = target_files
+                await self.orchestrator.context.log(f"Requirement Analysis Agent: Identified target files: {target_files}")
             else:
                 self.orchestrator.context.memory["target_files"] = []
-        except Exception:
+        except Exception as e:
+            logger.error(f"Requirement Analysis JSON parsing failed: {e}. Raw response: {response}")
             self.orchestrator.context.memory["target_files"] = []
             
         await self.orchestrator.update_task_progress(task_id, 100, session)
@@ -744,7 +833,7 @@ class CodingAgent(BaseAgent):
             )
             
             chat_prompt = ChatPromptTemplate.from_messages([
-                ("system", "You are a master software engineer. Output ONLY the raw, complete code. No formatting."),
+                ("system", "You are a master software engineer. Output ONLY a valid JSON object."),
                 ("human", "{prompt_content}")
             ])
             prompt_content = coding_prompt_template.format(
@@ -760,13 +849,30 @@ class CodingAgent(BaseAgent):
             new_code = new_code_msg.content
             
             clean_code = new_code.strip()
-            if clean_code.startswith("```"):
-                lines = clean_code.split("\n")
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                clean_code = "\n".join(lines)
+            try:
+                if "```json" in clean_code:
+                    clean_code = clean_code.split("```json")[1].split("```")[0].strip()
+                elif "```" in clean_code:
+                    clean_code = clean_code.split("```")[1].split("```")[0].strip()
+                
+                start_idx = clean_code.find('{')
+                end_idx = clean_code.rfind('}')
+                if start_idx != -1 and end_idx != -1:
+                    clean_code = clean_code[start_idx:end_idx+1]
+                    
+                data = json.loads(clean_code.strip())
+                files = data.get("files", [])
+                if files:
+                    clean_code = files[0].get("content", "")
+            except Exception as e:
+                logger.error(f"Coding Agent JSON parsing failed: {e}. Raw response: {new_code}")
+                if clean_code.startswith("```"):
+                    lines = clean_code.split("\n")
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    if lines and lines[-1].strip() == "```":
+                        lines = lines[:-1]
+                    clean_code = "\n".join(lines)
                 
             return path, clean_code
 
@@ -815,54 +921,53 @@ class TerminalAgent(BaseAgent):
         await self.orchestrator.update_task_progress(task_id, 20, session)
         
         chat_prompt = ChatPromptTemplate.from_messages([
-            ("system", (
-                "You are a master system terminal executor. Output ONLY the raw command string. "
-                "If the task is fully verified/complete, respond with 'NONE'. "
-                "If a previous command failed, analyze the error and try a different or corrected command to resolve the issue."
-            )),
+            ("system", "You are a master system terminal executor. Output ONLY a valid JSON object."),
             ("human", "{prompt_content}")
         ])
         
+        prompt_content = terminal_prompt_template.format(task_description=task_description)
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
-        history = []
-        max_turns = 10
-        for turn in range(max_turns):
-            # Calculate and update progressive subtask percentage
-            progress_pct = min(99, 20 + int(turn * (80 / max_turns)))
-            await self.orchestrator.update_task_progress(task_id, progress_pct, session)
-            
-            if history:
-                history_text = "\n\nPreviously executed commands and outputs:\n"
-                for h_cmd, h_res, h_code in history:
-                    # Limit output length to prevent overloading context window
-                    history_text += f"$ {h_cmd}\n(Exit Code: {h_code})\n{h_res[:1000]}\n\n"
+        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+        response = response_msg.content
+        
+        try:
+            clean_res = response.strip()
+            if "```json" in clean_res:
+                clean_res = clean_res.split("```json")[1].split("```")[0].strip()
+            elif "```" in clean_res:
+                clean_res = clean_res.split("```")[1].split("```")[0].strip()
                 
-                prompt_content = (
-                    f"Task: {task_description}\n"
-                    f"{history_text}"
-                    "Identify if the task is now fully verified or completed.\n"
-                    "If yes, respond with 'NONE'. Otherwise, output the next terminal command to run."
-                )
-            else:
-                prompt_content = terminal_prompt_template.format(task_description=task_description)
+            start_idx = clean_res.find('{')
+            end_idx = clean_res.rfind('}')
+            if start_idx != -1 and end_idx != -1:
+                clean_res = clean_res[start_idx:end_idx+1]
                 
-            cmd_msg = await chain.ainvoke({"prompt_content": prompt_content})
-            cmd = cmd_msg.content.strip().strip("`").strip()
+            data = json.loads(clean_res.strip())
+            commands = data.get("commands", [])
             
-            if not cmd or cmd.upper() == "NONE":
-                break
+            for cmd in commands:
+                await self.orchestrator.context.log(f"Terminal Agent: Running command: {cmd}")
+                from .tools.terminal_tool import run_shell_command
+                result = await run_shell_command(session, cmd)
+                exit_code = getattr(session, "last_exit_code", 0)
+                await self.orchestrator.context.log(f"Terminal Agent: Executed command: {cmd}. Exit Code: {exit_code}")
                 
-            await self.orchestrator.context.log(f"Terminal Agent: Running command: {cmd}")
-            
-            from .tools.terminal_tool import run_shell_command
-            result = await run_shell_command(session, cmd)
-            exit_code = getattr(session, "last_exit_code", 0)
-            await self.orchestrator.context.log(f"Terminal Agent: Executed command. Exit Code: {exit_code}. Outcome: {result[:120]}...")
-            
-            history.append((cmd, result, exit_code))
-            
+                log_entry = f"Terminal command executed: `{cmd}` (Exit Code: {exit_code})\nOutput excerpt:\n{result[:300]}"
+                self.orchestrator.context.collaboration_log.append(log_entry)
+        except Exception as e:
+            logger.error(f"Terminal Agent JSON parsing failed: {e}. Raw response: {response}")
+            # Fallback to executing command directly if it wasn't JSON
+            cmd = response.strip()
+            if cmd and cmd.upper() != "NONE":
+                await self.orchestrator.context.log(f"Terminal Agent: Fallback running command: {cmd}")
+                from .tools.terminal_tool import run_shell_command
+                result = await run_shell_command(session, cmd)
+                exit_code = getattr(session, "last_exit_code", 0)
+                log_entry = f"Terminal command executed: `{cmd}` (Exit Code: {exit_code})\nOutput excerpt:\n{result[:300]}"
+                self.orchestrator.context.collaboration_log.append(log_entry)
+                
         await self.orchestrator.event_bus.emit("TERMINAL_COMPLETED", {"task": task_description})
         await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Completed"
@@ -933,7 +1038,7 @@ class DebuggingAgent(BaseAgent):
         shared_memory = build_memory_summary(self.orchestrator.context.memory, max_chars=2000)
         
         chat_prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a senior debugging engineer. Analyze the output and suggest fixes."),
+            ("system", "You are a senior debugging engineer. Analyze the output and suggest fixes. Output ONLY a valid JSON object."),
             ("human", "{prompt_content}")
         ])
         prompt_content = debugging_prompt_template.format(
@@ -950,8 +1055,50 @@ class DebuggingAgent(BaseAgent):
         debug_output_msg = await chain.ainvoke({"prompt_content": prompt_content})
         debug_output = debug_output_msg.content
         
-        await self.orchestrator.context.log(f"Debugging Agent: Debugging analysis:\n{debug_output[:300]}")
-        self.orchestrator.context.memory["debugging_notes"] = debug_output
+        try:
+            clean_res = debug_output.strip()
+            if "```json" in clean_res:
+                clean_res = clean_res.split("```json")[1].split("```")[0].strip()
+            elif "```" in clean_res:
+                clean_res = clean_res.split("```")[1].split("```")[0].strip()
+                
+            start_idx = clean_res.find('{')
+            end_idx = clean_res.rfind('}')
+            if start_idx != -1 and end_idx != -1:
+                clean_res = clean_res[start_idx:end_idx+1]
+                
+            data = json.loads(clean_res.strip())
+            explanation = data.get("explanation", "")
+            fixes = data.get("fixes", [])
+            
+            await self.orchestrator.context.log(f"Debugging Agent: Bug analysis: {explanation}")
+            self.orchestrator.context.memory["debugging_notes"] = explanation
+            
+            auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
+            for fix in fixes:
+                path = fix.get("path")
+                content = fix.get("content")
+                if path and content:
+                    tc_id = f"fix_{task_id}_{uuid.uuid4().hex[:6]}"
+                    await session.send_ws_message({
+                        "type": "status",
+                        "status": "tool_executing",
+                        "message": f"Debugging Agent applying fix to {path}...",
+                        "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": content}}
+                    })
+                    result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": content}, auto_apply=auto_apply)
+                    await session.send_ws_message({
+                        "type": "tool_result",
+                        "tool_call_id": tc_id,
+                        "name": "write_file",
+                        "status": "success",
+                        "result": result
+                    })
+                    await self.orchestrator.context.log(f"Debugging Agent: Wrote fix to {path}.")
+        except Exception as e:
+            logger.error(f"Debugging Agent JSON parsing failed: {e}. Raw response: {debug_output}")
+            self.orchestrator.context.memory["debugging_notes"] = debug_output
+            
         await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Completed"
 
@@ -2655,7 +2802,10 @@ class AgentOrchestrator:
             # Tier 7: Next-Gen Reasoning Agents
             "Search Agent": SearchAgent(self),
             "Memory Agent": MemoryAgent(self),
-            "Code Agent": CodingAgent(self),
+            "Code Agent": ParallelAgentAdapter("Code Agent", self, "CodeAgent"),
+            "Docs Agent": ParallelAgentAdapter("Docs Agent", self, "DocsAgent"),
+            "Review Agent": ParallelAgentAdapter("Review Agent", self, "ReviewAgent"),
+            "Test Agent": ParallelAgentAdapter("Test Agent", self, "TestAgent"),
         }
         apply_custom_agents_and_overrides(self)
         agent_names = list(self.agents.keys())

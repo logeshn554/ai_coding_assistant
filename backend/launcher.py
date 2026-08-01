@@ -15,6 +15,27 @@ def is_port_open(port):
             continue
     return False
 
+def kill_process_on_port(port):
+    try:
+        if sys.platform == "win32":
+            out = subprocess.check_output(f"netstat -ano | findstr :{port}", shell=True).decode()
+            pids = set()
+            for line in out.strip().split("\n"):
+                if "LISTENING" in line or "ESTABLISHED" in line:
+                    parts = line.strip().split()
+                    if parts and parts[-1].isdigit():
+                        pids.add(parts[-1])
+            for pid in pids:
+                if pid != "0":
+                    subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            out = subprocess.check_output(f"lsof -t -i:{port}", shell=True).decode()
+            for pid in out.strip().split("\n"):
+                if pid.strip().isdigit():
+                    subprocess.run(f"kill -9 {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
 def get_python_executable():
     # Resolve local virtual env python executable
     if sys.platform == "win32":
@@ -23,13 +44,18 @@ def get_python_executable():
         venv_py = os.path.join("venv", "bin", "python")
         
     if os.path.exists(venv_py):
-        return venv_py
+        return os.path.abspath(venv_py)
     return sys.executable
 
 def main():
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     os.chdir(project_root)
     print("Starting DevPilot Launcher...")
+    
+    # Pre-clean ports to avoid address-in-use crashes
+    print("Checking ports 8000 and 5173 for lingering instances...")
+    kill_process_on_port(8000)
+    kill_process_on_port(5173)
     
     # 1. Start FastAPI backend
     python_bin = get_python_executable()
@@ -60,8 +86,9 @@ def main():
     print("Starting Frontend (Vite) dev server...")
     if sys.platform == "win32":
         frontend_proc = subprocess.Popen(
-            ["npm.cmd", "run", "dev"],
-            cwd=frontend_dir
+            "npm run dev",
+            cwd=frontend_dir,
+            shell=True
         )
     else:
         frontend_proc = subprocess.Popen(

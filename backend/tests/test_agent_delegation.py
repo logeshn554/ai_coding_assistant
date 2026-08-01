@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 import os
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 
 # Ensure backend root is in path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -41,6 +41,8 @@ class MockSession:
         self.max_turns = 5
         self.auto_apply = False
         self.is_running = False
+        self.parallel_subtasks = []
+        self.collaboration_log = []
 
     async def send_ws_message(self, msg):
         pass
@@ -281,3 +283,82 @@ async def test_all_23_orchestrator_agents_execute(tmp_path):
                 print(f"Testing execution of {agent_name}...")
                 result = await agent.execute("Implement user dashboard", session, task_id=123)
                 assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_agent_output_handlers_and_json_parsing():
+    from app.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator()
+    session = MockSession()
+    session.orchestrator = orchestrator
+    session.workspace_root = "./"
+    
+    # 1. Test PlannerAgent JSON parser and subtask listing
+    planner = session.orchestrator.agents["Planner Agent"]
+    with patch("app.adapters.router.ModelRouter.completion", new_callable=AsyncMock) as mock_comp:
+        mock_comp.return_value = '```json\n[{"id": 1, "agent": "Coding Agent", "description": "Write index.html", "dependencies": []}]\n```'
+        result = await planner.execute("Build flappy bird", session, task_id=1)
+        assert "Plan formulated" in result
+        assert len(session.orchestrator.context.subtasks) == 1
+        assert session.orchestrator.context.subtasks[0]["agent"] == "Coding Agent"
+
+    # 2. Test RequirementAnalysisAgent report writing and files extraction
+    researcher = session.orchestrator.agents["Requirement Analysis Agent"]
+    with patch("app.adapters.router.ModelRouter.completion", new_callable=AsyncMock) as mock_comp:
+        mock_comp.return_value = '{\n  "report": "# Test findings\\nEverything looks clean.",\n  "target_files": ["app.py", "tests.py"]\n}'
+        
+        # Mock file write
+        mock_open_file = mock_open()
+        with patch("builtins.open", mock_open_file):
+            result = await researcher.execute("Analyze auth requirements", session, task_id=2)
+            assert result == "Completed"
+            mock_open_file.assert_any_call(os.path.join(session.workspace_root, "RESEARCH_REPORT.md"), "w", encoding="utf-8")
+            # Verify writing occurred on the opened file handle
+            handle = mock_open_file()
+            handle.write.assert_any_call("# Test findings\nEverything looks clean.")
+            assert session.orchestrator.context.memory["target_files"] == ["app.py", "tests.py"]
+
+    # 3. Test CodingAgent JSON files writing
+    coder = session.orchestrator.agents["Coding Agent"]
+    session.orchestrator.context.memory["target_files"] = ["index.html"]
+    session.orchestrator.context.memory["file_contents"] = {"index.html": ""}
+    
+    with patch("app.adapters.router.ModelRouter.completion", new_callable=AsyncMock) as mock_comp:
+        mock_comp.return_value = '{\n  "files": [\n    {\n      "path": "index.html",\n      "content": "<!DOCTYPE html><html></html>"\n    }\n  ]\n}'
+        session._execute_tool_with_guardrails = AsyncMock(return_value="File written")
+        
+        result = await coder.execute("Generate HTML page", session, task_id=3)
+        assert result == "Completed"
+        session._execute_tool_with_guardrails.assert_called_once()
+        args = session._execute_tool_with_guardrails.call_args[0]
+        assert args[1] == "write_file"
+        assert args[2]["path"] == "index.html"
+        assert args[2]["content"] == "<!DOCTYPE html><html></html>"
+
+    # 4. Test DebuggingAgent JSON fixes overwriting
+    debugger = session.orchestrator.agents["Debugging Agent"]
+    with patch("app.adapters.router.ModelRouter.completion", new_callable=AsyncMock) as mock_comp:
+        mock_comp.return_value = '{\n  "explanation": "Fixed syntax error",\n  "fixes": [\n    {\n      "path": "app.py",\n      "content": "print(\'fixed\')"\n    }\n  ]\n}'
+        session._execute_tool_with_guardrails = AsyncMock(return_value="File written")
+        
+        result = await debugger.execute("Fix python file", session, task_id=4)
+        assert result == "Completed"
+        assert session.orchestrator.context.memory["debugging_notes"] == "Fixed syntax error"
+        session._execute_tool_with_guardrails.assert_called_once()
+        args = session._execute_tool_with_guardrails.call_args[0]
+        assert args[1] == "write_file"
+        assert args[2]["path"] == "app.py"
+        assert args[2]["content"] == "print('fixed')"
+
+    # 5. Test TerminalAgent commands execution
+    terminal = session.orchestrator.agents["Terminal Agent"]
+    with patch("app.adapters.router.ModelRouter.completion", new_callable=AsyncMock) as mock_comp:
+        mock_comp.return_value = '{\n  "commands": ["pytest", "npm test"]\n}'
+        with patch("app.tools.terminal_tool.run_shell_command", new_callable=AsyncMock) as mock_shell:
+            mock_shell.return_value = "Tests passed successfully"
+            result = await terminal.execute("Verify all tests pass", session, task_id=5)
+            assert result == "Completed"
+            assert mock_shell.call_count == 2
+            mock_shell.assert_any_call(session, "pytest")
+            mock_shell.assert_any_call(session, "npm test")
+

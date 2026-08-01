@@ -113,12 +113,22 @@ async def dispatch_tool(
         "ask_question": "question",
         "clarify": "question",
         "prompt_user": "question",
+        # delete aliases
+        "delete": "delete_file",
+        "delete_path": "delete_file",
+        "remove_file": "delete_file",
+        "remove": "delete_file",
+        "rm": "delete_file",
     }
     name = TOOL_ALIASES.get(name.lower(), name)
 
     # A. File write/edit safety check
     if name in ("write_file", "edit_file"):
         return await _write_or_edit_file(session, tc_id, name, args, auto_apply)
+
+    if name == "delete_file":
+        from .delete_tool import delete_file
+        return await delete_file(session, tc_id, args, auto_apply)
 
     # B. Terminal Command safety check
     if name == "run_terminal_command":

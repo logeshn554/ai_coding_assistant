@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import {
   Folder, FolderOpen, File as FileIcon, ChevronRight, ChevronDown
 } from 'lucide-react';
@@ -108,7 +108,8 @@ interface FileTreeProps {
   searchTerm: string;
   showHidden: boolean;
   onToggleExpand: (path: string) => void;
-  onSelectFile: (path: string) => void;
+  onSelectFile: (path: string, isCtrlKey: boolean) => void;
+  selectedPaths: string[];
   onContextMenu: (e: React.MouseEvent, item: FileItem) => void;
   onRenameSubmit: (e: React.FormEvent, item: FileItem) => void;
   setRenameValue: (val: string) => void;
@@ -138,6 +139,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
   showHidden,
   onToggleExpand,
   onSelectFile,
+  selectedPaths,
   onContextMenu,
   onRenameSubmit,
   setRenameValue,
@@ -160,7 +162,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
     <div className="select-none font-sans">
       {filtered.map(item => {
         const isExpanded = Boolean(expandedPaths[item.path]);
-        const isSelected = selectedFilePath === item.path;
+        const isSelected = selectedFilePath === item.path || selectedPaths.includes(item.path);
         const gitStatus = gitChanges?.[item.path];
         const isRenaming = renamingPath === item.path;
 
@@ -171,11 +173,16 @@ export const FileTree: React.FC<FileTreeProps> = ({
               onDragStart={() => onDragStart(item)}
               onDragOver={e => onDragOver(e, item.path)}
               onDrop={e => onDrop(e, item)}
-              onClick={() => {
+              onClick={(e) => {
                 if (item.is_dir) {
-                  onToggleExpand(item.path);
+                  if (e.ctrlKey || e.metaKey) {
+                    onSelectFile(item.path, true);
+                  } else {
+                    onToggleExpand(item.path);
+                    onSelectFile(item.path, false);
+                  }
                 } else {
-                  onSelectFile(item.path);
+                  onSelectFile(item.path, e.ctrlKey || e.metaKey);
                 }
               }}
               onContextMenu={e => onContextMenu(e, item)}
@@ -228,6 +235,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
                     dirContents={dirContents}
                     expandedPaths={expandedPaths}
                     selectedFilePath={selectedFilePath}
+                    selectedPaths={selectedPaths}
                     loadingDir={loadingDir}
                     renamingPath={renamingPath}
                     renameValue={renameValue}

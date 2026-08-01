@@ -6,7 +6,7 @@ ASK_MODE_INSTRUCTIONS = """
 │ Use: list_directory, read_file, search_codebase to gather context.  │
 │ Quote relevant file lines when explaining existing code.            │
 │                                                                     │
-│ FORBIDDEN: write_file, edit_file, run_terminal_command              │
+│ FORBIDDEN: write_file, edit_file, delete_file, run_terminal_command │
 │                                                                     │
 │ FORMAT:                                                             │
 │  • Short questions → 1–4 sentence answer, no headers               │
@@ -26,7 +26,7 @@ PLAN_MODE_INSTRUCTIONS = """
 │   5. Verification        — exact command to confirm success         │
 │   6. Risk Assessment     — regressions, edge cases, data-loss risk  │
 │                                                                     │
-│ FORBIDDEN: write_file, edit_file, run_terminal_command              │
+│ FORBIDDEN: write_file, edit_file, delete_file, run_terminal_command │
 └─────────────────────────────────────────────────────────────────────┘"""
 
 AGENT_MODE_INSTRUCTIONS = """
@@ -142,6 +142,8 @@ TOOL REFERENCE
                                 before use
   write_file path content    — full file write; new files or complete
                                 rewrites
+  delete_file path           — delete a file or directory; deletes items
+                                permanently from the workspace
   run_terminal_command cmd   — shell execution; prefer non-interactive
                                 flags; do not blindly repeat a failed
                                 command"""

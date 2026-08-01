@@ -68,7 +68,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ inline, className, childre
       onRunCommand(codeString);
     } else {
       navigator.clipboard.writeText(codeString);
-      window.dispatchEvent(new CustomEvent('insert-terminal-cmd', { detail: codeString }));
+      window.dispatchEvent(new CustomEvent('devpilot-run-terminal-command', { detail: { command: codeString } }));
     }
   };
 

@@ -34,6 +34,9 @@ export default function Sidebar({
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState<string>('');
 
+  // Selection State for Multi-Select
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; item: FileItem } | null>(null);
 
@@ -73,6 +76,18 @@ export default function Sidebar({
       }
     })();
   }, [workspacePath, refreshTrigger]);
+
+  // Update selectedPaths when selectedFilePath changes from external sources (like editor tabs)
+  useEffect(() => {
+    if (selectedFilePath) {
+      setSelectedPaths(prev => {
+        if (prev.includes(selectedFilePath) && prev.length === 1) return prev;
+        return [selectedFilePath];
+      });
+    } else {
+      setSelectedPaths([]);
+    }
+  }, [selectedFilePath]);
 
   const loadDirectory = async (path: string) => {
     if (dirContents[path]) return;
@@ -139,13 +154,41 @@ export default function Sidebar({
     }
   };
 
+  const handleSelectFileClick = (path: string, isCtrlKey: boolean) => {
+    if (isCtrlKey) {
+      setSelectedPaths(prev => {
+        if (prev.includes(path)) {
+          return prev.filter(p => p !== path);
+        } else {
+          return [...prev, path];
+        }
+      });
+    } else {
+      setSelectedPaths([path]);
+      onSelectFile(path);
+    }
+  };
+
   const handleDeleteItem = async (item: FileItem) => {
-    if (!window.confirm(`Are you sure you want to delete ${item.name}?`)) return;
+    const itemsToDelete = selectedPaths.includes(item.path) && selectedPaths.length > 1
+      ? selectedPaths
+      : [item.path];
+
+    const names = itemsToDelete.map(p => p.split('/').pop()).join(', ');
+    const msg = itemsToDelete.length > 1
+      ? `Are you sure you want to delete these ${itemsToDelete.length} items?\n${names}`
+      : `Are you sure you want to delete ${item.name}?`;
+
+    if (!window.confirm(msg)) return;
+
     try {
-      await deleteFile(item.path);
+      for (const path of itemsToDelete) {
+        await deleteFile(path);
+      }
+      setSelectedPaths([]);
       refreshRoot();
     } catch (err) {
-      console.error('Failed to delete file', err);
+      console.error('Failed to delete file(s)', err);
     }
   };
 
@@ -238,6 +281,7 @@ export default function Sidebar({
             dirContents={dirContents}
             expandedPaths={expandedPaths}
             selectedFilePath={selectedFilePath}
+            selectedPaths={selectedPaths}
             loadingDir={loadingDir}
             renamingPath={renamingPath}
             renameValue={renameValue}
@@ -245,9 +289,13 @@ export default function Sidebar({
             searchTerm={searchTerm}
             showHidden={showHidden}
             onToggleExpand={toggleExpand}
-            onSelectFile={onSelectFile}
+            onSelectFile={handleSelectFileClick}
             onContextMenu={(e, item) => {
               e.preventDefault();
+              // If the item is not already selected, select only it
+              if (!selectedPaths.includes(item.path)) {
+                setSelectedPaths([item.path]);
+              }
               setContextMenu({ x: e.clientX, y: e.clientY, item });
             }}
             onRenameSubmit={handleRenameSubmit}
@@ -278,6 +326,7 @@ export default function Sidebar({
           handleDeleteItem(item);
           setContextMenu(null);
         }}
+        selectedCount={selectedPaths.includes(contextMenu?.item.path || '') ? selectedPaths.length : 1}
       />
 
       {/* Footer Workspace Stats Drawer */}

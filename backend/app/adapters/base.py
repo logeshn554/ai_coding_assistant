@@ -214,6 +214,20 @@ AVAILABLE_TOOLS = [
         }
     },
     {
+        "name": "delete_file",
+        "description": "Deletes an existing file or folder in the workspace. Always double-check before deleting critical files.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Relative path of the file or folder to delete (e.g. 'index.html')."
+                }
+            },
+            "required": ["path"]
+        }
+    },
+    {
         "name": "edit_file",
         "description": "Edits an existing file using a search-and-replace block. Target must match the exact block in the file.",
         "input_schema": {
