@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, delete
-from ..state import workspace_state, config_manager, permission_manager, SESSION_TOKEN, logger
+from ..state import workspace_state, config_manager, get_permission_manager, SESSION_TOKEN, logger
 from ..db import async_session, SessionModel, MessageModel, get_fallback_session_id
 from fastapi import Request
 from ..agent import AgentSession
@@ -419,11 +419,29 @@ async def delete_chat_session(session_id: str, request: Request):
             await db.delete(session)
             await db.commit()
             
-            # Check if database is empty now
-            res_remaining = await db.execute(select(SessionModel).order_by(SessionModel.updated_at.desc()))
+            # Evict from memory mapping to avoid leaks
+            workspace_state.evict_session(session_id)
+            
+            # Check if database is empty now for this workspace
+            workspace_root_val = (workspace_state.root or "").strip()
+            res_remaining = await db.execute(
+                select(SessionModel)
+                .where(SessionModel.workspace_root == workspace_root_val)
+                .order_by(SessionModel.updated_at.desc())
+            )
             latest = res_remaining.scalars().first()
             if not latest:
-                default_session = SessionModel(id="default-session", title="Default Conversation")
+                # To prevent unique/primary key conflicts across workspaces:
+                stmt_check = select(SessionModel).where(SessionModel.id == "default-session")
+                res_check = await db.execute(stmt_check)
+                exist_default = res_check.scalar()
+                
+                session_id = "default-session" if not exist_default else f"default-session-{uuid.uuid4().hex[:8]}"
+                default_session = SessionModel(
+                    id=session_id,
+                    title="Default Conversation",
+                    workspace_root=workspace_root_val
+                )
                 db.add(default_session)
                 await db.commit()
                     
@@ -436,12 +454,33 @@ async def delete_chat_session(session_id: str, request: Request):
 @router.delete("/api/chat/sessions")
 async def clear_all_sessions():
     try:
+        workspace_root_val = (workspace_state.root or "").strip()
+        if not workspace_root_val:
+            raise HTTPException(status_code=400, detail="No workspace folder open.")
         async with async_session() as db:
-            await db.execute(delete(SessionModel))
-            default_session = SessionModel(id="default-session", title="Default Conversation")
+            await db.execute(delete(SessionModel).where(SessionModel.workspace_root == workspace_root_val))
+            
+            stmt_check = select(SessionModel).where(SessionModel.id == "default-session")
+            res_check = await db.execute(stmt_check)
+            exist_default = res_check.scalar()
+            
+            session_id = "default-session" if not exist_default else f"default-session-{uuid.uuid4().hex[:8]}"
+            default_session = SessionModel(
+                id=session_id,
+                title="Default Conversation",
+                workspace_root=workspace_root_val
+            )
             db.add(default_session)
             await db.commit()
+
+        # Evict all memory sessions belonging to this workspace root to prevent leaks
+        roots_to_evict = [sid for sid, path in list(workspace_state._session_roots.items()) if path == workspace_root_val]
+        for sid in roots_to_evict:
+            workspace_state.evict_session(sid)
+
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -492,7 +531,7 @@ async def get_workspace_stats():
         git_commits = 0
         try:
             from ..utils import run_cmd_async
-            commits_out = await run_cmd_async("git rev-list --count HEAD", workspace_state.root)
+            commits_out = await run_cmd_async(["git", "rev-list", "--count", "HEAD"], workspace_state.root)
             if "fatal:" not in commits_out:
                 git_commits = int(commits_out.strip())
         except Exception:
@@ -583,7 +622,7 @@ async def websocket_chat(
         session_workspace_root,
         active_profile,
         send_to_client,
-        permission_manager,
+        get_permission_manager(),
         session_id=resolved_session_id
     )
     await session.load_history_from_db()

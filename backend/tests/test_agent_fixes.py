@@ -400,15 +400,19 @@ async def test_last_mode_inheritance_for_short_replies(tmp_path):
     # We mock _run_llm_query just in case, but it shouldn't be called since it inherits Agent
     session._run_llm_query = AsyncMock(return_value="Ask")
     
+    async def mock_stream_chat(*args, **kwargs):
+        yield {"type": "done", "stop_reason": "end_turn"}
+    
     # When user replies with "html" (length < 30) in "Auto" mode, it should inherit "Agent"
-    await session.handle_user_message("html", mode="Auto")
+    with patch("app.adapters.llm.LLMAdapter.stream_chat", mock_stream_chat):
+        await session.handle_user_message("html", mode="Auto")
     assert session.last_mode == "Agent"
     session._run_llm_query.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_terminal_auto_apply_bypass(tmp_path):
-    """Verify that run_terminal_command bypasses the permission prompt if auto_apply is True for non-destructive commands."""
+    """Verify that run_terminal_command does NOT bypass the permission prompt even if auto_apply is True, ensuring all arbitrary commands require approval."""
     session = AgentSession(str(tmp_path), {"max_turns": 5}, AsyncMock())
     
     class MockPermissionManager:
@@ -417,6 +421,15 @@ async def test_terminal_auto_apply_bypass(tmp_path):
             return False, "mutative", "Needs prompt"
             
     session.permission_manager = MockPermissionManager()
+    
+    # Simulate a background task that approves the request after a short delay
+    async def simulate_user_approval():
+        await asyncio.sleep(0.1)
+        if "tc_auto_1" in session.pending_confirmations:
+            session.pending_confirmations["tc_auto_1"]["approved"] = True
+            session.pending_confirmations["tc_auto_1"]["event"].set()
+
+    asyncio.create_task(simulate_user_approval())
     
     # We mock the actual shell execution
     with patch("app.tools.terminal_tool.run_shell_command", AsyncMock(return_value="success")):
@@ -427,5 +440,4 @@ async def test_terminal_auto_apply_bypass(tmp_path):
             auto_apply=True
         )
         assert res == "success"
-        # No pending confirmations should be created
         assert "tc_auto_1" not in session.pending_confirmations

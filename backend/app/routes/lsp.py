@@ -265,10 +265,21 @@ async def _proxy_lsp(websocket: WebSocket, language: str):
             await asyncio.sleep(1)
 
     logger.warning(f"LSP [{language}] exceeded restart limit, closing.")
+    try:
+        await websocket.send_text(json.dumps({
+            "error": f"Language server for {language} crashed repeatedly and was stopped. Please reload the workspace to retry."
+        }))
+    except Exception:
+        pass
 
 
 @router.websocket("/ws/lsp/{language}")
-async def lsp_websocket(websocket: WebSocket, language: str, token: Optional[str] = Query(None)):
+async def lsp_websocket(
+    websocket: WebSocket,
+    language: str,
+    ticket: Optional[str] = Query(None),
+    token: Optional[str] = Query(None)
+):
     """
     WebSocket endpoint that proxies JSON-RPC between Monaco and a language server.
     Supported: python, typescript, javascript.
@@ -281,12 +292,19 @@ async def lsp_websocket(websocket: WebSocket, language: str, token: Optional[str
         await websocket.close()
         return
 
-    await websocket.accept()
-    # S1: Validate bearer token before proxying any LSP traffic.
-    if not token or not secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
-        await websocket.send_text(json.dumps({"error": "Unauthorized: invalid or missing token."}))
+    from ..state import verify_ws_ticket
+    is_authenticated = False
+    if ticket and verify_ws_ticket(ticket):
+        is_authenticated = True
+    elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+        is_authenticated = True
+
+    if not is_authenticated:
+        # Reject authentication before accepting the connection
         await websocket.close(code=4401)
         return
+
+    await websocket.accept()
 
     logger.info(f"LSP WebSocket connection: language={language}")
     try:

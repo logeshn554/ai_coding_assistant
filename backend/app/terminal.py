@@ -89,7 +89,7 @@ class TerminalManager:
             stderr=slave_fd,
             cwd=cwd,
             env=os.environ.copy(),
-            preexec_fn=os.setsid,
+            start_new_session=True,
             close_fds=True,
         )
 

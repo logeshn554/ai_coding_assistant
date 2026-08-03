@@ -1,0 +1,31 @@
+# Pre-commit hook configuration for DevPilot IDE
+# To install: pip install pre-commit && pre-commit install
+
+repos:
+  # --- General Hooks ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+
+  # --- Python Backend Linting & Formatting (Ruff) ---
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.4
+    hooks:
+      - id: ruff
+        args: [ --fix ]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # --- Frontend JS/TS Linting (Oxlint) ---
+  - repo: https://github.com/oxc-project/oxc-pre-commit
+    rev: v0.1.71
+    hooks:
+      - id: oxlint
+        files: ^frontend/
+        args: [ --deny=correctness, --deny=perf ]

@@ -11,16 +11,24 @@ router = APIRouter()
 @router.websocket("/ws/terminal")
 async def websocket_terminal(
     websocket: WebSocket,
+    ticket: Optional[str] = Query(None),
     token: Optional[str] = Query(None),
     shell: Optional[str] = Query(None),
     session_id: Optional[str] = Query(None),
 ):
-    await websocket.accept()
-    # S1: Validate bearer token — the terminal exposes a full interactive PTY.
-    if not token or not secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
-        await websocket.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid or missing token."}))
+    from ..state import verify_ws_ticket
+    is_authenticated = False
+    if ticket and verify_ws_ticket(ticket):
+        is_authenticated = True
+    elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+        is_authenticated = True
+
+    if not is_authenticated:
+        # Reject authentication before accepting the connection
         await websocket.close(code=4401)
         return
+
+    await websocket.accept()
     
     # NOTE: app.middleware("http") does NOT run for websocket connections,
     # so session_id_var is never populated here by session_middleware.

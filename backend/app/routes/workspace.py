@@ -7,7 +7,7 @@ from typing import Optional, Counter
 from collections import Counter
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from ..state import workspace_state, permission_manager, config_manager
+from ..state import workspace_state, get_permission_manager, config_manager
 
 _SERVER_START_TIME = time.time()
 
@@ -82,7 +82,7 @@ async def change_workspace(req: WorkspaceChangeRequest):
         raw_path = (req.path or "").strip().strip('"').strip("'")
         if raw_path == "":
             workspace_state.root = ""
-            permission_manager.workspace_root = ""
+            get_permission_manager().workspace_root = ""
             config_manager.set_last_workspace("")
             logger.info("Workspace closed.")
             return {"success": True, "workspace": ""}
@@ -113,7 +113,7 @@ async def change_workspace(req: WorkspaceChangeRequest):
             )
 
         workspace_state.root = path
-        permission_manager.workspace_root = path
+        get_permission_manager().workspace_root = path
         logger.info(f"Workspace changed to: {workspace_state.root}")
         config_manager.set_last_workspace(workspace_state.root)
         return {"success": True, "workspace": workspace_state.root}
@@ -302,6 +302,12 @@ def _get_stats_sync(root: str) -> dict:
     }
 
 
+from ..cache import cached
+
+@cached(ttl=60)
+async def _get_cached_stats(root: str) -> dict:
+    return await asyncio.to_thread(_get_stats_sync, root)
+
 @router.get("/api/workspace/stats")
 async def get_workspace_stats():
     """Returns real workspace statistics: file counts, language breakdown, git commit count."""
@@ -315,7 +321,7 @@ async def get_workspace_stats():
             "git_commits": 0,
         }
 
-    return await asyncio.to_thread(_get_stats_sync, root)
+    return await _get_cached_stats(root=root)
 
 
 class SSHHostRequest(BaseModel):

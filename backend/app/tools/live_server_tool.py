@@ -96,7 +96,8 @@ async def open_with_live_server(session: Any, args: Dict[str, Any]) -> str:
     # Find an available free port
     requested_port = args.get("port") or 5500
     port = find_free_port(requested_port)
-    command = f"python -m http.server {port}"
+    import sys
+    command = [sys.executable, "-m", "http.server", str(port)]
 
     proc = await global_process_manager.start_process(
         command, session.workspace_root, name="Live Server (Static HTML)"

@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from ..state import permission_manager, config_manager
+from ..state import get_permission_manager, config_manager
 
 router = APIRouter()
 
@@ -15,9 +15,10 @@ class PermissionRevokeRequest(BaseModel):
 
 @router.get("/api/permissions")
 def get_permissions():
-    project_id = permission_manager._get_project_id()
+    pm = get_permission_manager()
+    project_id = pm._get_project_id()
     project_perms = config_manager.get_project_permissions(project_id)
-    session_perms = list(permission_manager.session_permissions)
+    session_perms = list(pm.session_permissions)
     return {
         "project": project_perms,
         "session": session_perms
@@ -25,15 +26,16 @@ def get_permissions():
 
 @router.post("/api/permissions/grant")
 def grant_permission(req: PermissionGrantRequest):
-    permission_manager.grant_permission(req.command, req.scope)
+    get_permission_manager().grant_permission(req.command, req.scope)
     return {"success": True}
 
 @router.post("/api/permissions/revoke")
 def revoke_permission(req: PermissionRevokeRequest):
+    pm = get_permission_manager()
     if req.scope == "session":
-        cmd_pattern = permission_manager._get_command_pattern(req.command)
-        if cmd_pattern in permission_manager.session_permissions:
-            permission_manager.session_permissions.remove(cmd_pattern)
+        cmd_pattern = pm._get_command_pattern(req.command)
+        if cmd_pattern in pm.session_permissions:
+            pm.session_permissions.remove(cmd_pattern)
     elif req.scope == "project":
-        permission_manager.revoke_project_permission(req.command)
+        pm.revoke_project_permission(req.command)
     return {"success": True}

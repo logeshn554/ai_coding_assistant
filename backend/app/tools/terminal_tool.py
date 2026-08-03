@@ -87,15 +87,7 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
         import subprocess
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     else:
-        import pwd
-        def drop_privileges():
-            try:
-                nobody = pwd.getpwnam('nobody')
-                os.setgid(nobody.pw_gid)
-                os.setuid(nobody.pw_uid)
-            except Exception:
-                pass
-        kwargs["preexec_fn"] = drop_privileges
+        kwargs["start_new_session"] = True
 
     start_time = time.time()
 
@@ -475,15 +467,7 @@ async def run_shell_command_silent(session: Any, command: str, timeout_seconds: 
         import subprocess
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     else:
-        import pwd
-        def drop_privileges():
-            try:
-                nobody = pwd.getpwnam('nobody')
-                os.setgid(nobody.pw_gid)
-                os.setuid(nobody.pw_uid)
-            except Exception:
-                pass
-        kwargs["preexec_fn"] = drop_privileges
+        kwargs["start_new_session"] = True
 
     start_time = time.time()
 
@@ -508,7 +492,11 @@ async def run_shell_command_silent(session: Any, command: str, timeout_seconds: 
             elapsed = time.time() - start_time
             if elapsed > timeout:
                 try:
-                    process.terminate()
+                    if sys.platform == "win32":
+                        subprocess.call(["taskkill", "/F", "/T", "/PID", str(process.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    else:
+                        import signal
+                        os.killpg(process.pid, signal.SIGTERM)
                 except Exception:
                     pass
                 partial = "".join(output_chunks)

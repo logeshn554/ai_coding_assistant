@@ -96,7 +96,13 @@ class LLMAdapter(ModelAdapter):
             current_tool_calls = {}
 
             async for chunk in stream:
-                if chunk.type == "content_block_start":
+                if chunk.type == "message_start":
+                    if hasattr(chunk, "message") and hasattr(chunk.message, "usage") and chunk.message.usage:
+                        usage = chunk.message.usage
+                        yield self.build_usage_chunk(
+                            getattr(usage, "input_tokens", 0), getattr(usage, "output_tokens", 0)
+                        )
+                elif chunk.type == "content_block_start":
                     idx = chunk.index
                     block = chunk.content_block
                     if block.type == "tool_use":
@@ -191,7 +197,8 @@ class LLMAdapter(ModelAdapter):
             kwargs = {
                 "model": self.model_name,
                 "messages": openai_messages,
-                "stream": True
+                "stream": True,
+                "stream_options": {"include_usage": True}
             }
             if openai_tools:
                 kwargs["tools"] = openai_tools
@@ -200,6 +207,11 @@ class LLMAdapter(ModelAdapter):
             try:
                 response = await client.chat.completions.create(**kwargs)
                 async for chunk in response:
+                    if hasattr(chunk, "usage") and chunk.usage:
+                        yield self.build_usage_chunk(
+                            getattr(chunk.usage, "prompt_tokens", 0),
+                            getattr(chunk.usage, "completion_tokens", 0)
+                        )
                     if not chunk.choices:
                         continue
                     delta = chunk.choices[0].delta
@@ -259,6 +271,11 @@ class LLMAdapter(ModelAdapter):
                     kwargs["stream"] = False
                     try:
                         non_stream_resp = await client.chat.completions.create(**kwargs)
+                        if hasattr(non_stream_resp, "usage") and non_stream_resp.usage:
+                            yield self.build_usage_chunk(
+                                getattr(non_stream_resp.usage, "prompt_tokens", 0),
+                                getattr(non_stream_resp.usage, "completion_tokens", 0)
+                            )
                         if not non_stream_resp.choices:
                             yield self.build_done_chunk("stop")
                             return

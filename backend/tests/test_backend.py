@@ -146,6 +146,7 @@ async def test_openai_adapter_non_stream_fallback():
         async for chunk in adapter.stream_chat(messages=[{"role": "user", "content": "hi"}], tools=tools, system_prompt="sys"):
             chunks.append(chunk)
 
+        chunks = [c for c in chunks if c.get("type") != "usage"]
         assert len(chunks) == 2
         assert chunks[0] == {"type": "text", "content": "Fallback response"}
         assert chunks[1] == {"type": "done", "stop_reason": "stop"}

@@ -11,15 +11,7 @@ async def run_cmd_async(cmd: Union[str, List[str]], cwd: str) -> str:
         import subprocess
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     else:
-        import pwd
-        def drop_privileges():
-            try:
-                nobody = pwd.getpwnam('nobody')
-                os.setgid(nobody.pw_gid)
-                os.setuid(nobody.pw_uid)
-            except Exception:
-                pass
-        kwargs["preexec_fn"] = drop_privileges
+        pass
 
     if isinstance(cmd, (list, tuple)):
         for item in cmd:

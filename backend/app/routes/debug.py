@@ -9,17 +9,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 
-from ..state import workspace_state
+from ..state import workspace_state, session_id_var
 from ..processes import global_process_manager
 
 logger = logging.getLogger("devpilot.routes.debug")
 router = APIRouter()
-
-# ── Dynamic Breakpoints State ────────────────────────────────────────────────
-_active_breakpoints: List[Dict[str, Any]] = [
-    {"id": "bp_1", "file": "main.py", "line": 10, "enabled": True}
-]
-_watch_expressions: List[Dict[str, Any]] = []
 
 class BreakpointItem(BaseModel):
     file: str
@@ -134,13 +128,27 @@ class DAPClient:
             self.sock = None
         self.connected = False
 
-# Global DAP client instance
-dap_client = DAPClient()
-
 def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('127.0.0.1', 0))
         return s.getsockname()[1]
+
+# ── Debug Session Manager ────────────────────────────────────────────────────
+class DebugSession:
+    def __init__(self, session_id: str):
+        self.session_id = session_id
+        self.dap_client = DAPClient()
+        self.active_breakpoints: List[Dict[str, Any]] = []
+        self.watch_expressions: List[Dict[str, Any]] = []
+        self.active_debug_process_id: Optional[str] = None
+
+_debug_sessions: Dict[str, DebugSession] = {}
+
+def get_debug_session() -> DebugSession:
+    sid = session_id_var.get() or "default"
+    if sid not in _debug_sessions:
+        _debug_sessions[sid] = DebugSession(sid)
+    return _debug_sessions[sid]
 
 # ── API Routes ───────────────────────────────────────────────────────────────
 
@@ -149,9 +157,11 @@ async def start_debug_session():
     if not workspace_state.root:
         raise HTTPException(status_code=400, detail="No workspace open.")
 
-    running_procs = global_process_manager.get_running_processes()
-    if running_procs:
-        return {"success": True, "message": "Debugger already running."}
+    debug_session = get_debug_session()
+    if debug_session.active_debug_process_id:
+        proc = next((p for p in global_process_manager.get_running_processes() if p.id == debug_session.active_debug_process_id), None)
+        if proc:
+            return {"success": True, "message": "Debugger already running."}
 
     root = workspace_state.root
     pkg_json = os.path.join(root, "package.json")
@@ -159,29 +169,33 @@ async def start_debug_session():
     run_py = os.path.join(root, "run.py")
 
     dap_port = _find_free_port()
-    cmd = ""
+    cmd = []
     is_python = False
 
     if os.path.exists(main_py):
-        cmd = f"{sys.executable} -m debugpy --listen 127.0.0.1:{dap_port} --wait-for-client main.py"
+        cmd = [sys.executable, "-m", "debugpy", "--listen", f"127.0.0.1:{dap_port}", "--wait-for-client", "main.py"]
         is_python = True
     elif os.path.exists(run_py):
-        cmd = f"{sys.executable} -m debugpy --listen 127.0.0.1:{dap_port} --wait-for-client run.py"
+        cmd = [sys.executable, "-m", "debugpy", "--listen", f"127.0.0.1:{dap_port}", "--wait-for-client", "run.py"]
         is_python = True
     elif os.path.exists(pkg_json):
-        cmd = f"node --inspect-brk={dap_port} node_modules/.bin/vite" if os.path.exists(os.path.join(root, "node_modules")) else f"node --inspect={dap_port} server.js"
+        if os.path.exists(os.path.join(root, "node_modules")):
+            cmd = ["node", f"--inspect-brk={dap_port}", "node_modules/.bin/vite"]
+        else:
+            cmd = ["node", f"--inspect={dap_port}", "server.js"]
     else:
-        cmd = f"{sys.executable} -m debugpy --listen 127.0.0.1:{dap_port} --wait-for-client -c \"import time; print('Debugging started...'); time.sleep(300)\""
-        is_python = True
+        # BUG-011: Return unsupported_configuration instead of dummy sleep process
+        return {"success": False, "error": "unsupported_configuration", "message": "No suitable entry point found (main.py, run.py, or package.json)."}
 
     try:
         proc = await global_process_manager.start_process(cmd, root, "Debug Session")
+        debug_session.active_debug_process_id = proc.id
 
         if is_python:
             await asyncio.sleep(0.8)
-            connected = dap_client.connect("127.0.0.1", dap_port, timeout=4.0)
+            connected = debug_session.dap_client.connect("127.0.0.1", dap_port, timeout=4.0)
             if connected:
-                dap_client.send_request("initialize", {
+                debug_session.dap_client.send_request("initialize", {
                     "clientID": "devpilot",
                     "clientName": "DevPilot IDE",
                     "adapterID": "python",
@@ -189,22 +203,23 @@ async def start_debug_session():
                     "columnsStartAt1": True,
                     "pathFormat": "path"
                 })
-                dap_client.send_request("attach", {"name": "DevPilot Debug Attach"})
-                dap_client.sync_breakpoints(root, _active_breakpoints)
-                dap_client.send_request("configurationDone", {})
+                debug_session.dap_client.send_request("attach", {"name": "DevPilot Debug Attach"})
+                debug_session.dap_client.sync_breakpoints(root, debug_session.active_breakpoints)
+                debug_session.dap_client.send_request("configurationDone", {})
 
-        return {"success": True, "command": cmd, "dap_port": dap_port, "dap_connected": dap_client.connected}
+        cmd_str = " ".join(cmd)
+        return {"success": True, "command": cmd_str, "dap_port": dap_port, "dap_connected": debug_session.dap_client.connected}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 @router.post("/api/debug/stop")
 async def stop_debug_session():
-    dap_client.close()
-    running_procs = global_process_manager.get_running_processes()
-    if running_procs:
+    debug_session = get_debug_session()
+    debug_session.dap_client.close()
+    if debug_session.active_debug_process_id:
         try:
-            for p in running_procs:
-                await global_process_manager.stop_process(p.id)
+            await global_process_manager.stop_process(debug_session.active_debug_process_id)
+            debug_session.active_debug_process_id = None
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -212,16 +227,21 @@ async def stop_debug_session():
 
 @router.get("/api/debug/status")
 def get_debug_status():
-    running = len(global_process_manager.get_running_processes()) > 0
+    debug_session = get_debug_session()
+    running = False
+    if debug_session.active_debug_process_id:
+        proc = next((p for p in global_process_manager.get_running_processes() if p.id == debug_session.active_debug_process_id), None)
+        running = proc is not None
+
     active_frame_desc = "Idle"
 
     if running:
-        if dap_client.connected:
-            threads_resp = dap_client.send_request("threads")
+        if debug_session.dap_client.connected:
+            threads_resp = debug_session.dap_client.send_request("threads")
             threads = threads_resp.get("body", {}).get("threads", []) if threads_resp else []
             if threads:
                 tid = threads[0]["id"]
-                st_resp = dap_client.send_request("stackTrace", {"threadId": tid, "startFrame": 0, "levels": 1})
+                st_resp = debug_session.dap_client.send_request("stackTrace", {"threadId": tid, "startFrame": 0, "levels": 1})
                 frames = st_resp.get("body", {}).get("stackFrames", []) if st_resp else []
                 if frames:
                     top = frames[0]
@@ -235,43 +255,64 @@ def get_debug_status():
 
     return {
         "running": running,
-        "dap_connected": dap_client.connected,
-        "breakpoints_count": len(_active_breakpoints),
+        "dap_connected": debug_session.dap_client.connected,
+        "breakpoints_count": len(debug_session.active_breakpoints),
         "active_frame": active_frame_desc
     }
 
 @router.get("/api/debug/logs")
 def get_debug_logs():
-    procs = global_process_manager.get_all_processes()
-    logs = procs[-1].logs if procs else []
+    debug_session = get_debug_session()
+    logs = []
+    if debug_session.active_debug_process_id:
+        procs = global_process_manager.get_all_processes()
+        proc = next((p for p in procs if p.id == debug_session.active_debug_process_id), None)
+        if proc:
+            logs = proc.logs
     stripped_logs = [line.rstrip("\r\n") for line in logs]
     return {"logs": stripped_logs}
 
 @router.get("/api/debug/breakpoints")
 def get_breakpoints():
-    return {"breakpoints": _active_breakpoints}
+    debug_session = get_debug_session()
+    return {"breakpoints": debug_session.active_breakpoints}
 
 @router.post("/api/debug/breakpoints")
 def add_breakpoint(bp: BreakpointItem):
-    new_id = f"bp_{len(_active_breakpoints) + 1}"
+    if not workspace_state.root:
+        raise HTTPException(status_code=400, detail="No workspace open.")
+    
+    # Validate workspace confinement
+    workspace_path = Path(workspace_state.root).resolve()
+    bp_file_path = Path(bp.file)
+    if not bp_file_path.is_absolute():
+        bp_file_path = Path(workspace_state.root) / bp_file_path
+    bp_file_path = bp_file_path.resolve()
+
+    if not str(bp_file_path).startswith(str(workspace_path)):
+        raise HTTPException(status_code=403, detail="Access Denied: Breakpoint file must be within the workspace root.")
+
+    debug_session = get_debug_session()
+    new_id = f"bp_{len(debug_session.active_breakpoints) + 1}"
     item = {
         "id": new_id,
         "file": bp.file,
         "line": bp.line,
         "enabled": bp.enabled if bp.enabled is not None else True
     }
-    _active_breakpoints.append(item)
-    if dap_client.connected and workspace_state.root:
-        dap_client.sync_breakpoints(workspace_state.root, _active_breakpoints)
+    debug_session.active_breakpoints.append(item)
+    if debug_session.dap_client.connected and workspace_state.root:
+        debug_session.dap_client.sync_breakpoints(workspace_state.root, debug_session.active_breakpoints)
     return {"success": True, "breakpoint": item}
 
 @router.post("/api/debug/breakpoints/toggle")
 def toggle_breakpoint(req: ToggleBreakpointRequest):
-    for bp in _active_breakpoints:
+    debug_session = get_debug_session()
+    for bp in debug_session.active_breakpoints:
         if bp["id"] == req.breakpoint_id:
             bp["enabled"] = not bp.get("enabled", True)
-            if dap_client.connected and workspace_state.root:
-                dap_client.sync_breakpoints(workspace_state.root, _active_breakpoints)
+            if debug_session.dap_client.connected and workspace_state.root:
+                debug_session.dap_client.sync_breakpoints(workspace_state.root, debug_session.active_breakpoints)
             return {"success": True, "breakpoint": bp}
     return {"success": False, "error": "Breakpoint not found"}
 
@@ -281,15 +322,12 @@ def evaluate_expression(req: EvaluateRequest):
     if not expr:
         return {"result": None}
 
-    # S2: Only evaluate via a connected DAP adapter — never fall back to
-    # Python eval() with user-supplied expressions, which would allow RCE
-    # (e.g. os.system("rm -rf /"), open("/etc/passwd").read(), etc.).
-    if dap_client.connected:
-        eval_resp = dap_client.send_request("evaluate", {"expression": expr, "context": "repl"})
+    debug_session = get_debug_session()
+    if debug_session.dap_client.connected:
+        eval_resp = debug_session.dap_client.send_request("evaluate", {"expression": expr, "context": "repl"})
         if eval_resp and eval_resp.get("success"):
             res_val = eval_resp.get("body", {}).get("result", "None")
             return {"expression": expr, "result": str(res_val), "status": "success"}
-        # DAP responded but evaluation failed (e.g. NameError in the debuggee)
         err_body = eval_resp.get("body", {}) if eval_resp else {}
         return {
             "expression": expr,
@@ -297,7 +335,6 @@ def evaluate_expression(req: EvaluateRequest):
             "status": "error"
         }
 
-    # No active debug session — safe refusal
     return {
         "expression": expr,
         "error": "No active debug session. Start a debug session first.",
@@ -306,16 +343,21 @@ def evaluate_expression(req: EvaluateRequest):
 
 @router.get("/api/debug/callstack")
 def get_callstack():
-    running = len(global_process_manager.get_running_processes()) > 0
+    debug_session = get_debug_session()
+    running = False
+    if debug_session.active_debug_process_id:
+        proc = next((p for p in global_process_manager.get_running_processes() if p.id == debug_session.active_debug_process_id), None)
+        running = proc is not None
+
     if not running:
         return {"stack": []}
 
-    if dap_client.connected:
-        threads_resp = dap_client.send_request("threads")
+    if debug_session.dap_client.connected:
+        threads_resp = debug_session.dap_client.send_request("threads")
         threads = threads_resp.get("body", {}).get("threads", []) if threads_resp else []
         if threads:
             tid = threads[0]["id"]
-            st_resp = dap_client.send_request("stackTrace", {"threadId": tid, "startFrame": 0, "levels": 20})
+            st_resp = debug_session.dap_client.send_request("stackTrace", {"threadId": tid, "startFrame": 0, "levels": 20})
             raw_frames = st_resp.get("body", {}).get("stackFrames", []) if st_resp else []
             formatted = []
             for f in raw_frames:
@@ -328,46 +370,45 @@ def get_callstack():
             if formatted:
                 return {"stack": formatted}
 
-    return {
-        "stack": [
-            {"id": 1, "name": "main", "file": "main.py", "line": 10}
-        ]
-    }
-
-# ── Debug Execution Control Endpoints ────────────────────────────────────────
+    return {"stack": []}
 
 @router.post("/api/debug/step-over")
 def debug_step_over():
-    if dap_client.connected:
-        dap_client.send_request("next", {"threadId": 1})
+    debug_session = get_debug_session()
+    if debug_session.dap_client.connected:
+        debug_session.dap_client.send_request("next", {"threadId": 1})
         return {"success": True}
     return {"success": False, "error": "Debugger session not connected to DAP"}
 
 @router.post("/api/debug/step-into")
 def debug_step_into():
-    if dap_client.connected:
-        dap_client.send_request("stepIn", {"threadId": 1})
+    debug_session = get_debug_session()
+    if debug_session.dap_client.connected:
+        debug_session.dap_client.send_request("stepIn", {"threadId": 1})
         return {"success": True}
     return {"success": False, "error": "Debugger session not connected to DAP"}
 
 @router.post("/api/debug/step-out")
 def debug_step_out():
-    if dap_client.connected:
-        dap_client.send_request("stepOut", {"threadId": 1})
+    debug_session = get_debug_session()
+    if debug_session.dap_client.connected:
+        debug_session.dap_client.send_request("stepOut", {"threadId": 1})
         return {"success": True}
     return {"success": False, "error": "Debugger session not connected to DAP"}
 
 @router.post("/api/debug/continue")
 def debug_continue():
-    if dap_client.connected:
-        dap_client.send_request("continue", {"threadId": 1})
+    debug_session = get_debug_session()
+    if debug_session.dap_client.connected:
+        debug_session.dap_client.send_request("continue", {"threadId": 1})
         return {"success": True}
     return {"success": False, "error": "Debugger session not connected to DAP"}
 
 @router.post("/api/debug/pause")
 def debug_pause():
-    if dap_client.connected:
-        dap_client.send_request("pause", {"threadId": 1})
+    debug_session = get_debug_session()
+    if debug_session.dap_client.connected:
+        debug_session.dap_client.send_request("pause", {"threadId": 1})
         return {"success": True}
     return {"success": False, "error": "Debugger session not connected to DAP"}
 

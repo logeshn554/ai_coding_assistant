@@ -123,11 +123,11 @@ async def get_git_status():
     if not workspace_state.root:
         return {"branch": "", "files": []}
     try:
-        branch = await run_cmd_async("git rev-parse --abbrev-ref HEAD", workspace_state.root)
+        branch = await run_cmd_async(["git", "rev-parse", "--abbrev-ref", "HEAD"], workspace_state.root)
         if "fatal:" in branch:
             return {"branch": "Not a Git Repository", "files": []}
         branch = branch.strip()
-        status_out = await run_cmd_async("git status --porcelain", workspace_state.root)
+        status_out = await run_cmd_async(["git", "status", "--porcelain"], workspace_state.root)
         if "fatal:" in status_out:
             return {"branch": "Not a Git Repository", "files": []}
         files = []
@@ -147,7 +147,7 @@ async def get_git_branches():
     if not workspace_state.root:
         return {"branches": []}
     try:
-        out = await run_cmd_async("git branch -a", workspace_state.root)
+        out = await run_cmd_async(["git", "branch", "-a"], workspace_state.root)
         if "fatal:" in out:
             return {"branches": []}
         branches = [line.replace("*", "").strip() for line in out.splitlines() if line.strip()]
@@ -160,7 +160,7 @@ async def get_git_history():
     if not workspace_state.root:
         return {"history": []}
     try:
-        out = await run_cmd_async('git log -n 15 --pretty=format:"%h - %an, %ar : %s"', workspace_state.root)
+        out = await run_cmd_async(["git", "log", "-n", "15", "--pretty=format:%h - %an, %ar : %s"], workspace_state.root)
         if "fatal:" in out:
             return {"history": []}
         history = [line.strip() for line in out.splitlines() if line.strip()]
@@ -181,7 +181,7 @@ async def get_git_diff(
         raise HTTPException(status_code=400, detail="No workspace open.")
     try:
         if staged and staged.lower() == "true":
-            diff_out = await run_cmd_async("git diff --cached", workspace_state.root)
+            diff_out = await run_cmd_async(["git", "diff", "--cached"], workspace_state.root)
             if "fatal:" in diff_out:
                 return {"diff": ""}
             return {"diff": diff_out}
@@ -271,14 +271,14 @@ async def get_git_changes():
     if not workspace_state.root:
         return {"files": []}
     try:
-        branch = await run_cmd_async("git rev-parse --abbrev-ref HEAD", workspace_state.root)
+        branch = await run_cmd_async(["git", "rev-parse", "--abbrev-ref", "HEAD"], workspace_state.root)
         if "fatal:" in branch:
             return {"files": []}
-        status_out = await run_cmd_async("git status --porcelain", workspace_state.root)
+        status_out = await run_cmd_async(["git", "status", "--porcelain"], workspace_state.root)
         lines = status_out.splitlines()
         unstaged_numstat = {}
         try:
-            numstat_out = await run_cmd_async("git diff --numstat", workspace_state.root)
+            numstat_out = await run_cmd_async(["git", "diff", "--numstat"], workspace_state.root)
             for line in numstat_out.splitlines():
                 parts = line.split()
                 if len(parts) >= 3:
@@ -288,7 +288,7 @@ async def get_git_changes():
             pass
         staged_numstat = {}
         try:
-            numstat_staged_out = await run_cmd_async("git diff --cached --numstat", workspace_state.root)
+            numstat_staged_out = await run_cmd_async(["git", "diff", "--cached", "--numstat"], workspace_state.root)
             for line in numstat_staged_out.splitlines():
                 parts = line.split()
                 if len(parts) >= 3:

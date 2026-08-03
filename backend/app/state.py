@@ -18,19 +18,42 @@ from pathlib import Path
 # Generate session token and setup auth
 token_file = Path.home() / ".devpilot" / "session_token.txt"
 token_file.parent.mkdir(parents=True, exist_ok=True)
+try:
+    import sys
+    if sys.platform != "win32":
+        # Restrict configuration directory access to owner-only
+        os.chmod(token_file.parent, 0o700)
+except Exception:
+    pass
+
 if token_file.exists():
     try:
         SESSION_TOKEN = token_file.read_text(encoding="utf-8").strip()
+        try:
+            if sys.platform != "win32":
+                os.chmod(token_file, 0o600)
+        except Exception:
+            pass
     except Exception:
         SESSION_TOKEN = secrets.token_hex(32)
         try:
             token_file.write_text(SESSION_TOKEN, encoding="utf-8")
+            try:
+                if sys.platform != "win32":
+                    os.chmod(token_file, 0o600)
+            except Exception:
+                pass
         except Exception:
             pass
 else:
     SESSION_TOKEN = secrets.token_hex(32)
     try:
         token_file.write_text(SESSION_TOKEN, encoding="utf-8")
+        try:
+            if sys.platform != "win32":
+                os.chmod(token_file, 0o600)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -319,10 +342,42 @@ class WorkspaceState:
             self._session_roots[sid] = val
         self._default_root = val
 
+    def evict_session(self, sid: str) -> None:
+        """Evict session ID from memory roots mapping to prevent memory leaks."""
+        self._session_roots.pop(sid, None)
+
 workspace_state = WorkspaceState(INITIAL_WORKSPACE_ROOT)
 
 # Initialize Permission Manager
-permission_manager = PermissionManager(config_manager, workspace_state.root)
+_permission_managers = {}
+
+def get_permission_manager() -> PermissionManager:
+    sid = session_id_var.get() or "default"
+    if sid not in _permission_managers:
+        _permission_managers[sid] = PermissionManager(config_manager, workspace_state.root)
+    _permission_managers[sid].workspace_root = workspace_state.root
+    return _permission_managers[sid]
+
+_ws_tickets = {}
+
+def create_ws_ticket() -> str:
+    import time
+    ticket = secrets.token_urlsafe(32)
+    _ws_tickets[ticket] = time.time() + 60.0
+    return ticket
+
+def verify_ws_ticket(ticket: str) -> bool:
+    if not ticket:
+        return False
+    import time
+    now = time.time()
+    expired = [t for t, exp in list(_ws_tickets.items()) if exp < now]
+    for t in expired:
+        _ws_tickets.pop(t, None)
+    if ticket in _ws_tickets:
+        _ws_tickets.pop(ticket)
+        return True
+    return False
 
 async def verify_token(request: Request = None):
     """

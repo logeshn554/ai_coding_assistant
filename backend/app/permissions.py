@@ -45,8 +45,8 @@ class PermissionManager:
         return cmd
 
     def get_command_risk(self, command: str) -> str:
-        if not command or not isinstance(command, str):
-            return RISK_SAFE
+        if not command or not isinstance(command, str) or not command.strip():
+            raise ValueError("A non-empty command is required.")
         cmd = command.strip().lower()
         
         # Destructive patterns (commands that cause irreversible loss or mass deletion)

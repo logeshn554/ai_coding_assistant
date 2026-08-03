@@ -12,7 +12,7 @@ logger = logging.getLogger("devpilot.processes")
 
 _job_objects = []
 
-def confine_subprocess(pid: int):
+def confine_subprocess(pid: int) -> Optional[int]:
     if sys.platform == "win32":
         try:
             kernel32 = ctypes.windll.kernel32
@@ -22,11 +22,15 @@ def confine_subprocess(pid: int):
                 PROCESS_TERMINATE = 0x0001
                 proc_handle = kernel32.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, pid)
                 if proc_handle:
-                    if kernel32.AssignProcessToJobObject(job, proc_handle):
-                        _job_objects.append(job)
+                    success = kernel32.AssignProcessToJobObject(job, proc_handle)
                     kernel32.CloseHandle(proc_handle)
+                    if success:
+                        return job
+                    else:
+                        kernel32.CloseHandle(job)
         except Exception:
             pass
+    return None
 
 class ActiveProcess:
     def __init__(self, command: str, cwd: str, name: str = None):
@@ -45,30 +49,38 @@ class ActiveProcess:
         self.port_conflict = False
         self.conflict_details = {}
         self.startup_success_event = asyncio.Event()
+        self.win32_job_object: Optional[int] = None
 
     async def start(self):
         logger.info(f"Starting process '{self.name}' with command: {self.command}")
         self.logs.append(f"Starting: {self.command}\n")
         
+        import shlex
+        import shutil
+
+        if isinstance(self.command, list):
+            cmd_args = self.command
+        else:
+            cmd_args = shlex.split(self.command)
+
+        if not cmd_args:
+            raise ValueError("Empty command list")
+
+        if sys.platform == "win32" and cmd_args:
+            resolved = shutil.which(cmd_args[0])
+            if resolved:
+                cmd_args[0] = resolved
+
         kwargs = {}
         if sys.platform == "win32":
             import subprocess
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         else:
-            kwargs["executable"] = "/bin/bash"
-            import pwd
-            def drop_privileges():
-                try:
-                    nobody = pwd.getpwnam('nobody')
-                    os.setgid(nobody.pw_gid)
-                    os.setuid(nobody.pw_uid)
-                except Exception:
-                    pass
-            kwargs["preexec_fn"] = drop_privileges
+            kwargs["start_new_session"] = True
 
         try:
-            self.process = await asyncio.create_subprocess_shell(
-                self.command,
+            self.process = await asyncio.create_subprocess_exec(
+                *cmd_args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=self.cwd,
@@ -76,10 +88,14 @@ class ActiveProcess:
                 **kwargs
             )
             self.pid = self.process.pid
-            try:
-                confine_subprocess(self.pid)
-            except Exception:
-                pass
+            self.status = "running"
+            if sys.platform == "win32":
+                job = confine_subprocess(self.pid)
+                if job:
+                    self.win32_job_object = job
+                else:
+                    raise OSError("Failed to assign process to Windows Job Object for confinement.")
+            self.startup_success_event.set()
             self.read_task = asyncio.create_task(self._read_output())
         except Exception as e:
             self.status = "failed"
@@ -92,12 +108,16 @@ class ActiveProcess:
                 line_bytes = await self.process.stdout.readline()
                 if not line_bytes:
                     break
+                if len(line_bytes) > 1024 * 1024:
+                    line_bytes = line_bytes[:1024 * 1024] + b" ... [truncated line]\n"
                 line = line_bytes.decode("utf-8", errors="replace")
                 self.logs.append(line)
                 
-                # Truncate logs if too large
-                if len(self.logs) > 1000:
-                    self.logs = self.logs[-1000:]
+                # Truncate logs if too large by total byte length (>5MB)
+                total_bytes = sum(len(l) for l in self.logs)
+                while total_bytes > 5 * 1024 * 1024 and len(self.logs) > 1:
+                    removed = self.logs.pop(0)
+                    total_bytes -= len(removed)
                 
                 self._parse_line(line)
                 
@@ -165,17 +185,29 @@ class ActiveProcess:
                 self.port = int(conf_port_match.group(1))
             self.startup_success_event.set()
 
+    def cleanup(self):
+        if sys.platform == "win32" and self.win32_job_object:
+            try:
+                import ctypes
+                ctypes.windll.kernel32.CloseHandle(self.win32_job_object)
+            except Exception:
+                pass
+            self.win32_job_object = None
+
     async def stop(self):
         logger.info(f"Stopping process {self.id} ({self.name})")
         if self.process:
             try:
                 if sys.platform == "win32":
-                    # Taskkill tree of processes
-                    subprocess.call(f"taskkill /F /T /PID {self.process.pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.call(["taskkill", "/F", "/T", "/PID", str(self.process.pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 else:
-                    self.process.terminate()
+                    import signal
+                    os.killpg(self.process.pid, signal.SIGTERM)
             except Exception:
                 pass
+
+        if self.win32_job_object:
+            self.cleanup()
 
         if self.read_task:
             self.read_task.cancel()
@@ -190,7 +222,11 @@ class ActiveProcess:
                 await asyncio.wait_for(self.process.wait(), timeout=2.0)
             except Exception:
                 try:
-                    self.process.kill()
+                    if sys.platform != "win32":
+                        import signal
+                        os.killpg(self.process.pid, signal.SIGKILL)
+                    else:
+                        self.process.kill()
                     await asyncio.wait_for(self.process.wait(), timeout=1.0)
                 except Exception:
                     pass
@@ -203,6 +239,14 @@ class ProcessManager:
         self.processes: Dict[str, ActiveProcess] = {}
 
     async def start_process(self, command: str, cwd: str, name: str = None) -> ActiveProcess:
+        # Enforce history limit of 100 non-running processes
+        non_running = [p_id for p_id, p in self.processes.items() if p.status not in ("starting", "running")]
+        if len(non_running) >= 100:
+            for p_id in non_running[:10]:
+                p = self.processes.pop(p_id, None)
+                if p:
+                    p.cleanup()
+
         # Create and start active process
         proc = ActiveProcess(command, cwd, name)
         self.processes[proc.id] = proc
@@ -238,12 +282,12 @@ def get_process_using_port(port: int) -> Tuple[Optional[int], Optional[str]]:
     if sys.platform != "win32":
         # Unix/Linux/macOS using lsof
         try:
-            output = subprocess.check_output(f"lsof -t -i:{port}", shell=True).decode("utf-8", errors="replace").strip()
+            output = subprocess.check_output(["lsof", "-t", f"-i:{port}"], stderr=subprocess.DEVNULL).decode("utf-8", errors="replace").strip()
             if output:
                 pids = [int(p) for p in output.split() if p.isdigit()]
                 if pids:
                     pid = pids[0]
-                    name_output = subprocess.check_output(f"ps -p {pid} -o comm=", shell=True).decode("utf-8", errors="replace").strip()
+                    name_output = subprocess.check_output(["ps", "-p", str(pid), "-o", "comm="], stderr=subprocess.DEVNULL).decode("utf-8", errors="replace").strip()
                     return pid, name_output
         except Exception:
             pass
@@ -251,16 +295,20 @@ def get_process_using_port(port: int) -> Tuple[Optional[int], Optional[str]]:
 
     # Windows using netstat and tasklist
     try:
-        output = subprocess.check_output("netstat -ano", shell=True).decode("utf-8", errors="replace")
+        output = subprocess.check_output(["netstat", "-ano"], stderr=subprocess.DEVNULL).decode("utf-8", errors="replace")
         for line in output.splitlines():
-            if "LISTENING" in line and f":{port}" in line:
+            if "LISTENING" in line:
                 parts = line.strip().split()
                 if len(parts) >= 5:
-                    pid = int(parts[-1])
-                    name_output = subprocess.check_output(f"tasklist /FI \"PID eq {pid}\" /NH", shell=True).decode("utf-8", errors="replace")
-                    name_parts = name_output.strip().split()
-                    process_name = name_parts[0] if name_parts else "Unknown"
-                    return pid, process_name
+                    local_addr = parts[1]
+                    pid_str = parts[-1]
+                    addr_parts = local_addr.rsplit(":", 1)
+                    if len(addr_parts) == 2 and addr_parts[1] == str(port) and pid_str.isdigit():
+                        pid = int(pid_str)
+                        name_output = subprocess.check_output(["tasklist", "/FI", f"PID eq {pid}", "/NH"], stderr=subprocess.DEVNULL).decode("utf-8", errors="replace")
+                        name_parts = name_output.strip().split()
+                        process_name = name_parts[0] if name_parts else "Unknown"
+                        return pid, process_name
     except Exception as e:
         logger.error(f"Error checking port conflict on {port}: {str(e)}")
     return None, None
@@ -268,9 +316,9 @@ def get_process_using_port(port: int) -> Tuple[Optional[int], Optional[str]]:
 def kill_process_by_pid(pid: int) -> bool:
     try:
         if sys.platform == "win32":
-            subprocess.check_call(f"taskkill /F /PID {pid}", shell=True)
+            subprocess.check_call(["taskkill", "/F", "/PID", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
-            subprocess.check_call(f"kill -9 {pid}", shell=True)
+            os.kill(pid, 9)
         return True
     except Exception as e:
         logger.error(f"Failed to kill process {pid}: {str(e)}")
