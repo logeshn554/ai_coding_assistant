@@ -4,6 +4,11 @@ collect_ignore = ["frontend/test_results.txt", "frontend/test_out.txt", "fronten
 import os
 import sys
 
+# Prevent broken native precompiled modules from crashing collection
+sys.modules["transformers"] = None
+sys.modules["torch"] = None
+sys.modules["sympy"] = None
+
 # Set DEVPILOT_TEST_MODE for backend test stub imports
 os.environ["DEVPILOT_TEST_MODE"] = "1"
 # Disable HTTP token auth in the test environment so TestClient calls don't

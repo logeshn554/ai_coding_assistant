@@ -84,8 +84,9 @@ AGENT_MODE_INSTRUCTIONS = """
 │       target. If it fails a second time, fall back to write_file    │
 │       with the full corrected content instead.                      │
 │                                                                     │
-│  3. write_file is for NEW files or FULL rewrites only.              │
-│     It overwrites the entire file — never use for partial edits.    │
+│  3. Prefer write_file over edit_file for complex edits, full        │
+│     rewrites, or as an immediate fallback for diff/hunk target       │
+│     failures. It overwrites the entire file.                        │
 │                                                                     │
 │  4. TERMINAL COMMANDS:                                              │
 │     • Prefer non-interactive forms of any CLI. If a tool has an     │

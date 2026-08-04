@@ -17,7 +17,7 @@ import difflib
 import json
 import os
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ..async_files import (
     async_read_workspace_file,
@@ -181,6 +181,26 @@ def _whitespace_near_match(target: str, content: str) -> tuple[int, int] | None:
     return None
 
 
+def validate_file_content(path: str, content: str) -> Optional[str]:
+    """Validate content is not empty, is valid JSON for .json, and is syntactically valid Python for .py."""
+    if not content.strip():
+        return "File content cannot be empty."
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".json":
+        try:
+            json.loads(content)
+        except json.JSONDecodeError as e:
+            return f"Invalid JSON: {str(e)}"
+    elif ext == ".py":
+        try:
+            compile(content, path, "exec")
+        except SyntaxError as e:
+            return f"Python syntax error: {e.msg} (line {e.lineno})"
+        except Exception as e:
+            return f"Python compilation failed: {str(e)}"
+    return None
+
+
 async def write_or_edit_file(
     session: Any,
     tc_id: str,
@@ -291,6 +311,12 @@ async def write_or_edit_file(
         hunk_decisions = decision.get("hunk_decisions")
         if hunk_decisions is not None:
             proposed_content = apply_hunks(original_content, hunks, hunk_decisions)
+
+    # Validate proposed content
+    validation_err = validate_file_content(path, proposed_content)
+    if validation_err:
+        session.log_audit(name, args, "validation_failed", validation_err)
+        return f"Validation Error: {validation_err}"
 
     # Perform the actual write
     await async_write_workspace_file(session.workspace_root, path, proposed_content)

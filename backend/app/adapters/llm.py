@@ -2,6 +2,7 @@ import json
 import logging
 import asyncio
 import os
+import httpx
 from typing import AsyncGenerator, List, Dict, Any, Optional
 
 logger = logging.getLogger("devpilot.adapters.llm")
@@ -63,7 +64,8 @@ class LLMAdapter(ModelAdapter):
             base_url = None
             
         api_key = self.api_key if self.api_key else "dummy-key"
-        client = AsyncAnthropic(api_key=api_key, base_url=base_url)
+        timeout_val = float(os.environ.get("DEVPILOT_STREAMING_TIMEOUT") or os.environ.get("ANTHROPIC_TIMEOUT") or "180.0")
+        client = AsyncAnthropic(api_key=api_key, base_url=base_url, timeout=timeout_val)
 
         anthropic_tools = []
         for tool in tools:
@@ -167,6 +169,17 @@ class LLMAdapter(ModelAdapter):
                         )
             yield self.build_done_chunk("stop")
         except Exception as e:
+            err_str = str(e).lower()
+            is_timeout = False
+            if isinstance(e, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)):
+                is_timeout = True
+            elif "timeout" in err_str or "timed out" in err_str or "connecttimeout" in err_str:
+                is_timeout = True
+
+            if is_timeout:
+                logger.error(f"Anthropic API request timed out ({e})")
+                raise TimeoutError(f"Request timed out connecting to provider ({base_url or 'Anthropic API'}). Please check network or model endpoint.") from e
+
             logger.error(f"Anthropic API Error: {str(e)}")
             raise e
 
@@ -178,7 +191,7 @@ class LLMAdapter(ModelAdapter):
     ) -> AsyncGenerator[Dict[str, Any], None]:
         base_url = self.base_url if self.base_url else None
         api_key = self.api_key if self.api_key else "dummy-key"
-        timeout_val = float(os.environ.get("OPENAI_TIMEOUT", "60.0"))
+        timeout_val = float(os.environ.get("DEVPILOT_STREAMING_TIMEOUT") or os.environ.get("OPENAI_TIMEOUT") or "180.0")
         client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout_val)
 
         openai_tools = []
@@ -262,7 +275,12 @@ class LLMAdapter(ModelAdapter):
                 yield self.build_done_chunk(stop_reason)
             except Exception as stream_err:
                 err_str = str(stream_err).lower()
-                is_timeout = "timeout" in err_str or "timed out" in err_str or "connecttimeout" in err_str
+                is_timeout = False
+                if isinstance(stream_err, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)):
+                    is_timeout = True
+                elif "timeout" in err_str or "timed out" in err_str or "connecttimeout" in err_str:
+                    is_timeout = True
+
                 if is_timeout:
                     logger.error(f"OpenAI API request timed out ({stream_err})")
                     raise TimeoutError(f"Request timed out connecting to provider ({base_url or 'OpenAI API'}). Please check network or model endpoint.") from stream_err

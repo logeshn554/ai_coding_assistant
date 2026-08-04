@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import uuid
+import httpx
 from ..adapters.base import AVAILABLE_TOOLS
 from ..async_files import async_list_workspace_dir
 from ..files import safe_path
@@ -26,6 +27,32 @@ from ..tools.dispatcher import dispatch_tool
 from ..tools.terminal_tool import run_shell_command
 
 logger = logging.getLogger("devpilot.agent")
+
+
+def detect_contradiction(text: str) -> Optional[str]:
+    """Detect contradictory instructions or frameworks in user prompts."""
+    text_lower = text.lower()
+    
+    # 1. Conflicting stacks in project setup/creation
+    if ("react" in text_lower and "vue" in text_lower) and any(x in text_lower for x in ("scaffold", "setup", "create project", "initialize", "npm install")):
+        return "The prompt contains conflicting instructions for React and Vue in the same project setup."
+        
+    if ("django" in text_lower and "fastapi" in text_lower) and any(x in text_lower for x in ("scaffold", "setup", "create project", "initialize", "pip install")):
+        return "The prompt contains conflicting instructions for Django and FastAPI in the same project setup."
+
+    if ("typescript" in text_lower and "python" in text_lower) and any(x in text_lower for x in ("scaffold", "setup", "create project", "initialize")):
+        return "The prompt asks to initialize/scaffold a project in both Python and TypeScript."
+
+    # 2. Mutually exclusive file operations (e.g. delete and edit/create/write)
+    words = re.findall(r'\b[\w\.\-]+\b', text_lower)
+    files = [w for w in words if '.' in w and not w.endswith('.')]
+    for f in files:
+        has_delete = any(x in text_lower for x in (f"delete {f}", f"remove {f}", f"rm {f}", f"destroy {f}"))
+        has_modify = any(x in text_lower for x in (f"edit {f}", f"modify {f}", f"update {f}", f"write {f}", f"create {f}", f"add to {f}"))
+        if has_delete and has_modify:
+            return f"The prompt contains mutually contradictory actions to delete and modify the file '{f}' in the same turn."
+
+    return None
 
 
 class AgentSession:
@@ -73,6 +100,8 @@ class AgentSession:
         # B9: Cached WorkspaceIndex instance â” reused across turns within a session
         # instead of being re-created on every LLM call (which discards the mtime cache).
         self._workspace_index = None
+        self._failed_request = None
+        self._last_request_snapshot = None
 
         # Request queue: new messages are enqueued while the agent is busy.
         # Each item is a tuple of (text, mode, auto_apply).
@@ -686,6 +715,28 @@ class AgentSession:
                 await self.broadcast_processes_state()
             return
 
+        # Store snapshot at the start of handle_user_message
+        self._last_request_snapshot = {
+            "text": text,
+            "mode": mode,
+            "auto_apply": auto_apply,
+            "history": list(self.conversation_history)
+        }
+
+        # Check for contradiction first
+        contradiction = detect_contradiction(text)
+        if contradiction:
+            await self.send_ws_message({
+                "type": "text_delta",
+                "content": f"\n\n[WARNING] **Contradictory Instructions Detected**:\n{contradiction}"
+            })
+            await self.send_ws_message({
+                "type": "session_done",
+                "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
+                "wasted_turns": getattr(self, "wasted_turns", 0),
+            })
+            raise ValueError(contradiction)
+
         import time
         self._running_since = time.monotonic()
         self.is_running = True
@@ -893,17 +944,9 @@ class AgentSession:
                                     stop_reason = chunk["stop_reason"]
                         except Exception as retry_err:
                             raise retry_err
-                    elif "time" in err_str.lower() or "timeout" in err_str.lower() or "connecttimeout" in err_str.lower():
+                    elif isinstance(e, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)) or "time" in err_str.lower() or "timeout" in err_str.lower() or "connecttimeout" in err_str.lower():
                         logger.error(f"Agent session API call timed out: {e}")
-                        await self.send_ws_message({
-                            "type": "text_delta",
-                            "content": "\n\n[WARNING] **API Request Timed Out**: The model provider did not respond within the timeout limit. Please check your network connection, API key, or provider endpoint settings and try again."
-                        })
-                        await self.send_ws_message({
-                            "type": "status",
-                            "message": "Request timed out. Ready."
-                        })
-                        break
+                        raise TimeoutError("API Request Timed Out") from e
                     else:
                         raise e
 
@@ -1154,6 +1197,16 @@ class AgentSession:
                 "wasted_turns": getattr(self, "wasted_turns", 0),
             })
         except Exception as e:
+            # Check if this is a contradiction ValueError
+            is_contradiction = False
+            if isinstance(e, ValueError):
+                contradiction_msg = detect_contradiction(text)
+                if contradiction_msg and contradiction_msg in str(e):
+                    is_contradiction = True
+
+            if is_contradiction:
+                raise e
+
             import traceback
             tb_lines = traceback.format_exc().splitlines()
             # Show last 6 lines of traceback for context without flooding the chat
@@ -1166,7 +1219,7 @@ class AgentSession:
             # Determine a user-friendly hint based on error type
             if "api" in error_msg.lower() or "key" in error_msg.lower() or "auth" in error_msg.lower():
                 hint = "[HINT] Check your API key in Settings -> Model Configuration."
-            elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower() or error_type == "TimeoutError" or isinstance(e, (TimeoutError, asyncio.TimeoutError, httpx.TimeoutException)):
                 hint = "[HINT] The model provider timed out. Try again or switch to a faster model."
             elif "rate" in error_msg.lower() or "429" in error_msg:
                 hint = "[HINT] Rate limit hit. Wait a moment then try again."
@@ -1189,11 +1242,28 @@ class AgentSession:
             )
 
             await self.send_ws_message({"type": "text_delta", "content": crash_card})
-            await self.send_ws_message({
-                "type": "session_done",
-                "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
-                "wasted_turns": getattr(self, "wasted_turns", 0),
-            })
+
+            # Save the failed request
+            self._failed_request = self._last_request_snapshot
+
+            is_timeout = (
+                isinstance(e, (TimeoutError, asyncio.TimeoutError, httpx.TimeoutException))
+                or "timeout" in error_msg.lower()
+                or "timed out" in error_msg.lower()
+            )
+            if is_timeout:
+                await self.send_ws_message({
+                    "type": "session_failed",
+                    "reason": "timeout",
+                    "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
+                    "wasted_turns": getattr(self, "wasted_turns", 0),
+                })
+            else:
+                await self.send_ws_message({
+                    "type": "session_done",
+                    "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
+                    "wasted_turns": getattr(self, "wasted_turns", 0),
+                })
         finally:
             self.is_running = False
             await self.save_history_to_db()

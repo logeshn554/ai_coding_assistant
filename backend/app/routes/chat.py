@@ -743,6 +743,28 @@ async def websocket_chat(
                     for p in global_process_manager.get_running_processes():
                         await p.stop()
                 await session.broadcast_processes_state()
+
+            elif msg_type == "retry":
+                snapshot = session._failed_request or getattr(session, "_last_request_snapshot", None)
+                if snapshot:
+                    session.conversation_history = list(snapshot["history"])
+                    session._failed_request = None
+                    text = snapshot["text"]
+                    mode = snapshot["mode"]
+                    auto_apply = snapshot["auto_apply"]
+                    await session.enqueue_message(text, mode, auto_apply)
+                else:
+                    logger.warning("No failed request snapshot available to retry.")
+
+            elif msg_type == "continue":
+                mode = getattr(session, "last_mode", "Agent")
+                auto_apply = getattr(session, "auto_apply", False)
+                await session.enqueue_message("Continue.", mode, auto_apply)
+
+            elif msg_type == "resume":
+                mode = getattr(session, "last_mode", "Agent")
+                auto_apply = getattr(session, "auto_apply", False)
+                await session.enqueue_message("Resume and continue the previous task.", mode, auto_apply)
                 
     except WebSocketDisconnect:
         logger.info("Chat WebSocket disconnected")
