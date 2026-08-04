@@ -26,6 +26,7 @@ from .confidence_scorer import ConfidenceScorer
 from .validator import Validator
 from .critic import Critic
 from .workflow_engine import WorkflowEngine
+from ..session.agent_session import AgentSession
 
 __all__ = [
     "IntentRouter", "IntentType",
@@ -40,4 +41,5 @@ __all__ = [
     "Validator",
     "Critic",
     "WorkflowEngine",
+    "AgentSession",
 ]

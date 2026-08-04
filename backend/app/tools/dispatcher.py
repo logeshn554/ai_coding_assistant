@@ -29,13 +29,23 @@ def _get_recovery_manager():
 
 
 def _maybe_update_knowledge_store(session: Any, rel_path: str) -> None:
-    """Update the session's KnowledgeStore index after a successful write."""
+    """Update the session's KnowledgeStore index and invalidate cached symbols."""
     try:
         ks = getattr(session, "_knowledge_store", None)
         if ks is not None:
             ks.update_file(rel_path)
     except Exception as e:
         logger.debug(f"KnowledgeStore update_file failed (non-fatal): {e}")
+
+    try:
+        from ..cache import invalidate_pattern
+        import asyncio
+        # Normalize paths for matching in serialized JSON keys
+        norm_path = rel_path.replace("\\", "/")
+        asyncio.create_task(invalidate_pattern(f"*get_symbols*{norm_path}*"))
+        asyncio.create_task(invalidate_pattern("*get_global_symbols*"))
+    except Exception as ce:
+        logger.debug(f"Cache invalidation trigger failed (non-fatal): {ce}")
 
 
 _WRITE_ERROR_SIGNATURES = (

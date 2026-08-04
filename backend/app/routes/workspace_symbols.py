@@ -10,6 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from ..state import workspace_state
 from ..workspace_index import WorkspaceIndex
+from ..cache import cached
 
 router = APIRouter()
 logger = logging.getLogger("devpilot.routes.workspace_symbols")
@@ -28,7 +29,8 @@ def _get_index() -> WorkspaceIndex:
 
 
 @router.get("/api/workspace/symbols")
-def get_symbols(
+@cached(ttl=600)
+async def get_symbols(
     path: Optional[str] = Query(None, description="Relative file path within workspace"),
     file: Optional[str] = Query(None, description="Alternative relative file path parameter")
 ):
@@ -76,7 +78,8 @@ def get_symbols(
 
 
 @router.get("/api/workspace/global-symbols")
-def get_global_symbols(
+@cached(ttl=600)
+async def get_global_symbols(
     q: str = Query("", description="Symbol query string"),
     limit: int = Query(60, ge=1, le=200, description="Maximum results")
 ):
