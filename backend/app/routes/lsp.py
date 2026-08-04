@@ -346,13 +346,7 @@ async def lsp_websocket(
     WebSocket endpoint that proxies JSON-RPC between Monaco and a language server.
     Supported: python, typescript, javascript.
     """
-    if language not in LANGUAGE_SERVERS:
-        await websocket.accept()
-        await websocket.send_text(json.dumps({
-            "error": f"Unsupported language: {language}. Supported: {list(LANGUAGE_SERVERS.keys())}"
-        }))
-        await websocket.close()
-        return
+    await websocket.accept()
 
     from ..state import verify_ws_ticket
     is_authenticated = False
@@ -361,13 +355,16 @@ async def lsp_websocket(
     elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         is_authenticated = True
 
-    await websocket.accept()
     if not is_authenticated:
-        try:
-            await websocket.send_text(json.dumps({"error": "Unauthorized: invalid or missing ticket or token."}))
-        except Exception:
-            pass
+        await websocket.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid or missing token."}))
         await websocket.close(code=4401)
+        return
+
+    if language not in LANGUAGE_SERVERS:
+        await websocket.send_text(json.dumps({
+            "error": f"Unsupported language: {language}. Supported: {list(LANGUAGE_SERVERS.keys())}"
+        }))
+        await websocket.close()
         return
 
     logger.info(f"LSP WebSocket connection: language={language}")

@@ -16,6 +16,7 @@ async def websocket_terminal(
     shell: Optional[str] = Query(None),
     session_id: Optional[str] = Query(None),
 ):
+    await websocket.accept()
     from ..state import verify_ws_ticket
     is_authenticated = False
     if ticket and verify_ws_ticket(ticket):
@@ -23,12 +24,8 @@ async def websocket_terminal(
     elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         is_authenticated = True
 
-    await websocket.accept()
     if not is_authenticated:
-        try:
-            await websocket.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid or missing ticket or token."}))
-        except Exception:
-            pass
+        await websocket.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid or missing token."}))
         await websocket.close(code=4401)
         return
     
