@@ -6,7 +6,7 @@ import { useTerminal } from '../terminal/TerminalContext';
 import { useGit } from '../git/GitContext';
 import { useToast } from '../toast/ToastContext';
 
-import type { ChatMessage, Session, SubTask, ChatMode, ToolExecutionItem } from '../../types/chat';
+import type { ChatMessage, Session, SubTask, ChatMode, ToolExecutionItem, TaskMemoryData } from '../../types/chat';
 
 // Module-level logger — must be defined before the component to avoid temporal dead zone
 const logger = {
@@ -38,6 +38,8 @@ interface AIContextType {
   pendingFileChanges: string[];
   currentGoal: string;
   totalCostUsd: number;
+  taskMemory: TaskMemoryData | null;
+  currentIntent: string | null;
   onSelectSession: (sessionId: string) => Promise<void>;
   onNewSession: () => Promise<void>;
   onDeleteSession: (sessionId: string) => Promise<void>;
@@ -75,6 +77,8 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const [currentGoal, setCurrentGoal] = useState('');
   const [totalCostUsd, setTotalCostUsd] = useState<number>(0.0);
+  const [taskMemory, setTaskMemory] = useState<TaskMemoryData | null>(null);
+  const [currentIntent, setCurrentIntent] = useState<string | null>(null);
   const toolStartTimesRef = useRef<Record<string, number>>({});
   
   const [isWsConnected, setIsWsConnected] = useState(false);
@@ -504,6 +508,15 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
           if (typeof data.total_cost_usd === 'number') {
             setTotalCostUsd(data.total_cost_usd);
           }
+          if (data.task_memory) {
+            setTaskMemory(data.task_memory);
+            if (data.task_memory.intent) {
+              setCurrentIntent(data.task_memory.intent);
+            }
+          } else {
+            setTaskMemory(null);
+            setCurrentIntent(null);
+          }
           break;
         case 'agent_state':
           setActiveAgent(data.active_agent);
@@ -831,6 +844,8 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         pendingFileChanges,
         currentGoal,
         totalCostUsd,
+        taskMemory,
+        currentIntent,
         onSelectSession: handleSelectSession,
         onNewSession: handleNewSession,
         onDeleteSession: handleDeleteSession,

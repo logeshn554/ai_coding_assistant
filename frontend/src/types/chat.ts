@@ -181,3 +181,27 @@ export interface SubTask {
   output?: string;
 }
 
+export interface TaskStep {
+  id: number;
+  task: string;
+  type: string;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'skipped';
+  result?: string;
+  error?: string;
+  retry_count?: number;
+  deps: number[];
+}
+
+export interface TaskMemoryData {
+  goal: string;
+  intent: string;
+  steps: TaskStep[];
+  files_read: string[];
+  files_written: string[];
+  errors: string[];
+  is_complete: boolean;
+  completion_reason?: string;
+  pending_steps: number;
+  completed_steps: number;
+}
+

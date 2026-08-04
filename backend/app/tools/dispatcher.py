@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
 
 from . import search_tool, terminal_tool, spawn_subagent as _spawn_subagent_mod
@@ -9,6 +10,42 @@ from .read_tool import read_file as _read_file
 from .write_tool import write_or_edit_file as _write_or_edit_file
 from .list_tool import list_directory as _list_directory
 from .live_server_tool import open_with_live_server as _open_with_live_server
+
+logger = logging.getLogger("devpilot.dispatcher")
+
+# ── Agent Intelligence: RecoveryManager + KnowledgeStore ────────────────────
+# Imported lazily to avoid circular imports; cached at module level after first use.
+_recovery_manager = None
+
+def _get_recovery_manager():
+    global _recovery_manager
+    if _recovery_manager is None:
+        try:
+            from ..agent.recovery_manager import RecoveryManager
+            _recovery_manager = RecoveryManager()
+        except Exception:
+            pass
+    return _recovery_manager
+
+
+def _maybe_update_knowledge_store(session: Any, rel_path: str) -> None:
+    """Update the session's KnowledgeStore index after a successful write."""
+    try:
+        ks = getattr(session, "_knowledge_store", None)
+        if ks is not None:
+            ks.update_file(rel_path)
+    except Exception as e:
+        logger.debug(f"KnowledgeStore update_file failed (non-fatal): {e}")
+
+
+_WRITE_ERROR_SIGNATURES = (
+    "error", "failed", "permission", "denied", "not found",
+    "target block", "not unique", "ambiguous", "exception",
+)
+
+def _looks_like_error(result: str) -> bool:
+    r = (result or "").lower().strip()
+    return r.startswith("error") or any(sig in r for sig in _WRITE_ERROR_SIGNATURES)
 
 
 async def dispatch_tool(
@@ -122,9 +159,50 @@ async def dispatch_tool(
     }
     name = TOOL_ALIASES.get(name.lower(), name)
 
-    # A. File write/edit safety check
+    # A. File write/edit safety check — with recovery analysis
     if name in ("write_file", "edit_file"):
-        return await _write_or_edit_file(session, tc_id, name, args, auto_apply)
+        result = await _write_or_edit_file(session, tc_id, name, args, auto_apply)
+
+        # Determine the file path for knowledge store update
+        path_arg = (
+            args.get("path")
+            or args.get("file_path")
+            or args.get("target_file")
+            or ""
+        )
+
+        if _looks_like_error(result):
+            # Analyse the failure and append recovery guidance
+            rm = _get_recovery_manager()
+            if rm:
+                try:
+                    # Count how many times this path has been retried
+                    retry_key = f"_edit_retry_{path_arg}"
+                    retry_count = getattr(session, retry_key, 0)
+                    decision = rm.analyse_failure(
+                        tool_name=name,
+                        args=args,
+                        error_output=result,
+                        retry_count=retry_count,
+                    )
+                    setattr(session, retry_key, retry_count + 1)
+                    guidance = rm.to_prompt_injection(decision)
+                    result = result + guidance
+                    logger.info(
+                        f"[RecoveryManager] {name} failed on '{path_arg}' "
+                        f"(retry #{retry_count}): strategy={decision.strategy}"
+                    )
+                except Exception as re:
+                    logger.debug(f"RecoveryManager error (non-fatal): {re}")
+        else:
+            # Success — reset retry count and update knowledge store
+            retry_key = f"_edit_retry_{path_arg}"
+            if hasattr(session, retry_key):
+                delattr(session, retry_key)
+            if path_arg:
+                _maybe_update_knowledge_store(session, path_arg)
+
+        return result
 
     if name == "delete_file":
         from .delete_tool import delete_file

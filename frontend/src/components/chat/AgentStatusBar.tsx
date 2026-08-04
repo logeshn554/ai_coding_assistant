@@ -1,6 +1,7 @@
 import React from 'react';
 import { Settings, Check, AlertCircle, AlertTriangle, RotateCcw, Sparkles } from 'lucide-react';
 import type { AgentState } from '../../types/chat';
+import { IntentBadge } from './IntentBadge';
 
 interface AgentStatusBarProps {
   agents?: AgentState[];
@@ -10,6 +11,8 @@ interface AgentStatusBarProps {
   totalCostUsd?: number;
   onOpenSettings?: () => void;
   onRetryAgent?: (agentType: string, taskId?: number | string) => void;
+  intent?: string | null;
+  wastedTurns?: number;
 }
 
 export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
@@ -20,6 +23,8 @@ export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
   totalCostUsd = 0.0,
   onOpenSettings,
   onRetryAgent,
+  intent = null,
+  wastedTurns = 0,
 }) => {
   return (
     <div className="flex flex-col gap-2 pb-2 px-1 border-t border-[var(--dp-border)] pt-2 font-sans select-none bg-[var(--dp-bg-tertiary)]">
@@ -28,7 +33,6 @@ export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[var(--dp-accent-dim)] border border-[var(--dp-accent)]/30 text-[var(--dp-accent-hover)] text-[10px] font-bold tracking-wider uppercase">
           <Sparkles className="w-3 h-3 animate-pulse" />
           <span>DevPilot Engine</span>
-
         </div>
 
         {agents.length > 0 ? (
@@ -99,12 +103,23 @@ export const AgentStatusBar: React.FC<AgentStatusBarProps> = ({
               <Settings className="w-3.5 h-3.5" />
             </button>
           )}
-          <span className="text-zinc-400 truncate max-w-[130px]" title={`Profile: ${activeProfileName}`}>
+          <span className="text-zinc-400 truncate max-w-[100px]" title={`Profile: ${activeProfileName}`}>
             Profile: {activeProfileName}
           </span>
+          {intent && (
+            <div className="scale-90 origin-left">
+              <IntentBadge intent={intent} />
+            </div>
+          )}
           {totalCostUsd > 0 && (
             <span className="text-emerald-400 font-semibold text-[10.5px]">
               ${totalCostUsd.toFixed(3)}
+            </span>
+          )}
+          {wastedTurns > 0 && (
+            <span className="text-rose-400 text-[10.5px] flex items-center gap-0.5 font-bold" title="Turns wasted on retries/cancellations">
+              <AlertTriangle className="w-3 h-3 text-rose-400" />
+              {wastedTurns} wasted
             </span>
           )}
         </div>

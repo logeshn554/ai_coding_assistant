@@ -1,4 +1,4 @@
-﻿import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '../../types/chat';
@@ -8,6 +8,8 @@ import { DiffView } from './DiffView';
 import { ThinkingPill } from './ThinkingPill';
 import { CodeBlock } from './CodeBlock';
 import { ReasoningTimeline, toolMessagesToTimelineRows } from './ReasoningTimeline';
+import { TaskProgressPanel } from './TaskProgressPanel';
+import type { TaskMemoryData } from '../../types/chat';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -18,6 +20,9 @@ interface MessageListProps {
   onToggleHunk: (msgId: string, hunkId: string, accepted: boolean) => void;
   renderMessageContent?: (content: string) => React.ReactNode;
   onRunCommand?: (command: string) => void;
+  taskMemory?: TaskMemoryData | null;
+  onContinue?: () => void;
+  isGenerating?: boolean;
 }
 
 // â”€â”€ Premium Status Pill â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -162,6 +167,9 @@ export const MessageList: React.FC<MessageListProps> = ({
   hunkDecisions,
   onToggleHunk,
   onRunCommand,
+  taskMemory,
+  onContinue,
+  isGenerating,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
@@ -463,6 +471,15 @@ export const MessageList: React.FC<MessageListProps> = ({
 
           return null;
         })}
+        {taskMemory && (
+          <div className="px-2 py-2">
+            <TaskProgressPanel
+              taskMemory={taskMemory}
+              onContinue={onContinue}
+              isGenerating={isGenerating}
+            />
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
     </div>
