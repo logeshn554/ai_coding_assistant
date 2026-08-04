@@ -123,6 +123,7 @@ export default function ExtensionsSidebar() {
           <Puzzle className="w-4 h-4 text-[#4C8DFF]" />
           Extension Marketplace
         </span>
+
         <div className="flex items-center gap-1.5">
           <input
             type="file"
@@ -158,6 +159,15 @@ export default function ExtensionsSidebar() {
           {uploadStatus}
         </div>
       )}
+
+      {/* Preview Notice — extensions are recorded but not yet activated in the editor */}
+      <div className="mx-3 my-2 px-2.5 py-2 rounded-md border flex items-start gap-2 shrink-0"
+           style={{ background: 'rgba(234,179,8,0.08)', borderColor: 'rgba(234,179,8,0.25)' }}>
+        <ShieldCheck className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: '#EAB308' }} />
+        <p className="text-[10.5px] leading-relaxed" style={{ color: '#D4AD2E' }}>
+          <span className="font-semibold">Preview:</span> Installing extensions records them for future use but does not yet activate themes, grammars, or commands in the editor.
+        </p>
+      </div>
 
       {/* Category Tabs */}
       <div className="flex border-b border-[var(--dp-border)] text-[11px] font-semibold px-2 pt-1 gap-1" style={{ background: '#1A1B1E' }}>

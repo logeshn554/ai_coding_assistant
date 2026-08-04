@@ -173,7 +173,7 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
         try:
             if sys.platform == "win32":
                 import subprocess
-                subprocess.call(f"taskkill /F /T /PID {process.pid}", shell=True)
+                subprocess.call(["taskkill", "/F", "/T", "/PID", str(process.pid)])
             else:
                 process.kill()
             await asyncio.shield(process.wait())

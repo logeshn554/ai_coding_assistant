@@ -7,7 +7,7 @@
  *  3. Return the selected path (or cancelled flag) to the renderer
  */
 
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 
 // The DevPilot backend URL (must be running before launching Electron)
@@ -18,6 +18,70 @@ const BACKEND_POLL_INTERVAL = 500;
 const BACKEND_TIMEOUT = 30_000;
 
 let mainWindow = null;
+
+// ─── Native Application Menu ─────────────────────────────────────────────────
+
+/**
+ * Build and set a minimal, production-safe native application menu.
+ * Replaces the default Electron menu that exposes DevTools and internal options.
+ */
+function setApplicationMenu() {
+  const isDev = process.env.NODE_ENV === 'development' || process.env.DEVPILOT_DEV === '1';
+
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Open Folder…',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => {
+            if (mainWindow) mainWindow.webContents.send('menu:openFolder');
+          },
+        },
+        { type: 'separator' },
+        { role: 'quit', label: 'Quit DevPilot' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'togglefullscreen' },
+        // Only expose DevTools in development mode
+        ...(isDev ? [{ type: 'separator' }, { role: 'toggleDevTools' }] : []),
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'DevPilot Documentation',
+          click: async () => {
+            const { shell } = require('electron');
+            await shell.openExternal('https://github.com/logeshn554/ai_coding_assistant');
+          },
+        },
+      ],
+    },
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+
 
 // ─── IPC Handler ────────────────────────────────────────────────────────────
 
@@ -96,7 +160,11 @@ async function waitForBackend(timeout = BACKEND_TIMEOUT) {
 // ─── App Lifecycle ───────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
+  // Set the native application menu before creating any windows
+  setApplicationMenu();
+
   const ready = await waitForBackend();
+
 
   if (!ready) {
     console.error(

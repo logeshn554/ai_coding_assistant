@@ -4,6 +4,7 @@ import json
 import socket
 import logging
 import asyncio
+import threading
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -29,78 +30,137 @@ class ToggleBreakpointRequest(BaseModel):
 # ── DAP Protocol Socket Client ───────────────────────────────────────────────
 class DAPClient:
     """
-    Lightweight Debug Adapter Protocol (DAP) client over a TCP socket.
-    Handles HTTP-header framed JSON-RPC messages (Content-Length: ...\r\n\r\n{...}).
+    Thread-based Debug Adapter Protocol (DAP) client over a TCP socket.
+
+    Uses a dedicated reader thread so that server-initiated events (stopped,
+    output, terminated) and request responses can both be received without
+    blocking the FastAPI event loop.
     """
+
     def __init__(self):
-        self.sock: Optional[socket.socket] = None
-        self.seq = 1
-        self.connected = False
+        self._sock: Optional[socket.socket] = None
+        self._seq: int = 1
+        self._lock = threading.Lock()
+        self._pending: dict = {}      # seq → threading.Event | dict
+        self._reader_thread: Optional[threading.Thread] = None
+        self.connected: bool = False
         self.port: Optional[int] = None
         self.language: str = "python"
 
-    def connect(self, host: str = "127.0.0.1", port: int = 5678, timeout: float = 3.0) -> bool:
+    # ── Internal helpers ──────────────────────────────────────────────────────
+
+    def _encode(self, body: dict) -> bytes:
+        payload = json.dumps(body)
+        header = f"Content-Length: {len(payload)}\r\n\r\n"
+        return (header + payload).encode("utf-8")
+
+    def _read_loop(self) -> None:
+        """Background thread: reads all DAP messages and resolves pending events."""
+        buf = b""
+        while True:
+            try:
+                chunk = self._sock.recv(4096)
+                if not chunk:
+                    break
+                buf += chunk
+                while b"\r\n\r\n" in buf:
+                    header_part, rest = buf.split(b"\r\n\r\n", 1)
+                    content_len = 0
+                    for line in header_part.decode("ascii", errors="ignore").split("\r\n"):
+                        if line.lower().startswith("content-length:"):
+                            try:
+                                content_len = int(line.split(":", 1)[1].strip())
+                            except ValueError:
+                                pass
+                    if len(rest) < content_len:
+                        # Haven't received the full body yet — put bytes back
+                        buf = header_part + b"\r\n\r\n" + rest
+                        break
+                    raw_body = rest[:content_len]
+                    buf = rest[content_len:]
+                    try:
+                        msg = json.loads(raw_body.decode("utf-8", errors="replace"))
+                    except Exception:
+                        continue
+                    # Route to the matching pending request
+                    seq = msg.get("request_seq") or msg.get("seq")
+                    with self._lock:
+                        waiter = self._pending.get(seq)
+                    if isinstance(waiter, threading.Event):
+                        with self._lock:
+                            self._pending[seq] = msg  # replace Event with result
+                        waiter.set()
+            except Exception:
+                break
+        self.connected = False
+
+    # ── Public API ────────────────────────────────────────────────────────────
+
+    def connect(self, host: str = "127.0.0.1", port: int = 5678,
+                timeout: float = 5.0) -> bool:
         self.port = port
         try:
-            self.sock = socket.create_connection((host, port), timeout=timeout)
-            self.sock.settimeout(2.0)
-            self.connected = True
-            logger.info(f"DAP: Connected to adapter at {host}:{port}")
-            return True
+            self._sock = socket.create_connection((host, port), timeout=timeout)
+            self._sock.settimeout(None)  # reader thread uses blocking recv
+            self._reader_thread = threading.Thread(
+                target=self._read_loop, daemon=True, name="dap-reader"
+            )
+            self._reader_thread.start()
+            # Perform the mandatory DAP initialize handshake
+            resp = self.send_request("initialize", {
+                "adapterID": "devpilot",
+                "clientID": "devpilot",
+                "clientName": "DevPilot IDE",
+                "linesStartAt1": True,
+                "columnsStartAt1": True,
+                "pathFormat": "path",
+            })
+            if resp is not None and resp.get("success", False):
+                self.connected = True
+                logger.info("DAP: connected to adapter at %s:%d and initialized.", host, port)
+            else:
+                logger.warning(
+                    "DAP: initialize handshake failed (resp=%r). "
+                    "connected remains False.", resp
+                )
+                self.connected = False
+            return self.connected
         except Exception as e:
-            logger.warning(f"DAP: Failed connection to {host}:{port}: {e}")
+            logger.warning("DAP: connection to %s:%d failed: %s", host, port, e)
             self.connected = False
             return False
 
-    def send_request(self, command: str, args: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-        if not self.sock or not self.connected:
+    def send_request(self, command: str,
+                     args: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+        """Send a DAP request and block up to 3 s for the response."""
+        if not self._sock:
             return None
-        current_seq = self.seq
-        self.seq += 1
-        payload = {
-            "seq": current_seq,
+        with self._lock:
+            seq = self._seq
+            self._seq += 1
+            evt = threading.Event()
+            self._pending[seq] = evt
+
+        msg = {
+            "seq": seq,
             "type": "request",
             "command": command,
-            "arguments": args or {}
+            "arguments": args or {},
         }
-        data_bytes = json.dumps(payload).encode("utf-8")
-        header = f"Content-Length: {len(data_bytes)}\r\n\r\n".encode("ascii")
         try:
-            self.sock.sendall(header + data_bytes)
-            return self._read_response()
+            with self._lock:
+                self._sock.sendall(self._encode(msg))
         except Exception as e:
-            logger.warning(f"DAP request '{command}' failed: {e}")
+            logger.warning("DAP send_request '%s' failed: %s", command, e)
+            with self._lock:
+                self._pending.pop(seq, None)
             return None
 
-    def _read_response(self, timeout_secs: float = 2.0) -> Optional[Dict[str, Any]]:
-        if not self.sock:
-            return None
-        self.sock.settimeout(timeout_secs)
-        buf = b""
-        try:
-            while b"\r\n\r\n" not in buf:
-                chunk = self.sock.recv(2048)
-                if not chunk:
-                    return None
-                buf += chunk
-
-            header_part, body_part = buf.split(b"\r\n\r\n", 1)
-            content_len = 0
-            for line in header_part.decode("ascii", errors="ignore").split("\r\n"):
-                if line.lower().startswith("content-length:"):
-                    content_len = int(line.split(":")[1].strip())
-                    break
-
-            while len(body_part) < content_len:
-                chunk = self.sock.recv(2048)
-                if not chunk:
-                    break
-                body_part += chunk
-
-            raw_json = body_part[:content_len].decode("utf-8", errors="replace")
-            return json.loads(raw_json)
-        except Exception:
-            return None
+        # Wait up to 3 s for the reader thread to resolve the response
+        evt.wait(timeout=3.0)
+        with self._lock:
+            result = self._pending.pop(seq, None)
+        return result if isinstance(result, dict) else None
 
     def sync_breakpoints(self, workspace_root: str, breakpoints: List[Dict[str, Any]]):
         """Send DAP setBreakpoints requests grouped by file."""
@@ -119,14 +179,15 @@ class DAPClient:
             })
 
     def close(self):
-        if self.sock:
+        self.connected = False
+        if self._sock:
             try:
                 self.send_request("disconnect", {"restart": False, "terminateDebuggee": True})
-                self.sock.close()
+                self._sock.close()
             except Exception:
                 pass
-            self.sock = None
-        self.connected = False
+            self._sock = None
+
 
 def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

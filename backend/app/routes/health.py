@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import logging
 import os
+import shutil
 import time
 from typing import Any
 
@@ -21,6 +22,12 @@ router = APIRouter()
 _START_TIME: float = time.monotonic()
 
 
+def import_shutil_which_rg() -> bool:
+    """Return True if ripgrep (rg) is available in PATH."""
+    return shutil.which("rg") is not None
+
+
+
 class HealthResponse(BaseModel):
     """Response model for GET /api/health."""
 
@@ -30,6 +37,7 @@ class HealthResponse(BaseModel):
     workspace_root: str
     redis_connected: bool
     db_connected: bool
+    ripgrep_available: bool
     timestamp: str
 
 
@@ -81,6 +89,7 @@ async def health_check() -> HealthResponse:
         workspace_root=workspace_state.root or "",
         redis_connected=redis_ok,
         db_connected=db_ok,
+        ripgrep_available=import_shutil_which_rg(),
         timestamp=datetime.datetime.utcnow().isoformat() + "Z",
     )
 

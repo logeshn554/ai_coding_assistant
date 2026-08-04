@@ -15,8 +15,10 @@ from .routes import all_routers
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import shutil as _shutil
     from .db import init_db
     from .state import check_redis_at_startup
+    from .rag import _evict_old_chroma_indexes
     try:
         await init_db()
     except Exception as e:
@@ -25,6 +27,20 @@ async def lifespan(app: FastAPI):
         await check_redis_at_startup()
     except Exception as e:
         logger.warning(f"Redis startup check raised unexpectedly: {e}")
+    # Evict old ChromaDB indexes to keep disk usage bounded
+    try:
+        _evict_old_chroma_indexes()
+    except Exception as e:
+        logger.warning(f"ChromaDB eviction at startup raised unexpectedly: {e}")
+    # Log ripgrep availability so operators notice early if it is missing
+    rg_path = _shutil.which("rg")
+    if rg_path:
+        logger.info("ripgrep found at %s — fast codebase search enabled.", rg_path)
+    else:
+        logger.warning(
+            "ripgrep (rg) not found in PATH. Codebase search will use the slow Python "
+            "fallback. Install ripgrep: https://github.com/BurntSushi/ripgrep#installation"
+        )
     yield
     # Shutdown: stop any processes we spawned (Live Server, dev servers started
     # from the Run panel, etc.) so they don't leak as orphans after the backend exits.

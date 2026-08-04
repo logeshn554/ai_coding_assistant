@@ -27,6 +27,7 @@ from .inspect_route import router as inspect_router
 from .mcp_route import router as mcp_router
 from .agents import router as agents_router
 from .terminal import router as terminal_router
+from .deploy_route import router as deploy_router
 
 all_routers = [
     auth_router,
@@ -58,5 +59,6 @@ all_routers = [
     mcp_router,
     agents_router,
     terminal_router,
+    deploy_router,
 ]
 

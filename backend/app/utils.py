@@ -56,7 +56,7 @@ async def run_cmd_async(cmd: Union[str, List[str]], cwd: str) -> str:
         try:
             if sys.platform == "win32":
                 import subprocess
-                subprocess.call(f"taskkill /F /T /PID {proc.pid}", shell=True)
+                subprocess.call(["taskkill", "/F", "/T", "/PID", str(proc.pid)])
             else:
                 proc.kill()
         except Exception:

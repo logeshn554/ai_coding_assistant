@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import logging
 from typing import Optional
@@ -367,3 +368,85 @@ async def perform_git_action(req: GitActionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ── Branch / Push / PR workflow endpoints ─────────────────────────────────────
+
+class BranchRequest(BaseModel):
+    name: str
+
+class CheckoutRequest(BaseModel):
+    branch: str
+
+_VALID_BRANCH_RE = re.compile(r'^[\w\-./]+$')
+
+
+@router.get("/api/git/branches")
+async def list_branches():
+    """Return all local and remote branches for the workspace."""
+    if not workspace_state.root:
+        return {"branches": [], "current": None}
+    try:
+        raw = await run_cmd_async(["git", "branch", "-a", "--no-color"], workspace_state.root)
+        branches = []
+        current = None
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("* "):
+                current = line[2:].strip()
+                branches.append(current)
+            else:
+                branches.append(line.lstrip("remotes/").strip())
+        return {"branches": branches, "current": current}
+    except Exception as e:
+        logger.error("git branch list failed: %s", e)
+        return {"branches": [], "current": None, "error": str(e)}
+
+
+@router.post("/api/git/branch/create")
+async def create_branch(req: BranchRequest):
+    """Create and checkout a new branch. Branch name is strictly validated."""
+    if not workspace_state.root:
+        raise HTTPException(status_code=400, detail="No workspace open.")
+    name = req.name.strip()
+    if not name or not _VALID_BRANCH_RE.match(name):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid branch name: {name!r}. Only word characters, hyphens, slashes and dots are allowed."
+        )
+    try:
+        await run_cmd_async(["git", "checkout", "-b", name], workspace_state.root)
+        return {"success": True, "branch": name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create branch: {e}")
+
+
+@router.post("/api/git/branch/checkout")
+async def checkout_branch(req: CheckoutRequest):
+    """Switch to an existing local or remote branch."""
+    if not workspace_state.root:
+        raise HTTPException(status_code=400, detail="No workspace open.")
+    branch = req.branch.strip()
+    if not branch or not _VALID_BRANCH_RE.match(branch):
+        raise HTTPException(status_code=400, detail=f"Invalid branch name: {branch!r}.")
+    try:
+        await run_cmd_async(["git", "checkout", branch], workspace_state.root)
+        return {"success": True, "branch": branch}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to checkout branch: {e}")
+
+
+@router.post("/api/git/push")
+async def push_branch():
+    """Push the current branch to origin, setting upstream tracking if not yet set."""
+    if not workspace_state.root:
+        raise HTTPException(status_code=400, detail="No workspace open.")
+    try:
+        output = await run_cmd_async(
+            ["git", "push", "--set-upstream", "origin", "HEAD"],
+            workspace_state.root
+        )
+        return {"success": True, "output": output}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Push failed: {e}")

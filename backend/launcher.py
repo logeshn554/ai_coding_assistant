@@ -16,9 +16,16 @@ def is_port_open(port):
     return False
 
 def kill_process_on_port(port):
+    # Guard: port must be a valid integer in range 1-65535 before interpolation
+    if not isinstance(port, int) or port < 1 or port > 65535:
+        raise ValueError(f"Invalid port number: {port!r}")
     try:
         if sys.platform == "win32":
-            out = subprocess.check_output(f"netstat -ano | findstr :{port}", shell=True).decode()
+            # The netstat | findstr pipeline genuinely needs a shell (pipe operator).
+            # The port is validated as a safe integer above, so interpolation is safe.
+            out = subprocess.check_output(
+                f"netstat -ano | findstr :{port}", shell=True
+            ).decode()
             pids = set()
             for line in out.strip().split("\n"):
                 if "LISTENING" in line or "ESTABLISHED" in line:
@@ -27,12 +34,21 @@ def kill_process_on_port(port):
                         pids.add(parts[-1])
             for pid in pids:
                 if pid != "0":
-                    subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    # List-form: no shell interpretation of pid
+                    subprocess.run(
+                        ["taskkill", "/F", "/PID", pid],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    )
         else:
-            out = subprocess.check_output(f"lsof -t -i:{port}", shell=True).decode()
+            out = subprocess.check_output(
+                ["lsof", "-t", f"-i:{port}"]
+            ).decode()
             for pid in out.strip().split("\n"):
                 if pid.strip().isdigit():
-                    subprocess.run(f"kill -9 {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    subprocess.run(
+                        ["kill", "-9", pid.strip()],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                    )
     except Exception:
         pass
 

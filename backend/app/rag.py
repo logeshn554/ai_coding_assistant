@@ -11,10 +11,66 @@ from __future__ import annotations
 import logging
 import os
 import hashlib
+import shutil
+import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("devpilot.rag")
+
+# Eviction policy configuration (overridable via environment)
+_MAX_CHROMA_DIRS = int(os.environ.get("DEVPILOT_MAX_CHROMA_DIRS", "8"))
+_MAX_CHROMA_AGE_DAYS = int(os.environ.get("DEVPILOT_CHROMA_MAX_AGE_DAYS", "30"))
+
+
+def _evict_old_chroma_indexes() -> None:
+    """Remove ChromaDB workspace indexes that exceed the age or count limits.
+
+    Called once at application startup to keep ~/.devpilot/chroma/ bounded.
+    - First evicts all indexes older than _MAX_CHROMA_AGE_DAYS.
+    - Then evicts oldest-first beyond _MAX_CHROMA_DIRS count.
+    """
+    base = os.path.join(os.path.expanduser("~"), ".devpilot", "chroma")
+    if not os.path.isdir(base):
+        return
+
+    subdirs = []
+    for d in os.listdir(base):
+        full_path = os.path.join(base, d)
+        if os.path.isdir(full_path):
+            try:
+                mtime = os.path.getmtime(full_path)
+                subdirs.append((full_path, mtime))
+            except OSError:
+                continue
+
+    if not subdirs:
+        return
+
+    now = time.time()
+    max_age_secs = _MAX_CHROMA_AGE_DAYS * 86400
+
+    # Phase 1: remove by age
+    surviving = []
+    for path, mtime in subdirs:
+        if (now - mtime) > max_age_secs:
+            try:
+                shutil.rmtree(path)
+                logger.info("ChromaDB eviction (age): removed %s", path)
+            except Exception as e:
+                logger.warning("ChromaDB eviction failed for %s: %s", path, e)
+        else:
+            surviving.append((path, mtime))
+
+    # Phase 2: remove oldest beyond count limit (newest first)
+    surviving.sort(key=lambda x: x[1], reverse=True)
+    for path, _ in surviving[_MAX_CHROMA_DIRS:]:
+        try:
+            shutil.rmtree(path)
+            logger.info("ChromaDB eviction (count): removed %s", path)
+        except Exception as e:
+            logger.warning("ChromaDB eviction failed for %s: %s", path, e)
+
 
 
 @dataclass
