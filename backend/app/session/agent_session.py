@@ -9,6 +9,7 @@ import os
 import re
 import uuid
 import httpx
+from typing import Optional
 from ..adapters.base import AVAILABLE_TOOLS
 from ..async_files import async_list_workspace_dir
 from ..files import safe_path
@@ -25,6 +26,20 @@ from ..prompts.modes import (
 )
 from ..tools.dispatcher import dispatch_tool
 from ..tools.terminal_tool import run_shell_command
+
+# ── 14-Phase Agent Intelligence Layer ────────────────────────────────────────
+from ..agent.intent_router import IntentRouter, IntentType
+from ..agent.context_collector import ContextCollector
+from ..agent.task_memory import TaskMemory, TaskStatus
+from ..agent.planning_engine import PlanningEngine
+from ..agent.execution_logger import ExecutionLogger
+from ..agent.tool_policy import ToolPolicy
+from ..agent.recovery_manager import RecoveryManager
+from ..agent.knowledge_store import KnowledgeStore
+from ..agent.confidence_scorer import ConfidenceScorer
+from ..agent.validator import Validator
+from ..agent.critic import Critic
+from ..agent.workflow_engine import WorkflowEngine
 
 logger = logging.getLogger("devpilot.agent")
 
@@ -97,11 +112,27 @@ class AgentSession:
         self.wasted_turns: int = 0
         # B6: Store background monitor tasks so they can be cancelled in cancel_all().
         self._monitor_tasks: list[asyncio.Task] = []
-        # B9: Cached WorkspaceIndex instance â” reused across turns within a session
+        # B9: Cached WorkspaceIndex instance — reused across turns within a session
         # instead of being re-created on every LLM call (which discards the mtime cache).
         self._workspace_index = None
         self._failed_request = None
         self._last_request_snapshot = None
+
+        # ── 14-Phase Agent Intelligence Layer ────────────────────────────
+        self.task_memory: TaskMemory = TaskMemory()
+        self._intent_router: IntentRouter = IntentRouter()
+        self._context_collector: ContextCollector = ContextCollector(workspace_root)
+        self._planning_engine: PlanningEngine = PlanningEngine()
+        self._tool_policy: ToolPolicy = ToolPolicy()
+        self._recovery_manager: RecoveryManager = RecoveryManager()
+        self._knowledge_store: KnowledgeStore = KnowledgeStore(workspace_root)
+        self._confidence_scorer: ConfidenceScorer = ConfidenceScorer()
+        self._validator: Validator = Validator(workspace_root)
+        self._critic: Critic = Critic()
+        self._workflow_engine: WorkflowEngine = WorkflowEngine()
+        self._exec_logger: Optional[ExecutionLogger] = None
+        self._current_intent: Optional[IntentType] = None
+        self._agent_tool_call_count: int = 0  # total tool calls in current agent run
 
         # Request queue: new messages are enqueued while the agent is busy.
         # Each item is a tuple of (text, mode, auto_apply).
@@ -639,10 +670,179 @@ class AgentSession:
             prompt = prompt.rstrip() + "\n\n" + skills_section
         return prompt
 
+    async def _run_agent_intelligence_pipeline(self, text: str, base_system_prompt: str) -> str:
+        """Run all 14-phase intelligence modules and enrich the system prompt.
+
+        Phases executed (in order):
+          Phase 5  — Intent Router: classify intent
+          Phase 1  — Context Collector: auto-read files/specs
+          Phase 2  — Planning Engine: generate task graph
+          Phase 10 — Workflow Engine: emit tool sequence hints
+          Phase 11 — Tool Policy: inject tool rules
+          Phase 7  — Confidence Scorer: detect context gaps
+          Phase 13 — Execution Logger: start logging
+          Phase 4  — Task Memory: reset or resume state
+
+        Returns enriched system prompt with all context blocks appended.
+        """
+        try:
+            # ── Phase 5: Intent Router ──────────────────────────────────
+            intent_result = self._intent_router.classify(text, last_mode=self.last_mode)
+            self._current_intent = intent_result.intent
+            logger.info(
+                f"[IntentRouter] '{text[:60]}' → {intent_result.intent.value} "
+                f"(conf={intent_result.confidence:.0%})"
+            )
+
+            # ── Phase 13: Start Execution Logger ───────────────────────
+            self._exec_logger = ExecutionLogger(self.session_id)
+            self._exec_logger.set_intent(intent_result.intent.value, goal=text)
+
+            # ── Phase 4: Task Memory — reset or resume ─────────────────
+            if intent_result.intent == IntentType.CONTINUE and self.task_memory.steps:
+                # Resume existing task — do NOT reset
+                logger.info("[TaskMemory] Resuming previous task.")
+            else:
+                self.task_memory.reset(goal=text, intent=intent_result.intent.value)
+
+            # ── Phase 1: Context Collector ──────────────────────────────
+            collected_ctx = None
+            if intent_result.needs_context:
+                await self.send_ws_message({
+                    "type": "status",
+                    "status": "thinking",
+                    "message": "Collecting workspace context...",
+                })
+                try:
+                    collected_ctx = await self._context_collector.collect(
+                        user_query=text,
+                        referenced_files=intent_result.referenced_files,
+                        referenced_symbols=intent_result.referenced_symbols,
+                        spec_file=intent_result.spec_file,
+                    )
+                    # Log context files
+                    for f in collected_ctx.files_read:
+                        self._exec_logger.record_context_file(f)
+                        self.task_memory.record_read(f)
+                    if collected_ctx.spec_content and intent_result.spec_file:
+                        self._exec_logger.record_context_file(intent_result.spec_file)
+                        self.task_memory.record_read(intent_result.spec_file)
+
+                    logger.info(
+                        f"[ContextCollector] Read {len(collected_ctx.files_read)} files, "
+                        f"found {len(collected_ctx.symbols_found)} symbols."
+                    )
+                except Exception as cc_err:
+                    logger.warning(f"[ContextCollector] Error (non-fatal): {cc_err}")
+
+            # ── Phase 7: Confidence Scorer ──────────────────────────────
+            tech_stack_known = bool(
+                collected_ctx and (collected_ctx.config_hints or collected_ctx.manifest_content)
+            ) if collected_ctx else False
+
+            spec_file_read = bool(
+                collected_ctx and collected_ctx.spec_content
+            ) if collected_ctx else False
+
+            workspace_non_empty = bool(
+                collected_ctx and collected_ctx.workspace_structure
+            ) if collected_ctx else True  # Assume non-empty if collector not run
+
+            confidence = self._confidence_scorer.score(
+                intent=intent_result.intent,
+                referenced_files=intent_result.referenced_files,
+                resolved_files=list(collected_ctx.files_read.keys()) if collected_ctx else [],
+                tech_stack_known=tech_stack_known,
+                spec_file_read=spec_file_read,
+                workspace_non_empty=workspace_non_empty,
+                query_length=len(text),
+                symbols_found=collected_ctx.symbols_found if collected_ctx else {},
+                referenced_symbols=intent_result.referenced_symbols,
+            )
+            logger.info(
+                f"[ConfidenceScorer] score={confidence.score:.0%} → {confidence.action}"
+            )
+
+            # ── Phase 2: Planning Engine ────────────────────────────────
+            plan = None
+            if intent_result.needs_plan:
+                workspace_has_files = workspace_non_empty
+                plan = self._planning_engine.generate(
+                    goal=text,
+                    intent=intent_result.intent,
+                    referenced_files=intent_result.referenced_files,
+                    spec_file=intent_result.spec_file,
+                    workspace_has_files=workspace_has_files,
+                )
+                if plan.steps:
+                    self.task_memory.set_steps(plan.steps)
+                    self._exec_logger.set_plan(plan.steps)
+                    logger.info(
+                        f"[PlanningEngine] Generated {len(plan.steps)}-step plan "
+                        f"for {intent_result.intent.value}."
+                    )
+
+            # ── Phase 10: Workflow Engine ───────────────────────────────
+            workflow_ctx = self._workflow_engine.get_workflow(
+                intent=intent_result.intent,
+                task_memory=self.task_memory,
+            )
+
+            # ── Phase 11: Tool Policy ───────────────────────────────────
+            tool_policy_block = self._tool_policy.to_prompt_block(intent_result.intent)
+
+            # ── Assemble enriched system prompt ─────────────────────────
+            extra_sections = []
+
+            # Task memory resume section (for CONTINUE)
+            if intent_result.intent == IntentType.CONTINUE and self.task_memory.steps:
+                extra_sections.append(
+                    "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "TASK MEMORY — RESUMING PREVIOUS TASK\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    + self.task_memory.to_summary_prompt()
+                )
+
+            # Collected context
+            if collected_ctx:
+                ctx_block = collected_ctx.to_prompt_block()
+                if ctx_block:
+                    extra_sections.append(ctx_block)
+
+            # Workflow hints
+            wf_block = workflow_ctx.to_prompt_block()
+            if wf_block:
+                extra_sections.append(wf_block)
+
+            # Plan
+            if plan and plan.steps:
+                extra_sections.append(plan.to_prompt_block())
+
+            # Tool policy
+            if tool_policy_block:
+                extra_sections.append(tool_policy_block)
+
+            # Confidence gap warning
+            if confidence.action in ("collect_more", "ask_user"):
+                conf_block = self._confidence_scorer.to_prompt_block(confidence)
+                if conf_block:
+                    extra_sections.append(conf_block)
+
+            enriched_prompt = base_system_prompt
+            for section in extra_sections:
+                enriched_prompt = enriched_prompt.rstrip() + "\n" + section
+
+            return enriched_prompt
+
+        except Exception as e:
+            logger.warning(f"[AgentIntelligencePipeline] Error (non-fatal, using base prompt): {e}")
+            return base_system_prompt
+
     async def handle_user_message(self, text: str, mode: str, auto_apply: bool = False):
         """
         Runs the agent loop for a user query.
         """
+
         self.auto_apply = auto_apply
         if self.is_running:
             # Safety valve: if the agent has been "running" for more than 90 seconds
@@ -842,10 +1042,17 @@ class AgentSession:
             system_prompt = self._get_system_prompt(mode)
             tools = self._get_tools_for_mode(mode)
 
+            # ── 14-Phase Agent Intelligence Layer (Agent mode only) ───────
+            if mode == "Agent":
+                system_prompt = await self._run_agent_intelligence_pipeline(
+                    text, system_prompt
+                )
+
             effective_max_turns = min(self.max_turns * 4, 200) if mode in ("Agent", "Goal") else self.max_turns
             # B1: Previously 10000 in Agent mode, which could run API costs into
             # hundreds of dollars silently. Now capped at max_turns*4 (ceiling 200).
             turn = 0
+            self._agent_tool_call_count = 0  # reset per-run counter
             while turn < effective_max_turns:
                 turn += 1
 
@@ -867,6 +1074,8 @@ class AgentSession:
                 response_text = ""
                 tool_calls_to_run = []
                 thinking_blocks_current_turn: list = []  # A6: accumulate per-turn thinking blocks
+                if self._exec_logger:
+                    self._exec_logger.increment_turns()
 
                 # 1. Stream the model's text response and collect tool calls
                 try:
@@ -1146,6 +1355,23 @@ class AgentSession:
                 # Append tool outputs to history
                 self.conversation_history.extend(tool_results)
 
+                # Track tool calls in exec_logger and task_memory
+                if self._exec_logger:
+                    for tc in tool_calls_to_run:
+                        status = "success"
+                        tc_result = next(
+                            (r.get("content", "") for r in tool_results if r.get("tool_call_id") == tc["id"]),
+                            ""
+                        )
+                        self._exec_logger.finish_tool_call(result=tc_result, status=status)
+                # Track file writes in task_memory
+                for tc in tool_calls_to_run:
+                    if tc["name"] in ("write_file", "edit_file", "patch", "apply_patch"):
+                        fp = tc.get("input", {}).get("path") or tc.get("input", {}).get("file_path", "")
+                        if fp:
+                            self.task_memory.record_write(str(fp))
+                self._agent_tool_call_count += len(tool_calls_to_run)
+
                 # Continue loop if more turns are needed
                 # (implicitly handled by presence of tool calls)
 
@@ -1163,10 +1389,64 @@ class AgentSession:
             except Exception as pe:
                 logger.debug(f"Failed auto project detection: {pe}")
 
+            # ── Phase 8+9: Validator + Critic (Agent mode only) ───────────
+            if mode == "Agent" and self.task_memory.files_written:
+                try:
+                    val_result = self._validator.validate(
+                        files_written=self.task_memory.files_written,
+                        plan_steps=self.task_memory.to_dict().get("steps"),
+                    )
+                    if self._exec_logger:
+                        self._exec_logger.set_validation(val_result.to_summary())
+
+                    critic_result = self._critic.review(
+                        intent=self._current_intent or IntentType.GENERAL,
+                        task_memory=self.task_memory,
+                        validation_result=val_result,
+                        total_turns=turn,
+                        response_text=response_text,
+                        tool_calls_made=self._agent_tool_call_count,
+                    )
+                    if self._exec_logger:
+                        self._exec_logger.set_critic(critic_result.reason)
+
+                    if not critic_result.complete and turn < effective_max_turns - 1:
+                        # Inject critic feedback and run one more turn
+                        self.conversation_history.append({
+                            "role": "user",
+                            "content": (
+                                "[SYSTEM] Critic review found issues that must be fixed:\n"
+                                + critic_result.injected_message
+                            )
+                        })
+                        # Run one extra turn to address critic findings
+                        _extra_response = ""
+                        async for chunk in self._stream_chat_wrapper(adapter, self._trim_history_for_context(self.conversation_history, system_prompt, tools), tools, system_prompt):
+                            if chunk["type"] == "text":
+                                _extra_response += chunk["content"]
+                                await self.send_ws_message({"type": "text_delta", "content": chunk["content"]})
+                        if _extra_response:
+                            self.conversation_history.append({"role": "assistant", "content": _extra_response})
+
+                    if not val_result.passed:
+                        prompt_block = val_result.to_prompt_block()
+                        if prompt_block.strip():
+                            await self.send_ws_message({"type": "text_delta", "content": prompt_block})
+
+                except Exception as ve:
+                    logger.warning(f"Validator/Critic error (non-fatal): {ve}")
+
+            # ── Finalize execution logger ─────────────────────────────────
+            if self._exec_logger:
+                self._exec_logger.set_cost(getattr(self, "total_cost_usd", 0.0))
+                self._exec_logger.finish("completed")
+                self._exec_logger.emit()
+
             await self.send_ws_message({
                 "type": "session_done",
                 "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
                 "wasted_turns": getattr(self, "wasted_turns", 0),
+                "task_memory": self.task_memory.to_dict() if mode == "Agent" else None,
             })
 
         except asyncio.CancelledError:
