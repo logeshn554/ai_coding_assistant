@@ -6,6 +6,7 @@ file nodes, components, hooks, contexts, APIs, services, databases, imports, exp
 """
 
 import os
+import sys
 import re
 import ast
 import json
@@ -191,7 +192,10 @@ def parse_js_ts_imports_batch(workspace_root: str, js_ts_files: List[str]) -> Di
     """
     Invokes js_ast_parser.js Node script to get real AST imports + tsconfig path alias resolution.
     """
-    js_parser_script = os.path.join(os.path.dirname(__file__), "js_ast_parser.js")
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        js_parser_script = os.path.join(sys._MEIPASS, "backend", "app", "js_ast_parser.js")
+    else:
+        js_parser_script = os.path.join(os.path.dirname(__file__), "js_ast_parser.js")
     if not os.path.exists(js_parser_script):
         return {}
 

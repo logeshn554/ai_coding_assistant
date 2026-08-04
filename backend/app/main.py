@@ -140,7 +140,10 @@ for router in all_routers:
     app.include_router(router)
 
 # Serve Compiled Static Frontend
-FRONTEND_DIST = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    FRONTEND_DIST = os.path.join(sys._MEIPASS, "frontend", "dist")
+else:
+    FRONTEND_DIST = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
 if os.path.isdir(FRONTEND_DIST):
     from fastapi.staticfiles import StaticFiles
     app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
