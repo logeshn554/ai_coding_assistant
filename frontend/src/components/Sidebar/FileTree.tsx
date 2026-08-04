@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   Folder, FolderOpen, File as FileIcon, ChevronRight, ChevronDown
 } from 'lucide-react';
@@ -125,6 +125,16 @@ const HIDDEN_PATTERNS = [
   '.env.local', '.vercel', '.turbo', '.cache'
 ];
 
+interface FlatNode {
+  item: FileItem;
+  depth: number;
+  is_dir: boolean;
+  is_loading: boolean;
+}
+
+const ROW_HEIGHT = 24;
+const OVERSCAN = 10;
+
 export const FileTree: React.FC<FileTreeProps> = ({
   items,
   depth = 0,
@@ -148,114 +158,187 @@ export const FileTree: React.FC<FileTreeProps> = ({
   onDragOver,
   onDrop,
 }) => {
-  const filtered = items.filter(item => {
-    if (!showHidden && HIDDEN_PATTERNS.includes(item.name.toLowerCase())) {
-      return false;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(400);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const scrollParent = container.parentElement;
+    if (!scrollParent) return;
+
+    const handleScroll = () => {
+      setScrollTop(scrollParent.scrollTop);
+    };
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target === scrollParent) {
+          setContainerHeight(entry.contentRect.height);
+        }
+      }
+    });
+
+    scrollParent.addEventListener('scroll', handleScroll, { passive: true });
+    resizeObserver.observe(scrollParent);
+
+    // Initial state
+    setScrollTop(scrollParent.scrollTop);
+    setContainerHeight(scrollParent.getBoundingClientRect().height);
+
+    return () => {
+      scrollParent.removeEventListener('scroll', handleScroll);
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  const buildFlatNodes = (currentItems: FileItem[], currentDepth: number): FlatNode[] => {
+    const nodes: FlatNode[] = [];
+    const filtered = currentItems.filter(item => {
+      if (!showHidden && HIDDEN_PATTERNS.includes(item.name.toLowerCase())) {
+        return false;
+      }
+      if (searchTerm) {
+        return item.name.toLowerCase().includes(searchTerm.toLowerCase());
+      }
+      return true;
+    });
+
+    for (const item of filtered) {
+      const isExpanded = Boolean(expandedPaths[item.path]);
+      const isLoading = loadingDir === item.path;
+
+      nodes.push({
+        item,
+        depth: currentDepth,
+        is_dir: item.is_dir,
+        is_loading: false
+      });
+
+      if (item.is_dir && isExpanded) {
+        if (isLoading) {
+          nodes.push({
+            item: {
+              name: 'Loading...',
+              path: `${item.path}::loading`,
+              is_dir: false
+            },
+            depth: currentDepth + 1,
+            is_dir: false,
+            is_loading: true
+          });
+        } else {
+          const children = dirContents[item.path] || [];
+          nodes.push(...buildFlatNodes(children, currentDepth + 1));
+        }
+      }
     }
-    if (searchTerm) {
-      return item.name.toLowerCase().includes(searchTerm.toLowerCase());
-    }
-    return true;
-  });
+    return nodes;
+  };
+
+  const flatNodes = buildFlatNodes(items, depth);
+  const totalHeight = flatNodes.length * ROW_HEIGHT;
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(flatNodes.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN);
+
+  const visibleNodes = flatNodes.slice(startIndex, endIndex);
 
   return (
-    <div className="select-none font-sans">
-      {filtered.map(item => {
+    <div ref={containerRef} className="relative w-full select-none font-sans" style={{ height: `${totalHeight}px` }}>
+      {visibleNodes.map((node, i) => {
+        const actualIndex = startIndex + i;
+        const item = node.item;
+
+        if (node.is_loading) {
+          return (
+            <div
+              key={item.path}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                transform: `translateY(${actualIndex * ROW_HEIGHT}px)`,
+                height: `${ROW_HEIGHT}px`,
+                paddingLeft: `${node.depth * 12 + 10}px`,
+              }}
+              className="text-[10px] text-gray-500 flex items-center gap-1"
+            >
+              <span>Loading...</span>
+            </div>
+          );
+        }
+
         const isExpanded = Boolean(expandedPaths[item.path]);
         const isSelected = selectedFilePath === item.path || selectedPaths.includes(item.path);
         const gitStatus = gitChanges?.[item.path];
         const isRenaming = renamingPath === item.path;
 
         return (
-          <React.Fragment key={item.path}>
-            <div
-              draggable
-              onDragStart={() => onDragStart(item)}
-              onDragOver={e => onDragOver(e, item.path)}
-              onDrop={e => onDrop(e, item)}
-              onClick={(e) => {
-                if (item.is_dir) {
-                  if (e.ctrlKey || e.metaKey) {
-                    onSelectFile(item.path, true);
-                  } else {
-                    onToggleExpand(item.path);
-                    onSelectFile(item.path, false);
-                  }
+          <div
+            key={item.path}
+            draggable
+            onDragStart={() => onDragStart(item)}
+            onDragOver={e => onDragOver(e, item.path)}
+            onDrop={e => onDrop(e, item)}
+            onClick={(e) => {
+              if (item.is_dir) {
+                if (e.ctrlKey || e.metaKey) {
+                  onSelectFile(item.path, true);
                 } else {
-                  onSelectFile(item.path, e.ctrlKey || e.metaKey);
+                  onToggleExpand(item.path);
+                  onSelectFile(item.path, false);
                 }
-              }}
-              onContextMenu={e => onContextMenu(e, item)}
-              style={{ paddingLeft: `${depth * 12 + 10}px` }}
-              className={`
-                group flex items-center justify-between py-1 pr-2 text-[12px] cursor-pointer transition-colors
-                ${isSelected ? 'bg-[#4C8DFF]/20 text-white font-semibold border-l-2 border-[#4C8DFF]' : 'text-gray-300 hover:bg-white/5 hover:text-white'}
-              `}
-            >
-              <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                {item.is_dir ? (
-                  <span className="w-3.5 h-3.5 flex items-center justify-center text-gray-500 group-hover:text-gray-300">
-                    {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                  </span>
-                ) : (
-                  <span className="w-3 h-3" />
-                )}
+              } else {
+                onSelectFile(item.path, e.ctrlKey || e.metaKey);
+              }
+            }}
+            onContextMenu={e => onContextMenu(e, item)}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              transform: `translateY(${actualIndex * ROW_HEIGHT}px)`,
+              height: `${ROW_HEIGHT}px`,
+              paddingLeft: `${node.depth * 12 + 10}px`,
+            }}
+            className={`
+              group flex items-center justify-between pr-2 text-[12px] cursor-pointer transition-colors
+              ${isSelected ? 'bg-[#4C8DFF]/20 text-white font-semibold border-l-2 border-[#4C8DFF]' : 'text-gray-300 hover:bg-white/5 hover:text-white'}
+            `}
+          >
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              {item.is_dir ? (
+                <span className="w-3.5 h-3.5 flex items-center justify-center text-gray-500 group-hover:text-gray-300">
+                  {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                </span>
+              ) : (
+                <span className="w-3 h-3" />
+              )}
 
-                {getFileIconElement(item.name, item.is_dir, isExpanded)}
+              {getFileIconElement(item.name, item.is_dir, isExpanded)}
 
-                {isRenaming ? (
-                  <form onSubmit={e => onRenameSubmit(e, item)} className="flex-1" onClick={e => e.stopPropagation()}>
-                    <input
-                      type="text"
-                      value={renameValue}
-                      onChange={e => setRenameValue(e.target.value)}
-                      autoFocus
-                      onBlur={() => setRenamingPath(null)}
-                      className="w-full bg-[#151823] text-white text-[11px] px-1 py-0 rounded border border-[#4C8DFF] focus:outline-none"
-                    />
-                  </form>
-                ) : (
-                  <span className="truncate leading-none">{item.name}</span>
-                )}
-              </div>
-
-              {gitStatus && <GitBadge status={gitStatus} />}
+              {isRenaming ? (
+                <form onSubmit={e => onRenameSubmit(e, item)} className="flex-1" onClick={e => e.stopPropagation()}>
+                  <input
+                    type="text"
+                    value={renameValue}
+                    onChange={e => setRenameValue(e.target.value)}
+                    autoFocus
+                    onBlur={() => setRenamingPath(null)}
+                    className="w-full bg-[#151823] text-white text-[11px] px-1 py-0 rounded border border-[#4C8DFF] focus:outline-none"
+                  />
+                </form>
+              ) : (
+                <span className="truncate leading-none">{item.name}</span>
+              )}
             </div>
 
-            {item.is_dir && isExpanded && (
-              <div>
-                {loadingDir === item.path ? (
-                  <div style={{ paddingLeft: `${(depth + 1) * 12 + 10}px` }} className="py-1 text-[10px] text-gray-500 flex items-center gap-1">
-                    <span>Loading...</span>
-                  </div>
-                ) : (
-                  <FileTree
-                    items={dirContents[item.path] || []}
-                    depth={depth + 1}
-                    dirContents={dirContents}
-                    expandedPaths={expandedPaths}
-                    selectedFilePath={selectedFilePath}
-                    selectedPaths={selectedPaths}
-                    loadingDir={loadingDir}
-                    renamingPath={renamingPath}
-                    renameValue={renameValue}
-                    gitChanges={gitChanges}
-                    searchTerm={searchTerm}
-                    showHidden={showHidden}
-                    onToggleExpand={onToggleExpand}
-                    onSelectFile={onSelectFile}
-                    onContextMenu={onContextMenu}
-                    onRenameSubmit={onRenameSubmit}
-                    setRenameValue={setRenameValue}
-                    setRenamingPath={setRenamingPath}
-                    onDragStart={onDragStart}
-                    onDragOver={onDragOver}
-                    onDrop={onDrop}
-                  />
-                )}
-              </div>
-            )}
-          </React.Fragment>
+            {gitStatus && <GitBadge status={gitStatus} />}
+          </div>
         );
       })}
     </div>
