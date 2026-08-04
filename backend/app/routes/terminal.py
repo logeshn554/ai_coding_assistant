@@ -23,12 +23,14 @@ async def websocket_terminal(
     elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         is_authenticated = True
 
+    await websocket.accept()
     if not is_authenticated:
-        # Reject authentication before accepting the connection
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid or missing ticket or token."}))
+        except Exception:
+            pass
         await websocket.close(code=4401)
         return
-
-    await websocket.accept()
     
     # NOTE: app.middleware("http") does NOT run for websocket connections,
     # so session_id_var is never populated here by session_middleware.

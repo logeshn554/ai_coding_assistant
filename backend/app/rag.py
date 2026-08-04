@@ -123,9 +123,22 @@ _chroma_clients: dict = {}
 def _get_chroma_client(workspace_root: Optional[str] = None):
     """Retrieve persistent ChromaDB client for the workspace with connection pooling."""
     if workspace_root and os.path.isdir(workspace_root):
-        chroma_dir = os.path.join(workspace_root, "artifacts", "chroma")
+        import hashlib
+        h = hashlib.sha256(os.path.abspath(workspace_root).encode("utf-8")).hexdigest()[:16]
+        chroma_dir = os.path.join(os.path.expanduser("~"), ".devpilot", "chroma", h)
+        
+        # One-time migration
+        old_dir = os.path.join(workspace_root, "artifacts", "chroma")
+        if os.path.exists(old_dir) and not os.path.exists(chroma_dir):
+            try:
+                import shutil
+                os.makedirs(os.path.dirname(chroma_dir), exist_ok=True)
+                shutil.move(old_dir, chroma_dir)
+                logger.info(f"Migrated ChromaDB index from {old_dir} to {chroma_dir}")
+            except Exception as me:
+                logger.warning(f"Failed to migrate ChromaDB index: {me}")
     else:
-        chroma_dir = os.path.join(os.path.expanduser("~"), ".devpilot", "chroma")
+        chroma_dir = os.path.join(os.path.expanduser("~"), ".devpilot", "chroma", "default")
 
     chroma_dir = os.path.abspath(chroma_dir)
     if chroma_dir in _chroma_clients:

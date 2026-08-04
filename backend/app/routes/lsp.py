@@ -94,17 +94,13 @@ def _is_uri_confined(uri: str) -> bool:
     if not uri.startswith("file://"):
         return True  # non-file URIs (e.g. untitled:) are fine
     try:
-        # Strip file:// or file:///
         path_str = uri[7:]
-        if path_str.startswith("/"):
-            # Unix-style: file:///home/...
-            abs_path = Path(path_str).resolve()
-        else:
-            # Windows: file:///C:/...  -> path_str = /C:/... after stripping file://
-            abs_path = Path("/" + path_str).resolve()
+        if path_str.startswith("/") and len(path_str) > 2 and path_str[2] == ":":
+            path_str = path_str[1:]
+        abs_path = Path(path_str).resolve()
 
         workspace = Path(workspace_state.root).resolve()
-        return str(abs_path).startswith(str(workspace))
+        return os.path.normcase(str(abs_path)).startswith(os.path.normcase(str(workspace)))
     except Exception:
         return True  # don't block on parse errors
 
@@ -133,6 +129,9 @@ def _sanitize_message(msg_obj: dict) -> Optional[dict]:
             return None
         msg_obj = dict(msg_obj)
         msg_obj["params"] = dict(params, changes=confined)
+        if workspace_state.root:
+            from ..workspace_index import WorkspaceIndex
+            WorkspaceIndex.mark_dirty(workspace_state.root)
 
     return msg_obj
 
@@ -299,12 +298,14 @@ async def lsp_websocket(
     elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         is_authenticated = True
 
+    await websocket.accept()
     if not is_authenticated:
-        # Reject authentication before accepting the connection
+        try:
+            await websocket.send_text(json.dumps({"error": "Unauthorized: invalid or missing ticket or token."}))
+        except Exception:
+            pass
         await websocket.close(code=4401)
         return
-
-    await websocket.accept()
 
     logger.info(f"LSP WebSocket connection: language={language}")
     try:

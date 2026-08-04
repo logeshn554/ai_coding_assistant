@@ -361,6 +361,8 @@ async def perform_git_action(req: GitActionRequest):
             await run_cmd_async(["git", "add", req.path], workspace_state.root)
         elif req.action == "accept_all":
             await run_cmd_async(["git", "add", "."], workspace_state.root)
+        from ..workspace_index import WorkspaceIndex
+        WorkspaceIndex.mark_dirty(workspace_state.root)
         return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

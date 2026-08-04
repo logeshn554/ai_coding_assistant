@@ -190,6 +190,8 @@ def rollback_file(workspace_root: str, relative_path: str, timestamp: int = None
         keys_to_pop = [k for k in file_cache.cache if k[0] == abs_path]
         for k in keys_to_pop:
             file_cache.cache.pop(k, None)
+        from .workspace_index import WorkspaceIndex
+        WorkspaceIndex.mark_dirty(workspace_root)
         return True
     except Exception:
         return False
@@ -355,6 +357,8 @@ def write_workspace_file(workspace_root: str, relative_path: str, content: str) 
         keys_to_pop = [k for k in file_cache.cache if k[0] == target_file]
         for k in keys_to_pop:
             file_cache.cache.pop(k, None)
+        from .workspace_index import WorkspaceIndex
+        WorkspaceIndex.mark_dirty(workspace_root)
     except Exception as e:
         raise IOError(f"Failed to write file: {str(e)}")
 
@@ -371,6 +375,8 @@ def delete_workspace_item(workspace_root: str, relative_path: str) -> None:
             shutil.rmtree(target_path)
         else:
             os.remove(target_path)
+        from .workspace_index import WorkspaceIndex
+        WorkspaceIndex.mark_dirty(workspace_root)
     except Exception as e:
         raise IOError(f"Failed to delete item: {str(e)}")
 

@@ -1,1 +1,41 @@
-\"\"\"AI Deployment Pipeline — NOT YET IMPLEMENTED.\n\nThis module previously returned hardcoded fake success responses for\nevery deployment request regardless of actual build state (B4 from the\naudit report). This has been replaced with an honest error response.\n\nTo implement real deployment:\n- Integrate with your CI/CD provider (GitHub Actions, CircleCI, etc.)\n- Or implement actual build steps (build, test, containerize, push, deploy)\n\"\"\"\nimport logging\nfrom typing import Dict, Any\n\nlogger = logging.getLogger(\"devpilot.deployment\")\n\n\nclass AIDeploymentPipeline:\n    def execute_deployment_pipeline(self, target_env: str = \"production\") -> Dict[str, Any]:\n        \"\"\"Deployment pipeline placeholder.\n\n        IMPORTANT: This feature is not yet implemented.\n        Returns an honest error instead of a fake success.\n        \"\"\"\n        logger.warning(\n            \"execute_deployment_pipeline() called but the deployment feature \"\n            \"is not yet implemented. Returning a clear error to the caller.\"\n        )\n        return {\n            \"success\": False,\n            \"environment\": target_env,\n            \"error\": (\n                \"Deployment pipeline is not yet implemented. \"\n                \"Configure a real CI/CD provider or implement build steps \"\n                \"before using this feature.\"\n            ),\n            \"pipeline_steps\": []\n        }\n\n\nai_deployment_pipeline = AIDeploymentPipeline()\n
+"""AI Deployment Pipeline — NOT YET IMPLEMENTED.
+
+This module previously returned hardcoded fake success responses for
+every deployment request regardless of actual build state (B4 from the
+audit report). This has been replaced with an honest error response.
+
+To implement real deployment:
+- Integrate with your CI/CD provider (GitHub Actions, CircleCI, etc.)
+- Or implement actual build steps (build, test, containerize, push, deploy)
+"""
+import logging
+from typing import Dict, Any
+
+logger = logging.getLogger("devpilot.deployment")
+
+
+class AIDeploymentPipeline:
+    def execute_deployment_pipeline(self, target_env: str = "production") -> Dict[str, Any]:
+        """Deployment pipeline placeholder.
+
+        IMPORTANT: This feature is not yet implemented.
+        Returns an honest error instead of a fake success.
+        """
+        logger.warning(
+            "execute_deployment_pipeline() called but the deployment feature "
+            "is not yet implemented. Returning a clear error to the caller."
+        )
+        return {
+            "success": False,
+            "is_stub": True,
+            "environment": target_env,
+            "error": (
+                "Deployment pipeline is not yet implemented. "
+                "Configure a real CI/CD provider or implement build steps "
+                "before using this feature."
+            ),
+            "pipeline_steps": []
+        }
+
+
+ai_deployment_pipeline = AIDeploymentPipeline()

@@ -23,7 +23,7 @@ def _get_index() -> WorkspaceIndex:
     global _index
     root = workspace_state.root or ""
     if _index is None or _index.workspace_root != root:
-        _index = WorkspaceIndex(root)
+        _index = WorkspaceIndex.get_instance(root)
     return _index
 
 

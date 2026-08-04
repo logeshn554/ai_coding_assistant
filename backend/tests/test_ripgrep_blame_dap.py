@@ -75,10 +75,9 @@ def test_dap_debug_endpoints(tmp_path):
         assert res.status_code == 200
         assert res.json()["success"] is True
 
-        # 5. Evaluate Expression — DAP not connected, expect safe refusal (S2 fix)
+        # 5. Evaluate Expression — DAP not connected, expect HTTP 400 (S2 fix)
         res = client.post("/api/debug/evaluate", json={"expression": "1 + 1"})
-        assert res.status_code == 200
-        assert res.json()["status"] == "no_session"  # eval() fallback removed for security
+        assert res.status_code == 400
 
         # 6. Callstack
         res = client.get("/api/debug/callstack")

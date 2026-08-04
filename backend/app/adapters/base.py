@@ -86,11 +86,54 @@ class ModelAdapter:
         return {"type": "text", "content": content}
 
     @staticmethod
-    def build_usage_chunk(input_tokens: int, output_tokens: int) -> Dict[str, Any]:
+    def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
+        model_name = (model_name or "").lower()
+        
+        # Default fallback pricing (Claude 3.5 Sonnet / standard medium model)
+        input_rate = 3.00
+        output_rate = 15.00
+        
+        if "opus" in model_name:
+            input_rate = 15.00
+            output_rate = 75.00
+        elif "sonnet" in model_name:
+            input_rate = 3.00
+            output_rate = 15.00
+        elif "haiku" in model_name:
+            input_rate = 0.80
+            output_rate = 4.00
+        elif "gpt-4o-mini" in model_name:
+            input_rate = 0.15
+            output_rate = 0.60
+        elif "gpt-4o" in model_name:
+            input_rate = 2.50
+            output_rate = 10.00
+        elif "gpt-4" in model_name or "turbo" in model_name:
+            input_rate = 10.00
+            output_rate = 30.00
+        elif "o1-mini" in model_name:
+            input_rate = 3.00
+            output_rate = 12.00
+        elif "o1" in model_name:
+            input_rate = 15.00
+            output_rate = 60.00
+        elif "gemini-1.5-pro" in model_name or "gemini-pro" in model_name:
+            input_rate = 1.25
+            output_rate = 5.00
+        elif "gemini-1.5-flash" in model_name or "gemini-flash" in model_name:
+            input_rate = 0.075
+            output_rate = 0.30
+            
+        return (input_tokens * input_rate + output_tokens * output_rate) / 1_000_000
+
+    @staticmethod
+    def build_usage_chunk(input_tokens: int, output_tokens: int, model_name: str = "unknown") -> Dict[str, Any]:
+        cost = ModelAdapter.calculate_cost(model_name, input_tokens, output_tokens)
         return {
             "type": "usage",
             "input_tokens": input_tokens or 0,
             "output_tokens": output_tokens or 0,
+            "cost_usd": cost,
         }
 
     @staticmethod

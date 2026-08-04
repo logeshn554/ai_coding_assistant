@@ -166,7 +166,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       )}
 
       {/* 4. Fallback Generic Confirmation */}
-      {!msg.confirmDiff && !msg.isPermissionRequest && !msg.isPortConflictRequest && (
+      {!msg.confirmDiff && !msg.isPermissionRequest && !msg.isPortConflictRequest && !msg.isCostConfirmationRequest && (
         <div className="border border-amber-500/40 bg-zinc-900 rounded-lg p-3.5 space-y-3 shadow-lg">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
             <span className="text-[12px] font-semibold text-zinc-100">Confirmation Required</span>
@@ -189,6 +189,39 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             >
               Confirm
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Cost Confirmation */}
+      {msg.isCostConfirmationRequest && (
+        <div className="border border-yellow-500/40 bg-zinc-900 rounded-lg p-3.5 space-y-3 shadow-lg">
+          <div className="flex items-center gap-2 text-yellow-400 font-semibold text-xs border-b border-zinc-800 pb-2">
+            <AlertTriangle className="w-4 h-4" />
+            <span>Cost Limit Warning</span>
+          </div>
+          <div className="space-y-2 text-[12px] text-zinc-300">
+            <p>
+              This session has used <span className="font-semibold text-yellow-400">${(msg.totalCostUsd)?.toFixed(3)}</span>.
+              The current cost limit is <span className="font-semibold">${msg.costLimitUsd?.toFixed(2)}</span>.
+            </p>
+            <p className="text-zinc-400">Do you want to continue running the agent?</p>
+            <div className="flex items-center gap-2 pt-1 font-sans text-xs">
+              <button
+                type="button"
+                onClick={() => msg.tool_call_id && onConfirmTool(msg.tool_call_id, true)}
+                className="flex-1 py-1.5 bg-yellow-600 hover:bg-yellow-500 text-black font-bold rounded-md cursor-pointer text-center animate-pulse"
+              >
+                Continue
+              </button>
+              <button
+                type="button"
+                onClick={() => msg.tool_call_id && onConfirmTool(msg.tool_call_id, false)}
+                className="flex-1 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-md border border-zinc-700 cursor-pointer text-center"
+              >
+                Pause/Stop
+              </button>
+            </div>
           </div>
         </div>
       )}

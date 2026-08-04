@@ -100,7 +100,7 @@ class LLMAdapter(ModelAdapter):
                     if hasattr(chunk, "message") and hasattr(chunk.message, "usage") and chunk.message.usage:
                         usage = chunk.message.usage
                         yield self.build_usage_chunk(
-                            getattr(usage, "input_tokens", 0), getattr(usage, "output_tokens", 0)
+                            getattr(usage, "input_tokens", 0), getattr(usage, "output_tokens", 0), self.model_name
                         )
                 elif chunk.type == "content_block_start":
                     idx = chunk.index
@@ -163,7 +163,7 @@ class LLMAdapter(ModelAdapter):
                     if hasattr(chunk, "usage") and chunk.usage:
                         usage = chunk.usage
                         yield self.build_usage_chunk(
-                            getattr(usage, "input_tokens", 0), getattr(usage, "output_tokens", 0)
+                            getattr(usage, "input_tokens", 0), getattr(usage, "output_tokens", 0), self.model_name
                         )
             yield self.build_done_chunk("stop")
         except Exception as e:
@@ -210,7 +210,8 @@ class LLMAdapter(ModelAdapter):
                     if hasattr(chunk, "usage") and chunk.usage:
                         yield self.build_usage_chunk(
                             getattr(chunk.usage, "prompt_tokens", 0),
-                            getattr(chunk.usage, "completion_tokens", 0)
+                            getattr(chunk.usage, "completion_tokens", 0),
+                            self.model_name
                         )
                     if not chunk.choices:
                         continue
@@ -274,7 +275,8 @@ class LLMAdapter(ModelAdapter):
                         if hasattr(non_stream_resp, "usage") and non_stream_resp.usage:
                             yield self.build_usage_chunk(
                                 getattr(non_stream_resp.usage, "prompt_tokens", 0),
-                                getattr(non_stream_resp.usage, "completion_tokens", 0)
+                                getattr(non_stream_resp.usage, "completion_tokens", 0),
+                                self.model_name
                             )
                         if not non_stream_resp.choices:
                             yield self.build_done_chunk("stop")

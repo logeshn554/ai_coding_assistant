@@ -474,13 +474,35 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
             )
           );
           break;
+        case 'cost_update':
+          if (typeof data.total_cost_usd === 'number') {
+            setTotalCostUsd(data.total_cost_usd);
+          }
+          break;
+        case 'cost_confirmation_request':
+          setIsGenerating(false);
+          setStatusMessage(null);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `cost_conf_${data.tool_call_id}_${Date.now()}`,
+              role: 'assistant',
+              content: `This session has used $${data.total_cost_usd?.toFixed(3)} (Limit: $${data.cost_limit_usd?.toFixed(2)}) — continue?`,
+              tool_call_id: data.tool_call_id,
+              isConfirmPending: true,
+              isCostConfirmationRequest: true,
+              totalCostUsd: data.total_cost_usd,
+              costLimitUsd: data.cost_limit_usd
+            }
+          ]);
+          break;
         case 'session_done':
           setIsGenerating(false);
           setStatusMessage(null);
           lastAssistantMsgIdRef.current = null;
           updateStatusBarInfo();
           if (typeof data.total_cost_usd === 'number') {
-            setTotalCostUsd(prev => prev + data.total_cost_usd);
+            setTotalCostUsd(data.total_cost_usd);
           }
           break;
         case 'agent_state':

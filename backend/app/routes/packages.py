@@ -13,11 +13,7 @@ router = APIRouter()
 # Allows standard npm scoped packages (@scope/name), Python packages, and
 # version specifiers (name==1.2.3, name>=2.0), but blocks URLs, paths, and
 # any shell-special characters.
-_PACKAGE_NAME_RE = re.compile(r'^[a-zA-Z0-9@/_\-\.\[\]]{1,200}$')
-_BLOCKED_PATTERNS = re.compile(
-    r'(https?://|git\+|//|\.\.[\\/]|;|&&|\|\||`|\$\()',
-    re.IGNORECASE,
-)
+_PACKAGE_NAME_RE = re.compile(r'^[a-zA-Z0-9@/_\-\.]{1,200}$')
 
 def _validate_package_name(name: str) -> None:
     """Raise HTTPException 400 if the package name is unsafe."""
@@ -26,10 +22,21 @@ def _validate_package_name(name: str) -> None:
             status_code=400,
             detail=f"Invalid package name: '{name}'. Only alphanumeric characters, @, /, _, -, . are allowed."
         )
-    if _BLOCKED_PATTERNS.search(name):
+    # Reject URLs, git+, paths, absolute paths
+    name_lower = name.lower()
+    if (
+        "://" in name_lower or
+        "git+" in name_lower or
+        "http" in name_lower or
+        "../" in name_lower or
+        "..\\" in name_lower or
+        name.startswith("/") or
+        name.startswith("\\") or
+        ":" in name
+    ):
         raise HTTPException(
             status_code=400,
-            detail=f"Blocked package name: '{name}'. URLs, paths, and shell operators are not allowed."
+            detail=f"Blocked package name: '{name}'. URLs, paths, and absolute paths are not allowed."
         )
 
 class PackageInstallRequest(BaseModel):

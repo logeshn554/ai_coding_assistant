@@ -122,29 +122,31 @@ class AgentSession:
             self._worker_task = asyncio.create_task(self._queue_worker())
 
     async def _queue_worker(self):
-        """Drain the message queue sequentially â” one message at a time."""
+        """Drain the message queue sequentially — one message at a time."""
         while not self._message_queue.empty():
+            got_item = False
             try:
                 text, mode, auto_apply = await self._message_queue.get()
+                got_item = True
             except asyncio.CancelledError:
                 break
 
-            # Notify frontend that we're starting this item
-            await self.send_ws_message({
-                "type": "queue_status",
-                "queue_depth": self._message_queue.qsize(),
-            })
-
-            try:
-                self.active_task = asyncio.current_task()
-                await self.handle_user_message(text, mode, auto_apply)
-            except asyncio.CancelledError:
-                # Queue was cleared via cancel â” stop worker silently
-                break
-            except Exception as e:
-                logger.error(f"Queue worker error: {e}")
-            finally:
-                self._message_queue.task_done()
+            if got_item:
+                try:
+                    # Notify frontend that we're starting this item
+                    await self.send_ws_message({
+                        "type": "queue_status",
+                        "queue_depth": self._message_queue.qsize(),
+                    })
+                    self.active_task = asyncio.current_task()
+                    await self.handle_user_message(text, mode, auto_apply)
+                except asyncio.CancelledError:
+                    # Queue was cleared via cancel — stop worker silently
+                    break
+                except Exception as e:
+                    logger.error(f"Queue worker error: {e}")
+                finally:
+                    self._message_queue.task_done()
 
         # Emit final queue-empty status
         await self.send_ws_message({
@@ -546,7 +548,7 @@ class AgentSession:
             # Creating a new instance on every LLM call discards the mtime cache
             # and triggers a full os.walk on the workspace each turn.
             if self._workspace_index is None:
-                self._workspace_index = WorkspaceIndex(self.workspace_root)
+                self._workspace_index = WorkspaceIndex.get_instance(self.workspace_root)
             context = self._workspace_index.get_prompt_context(max_tokens=800)
             if context:
                 workspace_context = context
@@ -821,7 +823,7 @@ class AgentSession:
                     trimmed_history = self._trim_history_for_context(
                         self.conversation_history, system_prompt, tools
                     )
-                    async for chunk in adapter.stream_chat(trimmed_history, tools, system_prompt):
+                    async for chunk in self._stream_chat_wrapper(adapter, trimmed_history, tools, system_prompt):
                         if chunk["type"] == "text":
                             response_text += chunk["content"]
                             await self.send_ws_message({
@@ -878,7 +880,7 @@ class AgentSession:
                             )
                             response_text = ""
                             tool_calls_to_run = []
-                            async for chunk in adapter.stream_chat(trimmed_history, tools, system_prompt):
+                            async for chunk in self._stream_chat_wrapper(adapter, trimmed_history, tools, system_prompt):
                                 if chunk["type"] == "text":
                                     response_text += chunk["content"]
                                     await self.send_ws_message({
@@ -1215,7 +1217,7 @@ class AgentSession:
             trimmed_history = self._trim_history_for_context(
                 self.conversation_history, system_prompt, tools
             )
-            async for chunk in adapter.stream_chat(trimmed_history, tools, system_prompt):
+            async for chunk in self._stream_chat_wrapper(adapter, trimmed_history, tools, system_prompt):
                 if chunk["type"] == "text":
                     response_text += chunk["content"]
                     await self.send_ws_message({
@@ -1290,6 +1292,54 @@ class AgentSession:
                 self.pending_confirmations[tool_call_id]["command"] = edited_command
             self.pending_confirmations[tool_call_id]["event"].set()
 
+    async def _stream_chat_wrapper(self, adapter, messages, tools, system_prompt):
+        """
+        Wraps adapter.stream_chat to capture usage chunks, calculate costs,
+        and perform cost limit warnings.
+        """
+        async for chunk in adapter.stream_chat(messages, tools, system_prompt):
+            if chunk.get("type") == "usage":
+                turn_cost = float(chunk.get("cost_usd", 0.0))
+                self.total_cost_usd = getattr(self, "total_cost_usd", 0.0) + turn_cost
+                
+                await self.send_ws_message({
+                    "type": "cost_update",
+                    "total_cost_usd": round(self.total_cost_usd, 6),
+                    "turn_cost_usd": round(turn_cost, 6),
+                })
+            yield chunk
+
+        # After the LLM call finishes, check the circuit breaker
+        cost_limit = float(self.profile.get("cost_limit_usd") or 5.0)
+        if getattr(self, "total_cost_usd", 0.0) > cost_limit:
+            import uuid
+            tc_id = f"cost_{uuid.uuid4().hex[:6]}"
+            event = asyncio.Event()
+            self.pending_confirmations[tc_id] = {
+                "event": event,
+                "approved": False
+            }
+            # Emit cost limit confirmation prompt to client
+            await self.send_ws_message({
+                "type": "cost_confirmation_request",
+                "tool_call_id": tc_id,
+                "total_cost_usd": round(self.total_cost_usd, 6),
+                "cost_limit_usd": cost_limit,
+                "message": f"This session has used ${round(self.total_cost_usd, 2)} — continue?"
+            })
+            
+            try:
+                await asyncio.wait_for(event.wait(), timeout=300)
+            except asyncio.TimeoutError:
+                self.pending_confirmations.pop(tc_id, None)
+                await self.send_ws_message({"type": "text_delta", "content": "\n*Cost limit approval timed out. Pausing execution.*\n"})
+                raise RuntimeError("Cost limit exceeded and approval timed out.")
+            
+            decision = self.pending_confirmations.pop(tc_id, {})
+            if not decision.get("approved"):
+                await self.send_ws_message({"type": "text_delta", "content": "\n*Execution paused by user due to cost limit.*\n"})
+                raise RuntimeError("Cost limit exceeded and approval denied by user.")
+
     async def _run_llm_query(self, system_prompt: str, user_content: str, agent_name: str = None) -> str:
         """
         Queries the LLM non-disruptively by accumulating stream_chat chunks.
@@ -1299,7 +1349,11 @@ class AgentSession:
         messages = [{"role": "user", "content": user_content}]
         try:
             router = ModelRouter()
-            response_text = await router.completion(self.profile, messages, system_prompt, is_agent=True, task_type=agent_name)
+            adapter = router.get_adapter(self.profile, is_agent=True, task_type=agent_name)
+            response_text = ""
+            async for chunk in self._stream_chat_wrapper(adapter, messages, [], system_prompt):
+                if chunk["type"] == "text":
+                    response_text += chunk["content"]
             return response_text
         except Exception as e:
             logger.error(f"Error querying background LLM (including fallbacks): {str(e)}")

@@ -47,6 +47,10 @@ class MockSession:
     async def send_ws_message(self, msg):
         pass
 
+    async def _stream_chat_wrapper(self, adapter, messages, tools, system_prompt):
+        async for chunk in adapter.stream_chat(messages, tools, system_prompt):
+            yield chunk
+
     async def _execute_tool_with_guardrails(self, tc_id, tc_name, tc_args, auto_apply):
         return await dispatch_tool(self, tc_id, tc_name, tc_args, auto_apply)
 

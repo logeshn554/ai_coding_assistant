@@ -25,18 +25,5 @@ services:
       # - E:/:/host/e
     restart: unless-stopped
 
-  node_backend:
-    build:
-      context: ./node_backend
-      dockerfile: Dockerfile
-    container_name: devpilot-node
-    ports:
-      - "8001:8001"
-    environment:
-      - PORT=8001
-      - MONGO_URI=${MONGO_URI:-mongodb://localhost:27017/devpilot}
-      - SESSION_TOKEN=${SESSION_TOKEN:-devpilot-session-token-change-me}
-    restart: unless-stopped
-
 volumes:
   devpilot-config:

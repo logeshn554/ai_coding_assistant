@@ -335,11 +335,10 @@ def evaluate_expression(req: EvaluateRequest):
             "status": "error"
         }
 
-    return {
-        "expression": expr,
-        "error": "No active debug session. Start a debug session first.",
-        "status": "no_session"
-    }
+    raise HTTPException(
+        status_code=400,
+        detail="No active debug session. Start a debug session first."
+    )
 
 @router.get("/api/debug/callstack")
 def get_callstack():

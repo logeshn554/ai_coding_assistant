@@ -65,10 +65,30 @@ KIND_NAMES = {
 
 
 class WorkspaceIndex:
+    _instances: dict[str, 'WorkspaceIndex'] = {}
+
+    @classmethod
+    def get_instance(cls, workspace_root: str) -> 'WorkspaceIndex':
+        if not workspace_root:
+            raise ValueError("workspace_root cannot be empty")
+        abs_root = os.path.abspath(workspace_root)
+        if abs_root not in cls._instances:
+            cls._instances[abs_root] = cls(workspace_root)
+        return cls._instances[abs_root]
+
+    @classmethod
+    def mark_dirty(cls, workspace_root: str) -> None:
+        if not workspace_root:
+            return
+        abs_root = os.path.abspath(workspace_root)
+        if abs_root in cls._instances:
+            cls._instances[abs_root]._dirty = True
+
     def __init__(self, workspace_root: str):
         self.workspace_root = workspace_root
         # Cache maps relative_path -> {"mtime": float, "size": int, "first_lines": str}
         self.cache = {}
+        self._dirty = True
 
     def update(self):
         if not self.workspace_root or not os.path.isdir(self.workspace_root):
@@ -128,7 +148,9 @@ class WorkspaceIndex:
         """
         Formats workspace context up to max_tokens.
         """
-        self.update()
+        if self._dirty:
+            self.update()
+            self._dirty = False
         if not self.cache:
             return ""
             
