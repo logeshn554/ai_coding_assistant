@@ -136,6 +136,69 @@ def _sanitize_message(msg_obj: dict) -> Optional[dict]:
     return msg_obj
 
 
+def _uri_to_relative_path(uri: str) -> Optional[str]:
+    """Convert a file URI to a relative workspace path, accounting for Windows drive formats."""
+    if not uri.startswith("file://"):
+        return None
+    if not workspace_state.root:
+        return None
+    try:
+        from urllib.parse import unquote
+        path_str = unquote(uri[7:])
+        if os.name == "nt":
+            if path_str.startswith("/") and len(path_str) > 2 and path_str[2] == ":":
+                path_str = path_str[1:]
+            elif path_str.startswith("/") and len(path_str) > 1 and path_str[1] == ":":
+                path_str = path_str[1:]
+        
+        abs_path = Path(path_str).resolve()
+        root_path = Path(workspace_state.root).resolve()
+        if abs_path.is_relative_to(root_path):
+            return abs_path.relative_to(root_path).as_posix()
+        if str(abs_path).lower().startswith(str(root_path).lower()):
+            rel = str(abs_path)[len(str(root_path)):].lstrip("\\/")
+            return Path(rel).as_posix()
+    except Exception:
+        pass
+    return None
+
+
+def _update_diagnostics_cache(body_str: str) -> None:
+    """Parse outgoing server message and record diagnostics to global state."""
+    try:
+        msg = json.loads(body_str)
+        if not isinstance(msg, dict) or msg.get("method") != "textDocument/publishDiagnostics":
+            return
+        params = msg.get("params", {})
+        uri = params.get("uri")
+        if not uri:
+            return
+        rel_path = _uri_to_relative_path(uri)
+        if not rel_path:
+            return
+        
+        diagnostics = params.get("diagnostics", [])
+        saved = []
+        for d in diagnostics:
+            severity = d.get("severity", 1)  # 1 = Error, 2 = Warning
+            msg_text = d.get("message", "")
+            r = d.get("range", {})
+            start_line = r.get("start", {}).get("line", 0) + 1
+            start_char = r.get("start", {}).get("character", 0) + 1
+            saved.append({
+                "severity": severity,
+                "message": msg_text,
+                "line": start_line,
+                "character": start_char,
+                "code": d.get("code"),
+                "source": d.get("source", "LSP"),
+            })
+        workspace_state.lsp_diagnostics[rel_path] = saved
+        logger.info(f"[LSP] Registered {len(saved)} diagnostics for {rel_path}")
+    except Exception as e:
+        logger.debug(f"publishDiagnostics parse failed: {e}")
+
+
 # ── WebSocket handler ────────────────────────────────────────────────────────
 
 async def _proxy_lsp(websocket: WebSocket, language: str):
@@ -204,18 +267,18 @@ async def _proxy_lsp(websocket: WebSocket, language: str):
                                 expected_len = int(line.split(":")[1].strip())
                                 break
 
-                    if expected_len is not None:
-                        available = header_buf
-                        if len(available) >= expected_len:
-                            body = available[:expected_len]
-                            header_buf = available[expected_len:]
-                            expected_len = None
-                            try:
-                                await websocket.send_text(body.decode("utf-8", errors="replace"))
-                            except Exception:
-                                return
-                        else:
-                            break
+                            if len(available) >= expected_len:
+                                body = available[:expected_len]
+                                header_buf = available[expected_len:]
+                                expected_len = None
+                                try:
+                                    body_str = body.decode("utf-8", errors="replace")
+                                    await websocket.send_text(body_str)
+                                    _update_diagnostics_cache(body_str)
+                                except Exception:
+                                    return
+                            else:
+                                break
 
         async def read_from_ws():
             """Read JSON messages from WS, sanitize, and forward to server stdin."""

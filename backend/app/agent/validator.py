@@ -159,6 +159,23 @@ class Validator:
             if fpath.is_file() and fpath.stat().st_size < 10:
                 result.warnings.append(f"Source file appears to be nearly empty: {rel_path}")
 
+        # ── Check 6: LSP Diagnostics ──────────────────────────────────────
+        try:
+            from ..state import workspace_state
+            for rel_path in files_written:
+                norm_key = rel_path.replace("\\", "/")
+                diagnostics = workspace_state.lsp_diagnostics.get(norm_key, [])
+                for d in diagnostics:
+                    msg = f"LSP {d['source']} ({d['code'] or 'error'}) in {rel_path} at line {d['line']}: {d['message']}"
+                    result.checks_run += 1
+                    if d["severity"] == 1:
+                        result.failures.append(msg)
+                        result.passed = False
+                    else:
+                        result.warnings.append(msg)
+        except Exception as e:
+            logger.debug(f"Failed to validate LSP diagnostics (non-fatal): {e}")
+
         return result
 
     def _check_ts_imports(self, source: str, rel_path: str, root: Path) -> list[str]:

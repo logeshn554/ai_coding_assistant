@@ -101,3 +101,54 @@ class TestValidator:
         v = Validator(str(workspace))
         result = v.validate(files_written=["app.ts"])
         assert result.checks_run > 0
+
+    def test_lsp_diagnostics_validation(self, workspace):
+        from app.state import workspace_state
+        # Simulate active workspace root
+        old_root = workspace_state.root
+        workspace_state.root = str(workspace)
+        
+        # Write a dummy file
+        fpath = workspace / "app.py"
+        fpath.write_text("def test(): pass\n")
+        
+        try:
+            # Set diagnostics in workspace_state:
+            # One error (severity 1), one warning (severity 2)
+            workspace_state.lsp_diagnostics = {
+                "app.py": [
+                    {
+                        "severity": 1,
+                        "message": "Division by zero",
+                        "line": 4,
+                        "character": 12,
+                        "code": "division-by-zero",
+                        "source": "Pyright"
+                    },
+                    {
+                        "severity": 2,
+                        "message": "Unused import 'sys'",
+                        "line": 1,
+                        "character": 8,
+                        "code": "unused-import",
+                        "source": "Pyright"
+                    }
+                ]
+            }
+            
+            v = Validator(str(workspace))
+            result = v.validate(files_written=["app.py"])
+            
+            # Severity 1 must mark validation failed
+            assert not result.passed
+            assert len(result.failures) == 1
+            assert "Division by zero" in result.failures[0]
+            
+            # Severity 2 must be listed as warning
+            assert len(result.warnings) == 1
+            assert "Unused import" in result.warnings[0]
+            
+        finally:
+            workspace_state.lsp_diagnostics.clear()
+            workspace_state.root = old_root
+

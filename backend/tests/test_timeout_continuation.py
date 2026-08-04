@@ -57,23 +57,12 @@ async def test_llm_adapter_timeout_handling():
     # Test that env variable is read
     os.environ["DEVPILOT_STREAMING_TIMEOUT"] = "42.0"
     
-    adapter = LLMAdapter(
-        api_key="test-key",
-        base_url="https://api.openai.com/v1",
-        model_name="gpt-4",
-        provider="openai"
-    )
-    
-    # Mock stream call to raise httpx.TimeoutException
-    mock_client = MagicMock()
-    
-    # Try importing AsyncOpenAI correctly based on path
     try:
         openai_path = "app.adapters.llm.AsyncOpenAI"
     except ImportError:
         openai_path = "backend.app.adapters.llm.AsyncOpenAI"
         
-    with patch("backend.app.adapters.llm.AsyncOpenAI") as mock_openai_cls:
+    with patch(openai_path) as mock_openai_cls:
         mock_openai_inst = MagicMock()
         mock_openai_cls.return_value = mock_openai_inst
         
@@ -81,6 +70,13 @@ async def test_llm_adapter_timeout_handling():
             raise httpx.ReadTimeout("Read timed out", request=MagicMock())
             
         mock_openai_inst.chat.completions.create = mock_create
+        
+        adapter = LLMAdapter(
+            api_key="test-key",
+            base_url="https://api.openai.com/v1",
+            model_name="gpt-4",
+            provider="openai"
+        )
         
         # Let's call _stream_openai and collect chunk
         chunks = []

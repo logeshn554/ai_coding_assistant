@@ -327,6 +327,7 @@ class WorkspaceState:
     def __init__(self, initial_root: str):
         self._default_root = initial_root
         self._session_roots = {}
+        self.lsp_diagnostics = {}  # relative_path -> list of diagnostic dicts
 
     @property
     def root(self) -> str:
@@ -345,6 +346,7 @@ class WorkspaceState:
     def evict_session(self, sid: str) -> None:
         """Evict session ID from memory roots mapping to prevent memory leaks."""
         self._session_roots.pop(sid, None)
+        self.lsp_diagnostics.clear()
 
 workspace_state = WorkspaceState(INITIAL_WORKSPACE_ROOT)
 
