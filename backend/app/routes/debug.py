@@ -350,7 +350,19 @@ def add_breakpoint(bp: BreakpointItem):
         bp_file_path = Path(workspace_state.root) / bp_file_path
     bp_file_path = bp_file_path.resolve()
 
-    if not str(bp_file_path).startswith(str(workspace_path)):
+    is_inside = False
+    try:
+        if bp_file_path.is_relative_to(workspace_path):
+            is_inside = True
+    except ValueError:
+        pass
+    if not is_inside:
+        import os
+        if os.name == "nt":
+            is_inside = os.path.normcase(str(bp_file_path)).startswith(os.path.normcase(str(workspace_path)))
+        else:
+            is_inside = str(bp_file_path).startswith(str(workspace_path))
+    if not is_inside:
         raise HTTPException(status_code=403, detail="Access Denied: Breakpoint file must be within the workspace root.")
 
     debug_session = get_debug_session()

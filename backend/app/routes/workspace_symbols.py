@@ -47,7 +47,19 @@ def get_symbols(
         import os
         from pathlib import Path
         abs_path = (Path(workspace_state.root) / target_path).resolve()
-        if not str(abs_path).startswith(str(Path(workspace_state.root).resolve())):
+        root_path = Path(workspace_state.root).resolve()
+        is_inside = False
+        try:
+            if abs_path.is_relative_to(root_path):
+                is_inside = True
+        except ValueError:
+            pass
+        if not is_inside:
+            if os.name == "nt":
+                is_inside = os.path.normcase(str(abs_path)).startswith(os.path.normcase(str(root_path)))
+            else:
+                is_inside = str(abs_path).startswith(str(root_path))
+        if not is_inside:
             raise HTTPException(status_code=403, detail="Access denied: path outside workspace.")
     except HTTPException:
         raise
