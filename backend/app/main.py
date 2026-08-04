@@ -8,6 +8,9 @@ from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from .logging_config import setup_logging
+setup_logging()
+
 from .config import settings
 from .state import SESSION_TOKEN, verify_token, limiter, logger
 from .middleware.error_handler import global_error_middleware

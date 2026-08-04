@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     USE_SANDBOX: bool = False
     SANDBOX_IMAGE: str = "python:3.12-slim"
 
+    # Logging settings
+    LOG_JSON: bool = False
+    LOG_LEVEL: str = "INFO"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
