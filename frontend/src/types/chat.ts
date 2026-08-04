@@ -146,6 +146,7 @@ export interface ChatMessage {
   // Cost Confirmation Request Fields
   isCostConfirmationRequest?: boolean;
   costLimitUsd?: number;
+  totalCostUsd?: number;
 }
 
 export interface Session {
