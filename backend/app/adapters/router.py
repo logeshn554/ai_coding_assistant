@@ -84,8 +84,7 @@ class ModelRouter:
         Returns the appropriate LLM adapter based on the active profile and task category.
         """
         # 1. Check if a custom model mapping exists in config for agent routing
-        from ..config import ConfigManager
-        config = ConfigManager()
+        from ..config import config_manager as config
         
         key = profile.get("api_key", "")
         url = profile.get("base_url", "")

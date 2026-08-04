@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     
     # Security & Auth
     SESSION_TOKEN: str = ""
-    JWT_SECRET: str = "devpilot-default-jwt-secret-change-in-prod-32chars"
+    JWT_SECRET: str = ""
     
     # CORS Configuration
     CORS_ORIGINS: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
@@ -62,7 +62,7 @@ class Settings(BaseSettings):
         try:
             # Load or auto-generate JWT_SECRET on first run and store in encrypted keyring
             secret = keyring.get_password("devpilot", "jwt_secret")
-            if not secret or secret == "devpilot-default-jwt-secret-change-in-prod-32chars":
+            if not secret:
                 import secrets
                 secret = secrets.token_hex(32)
                 keyring.set_password("devpilot", "jwt_secret", secret)
@@ -208,18 +208,24 @@ class ConfigManager:
                 logger.error(f"Failed to set initial keyring password: {e}")
 
     def _read_raw_config(self) -> dict:
+        from filelock import FileLock
+        lock_path = CONFIG_FILE.with_suffix(".lock")
         try:
-            if CONFIG_FILE.exists():
-                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
+            with FileLock(lock_path, timeout=5):
+                if CONFIG_FILE.exists():
+                    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                        return json.load(f)
         except Exception:
             pass
         return {"active_profile_id": "", "profiles": []}
 
     def _save_raw_config(self, config_data: dict):
+        from filelock import FileLock
+        lock_path = CONFIG_FILE.with_suffix(".lock")
         try:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(config_data, f, indent=4)
+            with FileLock(lock_path, timeout=5):
+                with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                    json.dump(config_data, f, indent=4)
         except Exception as e:
             raise IOError(f"Failed to save configuration: {str(e)}")
 
@@ -512,13 +518,33 @@ class ConfigManager:
         self._save_raw_config(config)
 
     def get_tavily_api_key(self) -> str:
+        try:
+            key = keyring.get_password("devpilot", "tavily")
+            if key:
+                return key
+        except Exception:
+            pass
         config = self._read_raw_config()
-        return config.get("tavily_api_key", os.environ.get("TAVILY_API_KEY", ""))
+        key_from_config = config.get("tavily_api_key", "")
+        if key_from_config:
+            try:
+                keyring.set_password("devpilot", "tavily", key_from_config)
+                config.pop("tavily_api_key", None)
+                self._save_raw_config(config)
+            except Exception:
+                pass
+            return key_from_config
+        return os.environ.get("TAVILY_API_KEY", "")
 
     def set_tavily_api_key(self, key: str):
+        try:
+            keyring.set_password("devpilot", "tavily", str(key or ""))
+        except Exception as e:
+            logger.error(f"Failed to store Tavily API key in keyring: {e}")
         config = self._read_raw_config()
-        config["tavily_api_key"] = str(key or "")
-        self._save_raw_config(config)
+        if "tavily_api_key" in config:
+            config.pop("tavily_api_key", None)
+            self._save_raw_config(config)
 
     # ------------------------------------------------------------------
     # Terminal preferences
@@ -622,4 +648,7 @@ class ConfigManager:
         config = self._read_raw_config()
         config["mcp_tool_rules"] = rules
         self._save_raw_config(config)
+
+config_manager = ConfigManager()
+
 

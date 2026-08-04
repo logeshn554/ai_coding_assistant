@@ -61,6 +61,7 @@ else:
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 # Initialize shared Redis client
+import asyncio
 import redis.asyncio as aioredis
 
 
@@ -83,6 +84,7 @@ class InMemoryFallbackRedis:
         self._fallback_hashes: dict[str, dict[str, str]] = {}
         self.use_fallback = False
         self._last_failure_time: float = 0.0
+        self._lock = asyncio.Lock()
 
     def _evict_expired(self):
         """Remove stale TTL entries from the fallback store."""
@@ -101,6 +103,9 @@ class InMemoryFallbackRedis:
     def _enter_fallback(self, operation: str, exc: Exception) -> None:
         """Mark Redis as offline and log a WARNING."""
         import time as _time
+        if self.use_fallback:
+            self._last_failure_time = _time.monotonic()
+            return
         self.use_fallback = True
         self._last_failure_time = _time.monotonic()
         self.client = None  # Reset client connection pool
@@ -139,9 +144,12 @@ class InMemoryFallbackRedis:
         """
         if not self.use_fallback:
             return True
-        if self._should_retry_redis():
-            await self._probe_redis()
-        return not self.use_fallback
+        async with self._lock:
+            if not self.use_fallback:
+                return True
+            if self._should_retry_redis():
+                await self._probe_redis()
+            return not self.use_fallback
 
     async def get(self, key: str):
         """Get a string value by key, with in-memory fallback."""
@@ -315,19 +323,21 @@ async def check_redis_at_startup() -> bool:
 
 
 # Initialize Config Manager
-config_manager = ConfigManager()
+from .config import config_manager
 
 # Default to the environment variable, persistent last workspace, or empty string
 INITIAL_WORKSPACE_ROOT = os.environ.get("INITIAL_WORKSPACE_ROOT") or config_manager.get_last_workspace() or ""
 
 import contextvars
+from collections import deque
 session_id_var = contextvars.ContextVar("session_id", default=None)
+request_latencies = deque(maxlen=100)
 
 class WorkspaceState:
     def __init__(self, initial_root: str):
         self._default_root = initial_root
         self._session_roots = {}
-        self.lsp_diagnostics = {}  # relative_path -> list of diagnostic dicts
+        self._lsp_diagnostics: dict[str, dict[str, list]] = {}  # sid -> relative_path -> list of diagnostic dicts
 
     @property
     def root(self) -> str:
@@ -347,11 +357,23 @@ class WorkspaceState:
                 self._session_roots.pop(oldest_sid, None)
         self._default_root = val
 
+    @property
+    def lsp_diagnostics(self) -> dict:
+        sid = session_id_var.get() or "default"
+        if sid not in self._lsp_diagnostics:
+            self._lsp_diagnostics[sid] = {}
+        return self._lsp_diagnostics[sid]
+
+    @lsp_diagnostics.setter
+    def lsp_diagnostics(self, val: dict) -> None:
+        sid = session_id_var.get() or "default"
+        self._lsp_diagnostics[sid] = val
+
     def evict_session(self, sid: str) -> None:
         """Evict session ID from memory roots mapping to prevent memory leaks."""
         self._session_roots.pop(sid, None)
         _permission_managers.pop(sid, None)
-        self.lsp_diagnostics.clear()
+        self._lsp_diagnostics.pop(sid, None)
 
 workspace_state = WorkspaceState(INITIAL_WORKSPACE_ROOT)
 

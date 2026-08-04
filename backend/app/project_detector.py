@@ -182,9 +182,8 @@ async def detect_project_metadata_async(workspace_root: str) -> Dict[str, Any]:
 
     try:
         from .adapters.router import ModelRouter
-        from .config import ConfigManager
+        from .config import config_manager as config
 
-        config = ConfigManager()
         profile = config.get_active_profile() or {}
 
         user_prompt = _build_user_prompt(workspace_root)

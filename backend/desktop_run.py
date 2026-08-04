@@ -9,8 +9,14 @@ import json
 import urllib.request
 
 # Ensure project root is in sys.path and set as current working directory
-backend_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(backend_dir)
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    # Running in PyInstaller bundle
+    project_root = sys._MEIPASS
+    backend_dir = os.path.join(project_root, "backend")
+else:
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(backend_dir)
+
 os.chdir(project_root)
 sys.path.insert(0, backend_dir)
 sys.path.insert(0, project_root)
@@ -51,6 +57,8 @@ def is_backend_ready(port):
         return False
 
 def ensure_frontend_built():
+    if getattr(sys, 'frozen', False):
+        return
     dist_index = os.path.join(project_root, "frontend", "dist", "index.html")
     if not os.path.exists(dist_index):
         print("Frontend dist/index.html not found. Building frontend production bundle...")

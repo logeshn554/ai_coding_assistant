@@ -123,6 +123,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import time
+from app.state import request_latencies
+
+@app.middleware("http")
+async def record_request_latency(request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        duration = (time.perf_counter() - start) * 1000.0
+        request_latencies.append(duration)
+    return response
+
 # Include all modular routers
 for router in all_routers:
     app.include_router(router)

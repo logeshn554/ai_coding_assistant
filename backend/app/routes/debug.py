@@ -253,8 +253,21 @@ async def start_debug_session():
         debug_session.active_debug_process_id = proc.id
 
         if is_python:
-            await asyncio.sleep(0.8)
-            connected = debug_session.dap_client.connect("127.0.0.1", dap_port, timeout=4.0)
+            import time as _time
+            connected = False
+            start_poll_time = _time.monotonic()
+            while _time.monotonic() - start_poll_time < 5.0:
+                if proc.process and proc.process.returncode is not None:
+                    logger.warning("Debug process died before DAP connection could be established.")
+                    break
+                try:
+                    connected = debug_session.dap_client.connect("127.0.0.1", dap_port, timeout=1.0)
+                    if connected:
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(0.1)
+
             if connected:
                 debug_session.dap_client.send_request("initialize", {
                     "clientID": "devpilot",

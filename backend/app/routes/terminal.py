@@ -107,4 +107,6 @@ async def websocket_terminal(
     finally:
         hb_task.cancel()
         await term_manager.stop()
+        if session_id:
+            workspace_state.evict_session(session_id)
         session_id_var.reset(session_token)

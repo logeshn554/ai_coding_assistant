@@ -112,17 +112,22 @@ async def get_metrics() -> MetricsSummary:
         from ..db import DB_FILE
         db_size = DB_FILE.stat().st_size if DB_FILE.exists() else 0
 
+        from ..state import request_latencies
+        avg_ms = sum(request_latencies) / len(request_latencies) if request_latencies else None
+
         return MetricsSummary(
             total_sessions=total_sessions,
             total_messages=total_messages,
-            avg_response_ms=None,  # TODO: instrument per-turn latency
+            avg_response_ms=avg_ms,
             db_size_bytes=db_size,
         )
     except Exception as exc:
         logger.error("Metrics query failed: %s", exc)
+        from ..state import request_latencies
+        avg_ms = sum(request_latencies) / len(request_latencies) if request_latencies else None
         return MetricsSummary(
             total_sessions=0,
             total_messages=0,
-            avg_response_ms=None,
+            avg_response_ms=avg_ms,
             db_size_bytes=0,
         )

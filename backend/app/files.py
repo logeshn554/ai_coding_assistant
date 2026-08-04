@@ -6,9 +6,7 @@ import time
 import glob
 import logging
 import subprocess
-from .config import ConfigManager
-
-config_manager = ConfigManager()
+from .config import config_manager
 
 from pathlib import Path
 
@@ -26,17 +24,15 @@ def safe_path(workspace_root: str, relative_path: str) -> str:
     
     is_inside = False
     try:
-        if target_path.is_relative_to(root_path):
-            is_inside = True
+        if os.name == "nt":
+            norm_target = Path(str(target_path).lower())
+            norm_root = Path(str(root_path).lower())
+            if norm_target.anchor == norm_root.anchor:
+                is_inside = norm_target.is_relative_to(norm_root)
+        else:
+            is_inside = target_path.is_relative_to(root_path)
     except ValueError:
         pass
-        
-    if not is_inside:
-        # Fallback case-insensitive check for Windows
-        if os.name == "nt":
-            is_inside = str(target_path).lower().startswith(str(root_path).lower())
-        else:
-            is_inside = str(target_path).startswith(str(root_path))
             
     if not is_inside:
         raise PermissionError(f"Access denied: path '{relative_path}' is outside the workspace root.")

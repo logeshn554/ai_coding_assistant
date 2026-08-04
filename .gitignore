@@ -48,3 +48,10 @@ out/
 # Vector database storage
 chroma/
 
+# Test artifacts
+shared_memory.txt
+test.txt
+test_temp.txt
+testfile_from_agent.txt
+
+
