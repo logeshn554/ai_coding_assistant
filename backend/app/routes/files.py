@@ -4,9 +4,8 @@ import hashlib
 import glob
 import asyncio
 import logging
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from pydantic import BaseModel
 from ..state import workspace_state, logger
 from ..files import (
     list_workspace_dir,
@@ -17,30 +16,25 @@ from ..files import (
     search_workspace_codebase,
     rollback_file
 )
+from ..schemas.files import (
+    FileItemResponse,
+    FileCreateRequest,
+    FileCreateResponse,
+    FileContentResponse,
+    FileSaveRequest,
+    FileSaveResponse,
+    FileDeleteRequest,
+    FileDeleteResponse,
+    FileRenameRequest,
+    FileRenameResponse,
+    RollbackRequest,
+    RollbackResponse,
+)
 
 router = APIRouter()
 
-class FileCreateRequest(BaseModel):
-    path: str
-    is_dir: bool
 
-class FileSaveRequest(BaseModel):
-    path: str
-    content: str
-
-class FileDeleteRequest(BaseModel):
-    path: str
-
-class FileRenameRequest(BaseModel):
-    old_path: str
-    new_path: str
-
-class RollbackRequest(BaseModel):
-    path: str
-    timestamp: Optional[int] = None
-
-
-@router.get("/api/files")
+@router.get("/api/files", response_model=List[FileItemResponse])
 async def get_files(path: str = ""):
     try:
         if not workspace_state.root:
@@ -50,13 +44,14 @@ async def get_files(path: str = ""):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/files/content")
+@router.get("/api/files/content", response_model=FileContentResponse)
 async def get_file_content(path: str):
     try:
         if not workspace_state.root:
             raise HTTPException(status_code=400, detail="No workspace folder open.")
         content = await asyncio.to_thread(read_workspace_file, workspace_state.root, path)
-        return {"content": content}
+        size = len(content.encode("utf-8"))
+        return {"path": path, "content": content, "size": size}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="File not found")
     except HTTPException:
@@ -75,7 +70,7 @@ def _create_file_sync(root: str, path: str, is_dir: bool):
             with open(abs_path, "w", encoding="utf-8") as f:
                 f.write("")
 
-@router.post("/api/files/create")
+@router.post("/api/files/create", response_model=FileCreateResponse)
 async def create_file(req: FileCreateRequest):
     try:
         if not workspace_state.root:
@@ -88,7 +83,7 @@ async def create_file(req: FileCreateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/files/save")
+@router.post("/api/files/save", response_model=FileSaveResponse)
 async def save_file(req: FileSaveRequest):
     try:
         if not workspace_state.root:
@@ -101,7 +96,7 @@ async def save_file(req: FileSaveRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/files/delete")
+@router.post("/api/files/delete", response_model=FileDeleteResponse)
 async def delete_file(req: FileDeleteRequest):
     try:
         if not workspace_state.root:
@@ -120,7 +115,7 @@ def _rename_file_sync(root: str, old_path: str, new_path: str):
     os.makedirs(os.path.dirname(abs_new), exist_ok=True)
     shutil.move(abs_old, abs_new)
 
-@router.post("/api/files/rename")
+@router.post("/api/files/rename", response_model=FileRenameResponse)
 async def rename_file(req: FileRenameRequest):
     try:
         if not workspace_state.root:
@@ -143,7 +138,7 @@ async def get_codebase_search(query: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/api/rollback")
+@router.post("/api/rollback", response_model=RollbackResponse)
 async def rollback_file_endpoint(req: RollbackRequest):
     success = await asyncio.to_thread(rollback_file, workspace_state.root, req.path, req.timestamp)
     if not success:

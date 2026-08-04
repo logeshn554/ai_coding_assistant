@@ -150,4 +150,16 @@ async def test_openai_adapter_non_stream_fallback():
         assert len(chunks) == 2
         assert chunks[0] == {"type": "text", "content": "Fallback response"}
         assert chunks[1] == {"type": "done", "stop_reason": "stop"}
+
+
+def test_openapi_schema_generation():
+    """Verify that OpenAPI json doc endpoint loads without Pydantic/FastAPI validation exceptions."""
+    client = TestClient(app)
+    res = client.get("/api/openapi.json", headers={"Authorization": f"Bearer {SESSION_TOKEN}"})
+    assert res.status_code == 200
+    schema = res.json()
+    assert "paths" in schema
+    assert "/api/workspace" in schema["paths"]
+    assert "/api/files" in schema["paths"]
+
 

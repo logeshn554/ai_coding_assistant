@@ -2,12 +2,27 @@ import os
 import time
 import logging
 import asyncio
+import datetime
 import subprocess
 from typing import Optional, Counter
 from collections import Counter
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from ..state import workspace_state, get_permission_manager, config_manager
+from ..schemas.workspace import (
+    WorkspaceChangeRequest,
+    WorkspaceChangeResponse,
+    WorkspaceInfoResponse,
+    DetectCommandRequest,
+    DetectCommandResponse,
+    ShellNameResponse,
+    WorkspaceStatsResponse,
+    SSHHostRequest,
+    SSHHostResponse,
+    RootsResponse,
+    RootsAddResponse,
+    SSHHostsResponse,
+    HealthCheckResponse,
+)
 
 _SERVER_START_TIME = time.time()
 
@@ -19,20 +34,12 @@ HOST_DRIVES_ROOT = "/host"
 DRIVE_MAP = {"c": "C:\\", "d": "D:\\", "e": "E:\\"}
 
 
-class WorkspaceChangeRequest(BaseModel):
-    path: str
-
-
-class DetectCommandRequest(BaseModel):
-    file_path: str
-
-
-@router.get("/api/workspace")
+@router.get("/api/workspace", response_model=WorkspaceInfoResponse)
 async def get_workspace():
     return {"workspace": workspace_state.root}
 
 
-@router.post("/api/workspace/detect-file-command")
+@router.post("/api/workspace/detect-file-command", response_model=DetectCommandResponse)
 async def detect_file_command(req: DetectCommandRequest):
     """
     Asks the LLM to dynamically determine the appropriate execution command for a file,
@@ -70,13 +77,13 @@ async def detect_file_command(req: DetectCommandRequest):
     return {"command": f"{ext} \"{norm_path}\"" if ext else f"\"{norm_path}\""}
 
 
-@router.get("/api/shell/name")
+@router.get("/api/shell/name", response_model=ShellNameResponse)
 async def get_shell_name():
     from ..shell_adapter import ShellAdapter
     return {"name": ShellAdapter.get_shell_name()}
 
 
-@router.post("/api/workspace/change")
+@router.post("/api/workspace/change", response_model=WorkspaceChangeResponse)
 async def change_workspace(req: WorkspaceChangeRequest):
     try:
         raw_path = (req.path or "").strip().strip('"').strip("'")
@@ -308,7 +315,7 @@ from ..cache import cached
 async def _get_cached_stats(root: str) -> dict:
     return await asyncio.to_thread(_get_stats_sync, root)
 
-@router.get("/api/workspace/stats")
+@router.get("/api/workspace/stats", response_model=WorkspaceStatsResponse)
 async def get_workspace_stats():
     """Returns real workspace statistics: file counts, language breakdown, git commit count."""
     root = workspace_state.root
@@ -324,18 +331,11 @@ async def get_workspace_stats():
     return await _get_cached_stats(root=root)
 
 
-class SSHHostRequest(BaseModel):
-    name: str
-    host: str
-    username: str
-    port: int = 22
-
-
 _MULTI_ROOTS: list[str] = []
 _SSH_HOSTS: list[dict] = []
 
 
-@router.get("/api/workspace/roots")
+@router.get("/api/workspace/roots", response_model=RootsResponse)
 async def get_workspace_roots():
     """Returns active multi-root workspace folders."""
     roots = [workspace_state.root] if workspace_state.root else []
@@ -346,7 +346,7 @@ async def get_workspace_roots():
     return {"roots": roots, "active_root": workspace_state.root}
 
 
-@router.post("/api/workspace/roots/add")
+@router.post("/api/workspace/roots/add", response_model=RootsAddResponse)
 async def add_workspace_root(req: WorkspaceChangeRequest):
     """Adds a secondary root folder to the multi-root workspace."""
     path = os.path.normpath(req.path or "")
@@ -359,13 +359,13 @@ async def add_workspace_root(req: WorkspaceChangeRequest):
     return {"success": True, "roots": roots_info["roots"]}
 
 
-@router.get("/api/workspace/ssh-hosts")
+@router.get("/api/workspace/ssh-hosts", response_model=SSHHostsResponse)
 async def get_ssh_hosts():
     """Returns configured Remote SSH Host profiles."""
     return {"hosts": _SSH_HOSTS}
 
 
-@router.post("/api/workspace/ssh-hosts")
+@router.post("/api/workspace/ssh-hosts", response_model=SSHHostResponse)
 async def add_ssh_host(req: SSHHostRequest):
     """Adds or tests a Remote SSH Host profile."""
     profile = {"name": req.name, "host": req.host, "username": req.username, "port": req.port}
@@ -373,7 +373,7 @@ async def add_ssh_host(req: SSHHostRequest):
     return {"success": True, "host": profile}
 
 
-@router.get("/api/health")
+@router.get("/api/health", response_model=HealthCheckResponse)
 async def get_health():
     """Returns server health status, uptime, and Redis connectivity."""
     from pathlib import Path as _Path
@@ -390,9 +390,14 @@ async def get_health():
         logger.warning("Health Redis probe failed: %s", exc)
         redis_connected = False
 
+    # Get version from environment
+    version = os.environ.get("DEVPILOT_VERSION", "0.1.0")
+
     return {
-        "status": "ok",
+        "status": "healthy",
+        "version": version,
         "db_connected": db_connected,
         "redis_connected": redis_connected,
         "uptime_seconds": uptime,
+        "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
     }

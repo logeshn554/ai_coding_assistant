@@ -11,7 +11,7 @@ from sqlalchemy import select, delete
 from ..state import workspace_state, config_manager, get_permission_manager, SESSION_TOKEN, logger
 from ..db import async_session, SessionModel, MessageModel, get_fallback_session_id
 from fastapi import Request
-from ..agent import AgentSession
+from ..session.agent_session import AgentSession
 
 router = APIRouter()
 
@@ -481,68 +481,6 @@ async def clear_all_sessions():
         return {"success": True}
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-def sync_get_workspace_stats(root_path: str):
-    total_files = 0
-    total_lines = 0
-    languages = {}
-    
-    for root, dirs, files in os.walk(root_path):
-        if any(d in root for d in {".git", "node_modules", "venv", "__pycache__", ".devpilot", "dist", "build"}):
-            continue
-        for f in files:
-            ext = os.path.splitext(f)[1].lower()
-            if ext in {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}:
-                continue
-            abs_path = os.path.join(root, f)
-            total_files += 1
-            try:
-                with open(abs_path, "r", encoding="utf-8", errors="ignore") as file_obj:
-                    lines = file_obj.readlines()
-                    total_lines += len(lines)
-            except Exception:
-                pass
-            
-            lang_name = "Unknown"
-            if ext == ".py": lang_name = "Python"
-            elif ext in {".ts", ".tsx"}: lang_name = "TypeScript"
-            elif ext in {".js", ".jsx"}: lang_name = "JavaScript"
-            elif ext == ".json": lang_name = "JSON"
-            elif ext == ".css": lang_name = "CSS"
-            elif ext == ".html": lang_name = "HTML"
-            elif ext == ".md": lang_name = "Markdown"
-            
-            languages[lang_name] = languages.get(lang_name, 0) + 1
-            
-    return total_files, total_lines, languages
-
-@router.get("/api/workspace/stats")
-async def get_workspace_stats():
-    if not workspace_state.root:
-        return {"total_files": 0, "total_lines": 0, "languages": {}, "git_commits": 0}
-    try:
-        loop = asyncio.get_running_loop()
-        total_files, total_lines, languages = await loop.run_in_executor(
-            None, sync_get_workspace_stats, workspace_state.root
-        )
-
-        git_commits = 0
-        try:
-            from ..utils import run_cmd_async
-            commits_out = await run_cmd_async(["git", "rev-list", "--count", "HEAD"], workspace_state.root)
-            if "fatal:" not in commits_out:
-                git_commits = int(commits_out.strip())
-        except Exception:
-            pass
-
-        return {
-            "total_files": total_files,
-            "total_lines": total_lines,
-            "languages": languages,
-            "git_commits": git_commits
-        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

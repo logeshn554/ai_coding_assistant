@@ -43,6 +43,7 @@ class MockSession:
         self.is_running = False
         self.parallel_subtasks = []
         self.collaboration_log = []
+        self._exec_logger = None
 
     async def send_ws_message(self, msg):
         pass
@@ -68,6 +69,9 @@ class MockSession:
 
     async def save_history_to_db(self):
         pass
+
+    async def _run_agent_intelligence_pipeline(self, text: str, base_system_prompt: str) -> str:
+        return base_system_prompt
 
     def _trim_history_for_context(self, history, system_prompt, tools, max_chars=20000):
         return history

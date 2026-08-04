@@ -103,7 +103,7 @@ async def run_inspect(req: InspectRequest, request: Request = None):
     # 5. Enqueue to session if available
     enqueued = False
     try:
-        from ..agent import AgentSession
+        from ..session.agent_session import AgentSession
         from ..permissions import PermissionManager
         from ..state import config_manager
 
