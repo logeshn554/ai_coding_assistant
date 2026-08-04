@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Copy, Check, Terminal, ChevronDown, ChevronUp } from 'lucide-react';
 import hljs from 'highlight.js';
+import { copyToClipboard } from '../../utils/clipboard';
 import 'highlight.js/styles/github-dark.css';
 
 interface CodeBlockProps {
@@ -58,7 +59,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ inline, className, childre
   }
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(codeString);
+    copyToClipboard(codeString);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
@@ -67,7 +68,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ inline, className, childre
     if (onRunCommand) {
       onRunCommand(codeString);
     } else {
-      navigator.clipboard.writeText(codeString);
+      copyToClipboard(codeString);
       window.dispatchEvent(new CustomEvent('devpilot-run-terminal-command', { detail: { command: codeString } }));
     }
   };

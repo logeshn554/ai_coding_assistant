@@ -28,6 +28,8 @@ class SystemConfig(BaseSettings):
     max_agent_cost_usd: float = 5.0       # per individual agent
     max_global_cost_usd: float = 30.0     # entire run
     max_iterations_per_agent: int = 100
+    max_agent_execution_timeout_seconds: float = 300.0
+    max_agent_tokens: int = 1000000
     max_retries: int = 3
 
     # Evaluator-optimizer: maximum code → review → refine cycles before routing to END.

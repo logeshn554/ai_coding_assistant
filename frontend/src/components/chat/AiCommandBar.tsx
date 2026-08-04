@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Send, Square, FileText, Folder, Terminal,
   GitBranch, Code2, Layers, ChevronRight, AtSign,
@@ -60,6 +60,8 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
   // Attachment state for images, files, and folders
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [activeModel, setActiveModel] = useState('Claude-3.5-Sonnet');
+  const [showModelMenu, setShowModelMenu] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -325,26 +327,22 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
         </div>
       )}
 
-      {/* ── Main Input Container ── */}
+      {/* ── Main Input Container (Cohesive Bubble) ── */}
       <div
-        className="relative flex flex-col rounded-xl transition-all duration-150 focus-within:shadow-[0_0_0_2px_rgba(124,106,240,0.35)]"
-        style={{
-          background: 'var(--dp-bg-elevated)',
-          border: '1px solid var(--dp-border-mid)',
-        }}
+        className="relative flex flex-col rounded-xl border border-zinc-800 bg-[#16171d]/90 shadow-lg focus-within:border-violet-500/40 focus-within:ring-1 focus-within:ring-violet-500/20 transition-all duration-150"
       >
         {/* Attachment Chips Preview Bar */}
         {attachments.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 px-3 pt-2.5 pb-1 border-b border-white/5 max-h-24 overflow-y-auto">
+          <div className="flex flex-wrap items-center gap-1.5 px-3 pt-2.5 pb-1 border-b border-zinc-800/60 max-h-24 overflow-y-auto">
             {attachments.map((att, idx) => (
               <div
                 key={idx}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] bg-white/10 text-white font-mono border border-white/10 shadow-sm"
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] bg-zinc-900 text-zinc-300 font-mono border border-zinc-800 shadow-sm"
               >
                 {att.previewUrl ? (
                   <img src={att.previewUrl} alt={att.name} className="w-4 h-4 rounded object-cover" />
                 ) : att.type === 'image' ? (
-                  <ImageIcon className="w-3.5 h-3.5 text-[#4C8DFF]" />
+                  <ImageIcon className="w-3.5 h-3.5 text-blue-400" />
                 ) : att.type === 'folder' ? (
                   <FolderPlus className="w-3.5 h-3.5 text-amber-400" />
                 ) : (
@@ -354,10 +352,10 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
                 <button
                   type="button"
                   onClick={() => removeAttachment(idx)}
-                  className="hover:text-red-400 text-gray-400 transition-colors ml-0.5 cursor-pointer"
+                  className="hover:text-red-400 text-zinc-500 transition-colors ml-0.5 cursor-pointer font-bold"
                   title="Remove attachment"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-2.5 h-2.5" />
                 </button>
               </div>
             ))}
@@ -376,92 +374,119 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
           onPaste={handlePaste}
           placeholder={
             mode === 'Agent'
-              ? 'Ask DevPilot anything... (Paste image or drop files)'
+              ? 'Ask DevPilot...'
               : mode === 'Plan'
               ? 'Describe feature to plan...'
               : 'Ask a question...'
           }
           rows={3}
-          className="w-full bg-transparent text-[12px] text-[var(--dp-text-primary)] placeholder-[var(--dp-text-muted)] focus:outline-none resize-none leading-relaxed px-3 pt-3 pb-1 font-sans"
-          style={{ minHeight: '70px', maxHeight: '180px' }}
+          className="w-full bg-transparent text-[13px] text-zinc-200 placeholder-zinc-550 focus:outline-none resize-none leading-relaxed px-4 pt-3.5 pb-1 font-sans"
+          style={{ minHeight: '60px', maxHeight: '180px' }}
         />
 
-        {/* Footer */}
-        <div className="flex items-center justify-between px-2 pb-2 pt-1">
-          {/* Left: context tools & Attachment Buttons */}
-          <div className="flex items-center gap-0.5">
+        {/* Inner Controls Bar inside the Bubble */}
+        <div className="flex items-center justify-between px-3 pb-3 pt-1">
+          {/* Left: Attachment & mention buttons */}
+          <div className="flex items-center gap-1 select-none">
             <button
               onClick={() => { setInputText(inputText + '@'); inputRef.current?.focus(); }}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
+              className="w-6.5 h-6.5 flex items-center justify-center rounded bg-transparent hover:bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer transition-colors"
               title="Mention context (@)"
             >
               <AtSign className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={() => { setInputText(inputText + '/'); inputRef.current?.focus(); }}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
-              title="Slash command (/)"
-            >
-              <span className="text-[12px] font-bold">/</span>
-            </button>
-
-            {/* Paperclip Button for Image / File Upload */}
+            
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
+              className="w-6.5 h-6.5 flex items-center justify-center rounded bg-transparent hover:bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer transition-colors"
               title="Upload file or image attachment"
             >
               <Paperclip className="w-3.5 h-3.5" />
             </button>
-
-            {/* FolderPlus Button for Folder Upload */}
-            <button
-              type="button"
-              onClick={() => folderInputRef.current?.click()}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/6 cursor-pointer transition-colors"
-              title="Upload folder attachment"
-            >
-              <FolderPlus className="w-3.5 h-3.5" />
-            </button>
           </div>
 
-          {/* Right: Auto Apply & Send / Stop */}
-          <div className="flex items-center gap-2.5">
-            {(mode === 'Agent' || mode === 'Goal') && (
-              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--dp-text-muted)] hover:text-white cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={autoApply}
-                  onChange={(e) => setAutoApply(e.target.checked)}
-                  className="rounded border-white/10 bg-black/20 text-[#3B7AE8] focus:ring-[#4C8DFF] focus:ring-offset-0 w-3.5 h-3.5 cursor-pointer"
-                />
-                <span>Auto Apply</span>
-              </label>
-            )}
+          {/* Right: Round Send/Cancel Trigger */}
+          <div className="flex items-center gap-2">
             {isGenerating ? (
               <button
+                type="button"
                 onClick={onCancel}
-                className="w-8 h-8 flex items-center justify-center rounded-xl bg-[var(--dp-error)]/15 border border-[var(--dp-error)]/30 text-[var(--dp-error)] hover:bg-[var(--dp-error)]/25 transition-all cursor-pointer"
+                className="w-7 h-7 flex items-center justify-center rounded-full bg-red-950/40 border border-red-900/40 text-red-400 hover:bg-red-900/60 cursor-pointer transition-all hover:scale-105 active:scale-95"
                 title="Stop generation"
               >
-                <Square className="w-3.5 h-3.5 fill-current" />
+                <Square className="w-3 h-3 fill-current" />
               </button>
             ) : (
               <button
+                type="button"
                 onClick={handleTriggerSend}
                 disabled={!inputText.trim() && attachments.length === 0}
-                className="w-8 h-8 flex items-center justify-center rounded-xl disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-all hover:scale-105 active:scale-95"
+                className="w-7 h-7 flex items-center justify-center rounded-full disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer transition-all hover:scale-105 active:scale-95"
                 style={{
                   background: 'linear-gradient(135deg, #7c6af0 0%, #4f8df5 100%)',
-                  boxShadow: (inputText.trim() || attachments.length > 0) ? '0 4px 12px rgba(124,106,240,0.4)' : 'none',
+                  boxShadow: (inputText.trim() || attachments.length > 0) ? '0 3px 8px rgba(124,106,240,0.3)' : 'none',
                 }}
                 title="Send (Enter)"
               >
-                <Send className="w-3.5 h-3.5 text-white" />
+                <Send className="w-3 h-3 text-white" />
               </button>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* ── Outer Footer Controls (Outside the Bubble) ── */}
+      <div className="flex items-center justify-between mt-2.5 px-0.5 select-none text-[11px] font-sans">
+        {/* Left: Auto Apply toggle */}
+        {(mode === 'Agent' || mode === 'Goal') ? (
+          <label className="flex items-center gap-1.5 text-zinc-500 hover:text-zinc-300 cursor-pointer select-none font-medium transition-colors">
+            <input
+              type="checkbox"
+              checked={autoApply}
+              onChange={(e) => setAutoApply(e.target.checked)}
+              className="rounded border-zinc-800 bg-zinc-950 text-[#3B7AE8] focus:ring-0 focus:ring-offset-0 w-3.5 h-3.5 cursor-pointer"
+            />
+            <span>Auto Apply</span>
+          </label>
+        ) : (
+          <div />
+        )}
+
+        {/* Right: Model Selector Pill Dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowModelMenu(!showModelMenu)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10.5px] font-bold text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+          >
+            <span>{activeModel}</span>
+            <ChevronRight className="w-3 h-3 transform rotate-90 text-zinc-500 shrink-0" />
+          </button>
+
+          {showModelMenu && (
+            <div className="absolute bottom-full right-0 mb-1.5 w-40 z-50 rounded-lg bg-zinc-900 border border-zinc-800 shadow-xl py-1 overflow-hidden font-sans">
+              {[
+                'Claude-3.5-Sonnet',
+                'GPT-4o',
+                'Gemini-1.5-Pro',
+                'DevPilot-Coder',
+              ].map((model) => (
+                <div
+                  key={model}
+                  onClick={() => {
+                    setActiveModel(model);
+                    setShowModelMenu(false);
+                  }}
+                  className={`px-3 py-1.5 text-[11px] font-semibold cursor-pointer transition-colors hover:bg-zinc-800 hover:text-white ${
+                    model === activeModel ? 'text-blue-400 font-bold bg-zinc-850' : 'text-zinc-400'
+                  }`}
+                >
+                  {model}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

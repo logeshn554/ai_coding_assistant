@@ -29,6 +29,7 @@ This document defines the identity, formatting, quality, security, and styling g
 - **Robustness**: Handle empty inputs, None/null, out-of-range values, and network errors without being asked.
 - **Readability**: Prefer readability over cleverness. Name variables for what they represent, not what type they are.
 - **Least Surprise**: Functions must do exactly what their name says.
+- **Automatic Execution**: Whenever code is created or updated (specifically frontend / web applications), you MUST automatically run the code or launch the dev server/live server and return the running URL prominently to the user.
 
 ## Style & Conventions
 - Follow PEP 8 for Python, Airbnb/Standard for JS, gofmt for Go.

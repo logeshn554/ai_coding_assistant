@@ -14,15 +14,6 @@ async def run_cmd_async(cmd: Union[str, List[str]], cwd: str) -> str:
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     else:
         kwargs["start_new_session"] = True
-        def drop_privileges():
-            try:
-                import resource
-                resource.setrlimit(resource.RLIMIT_CPU, (120, 120))
-                resource.setrlimit(resource.RLIMIT_FSIZE, (100 * 1024 * 1024, 100 * 1024 * 1024))
-                resource.setrlimit(resource.RLIMIT_NPROC, (50, 50))
-            except Exception as e:
-                raise RuntimeError(f"Fail-closed: could not drop privileges: {e}")
-        kwargs["preexec_fn"] = drop_privileges
 
     if isinstance(cmd, str):
         if "cd .." in cmd or "cd/" in cmd or re.search(r'\bcd\b.*\.\.', cmd):

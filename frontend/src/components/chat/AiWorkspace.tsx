@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { ChatMessage, ChatMode } from '../../types/chat';
+import { Plus, Trash2, Info, X } from 'lucide-react';
 import { AiCommandBar } from './AiCommandBar';
 import { MessageList } from './MessageList';
 import { useAI } from '../../core/ai/AIContext';
@@ -51,20 +52,48 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
       style={{ background: '#151823', borderLeft: '1px solid #2A3146' }}
     >
       {/* ── Top Navigation Bar ── */}
-      <div className="px-3 py-2 shrink-0 border-b border-[#2A3146] bg-[#0E1016]">
-        {/* Title Header */}
+      <div className="px-3.5 py-2.5 shrink-0 border-b border-[#2A3146] bg-[#0E1016] select-none">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-[var(--dp-text-muted)] uppercase tracking-wider">
-            AI Workspace
+          <span className="text-[11.5px] font-bold text-zinc-300 uppercase tracking-wider">
+            AI Assistant
           </span>
 
-          <button
-            onClick={() => onNewSession()}
-            className="text-[11px] font-medium text-white/80 hover:text-white bg-white/5 hover:bg-white/10 px-2 py-0.5 rounded transition-colors cursor-pointer border border-white/10"
-            title="New AI Session"
-          >
-            + New
-          </button>
+          <div className="flex items-center gap-2">
+            {/* + New Chat Button */}
+            <button
+              onClick={() => onNewSession()}
+              className="btn-interactive flex items-center gap-1 text-[10.5px] font-bold text-zinc-300 hover:text-white bg-zinc-900 hover:bg-zinc-800 px-2.5 py-1 rounded-md transition-colors cursor-pointer border border-zinc-800/80"
+              title="New AI Chat Session"
+            >
+              <Plus className="w-3 h-3 text-zinc-400" />
+              <span>New Chat</span>
+            </button>
+
+            {/* Clear/Trash Button */}
+            <button
+              onClick={() => onNewSession()}
+              className="btn-interactive p-1 rounded bg-transparent hover:bg-zinc-900 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer"
+              title="Clear Session History"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Info Button */}
+            <button
+              className="btn-interactive p-1 rounded bg-transparent hover:bg-zinc-900 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              title="AI Assistant Information"
+            >
+              <Info className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Close/Hide Button */}
+            <button
+              className="btn-interactive p-1 rounded bg-transparent hover:bg-zinc-900 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              title="Close AI Assistant Panel"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -81,6 +110,7 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
               taskMemory={taskMemory}
               onContinue={() => handleSendMessage('continue', 'Agent', true)}
               isGenerating={isGeneratingContext}
+              onSuggest={setInputText}
             />
           </div>
 

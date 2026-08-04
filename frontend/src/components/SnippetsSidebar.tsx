@@ -1,5 +1,6 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Code, Plus, Copy, Check, Trash2, Search } from 'lucide-react';
+import { copyToClipboard } from '../utils/clipboard';
 
 interface Snippet {
   id: string;
@@ -35,7 +36,7 @@ export default function SnippetsSidebar() {
   }, []);
 
   const handleCopy = (snip: Snippet) => {
-    navigator.clipboard.writeText(snip.code);
+    copyToClipboard(snip.code);
     setCopiedId(snip.id);
     setTimeout(() => setCopiedId(null), 1500);
   };

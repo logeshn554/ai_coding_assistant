@@ -119,8 +119,9 @@ AGENT_MODE_INSTRUCTIONS = """
 │     without changing strategy.                                      │
 │                                                                     │
 │  8. CONTINUOUS RUNNING SERVERS & PREVIEW URLS:                      │
-│     Verify servers run continuously without fatal crashes. Extract  │
-│     and prominently return the preview URL.                         │
+│     Whenever code is created or updated (specifically frontend / web│
+│     applications), you MUST automatically run the code or launch the│
+│     dev server, and return the running URL prominently to the user. │
 │                                                                     │
 │  9. BEFORE FINISHING: re-read the original request as a checklist.  │
 │     Confirm every requirement is actually satisfied (files exist,   │

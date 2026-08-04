@@ -341,11 +341,16 @@ class WorkspaceState:
         sid = session_id_var.get()
         if sid:
             self._session_roots[sid] = val
+            # Bounded size check: keep self._session_roots to max 200 sessions
+            if len(self._session_roots) > 200:
+                oldest_sid = next(iter(self._session_roots))
+                self._session_roots.pop(oldest_sid, None)
         self._default_root = val
 
     def evict_session(self, sid: str) -> None:
         """Evict session ID from memory roots mapping to prevent memory leaks."""
         self._session_roots.pop(sid, None)
+        _permission_managers.pop(sid, None)
         self.lsp_diagnostics.clear()
 
 workspace_state = WorkspaceState(INITIAL_WORKSPACE_ROOT)
@@ -356,6 +361,10 @@ _permission_managers = {}
 def get_permission_manager() -> PermissionManager:
     sid = session_id_var.get() or "default"
     if sid not in _permission_managers:
+        # Bounded size check: keep _permission_managers to max 200 sessions
+        if len(_permission_managers) > 200:
+            oldest_sid = next(iter(_permission_managers))
+            _permission_managers.pop(oldest_sid, None)
         _permission_managers[sid] = PermissionManager(config_manager, workspace_state.root)
     _permission_managers[sid].workspace_root = workspace_state.root
     return _permission_managers[sid]
@@ -392,7 +401,7 @@ async def verify_token(request: Request = None):
         return
 
     path = request.url.path
-    if path == "/" or path.startswith("/assets/") or path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico", ".ttf", ".woff", ".woff2", ".html")) or path in ("/auth/token", "/api/auth/token", "/docs", "/openapi.json", "/redoc"):
+    if path == "/" or path.startswith("/assets/") or path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico", ".ttf", ".woff", ".woff2", ".html")) or path in ("/auth/token", "/api/auth/token", "/docs", "/openapi.json", "/redoc", "/api/health"):
         return
 
     # Extract token from Bearer header, X-Session-Token header, or query param

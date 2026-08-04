@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 
 // Restore saved theme immediately to prevent flash-of-wrong-theme
 const savedTheme = localStorage.getItem('devpilot_theme') || 'dark';
@@ -103,7 +104,9 @@ async function initApp() {
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <App />
+      <ErrorBoundary title="Root Application Error">
+        <App />
+      </ErrorBoundary>
     </StrictMode>,
   )
 }

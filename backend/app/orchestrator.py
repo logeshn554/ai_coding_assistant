@@ -97,7 +97,8 @@ planner_prompt_template = PromptTemplate.from_template(
     "- Simple single-file changes: [Requirement Analysis Agent → File System Agent → one coding agent].\n"
     "- Tasks with empty dependencies[] can run in parallel.\n"
     "- Decompose large tasks (e.g. game builds or multi-file projects) into separate one-file-per-LLM-call subtasks (e.g., one subtask for creating index.html, one subtask for style.css, one subtask for script.js, one subtask for README.md). Do not group multiple code files into a single subtask.\n"
-    "- Use exactly ONE of: Coding Agent, Frontend Developer Agent, or Backend Developer Agent (choose based on what files change).\n\n"
+    "- CRITICAL RULE: If the request is complex, multi-step, or heavy (e.g. has multiple files, both frontend and backend changes, or database changes), you MUST split the task into multiple specific subtasks. Break down the work into logical sequential steps.\n"
+    "- Use exactly ONE of: Coding Agent, Frontend Developer Agent, or Backend Developer Agent (choose based on what files change) per subtask.\n\n"
     "Output ONLY a JSON array of objects, with no extra formatting, markdown tags, or headers:\n"
     "[\n"
     '  {{"id": 1, "agent": "Requirement Analysis Agent", "description": "Identify files to read/modify", "dependencies": []}},\n'

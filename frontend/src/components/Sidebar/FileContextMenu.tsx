@@ -3,6 +3,7 @@ import { ContextMenu } from '../ContextMenu';
 import type { ContextMenuEntry } from '../ContextMenu';
 import type { FileItem } from './types';
 import { useTerminal } from '../../core/terminal/TerminalContext';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface FileContextMenuProps {
   contextMenu: { x: number; y: number; item: FileItem } | null;
@@ -40,7 +41,7 @@ export const FileContextMenu: React.FC<FileContextMenuProps> = ({
     { type: 'divider' },
     {
       label: 'Copy Path',
-      onClick: () => navigator.clipboard.writeText(item.path),
+      onClick: () => copyToClipboard(item.path),
     },
     {
       label: 'Rename',

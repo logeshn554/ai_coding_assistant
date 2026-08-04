@@ -14,10 +14,14 @@ class AgentMonitor:
     """
 
     def __init__(self, subtask_id: str, config: SystemConfig):
+        import time
         self.subtask_id = subtask_id
         self.config = config
         self.cost = 0.0
         self.iterations = 0
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.start_time = time.time()
 
         # Monologue tracker
         self._monologue_streak = 0
@@ -39,7 +43,11 @@ class AgentMonitor:
         
         # Accumulate costs if present on event
         if hasattr(event, "cost_usd"):
-            self.cost += event.cost_usd
+            self.cost += event.cost_usd or 0.0
+        if hasattr(event, "input_tokens"):
+            self.input_tokens += getattr(event, "input_tokens", 0) or 0
+        if hasattr(event, "output_tokens"):
+            self.output_tokens += getattr(event, "output_tokens", 0) or 0
 
         # Generate event hash
         h = self._hash(event)
@@ -110,9 +118,17 @@ class AgentMonitor:
 
     def over_budget(self) -> bool:
         """Checks if the agent has run out of resources or iterations."""
+        import time
+        elapsed = time.time() - self.start_time
+        max_timeout = getattr(self.config, "max_agent_execution_timeout_seconds", 300.0)
+        if elapsed >= max_timeout:
+            return True
         if self.cost >= self.config.max_agent_cost_usd:
             return True
         if self.iterations >= self.config.max_iterations_per_agent:
+            return True
+        max_tok = getattr(self.config, "max_agent_tokens", 1000000)
+        if (self.input_tokens + self.output_tokens) >= max_tok:
             return True
         return False
 

@@ -138,7 +138,6 @@ class TerminalManager:
 
     async def _read_loop_windows(self):
         """Read output from the ConPTY and forward to the WebSocket."""
-        import re
         loop = asyncio.get_event_loop()
         try:
             while self._pty is not None and self._pty.isalive():
@@ -146,9 +145,7 @@ class TerminalManager:
                     # Read from PTY in a thread executor to avoid blocking the event loop
                     data = await loop.run_in_executor(None, self._pty_read_windows)
                     if data:
-                        # Clean raw control characters before sending to websocket
-                        clean_data = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', data).replace('\x03', '')
-                        await self.send_callback(clean_data)
+                        await self.send_callback(data)
                 except EOFError:
                     break
                 except Exception as e:
@@ -177,15 +174,13 @@ class TerminalManager:
 
     async def _read_loop_unix(self):
         """Read output from the Unix PTY master fd and forward to the WebSocket."""
-        import re
         loop = asyncio.get_event_loop()
         try:
             while self._pty is not None:
                 try:
                     data = await loop.run_in_executor(None, self._pty_read_unix)
                     if data:
-                        clean_data = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', data).replace('\x03', '')
-                        await self.send_callback(clean_data)
+                        await self.send_callback(data)
                     elif data is None:
                         # EOF
                         break

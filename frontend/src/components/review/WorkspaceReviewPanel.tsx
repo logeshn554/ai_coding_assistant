@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   ShieldAlert,
   AlertTriangle,
@@ -13,6 +13,7 @@ import {
 
 
 import { useEditor } from '../../core/editor/EditorContext';
+import { copyToClipboard } from '../../utils/clipboard';
 import { useAI } from '../../core/ai/AIContext';
 
 interface ReviewFinding {
@@ -103,7 +104,7 @@ export const WorkspaceReviewPanel: React.FC = () => {
     if (!report) return;
     const md = `# Workspace Code Quality & Security Audit Report\n\n- **Health Score**: ${report.score}/100\n- **Files Scanned**: ${report.files_scanned}\n- **Total Issues**: ${report.summary.total_issues}\n\n## Findings\n${report.findings.map(f => `### [${f.severity.toUpperCase()}] ${f.title}\n- **File**: \`${f.file}\`\n- **Category**: ${f.category}\n- **Description**: ${f.description}\n- **Suggestion**: ${f.suggestion}\n`).join('\n')}`;
     
-    navigator.clipboard.writeText(md);
+    copyToClipboard(md);
     setCopiedReport(true);
     setTimeout(() => setCopiedReport(false), 2000);
   };

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Database, Network, Clock, BarChart2, GitBranch, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 import { useWorkspace } from '../core/workspace/WorkspaceContext';
 import { useGit } from '../core/git/GitContext';
@@ -107,7 +107,7 @@ export default function WorkspaceSidebar() {
           <button
             onClick={loadAll}
             disabled={loading}
-            className="p-0.5 text-gray-500 hover:text-gray-300 disabled:opacity-40 cursor-pointer rounded transition-colors"
+            className="btn-interactive p-0.5 text-gray-500 hover:text-gray-300 disabled:opacity-40 cursor-pointer rounded transition-colors"
             title="Refresh"
           >
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
@@ -282,7 +282,7 @@ export default function WorkspaceSidebar() {
                   console.error(e);
                 }
               }}
-              className="text-[10px] text-[#4C8DFF] hover:text-[#4C8DFF] font-bold cursor-pointer"
+              className="btn-interactive text-[10px] text-[#4C8DFF] hover:text-[#4C8DFF] font-bold cursor-pointer bg-transparent border-0"
             >
               + Add Folder
             </button>
@@ -316,7 +316,7 @@ export default function WorkspaceSidebar() {
                   console.error(e);
                 }
               }}
-              className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold cursor-pointer"
+              className="btn-interactive text-[10px] text-cyan-400 hover:text-cyan-300 font-bold cursor-pointer bg-transparent border-0"
             >
               + Connect SSH
             </button>

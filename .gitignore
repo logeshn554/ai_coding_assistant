@@ -44,3 +44,7 @@ out/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Vector database storage
+chroma/
+

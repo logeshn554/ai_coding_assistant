@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Layers,
   ZoomIn,
@@ -26,6 +26,7 @@ import {
 
 import { useEditor } from '../../core/editor/EditorContext';
 import { useAI } from '../../core/ai/AIContext';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface DbTable {
   model_name: string;
@@ -161,7 +162,7 @@ export const VisualWorkspaceGraph: React.FC = () => {
         graphStr += `  ${srcLabel} --> ${tgtLabel}\n`;
       }
     });
-    navigator.clipboard.writeText(graphStr);
+    copyToClipboard(graphStr);
     setCopiedMermaid(true);
     setTimeout(() => setCopiedMermaid(false), 2000);
   };

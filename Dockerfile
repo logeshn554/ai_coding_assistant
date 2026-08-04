@@ -24,7 +24,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy backend requirements and install them
 COPY backend/requirements.txt ./backend/
 RUN pip install --no-cache-dir -r backend/requirements.txt
-RUN playwright install --with-deps chromium
+
+ARG INSTALL_PLAYWRIGHT=false
+RUN if [ "$INSTALL_PLAYWRIGHT" = "true" ] ; then \
+        playwright install --with-deps chromium ; \
+    fi
 
 
 # Copy built frontend dist folder so FastAPI can serve it statically

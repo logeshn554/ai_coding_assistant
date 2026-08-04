@@ -391,3 +391,43 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* Branded selection coloring */
+::selection {
+  background: rgba(124, 106, 240, 0.3);
+  color: #ffffff;
+}
+
+/* Rounded, elegant scrollbars for workspace lists */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background 150ms ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 106, 240, 0.4);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Premium scale animations on hover & click interactions */
+.btn-interactive {
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-interactive:hover:not(:disabled) {
+  transform: translateY(-0.5px) scale(1.02);
+}
+.btn-interactive:active:not(:disabled) {
+  transform: translateY(0px) scale(0.97);
+}
+
+

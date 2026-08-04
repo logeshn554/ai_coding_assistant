@@ -21,11 +21,13 @@ class PermissionManager:
 
     @property
     def workspace_root(self) -> str:
+        if self._workspace_root:
+            return self._workspace_root
         try:
             from .state import workspace_state
             return workspace_state.root
         except Exception:
-            return self._workspace_root
+            return ""
 
     @workspace_root.setter
     def workspace_root(self, val: str) -> None:

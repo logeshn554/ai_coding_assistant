@@ -5,7 +5,7 @@ class WorkspaceStatsResponse(BaseModel):
     """Schema for workspace analytics and language breakdown."""
     total_files: int = Field(..., description="Total file count in workspace")
     total_lines: int = Field(..., description="Total lines of code")
-    languages: Dict[str, int] = Field(..., description="Breakdown of file count per language")
+    languages: Dict[str, float] = Field(..., description="Breakdown of language percentages in the workspace")
     git_commits: int = Field(0, description="Total git commits in repository")
 
 
