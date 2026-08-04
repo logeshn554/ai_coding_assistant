@@ -7,6 +7,7 @@ import { FileCreationDialog } from './Sidebar/FileCreationDialog';
 import { FileContextMenu } from './Sidebar/FileContextMenu';
 import { WorkspaceStats } from './Sidebar/WorkspaceStats';
 import { FileTree } from './Sidebar/FileTree';
+import { useDebounce } from '../hooks/useDebounce';
 
 export default function Sidebar({
   onSelectFile,
@@ -23,6 +24,7 @@ export default function Sidebar({
 
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const [showHidden, setShowHidden] = useState(false);
 
   // Creation State
@@ -286,7 +288,7 @@ export default function Sidebar({
             renamingPath={renamingPath}
             renameValue={renameValue}
             gitChanges={gitChanges}
-            searchTerm={searchTerm}
+            searchTerm={debouncedSearchTerm}
             showHidden={showHidden}
             onToggleExpand={toggleExpand}
             onSelectFile={handleSelectFileClick}

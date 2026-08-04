@@ -1,5 +1,6 @@
-﻿import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Search, Loader2, FileText } from 'lucide-react';
+import { useDebounce } from '../hooks/useDebounce';
 
 
 interface SearchMatch {
@@ -16,25 +17,20 @@ export default function SearchSidebar({ onSelectFile }: SearchSidebarProps) {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchMatch[]>([]);
-  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [validationError, setValidationError] = useState('');
 
-  
+  const debouncedQuery = useDebounce(query, 300);
+
   // In-memory query results cache
   const searchCacheRef = useRef<Record<string, SearchMatch[]>>({});
 
-  // Debounce search input and validate whitespace
+  // Validate whitespace on input change
   useEffect(() => {
     if (query && !query.trim()) {
       setValidationError('Search query cannot be whitespace only.');
-      return;
+    } else {
+      setValidationError('');
     }
-    setValidationError('');
-    
-    const timer = setTimeout(() => {
-      setDebouncedQuery(query);
-    }, 300);
-    return () => clearTimeout(timer);
   }, [query]);
 
   // Run search when debounced query changes
