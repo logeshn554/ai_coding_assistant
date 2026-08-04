@@ -3,9 +3,9 @@
 
 a = Analysis(
     ['backend\\desktop_run.py'],
-    pathex=[],
+    pathex=['.'],
     binaries=[],
-    datas=[('frontend/dist', 'frontend/dist'), ('backend/app', 'backend/app')],
+    datas=[('frontend/dist', 'frontend/dist'), ('backend/app', 'backend/app'), ('agent_os', 'agent_os'), ('parallel_agent_system', 'parallel_agent_system')],
     hiddenimports=['uvicorn', 'uvicorn.loops', 'uvicorn.loops.auto', 'uvicorn.protocols', 'uvicorn.protocols.http', 'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets', 'uvicorn.protocols.websockets.auto', 'uvicorn.lifespan', 'uvicorn.lifespan.on', 'app.main', 'aiosqlite', 'sqlalchemy.ext.asyncio', 'filelock'],
     hookspath=[],
     hooksconfig={},
