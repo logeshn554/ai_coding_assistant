@@ -34,6 +34,63 @@ def _resolve_timeout(command: str, explicit_timeout: int | None = None) -> float
     return float(_DEFAULT_TIMEOUT)
 
 
+import shutil
+import subprocess
+
+_docker_available_cache: bool | None = None
+
+def _is_docker_available() -> bool:
+    """Check if Docker CLI is installed and the daemon is reachable."""
+    global _docker_available_cache
+    if _docker_available_cache is not None:
+        return _docker_available_cache
+    
+    # Check if docker command is present in environment path
+    if shutil.which("docker") is None:
+        _docker_available_cache = False
+        return False
+        
+    # Check if docker daemon is running
+    try:
+        res = subprocess.run(
+            ["docker", "ps", "-q"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2.0
+        )
+        _docker_available_cache = (res.returncode == 0)
+    except Exception:
+        _docker_available_cache = False
+        
+    return _docker_available_cache
+
+
+def _wrap_command_in_sandbox(session: Any, command: str, current_dir: str) -> list[str]:
+    """Wrap command inside docker run with workspace mount and working dir config."""
+    from ..config import settings
+    
+    host_root = os.path.realpath(session.workspace_root)
+    # Calculate the relative subdirectory path to set as the container's working directory
+    try:
+        rel_subdir = os.path.relpath(current_dir, host_root)
+        if rel_subdir == ".":
+            container_working_dir = "/workspace"
+        else:
+            container_working_dir = f"/workspace/{rel_subdir.replace(os.sep, '/')}"
+    except Exception:
+        container_working_dir = "/workspace"
+        
+    # Mount host workspace root as /workspace inside the sandbox
+    docker_cmd = [
+        "docker", "run", "--rm", "-i",
+        "-v", f"{host_root}:/workspace",
+        "-w", container_working_dir,
+        settings.SANDBOX_IMAGE,
+        "sh", "-c", command
+    ]
+    return docker_cmd
+
+
 async def run_shell_command(session: Any, command: str, timeout_seconds: int | None = None) -> str:
     """Run a shell command asynchronously and stream combined stdout/stderr.
 
@@ -68,8 +125,18 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
         elif "cd .." in sub_cmd or "cd/" in sub_cmd or re.search(r'\bcd\b.*\.\.', sub_cmd):
             return "Failed to execute command: Access denied: changing directory outside the workspace root is locked."
 
-    from ..shell_adapter import ShellAdapter
-    shell_executable = ShellAdapter.get_shell_executable(interactive=False)
+    from ..config import settings
+    use_sandbox = settings.USE_SANDBOX and _is_docker_available()
+
+    if use_sandbox:
+        exec_args = _wrap_command_in_sandbox(session, command, current_dir)
+        cmd_executable = exec_args[0]
+        cmd_params = exec_args[1:]
+    else:
+        from ..shell_adapter import ShellAdapter
+        shell_executable = ShellAdapter.get_shell_executable(interactive=False)
+        cmd_executable = shell_executable[0]
+        cmd_params = shell_executable[1:] + [command]
 
     # A2: resolve dynamic timeout
     timeout = _resolve_timeout(command, timeout_seconds)
@@ -103,8 +170,8 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
 
     try:
         process = await asyncio.create_subprocess_exec(
-            *shell_executable,
-            command,
+            cmd_executable,
+            *cmd_params,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=session.workspace_root,

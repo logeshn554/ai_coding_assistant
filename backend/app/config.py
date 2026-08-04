@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     WEB_SEARCH_FALLBACK_ENABLED: bool = False
     REPEAT_ERROR_THRESHOLD: int = 2
 
+    # Docker Sandbox settings
+    USE_SANDBOX: bool = False
+    SANDBOX_IMAGE: str = "python:3.12-slim"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
