@@ -170,3 +170,77 @@ class ModelRouter:
         except Exception as e:
             logger.error(f"ModelRouter: Bug scan failed: {str(e)}")
             raise e
+
+
+# ── Reputation, Latency and Cost Optimizers ──────────────────────────────────
+
+class AgentReputationEngine:
+    def __init__(self):
+        self._success_rates = {
+            "claude-3-5-sonnet": 0.95,
+            "gpt-4o": 0.90,
+            "gemini-2.0-flash": 0.88,
+            "gpt-4o-mini": 0.82,
+        }
+
+    def record_success(self, model: str):
+        rates = self._success_rates.get(model, 0.80)
+        self._success_rates[model] = min(1.0, rates + 0.01)
+
+    def record_failure(self, model: str):
+        rates = self._success_rates.get(model, 0.80)
+        self._success_rates[model] = max(0.0, rates - 0.05)
+
+    def get_reputation(self, model: str) -> float:
+        return self._success_rates.get(model, 0.80)
+
+
+class CostOptimizer:
+    def __init__(self):
+        self._costs = {
+            "claude-3-5-sonnet": 3.0,  # per M input tokens
+            "gpt-4o": 5.0,
+            "gemini-2.0-flash": 0.075,
+            "gpt-4o-mini": 0.150,
+        }
+
+    def find_cheapest(self, allowed_models: list, min_reputation: float) -> str:
+        candidates = [m for m in allowed_models if agent_reputation_engine.get_reputation(m) >= min_reputation]
+        if not candidates:
+            return allowed_models[0] if allowed_models else "gemini-2.0-flash"
+        return min(candidates, key=lambda m: self._costs.get(m, 10.0))
+
+
+class LatencyOptimizer:
+    def __init__(self):
+        self._latencies = {
+            "gemini-2.0-flash": 0.5,
+            "gpt-4o-mini": 0.8,
+            "gpt-4o": 1.5,
+            "claude-3-5-sonnet": 2.0,
+        }
+
+    def find_fastest(self, allowed_models: list) -> str:
+        if not allowed_models:
+            return "gemini-2.0-flash"
+        return min(allowed_models, key=lambda m: self._latencies.get(m, 5.0))
+
+
+class ProviderHealthMonitor:
+    def __init__(self):
+        self._errors = {}
+
+    def record_error(self, provider: str):
+        self._errors[provider] = self._errors.get(provider, 0) + 1
+
+    def record_success(self, provider: str):
+        self._errors[provider] = max(0, self._errors.get(provider, 0) - 1)
+
+    def is_healthy(self, provider: str) -> bool:
+        return self._errors.get(provider, 0) < 5
+
+
+agent_reputation_engine = AgentReputationEngine()
+cost_optimizer = CostOptimizer()
+latency_optimizer = LatencyOptimizer()
+provider_health_monitor = ProviderHealthMonitor()

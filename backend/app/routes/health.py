@@ -131,3 +131,27 @@ async def get_metrics() -> MetricsSummary:
             avg_response_ms=avg_ms,
             db_size_bytes=0,
         )
+
+
+class ObservabilitySummary(BaseModel):
+    """Response model for GET /api/observability."""
+    spans: list[dict]
+    metrics: dict
+    active_traces_count: int
+
+
+@router.get("/api/observability", response_model=ObservabilitySummary, tags=["health"])
+async def get_observability_summary(verify: Any = Depends(verify_token)) -> ObservabilitySummary:
+    """Return live system spans and metrics."""
+    from agent_os.infrastructure.observability import observability
+    from agent_os.infrastructure.metrics import metrics_collector
+    from agent_os.infrastructure.distributed_tracing import distributed_tracer
+
+    active_traces = len(distributed_tracer._spans)
+    
+    return ObservabilitySummary(
+        spans=observability.get_spans()[-20:],
+        metrics=metrics_collector.get_all_metrics(),
+        active_traces_count=active_traces
+    )
+

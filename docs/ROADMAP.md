@@ -43,9 +43,12 @@ This document outlines the phased progress and future objectives for the AgentOS
 ### Phase 13: End-To-End API AI Integration
 *   Unified all subsystems.
 
----
+### Phase 14: Sandbox Isolation & Verification
+*   Connected the Execution Engine to dockerized container runtime environments and local sandbox fallbacks for isolated code execution.
 
-## Future Goals
+### Phase 15: LSP Integration & Verification
+*   Integrated AST indexing and file changes directly with Language Server Protocol validation pipelines.
 
-1.  **LSP Integration**: Hook the Repository Kernel AST indexing directly to active Language Server Protocol diagnostics.
-2.  **Sandbox Isolation**: Connect the Execution Engine to dockerized container runtime environments for safe code compilation.
+### Phase 16: Infrastructure Test Suite & Observability Hardening
+*   Implemented comprehensive unit test coverage across all core infrastructure and gateway modules.
+*   Wired observability span logging and metrics collection into HTTP request/response middleware and added live telemetry endpoints.

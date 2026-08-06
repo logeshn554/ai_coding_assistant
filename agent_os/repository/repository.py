@@ -92,3 +92,27 @@ class RepositoryKernel(IRepository):
 
     def find_references(self, symbol: str) -> List[Dict[str, Any]]:
         return self.db.query_references(symbol)
+
+    def store_lsp_diagnostics(self, path: str, diagnostics: List[Dict[str, Any]]) -> None:
+        """Stores active LSP diagnostics for the given relative file path in the repository database."""
+        files = self.db.query_files(path)
+        if not files:
+            return
+        file_id = files[0]["id"]
+        self.db.clear_diagnostics(file_id)
+        for diag in diagnostics:
+            self.db.insert_diagnostic(
+                file_id=file_id,
+                message=diag.get("message", ""),
+                severity=diag.get("severity", 1),
+                line=diag.get("line", 0),
+                character=diag.get("character", 0),
+                code=diag.get("code"),
+                source=diag.get("source", "LSP")
+            )
+
+    def get_lsp_diagnostics(self, path: str) -> List[Dict[str, Any]]:
+        return self.db.query_diagnostics_for_file(path)
+
+    def get_symbol_diagnostics(self, symbol_name: str) -> List[Dict[str, Any]]:
+        return self.db.query_diagnostics_for_symbol(symbol_name)

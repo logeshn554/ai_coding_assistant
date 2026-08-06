@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import threading
 from typing import Any, Dict, List
@@ -6,6 +7,8 @@ class DatabaseManager:
     """SQLite Database manager handling repository metadata storage and symbol queries."""
     def __init__(self, db_path: str = ":memory:") -> None:
         self.db_path = db_path
+        if self.db_path != ":memory:":
+            os.makedirs(os.path.dirname(os.path.abspath(self.db_path)), exist_ok=True)
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
@@ -49,6 +52,19 @@ class DatabaseManager:
                     symbol_name TEXT,
                     line INTEGER,
                     col INTEGER,
+                    FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE
+                );
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS lsp_diagnostics (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_id INTEGER,
+                    message TEXT,
+                    severity INTEGER,
+                    line INTEGER,
+                    character INTEGER,
+                    code TEXT,
+                    source TEXT,
                     FOREIGN KEY(file_id) REFERENCES files(id) ON DELETE CASCADE
                 );
             """)
@@ -111,3 +127,52 @@ class DatabaseManager:
                     WHERE r.symbol_name = ?;
                 """, (symbol_name,)).fetchall()
                 return [dict(r) for r in rows]
+
+    def clear_diagnostics(self, file_id: int) -> None:
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.execute("DELETE FROM lsp_diagnostics WHERE file_id = ?;", (file_id,))
+
+    def insert_diagnostic(self, file_id: int, message: str, severity: int, line: int, character: int, code: str = None, source: str = "LSP") -> None:
+        with self._lock:
+            with self._get_connection() as conn:
+                conn.execute("""
+                    INSERT INTO lsp_diagnostics (file_id, message, severity, line, character, code, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?);
+                """, (file_id, message, severity, line, character, code, source))
+
+    def query_diagnostics_for_file(self, file_path: str) -> List[Dict[str, Any]]:
+        with self._lock:
+            with self._get_connection() as conn:
+                rows = conn.execute("""
+                    SELECT d.*, f.path as file_path
+                    FROM lsp_diagnostics d
+                    JOIN files f ON d.file_id = f.id
+                    WHERE f.path = ?;
+                """, (file_path,)).fetchall()
+                return [dict(r) for r in rows]
+
+    def query_diagnostics_for_symbol(self, symbol_name: str) -> List[Dict[str, Any]]:
+        with self._lock:
+            with self._get_connection() as conn:
+                symbol_rows = conn.execute("""
+                    SELECT s.file_id, s.start_line, s.end_line, f.path as file_path
+                    FROM symbols s
+                    JOIN files f ON s.file_id = f.id
+                    WHERE s.name = ?;
+                """, (symbol_name,)).fetchall()
+                
+                all_diagnostics = []
+                for s_row in symbol_rows:
+                    file_id = s_row["file_id"]
+                    start_line = s_row["start_line"]
+                    end_line = s_row["end_line"]
+                    file_path = s_row["file_path"]
+                    
+                    diag_rows = conn.execute("""
+                        SELECT d.*, ? as file_path
+                        FROM lsp_diagnostics d
+                        WHERE d.file_id = ? AND d.line >= ? AND d.line <= ?;
+                    """, (file_path, file_id, start_line, end_line)).fetchall()
+                    all_diagnostics.extend([dict(r) for r in diag_rows])
+                return all_diagnostics

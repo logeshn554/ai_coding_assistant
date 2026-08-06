@@ -1,0 +1,334 @@
+"""
+Gateway Auth — Unified authentication middleware for the Agentic OS.
+
+Supports:
+  - JWT bearer tokens (session auth)
+  - API key authentication (programmatic access)
+  - WebSocket token validation (real-time channels)
+  - Multi-tenant isolation via tenant context
+"""
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import logging
+import os
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional
+
+logger = logging.getLogger("agentos.gateway.auth")
+
+
+# ── Data Models ─────────────────────────────────────────────────────────────
+
+class AuthMethod(str, Enum):
+    JWT = "jwt"
+    API_KEY = "api_key"
+    WEBSOCKET_TOKEN = "websocket_token"
+    ANONYMOUS = "anonymous"
+
+
+@dataclass
+class TenantContext:
+    """Isolation context for multi-tenant deployments."""
+    tenant_id: str
+    org_name: str = ""
+    tier: str = "free"                # free | pro | enterprise
+    rate_limit_multiplier: float = 1.0
+    allowed_models: List[str] = field(default_factory=list)
+    max_concurrent_sessions: int = 5
+    sandbox_root: str = ""            # workspace root for this tenant
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class AuthIdentity:
+    """Authenticated user/service identity."""
+    user_id: str
+    auth_method: AuthMethod
+    tenant: TenantContext
+    roles: List[str] = field(default_factory=list)       # admin, developer, viewer
+    permissions: List[str] = field(default_factory=list)  # tool:execute, file:write, etc.
+    session_id: str = ""
+    issued_at: float = 0.0
+    expires_at: float = 0.0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def is_expired(self) -> bool:
+        if self.expires_at <= 0:
+            return False
+        return time.time() > self.expires_at
+
+    def has_permission(self, permission: str) -> bool:
+        if "admin" in self.roles:
+            return True
+        return permission in self.permissions
+
+    def has_role(self, role: str) -> bool:
+        return role in self.roles
+
+
+# ── Auth Provider Interface ─────────────────────────────────────────────────
+
+class AuthProvider:
+    """Base class for authentication providers."""
+
+    def authenticate(self, credentials: Dict[str, Any]) -> Optional[AuthIdentity]:
+        raise NotImplementedError
+
+
+class JWTAuthProvider(AuthProvider):
+    """JWT-based authentication using HMAC-SHA256 signature verification."""
+
+    def __init__(self, secret: str = ""):
+        self._secret = secret or os.getenv("DEVPILOT_JWT_SECRET", "devpilot-dev-secret")
+
+    def authenticate(self, credentials: Dict[str, Any]) -> Optional[AuthIdentity]:
+        token = credentials.get("token", "")
+        if not token:
+            return None
+
+        payload = self._decode_jwt(token)
+        if payload is None:
+            return None
+
+        tenant = TenantContext(
+            tenant_id=payload.get("tenant_id", "default"),
+            org_name=payload.get("org_name", ""),
+            tier=payload.get("tier", "free"),
+        )
+
+        return AuthIdentity(
+            user_id=payload.get("sub", "unknown"),
+            auth_method=AuthMethod.JWT,
+            tenant=tenant,
+            roles=payload.get("roles", ["developer"]),
+            permissions=payload.get("permissions", []),
+            session_id=payload.get("session_id", ""),
+            issued_at=payload.get("iat", 0),
+            expires_at=payload.get("exp", 0),
+        )
+
+    def generate_token(self, identity: AuthIdentity, ttl_seconds: int = 86400) -> str:
+        """Generate a JWT token for the given identity."""
+        now = time.time()
+        payload = {
+            "sub": identity.user_id,
+            "tenant_id": identity.tenant.tenant_id,
+            "org_name": identity.tenant.org_name,
+            "tier": identity.tenant.tier,
+            "roles": identity.roles,
+            "permissions": identity.permissions,
+            "session_id": identity.session_id,
+            "iat": now,
+            "exp": now + ttl_seconds,
+        }
+        return self._encode_jwt(payload)
+
+    def _encode_jwt(self, payload: Dict[str, Any]) -> str:
+        header = {"alg": "HS256", "typ": "JWT"}
+        header_b64 = self._b64url_encode(json.dumps(header, separators=(",", ":")))
+        payload_b64 = self._b64url_encode(json.dumps(payload, separators=(",", ":")))
+        signing_input = f"{header_b64}.{payload_b64}"
+        signature = hmac.new(
+            self._secret.encode(), signing_input.encode(), hashlib.sha256
+        ).digest()
+        sig_b64 = self._b64url_encode_bytes(signature)
+        return f"{signing_input}.{sig_b64}"
+
+    def _decode_jwt(self, token: str) -> Optional[Dict[str, Any]]:
+        parts = token.split(".")
+        if len(parts) != 3:
+            logger.warning("Invalid JWT format")
+            return None
+
+        header_b64, payload_b64, sig_b64 = parts
+        signing_input = f"{header_b64}.{payload_b64}"
+
+        expected_sig = hmac.new(
+            self._secret.encode(), signing_input.encode(), hashlib.sha256
+        ).digest()
+        actual_sig = self._b64url_decode_bytes(sig_b64)
+
+        if not hmac.compare_digest(expected_sig, actual_sig):
+            logger.warning("JWT signature verification failed")
+            return None
+
+        try:
+            payload = json.loads(self._b64url_decode(payload_b64))
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"JWT payload decode error: {e}")
+            return None
+
+        if payload.get("exp", 0) > 0 and time.time() > payload["exp"]:
+            logger.info("JWT token expired")
+            return None
+
+        return payload
+
+    @staticmethod
+    def _b64url_encode(data: str) -> str:
+        import base64
+        return base64.urlsafe_b64encode(data.encode()).rstrip(b"=").decode()
+
+    @staticmethod
+    def _b64url_encode_bytes(data: bytes) -> str:
+        import base64
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+    @staticmethod
+    def _b64url_decode(data: str) -> str:
+        import base64
+        padding = 4 - len(data) % 4
+        if padding != 4:
+            data += "=" * padding
+        return base64.urlsafe_b64decode(data).decode()
+
+    @staticmethod
+    def _b64url_decode_bytes(data: str) -> bytes:
+        import base64
+        padding = 4 - len(data) % 4
+        if padding != 4:
+            data += "=" * padding
+        return base64.urlsafe_b64decode(data)
+
+
+class APIKeyAuthProvider(AuthProvider):
+    """API key-based authentication for programmatic access."""
+
+    def __init__(self):
+        self._keys: Dict[str, AuthIdentity] = {}
+        self._load_keys()
+
+    def _load_keys(self) -> None:
+        """Load API keys from environment or config."""
+        master_key = os.getenv("DEVPILOT_API_KEY", "")
+        if master_key:
+            self._keys[master_key] = AuthIdentity(
+                user_id="api-user",
+                auth_method=AuthMethod.API_KEY,
+                tenant=TenantContext(tenant_id="default", tier="enterprise"),
+                roles=["admin"],
+                permissions=["*"],
+            )
+
+    def register_key(self, key: str, identity: AuthIdentity) -> None:
+        self._keys[key] = identity
+
+    def authenticate(self, credentials: Dict[str, Any]) -> Optional[AuthIdentity]:
+        api_key = credentials.get("api_key", "")
+        if not api_key:
+            return None
+
+        identity = self._keys.get(api_key)
+        if identity is None:
+            key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:12]
+            logger.warning(f"Unknown API key (hash: {key_hash})")
+            return None
+
+        return identity
+
+
+class WebSocketTokenProvider(AuthProvider):
+    """WebSocket connection token validation."""
+
+    def __init__(self, jwt_provider: JWTAuthProvider):
+        self._jwt = jwt_provider
+        self._one_time_tokens: Dict[str, float] = {}
+
+    def generate_ws_token(self, identity: AuthIdentity) -> str:
+        """Generate a short-lived one-time-use WebSocket token."""
+        token = self._jwt.generate_token(identity, ttl_seconds=300)
+        self._one_time_tokens[token] = time.time() + 300
+        return token
+
+    def authenticate(self, credentials: Dict[str, Any]) -> Optional[AuthIdentity]:
+        token = credentials.get("ws_token", "")
+        if not token:
+            return None
+
+        # Check one-time token validity
+        if token in self._one_time_tokens:
+            if time.time() > self._one_time_tokens[token]:
+                del self._one_time_tokens[token]
+                logger.info("WebSocket token expired")
+                return None
+            del self._one_time_tokens[token]  # Consume the token
+
+        # Verify JWT signature
+        identity = self._jwt.authenticate({"token": token})
+        if identity:
+            identity.auth_method = AuthMethod.WEBSOCKET_TOKEN
+        return identity
+
+
+# ── Auth Gateway (Unified Entry Point) ──────────────────────────────────────
+
+class AuthGateway:
+    """Unified authentication gateway that chains multiple auth providers."""
+
+    def __init__(self):
+        self._jwt_provider = JWTAuthProvider()
+        self._api_key_provider = APIKeyAuthProvider()
+        self._ws_provider = WebSocketTokenProvider(self._jwt_provider)
+        self._default_identity = AuthIdentity(
+            user_id="local-user",
+            auth_method=AuthMethod.ANONYMOUS,
+            tenant=TenantContext(tenant_id="local", tier="enterprise"),
+            roles=["admin"],
+            permissions=["*"],
+        )
+
+    @property
+    def jwt_provider(self) -> JWTAuthProvider:
+        return self._jwt_provider
+
+    @property
+    def ws_provider(self) -> WebSocketTokenProvider:
+        return self._ws_provider
+
+    def authenticate(self, headers: Dict[str, str] = None, query_params: Dict[str, str] = None) -> AuthIdentity:
+        """Authenticate a request using available credentials.
+
+        Tries in order: Authorization header (JWT) → X-API-Key header → ws_token query param → anonymous.
+        """
+        headers = headers or {}
+        query_params = query_params or {}
+
+        # 1. Try JWT from Authorization header
+        auth_header = headers.get("authorization", headers.get("Authorization", ""))
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            identity = self._jwt_provider.authenticate({"token": token})
+            if identity:
+                logger.debug(f"Authenticated via JWT: user={identity.user_id}")
+                return identity
+
+        # 2. Try API key
+        api_key = headers.get("x-api-key", headers.get("X-API-Key", ""))
+        if api_key:
+            identity = self._api_key_provider.authenticate({"api_key": api_key})
+            if identity:
+                logger.debug(f"Authenticated via API key: user={identity.user_id}")
+                return identity
+
+        # 3. Try WebSocket token
+        ws_token = query_params.get("token", "")
+        if ws_token:
+            identity = self._ws_provider.authenticate({"ws_token": ws_token})
+            if identity:
+                logger.debug(f"Authenticated via WS token: user={identity.user_id}")
+                return identity
+
+        # 4. Fall back to default (local dev mode)
+        logger.debug("No credentials found, using default local identity")
+        return self._default_identity
+
+
+# ── Singleton ───────────────────────────────────────────────────────────────
+
+auth_gateway = AuthGateway()

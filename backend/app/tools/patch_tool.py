@@ -19,6 +19,41 @@ from typing import Any, Dict, List, Tuple
 # Minimal unified-diff parser
 # ---------------------------------------------------------------------------
 
+def _parse_custom_patch(patch_text: str) -> List[Dict]:
+    files = []
+    current = None
+    hunk = None
+    is_add = False
+    
+    for line in patch_text.splitlines():
+        clean_line = line.strip()
+        if clean_line.startswith("*** Add File:") or clean_line.startswith("*** Modify File:") or clean_line.startswith("*** Create File:"):
+            parts = clean_line.split(":", 1)
+            path = parts[1].strip() if len(parts) > 1 else ""
+            path = path.strip("`'\" ")
+            current = {"path": path, "hunks": []}
+            files.append(current)
+            is_add = "Add" in clean_line or "Create" in clean_line
+            hunk = {
+                "old_start": 1,
+                "old_count": 0 if is_add else 1,
+                "new_start": 1,
+                "new_count": 1,
+                "lines": [],
+            }
+            current["hunks"].append(hunk)
+        elif hunk is not None:
+            if clean_line.startswith("***"):
+                continue
+            if is_add:
+                # Normalise: make sure all added lines start with "+"
+                if not line.startswith("+"):
+                    line = "+" + line
+            hunk["lines"].append(line)
+            
+    return files
+
+
 def _parse_unified_diff(patch_text: str) -> List[Dict]:
     """Parse a unified diff into a list of file-change dicts.
 
@@ -26,6 +61,9 @@ def _parse_unified_diff(patch_text: str) -> List[Dict]:
         ``path``   – relative file path being patched
         ``hunks``  – list of (old_start, old_count, new_start, new_count, lines)
     """
+    if "*** Add File:" in patch_text or "*** Modify File:" in patch_text or "*** Create File:" in patch_text:
+        return _parse_custom_patch(patch_text)
+
     files: List[Dict] = []
     current: Dict | None = None
     hunk: Dict | None = None

@@ -1,6 +1,10 @@
 from typing import Dict
 from agent_os.core.interfaces import IServiceRegistry, IEventBus, IConfig, ILogger
 from agent_os.kernel.interfaces import IKernel, IKernelService
+from agent_os.kernel.budget_manager import budget_manager
+from agent_os.kernel.health_monitor import health_monitor
+from agent_os.kernel.cancellation_manager import cancellation_manager
+from agent_os.kernel.policy_engine import policy_engine
 
 class Kernel(IKernel):
     """The central AgentOS Operating System Kernel controlling services and resources."""
@@ -17,6 +21,18 @@ class Kernel(IKernel):
         self._logger = logger
         self._services: Dict[str, IKernelService] = {}
         self._booted = False
+
+        # Register standard services
+        self.register_service("budget_manager", budget_manager)
+        self.register_service("health_monitor", health_monitor)
+        self.register_service("cancellation_manager", cancellation_manager)
+        self.register_service("policy_engine", policy_engine)
+
+        # Register in DI Registry
+        registry.register_singleton(budget_manager.__class__, budget_manager)
+        registry.register_singleton(health_monitor.__class__, health_monitor)
+        registry.register_singleton(cancellation_manager.__class__, cancellation_manager)
+        registry.register_singleton(policy_engine.__class__, policy_engine)
 
     @property
     def registry(self) -> IServiceRegistry:

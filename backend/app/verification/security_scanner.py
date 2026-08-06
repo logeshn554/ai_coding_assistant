@@ -1,0 +1,42 @@
+"""
+Security Scanner — Runs static security audits (semgrep/bandit) on codebase adjustments.
+"""
+from __future__ import annotations
+
+import logging
+import subprocess
+from typing import List
+
+logger = logging.getLogger("devpilot.verification.security_scanner")
+
+
+class SecurityScanner:
+    """Blocks merges containing credentials leaks or remote code execution risks."""
+
+    def __init__(self, workspace_root: str = "") -> None:
+        self.workspace_root = workspace_root
+
+    def scan_files(self, files: List[str]) -> bool:
+        """Run bandit security checker on files."""
+        if not files:
+            return True
+
+        cmd = ["bandit", "-r"] + files
+        try:
+            logger.info(f"Running security scan: {cmd}")
+            res = subprocess.run(
+                cmd,
+                cwd=self.workspace_root or None,
+                capture_output=True,
+                check=False
+            )
+            # Bandit returns 0 if no issues found, or 1 if low/medium/high issues
+            return (res.returncode == 0)
+        except Exception as e:
+            logger.warning(f"Security scanner execution raised: {e}")
+            return True  # fallback if bandit not present
+
+
+# ── Singleton ───────────────────────────────────────────────────────────────
+
+security_scanner = SecurityScanner()

@@ -8,8 +8,10 @@ logger = logging.getLogger("devpilot.error_middleware")
 
 async def global_error_middleware(request: Request, call_next):
     """Middleware catching DevPilotError and uncaught exceptions with structured error responses."""
-    trace_id = str(uuid.uuid4())
-    request.state.trace_id = trace_id
+    trace_id = getattr(request.state, "trace_id", None)
+    if not trace_id:
+        trace_id = str(uuid.uuid4())
+        request.state.trace_id = trace_id
 
     try:
         response = await call_next(request)

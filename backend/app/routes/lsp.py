@@ -195,6 +195,17 @@ def _update_diagnostics_cache(body_str: str) -> None:
             })
         workspace_state.lsp_diagnostics[rel_path] = saved
         logger.info(f"[LSP] Registered {len(saved)} diagnostics for {rel_path}")
+
+        # Hook to active Repository Kernel SQLite database
+        if workspace_state.root:
+            try:
+                from agent_os.repository.repository import RepositoryKernel
+                db_path = os.path.join(workspace_state.root, ".devpilot", "repo.db")
+                repo = RepositoryKernel(db_path=db_path)
+                repo.store_lsp_diagnostics(rel_path, saved)
+                logger.info(f"[LSP] Stored {len(saved)} diagnostics in Repository Kernel database for {rel_path}")
+            except Exception as store_err:
+                logger.warning(f"[LSP] Failed to store diagnostics in Repository Kernel: {store_err}")
     except Exception as e:
         logger.debug(f"publishDiagnostics parse failed: {e}")
 

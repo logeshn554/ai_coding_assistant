@@ -1,0 +1,51 @@
+"""
+Git Committer — Commits verified change sets to the Git repository.
+"""
+from __future__ import annotations
+
+import logging
+import subprocess
+from typing import List
+
+logger = logging.getLogger("devpilot.release.git_committer")
+
+
+class GitCommitter:
+    """Invokes Git command line utilities to save task commits."""
+
+    def __init__(self, workspace_root: str = "") -> None:
+        self.workspace_root = workspace_root
+
+    def commit_changes(self, files: List[str], commit_message: str) -> bool:
+        """Stage and commit files."""
+        if not files:
+            return True
+        if not self.workspace_root:
+            logger.warning("No workspace root configured. Skipping git commit.")
+            return False
+
+        try:
+            # 1. Stage changes
+            subprocess.run(
+                ["git", "add"] + files,
+                cwd=self.workspace_root,
+                capture_output=True,
+                check=True
+            )
+            # 2. Commit changes
+            subprocess.run(
+                ["git", "commit", "-m", commit_message],
+                cwd=self.workspace_root,
+                capture_output=True,
+                check=True
+            )
+            logger.info(f"Successfully committed {len(files)} files: '{commit_message}'")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to execute Git commit: {e}")
+            return False
+
+
+# ── Singleton ───────────────────────────────────────────────────────────────
+
+git_committer = GitCommitter()

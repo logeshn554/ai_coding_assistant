@@ -68,7 +68,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Register Global Error Middleware
+# Register Global Error Middleware & Observability Middleware
+from .middleware.observability_middleware import observability_middleware
+app.middleware("http")(observability_middleware)
 app.middleware("http")(global_error_middleware)
 
 from slowapi.middleware import SlowAPIMiddleware
@@ -88,6 +90,44 @@ async def session_middleware(request: Request, call_next):
         return response
     finally:
         session_id_var.reset(token)
+
+from .gateway.auth import auth_gateway
+from .gateway.rate_limiter import rate_limiter, RateLimitResult
+
+@app.middleware("http")
+async def gateway_middleware(request: Request, call_next):
+    path = request.url.path
+    # Skip static files, fallback, docs, health check
+    if path == "/" or path.startswith("/assets/") or path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico", ".ttf", ".woff", ".woff2", ".html")) or path in ("/auth/token", "/api/auth/token", "/api/docs", "/api/openapi.json", "/redoc", "/api/health"):
+        return await call_next(request)
+
+    # 1. Authenticate request via Gateway Auth
+    headers = dict(request.headers)
+    query_params = dict(request.query_params)
+    identity = auth_gateway.authenticate(headers, query_params)
+    
+    # Expose identity in request state
+    request.state.identity = identity
+
+    # 2. Enforce Rate Limiting
+    rate_limit_resp = rate_limiter.check(
+        tenant_id=identity.tenant.tenant_id,
+        user_id=identity.user_id,
+        endpoint=path,
+        tier=identity.tenant.tier,
+        multiplier=identity.tenant.rate_limit_multiplier,
+    )
+
+    if rate_limit_resp.result in (RateLimitResult.THROTTLED, RateLimitResult.BLOCKED):
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests. Rate limit exceeded."},
+            headers={"Retry-After": str(int(rate_limit_resp.retry_after))},
+        )
+
+    # 3. Request execution
+    response = await call_next(request)
+    return response
 
 # Add limiter state and exception handler
 app.state.limiter = limiter

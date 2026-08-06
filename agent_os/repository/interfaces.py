@@ -35,6 +35,15 @@ class IRepository(ABC):
     def find_references(self, symbol: str) -> List[Dict[str, Any]]:
         pass
 
+    def store_lsp_diagnostics(self, path: str, diagnostics: List[Dict[str, Any]]) -> None:
+        pass
+
+    def get_lsp_diagnostics(self, path: str) -> List[Dict[str, Any]]:
+        return []
+
+    def get_symbol_diagnostics(self, symbol_name: str) -> List[Dict[str, Any]]:
+        return []
+
     # camelCase compatibility aliases
     def scanWorkspace(self, workspace_root: str) -> None:
         return self.scan_workspace(workspace_root)

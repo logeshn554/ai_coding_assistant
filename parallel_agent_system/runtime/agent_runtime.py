@@ -68,7 +68,10 @@ class DockerWorkspace:
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL
             )
-            await proc.wait()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                logger.warning("Docker rm command timed out. Unresponsive daemon.")
             logger.info("Successfully stopped and removed container '%s'", self.container_name)
         except Exception as e:
             logger.warning("Failed to stop container '%s' using docker CLI: %s", self.container_name, e)
