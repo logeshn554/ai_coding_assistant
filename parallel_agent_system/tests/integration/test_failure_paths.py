@@ -119,7 +119,7 @@ async def test_maybe_summarise_log_preserves_log_on_llm_failure():
 @pytest.mark.asyncio
 async def test_run_shell_command_timeout_emits_failed_status():
     """Verify that when _run_shell_command times out, it emits terminal_status failed."""
-    from backend.app.agent import AgentSession
+    from backend.app.session.agent_session import AgentSession
     
     mock_orchestrator = MagicMock()
     mock_orchestrator.max_steps = 30

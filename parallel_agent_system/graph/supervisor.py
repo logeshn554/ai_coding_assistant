@@ -1,21 +1,5 @@
 from typing import Literal
-from langgraph.graph import StateGraph, END, START
-try:
-    from langgraph.graph.state import CompiledStateGraph
-except (ImportError, ModuleNotFoundError):
-    try:
-        from langgraph.graph import CompiledStateGraph
-    except (ImportError, ModuleNotFoundError):
-        from typing import Any
-        CompiledStateGraph = Any
-try:
-    from langgraph.checkpoint.memory import MemorySaver
-except (ImportError, ModuleNotFoundError):
-    try:
-        from langgraph.checkpoint import MemorySaver
-    except (ImportError, ModuleNotFoundError):
-        class MemorySaver:
-            pass
+from parallel_agent_system.core.graph import StateGraph, CompiledStateGraph, MemorySaver, START, END
 
 from parallel_agent_system.core.config import SystemConfig
 from parallel_agent_system.core.state import GraphState, SubTask, AgentResult
@@ -308,22 +292,7 @@ def build_supervisor_graph(config: SystemConfig) -> CompiledStateGraph:
     })
 
     # Setup checkpointer
-    if config.postgres_url and not config.postgres_url.startswith("mock://"):
-        try:
-            from langgraph.checkpoint.postgres import PostgresSaver
-            # Use connection string to instantiate PostgresSaver
-            # Note: For production execution. Unit tests use MemorySaver.
-            checkpointer = PostgresSaver.from_conn_string(config.postgres_url)
-        except Exception:
-            checkpointer = MemorySaver()
-    else:
-        checkpointer = MemorySaver()
+    checkpointer = MemorySaver()
 
     # Compile the graph with interrupt before the monitor node for human-in-the-loop
-    try:
-        return graph.compile(checkpointer=checkpointer, interrupt_before=["monitor"])
-    except TypeError:
-        try:
-            return graph.compile(interrupt_before=["monitor"])
-        except TypeError:
-            return graph.compile()
+    return graph.compile(checkpointer=checkpointer, interrupt_before=["monitor"])
