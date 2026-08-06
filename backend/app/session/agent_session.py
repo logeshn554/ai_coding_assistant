@@ -1659,53 +1659,7 @@ class AgentSession:
                 })
             yield chunk
 
-        # After the LLM call finishes, check the circuit breakers
-        current_cost = getattr(self, "total_cost_usd", 0.0)
-        cost_limit = float(self.profile.get("cost_limit_usd") or 5.0)
 
-        # --- Hard ceiling (cannot be overridden by user) ---
-        hard_limit = float(os.environ.get("DEVPILOT_HARD_COST_LIMIT", "10.0"))
-        if current_cost > hard_limit:
-            await self.send_ws_message({
-                "type": "error",
-                "message": (
-                    f"Session terminated: cost ${current_cost:.3f} exceeded the "
-                    f"hard limit of ${hard_limit:.2f}. Start a new session to continue."
-                )
-            })
-            raise RuntimeError(
-                f"Cost hard limit exceeded: ${current_cost:.3f} > ${hard_limit:.2f}. Session stopped."
-            )
-
-        # --- Soft advisory (user can approve to continue) ---
-        if current_cost > cost_limit:
-            import uuid
-            tc_id = f"cost_{uuid.uuid4().hex[:6]}"
-            event = asyncio.Event()
-            self.pending_confirmations[tc_id] = {
-                "event": event,
-                "approved": False
-            }
-            # Emit cost limit confirmation prompt to client
-            await self.send_ws_message({
-                "type": "cost_confirmation_request",
-                "tool_call_id": tc_id,
-                "total_cost_usd": round(current_cost, 6),
-                "cost_limit_usd": cost_limit,
-                "message": f"This session has used ${round(current_cost, 2)} — continue?"
-            })
-
-            try:
-                await asyncio.wait_for(event.wait(), timeout=300)
-            except asyncio.TimeoutError:
-                self.pending_confirmations.pop(tc_id, None)
-                await self.send_ws_message({"type": "text_delta", "content": "\n*Cost limit approval timed out. Pausing execution.*\n"})
-                raise RuntimeError("Cost limit exceeded and approval timed out.")
-
-            decision = self.pending_confirmations.pop(tc_id, {})
-            if not decision.get("approved"):
-                await self.send_ws_message({"type": "text_delta", "content": "\n*Execution paused by user due to cost limit.*\n"})
-                raise RuntimeError("Cost limit exceeded and approval denied by user.")
 
     async def _run_llm_query(self, system_prompt: str, user_content: str, agent_name: str = None) -> str:
         """

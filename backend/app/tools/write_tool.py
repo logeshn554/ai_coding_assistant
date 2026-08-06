@@ -184,6 +184,8 @@ def _whitespace_near_match(target: str, content: str) -> tuple[int, int] | None:
 def validate_file_content(path: str, content: str) -> Optional[str]:
     """Validate content is not empty, is valid JSON for .json, and is syntactically valid Python for .py."""
     if not content.strip():
+        if os.path.basename(path) == "__init__.py":
+            return None
         return "File content cannot be empty."
     ext = os.path.splitext(path)[1].lower()
     if ext == ".json":
@@ -319,6 +321,7 @@ async def write_or_edit_file(
         return f"Validation Error: {validation_err}"
 
     # Perform the actual write
+    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
     await async_write_workspace_file(session.workspace_root, path, proposed_content)
     session.log_audit(name, args, "success", f"Modified {path}")
     result = f"Successfully updated file '{path}'."

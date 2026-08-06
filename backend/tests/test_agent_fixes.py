@@ -148,6 +148,33 @@ async def test_a4_missing_package_warning(tmp_path):
     assert "`framer-motion`" in res
     assert "`react`" not in res
     assert "npm install axios framer-motion" in res
+@pytest.mark.asyncio
+async def test_write_file_minimal_content_init_py(tmp_path):
+    """Writing an empty __init__.py file is allowed now."""
+    session = MockSession(str(tmp_path))
+    args = {
+        "path": "new_pkg/__init__.py",
+        "content": "",
+    }
+    res = await write_or_edit_file(session, "tc-init", "write_file", args, auto_apply=True)
+    assert "Successfully updated file" in res
+    assert os.path.exists(tmp_path / "new_pkg/__init__.py")
+    with open(tmp_path / "new_pkg/__init__.py", "r", encoding="utf-8") as f:
+        assert f.read() == ""
+
+@pytest.mark.asyncio
+async def test_write_file_nested_path_implicit_dir(tmp_path):
+    """Writing a file to a nested path implicitly creates its parent directories."""
+    session = MockSession(str(tmp_path))
+    args = {
+        "path": "nested/sub/dir/module.py",
+        "content": "print('hello')",
+    }
+    res = await write_or_edit_file(session, "tc-nested", "write_file", args, auto_apply=True)
+    assert "Successfully updated file" in res
+    assert os.path.exists(tmp_path / "nested/sub/dir/module.py")
+    with open(tmp_path / "nested/sub/dir/module.py", "r", encoding="utf-8") as f:
+        assert f.read() == "print('hello')"
 
 
 # ── A5 Tests ──────────────────────────────────────────────────────────────────

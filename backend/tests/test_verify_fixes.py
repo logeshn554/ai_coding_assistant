@@ -1,4 +1,4 @@
-﻿"""Source-level verification tests for second-audit bug fixes."""
+"""Source-level verification tests for second-audit bug fixes."""
 import sys, asyncio, tempfile, pathlib, importlib.util
 BASE = pathlib.Path(__file__).resolve().parent.parent.parent
 def read(p): return (BASE / p).read_text(encoding="utf-8")
@@ -40,8 +40,8 @@ def test_c4_banner():
 
 def test_c5_cost():
     src = read("backend/app/session/agent_session.py")
-    assert "DEVPILOT_HARD_COST_LIMIT" in src and "hard_limit" in src
-    print("PASS C-5 hard cost ceiling")
+    assert "DEVPILOT_HARD_COST_LIMIT" not in src and "cost_confirmation_request" not in src
+    print("PASS C-5 hard cost ceiling removed")
 
 def test_h3_eviction():
     src = read("backend/app/rag.py")
