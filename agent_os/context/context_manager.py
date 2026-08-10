@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Optional
 from agent_os.context.virtual_memory import VirtualMemoryContextManager
 
@@ -63,6 +64,27 @@ class WorkspaceContextManager(VirtualMemoryContextManager):
     def remove_open_editor(self, path: str) -> None:
         if path in self._open_editors:
             self._open_editors.remove(path)
+
+    def load_file(self, path: str) -> str:
+        """Load file content from workspace and track in context."""
+        full_path = os.path.join(self._workspace_root, path) if not os.path.isabs(path) else path
+        with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        self.add_retrieved_file(path, content)
+        return content
+
+    def save_file(self, path: str, content: str) -> None:
+        """Save file content to workspace and track in context."""
+        full_path = os.path.join(self._workspace_root, path) if not os.path.isabs(path) else path
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        self.add_retrieved_file(path, content)
+
+    def track_unsaved_change(self, path: str, content: str) -> None:
+        """Track unsaved file changes in context memory."""
+        self._retrieved_files[path] = content
+        self.add_to_context(f"unsaved_file:{path}", content)
 
     def clear(self) -> None:
         super().clear()

@@ -34,7 +34,8 @@ class FileTransaction(ITransaction):
         if not self._active:
             raise TransactionError("Transaction is not active. Call begin() first.")
 
-        normalized_path = os.path.normpath(file_path).replace("\\", "/")
+        abs_path = os.path.abspath(file_path)
+        normalized_path = os.path.normpath(abs_path).replace("\\", "/")
 
         # 1. Enforce Pessimistic File Locking
         lock_manager = None
@@ -48,27 +49,27 @@ class FileTransaction(ITransaction):
         if lock_manager:
             acquired = lock_manager.acquire_lock(normalized_path, self._agent_name, exclusive=True)
             if not acquired:
-                raise TransactionError(f"TransactionError: File '{os.path.basename(file_path)}' is locked by another agent.")
+                raise TransactionError(f"TransactionError: File '{os.path.basename(abs_path)}' is locked by another agent.")
             
             if normalized_path not in self._acquired_locks:
-                lock_manager.snapshot_file(file_path)
+                lock_manager.snapshot_file(abs_path)
                 self._acquired_locks.append(normalized_path)
 
         # 2. Determine current content state
-        if file_path in self._updates:
-            current_content = self._updates[file_path]
+        if abs_path in self._updates:
+            current_content = self._updates[abs_path]
         else:
-            if not os.path.exists(file_path):
-                raise FileNotFoundError(f"Target file '{file_path}' does not exist.")
-            with open(file_path, "r", encoding="utf-8") as f:
+            if not os.path.exists(abs_path):
+                raise FileNotFoundError(f"Target file '{abs_path}' does not exist.")
+            with open(abs_path, "r", encoding="utf-8") as f:
                 current_content = f.read()
-            self._backups[file_path] = current_content
+            self._backups[abs_path] = current_content
 
         # 3. Validate and compile patch
         patched_code = self._engine.validate_patch(
-            file_path, current_content, target_content, replacement_content
+            abs_path, current_content, target_content, replacement_content
         )
-        self._updates[file_path] = patched_code
+        self._updates[abs_path] = patched_code
 
     def _release_all_locks(self, lock_manager) -> None:
         for path in self._acquired_locks:

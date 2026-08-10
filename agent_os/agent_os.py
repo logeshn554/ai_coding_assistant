@@ -31,6 +31,7 @@ from agent_os.infrastructure.observability import Observability
 # Subsystems
 from agent_os.context.context_manager import WorkspaceContextManager
 from agent_os.repository.repository import RepositoryKernel
+from agent_os.repository.file_operations import FileOperations
 from agent_os.repository.interfaces import IRepositoryKnowledgeGraph, ISourceControl
 from agent_os.repository.graph import RepositoryKnowledgeGraph
 from agent_os.repository.git_provider import GitSourceControl
@@ -100,6 +101,7 @@ class AgentOS:
         self.scheduler = DependencyScheduler(concurrency_limit)
         self.context_manager = WorkspaceContextManager(workspace_root, token_budget)
         self.repository = RepositoryKernel(db_path)
+        self.file_operations = FileOperations(workspace_root)
         self.knowledge_graph = RepositoryKnowledgeGraph(self.repository)
         self.source_control = GitSourceControl(workspace_root)
         self.learning_engine = LearningEngine(db_path)
@@ -147,6 +149,7 @@ class AgentOS:
         self.registry.register_singleton(DependencyScheduler, self.scheduler)
         self.registry.register_singleton(WorkspaceContextManager, self.context_manager)
         self.registry.register_singleton(RepositoryKernel, self.repository)
+        self.registry.register_singleton(FileOperations, self.file_operations)
         self.registry.register_singleton(LearningEngine, self.learning_engine)
         self.registry.register_singleton(TransactionalExecutionEngine, self.execution_engine)
         self.registry.register_singleton(PromptCompiler, self.prompt_compiler)
