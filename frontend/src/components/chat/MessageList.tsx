@@ -58,6 +58,7 @@ export interface UserTurn {
 export interface AiTurn {
   kind: 'ai';
   id: string;
+  allMessages: ChatMessage[];
   assistantMessages: ChatMessage[];
   toolMessages: ChatMessage[];
   confirmMessages: ChatMessage[];
@@ -71,33 +72,38 @@ function groupIntoTurns(messages: ChatMessage[], isGeneratingGlobal?: boolean): 
   const turns: ConversationTurn[] = [];
   let currentAiTurn: AiTurn | null = null;
 
-  for (const m of messages) {
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    const messageId = m.id || `msg_${i}`;
     if (m.role === 'user') {
       if (currentAiTurn) {
         turns.push(currentAiTurn);
         currentAiTurn = null;
       }
-      turns.push({ kind: 'user', msg: m });
+      turns.push({ kind: 'user', msg: { ...m, id: messageId } });
     } else {
       if (!currentAiTurn) {
         currentAiTurn = {
           kind: 'ai',
-          id: m.id,
+          id: messageId,
+          allMessages: [],
           assistantMessages: [],
           toolMessages: [],
           confirmMessages: [],
         };
       }
+      const messageWithId = { ...m, id: messageId };
+      currentAiTurn.allMessages.push(messageWithId);
       if (m.role === 'assistant') {
         if (m.isConfirmPending || m.isPermissionRequest || m.isPortConflictRequest || m.isCostConfirmationRequest) {
-          currentAiTurn.confirmMessages.push(m);
+          currentAiTurn.confirmMessages.push(messageWithId);
         } else {
-          currentAiTurn.assistantMessages.push(m);
+          currentAiTurn.assistantMessages.push(messageWithId);
         }
       } else if (m.role === 'tool') {
-        currentAiTurn.toolMessages.push(m);
+        currentAiTurn.toolMessages.push(messageWithId);
       } else {
-        currentAiTurn.assistantMessages.push(m);
+        currentAiTurn.assistantMessages.push(messageWithId);
       }
     }
   }

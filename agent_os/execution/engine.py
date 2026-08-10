@@ -1,7 +1,7 @@
 import os
 import ast
 import tempfile
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from agent_os.execution.interfaces import ITransactionalExecutionEngine, ITransaction
 
 class MergeConflictError(Exception):
@@ -16,22 +16,45 @@ class TransactionError(Exception):
 
 class FileTransaction(ITransaction):
     """File modification transaction mapping target files to in-memory buffers before committing."""
-    def __init__(self, engine: "TransactionalExecutionEngine") -> None:
+    def __init__(self, engine: "TransactionalExecutionEngine", agent_name: str = "default_agent") -> None:
         self._engine = engine
+        self._agent_name = agent_name
         self._backups: Dict[str, str] = {}
         self._updates: Dict[str, str] = {}
+        self._acquired_locks: List[str] = []
         self._active = False
 
     def begin(self) -> None:
         self._backups.clear()
         self._updates.clear()
+        self._acquired_locks.clear()
         self._active = True
 
     def apply_patch(self, file_path: str, target_content: str, replacement_content: str) -> None:
         if not self._active:
             raise TransactionError("Transaction is not active. Call begin() first.")
 
-        # Determine current content state
+        normalized_path = os.path.normpath(file_path).replace("\\", "/")
+
+        # 1. Enforce Pessimistic File Locking
+        lock_manager = None
+        if self._engine.registry:
+            try:
+                from agent_os.execution.lock_manager import FileLockManager
+                lock_manager = self._engine.registry.resolve(FileLockManager)
+            except Exception:
+                pass
+
+        if lock_manager:
+            acquired = lock_manager.acquire_lock(normalized_path, self._agent_name, exclusive=True)
+            if not acquired:
+                raise TransactionError(f"TransactionError: File '{os.path.basename(file_path)}' is locked by another agent.")
+            
+            if normalized_path not in self._acquired_locks:
+                lock_manager.snapshot_file(file_path)
+                self._acquired_locks.append(normalized_path)
+
+        # 2. Determine current content state
         if file_path in self._updates:
             current_content = self._updates[file_path]
         else:
@@ -41,15 +64,36 @@ class FileTransaction(ITransaction):
                 current_content = f.read()
             self._backups[file_path] = current_content
 
-        # Validate and compile patch
+        # 3. Validate and compile patch
         patched_code = self._engine.validate_patch(
             file_path, current_content, target_content, replacement_content
         )
         self._updates[file_path] = patched_code
 
+    def _release_all_locks(self, lock_manager) -> None:
+        for path in self._acquired_locks:
+            lock_manager.release_lock(path, self._agent_name)
+        self._acquired_locks.clear()
+
     def commit(self) -> None:
         if not self._active:
             raise TransactionError("Transaction is not active.")
+
+        lock_manager = None
+        if self._engine.registry:
+            try:
+                from agent_os.execution.lock_manager import FileLockManager
+                lock_manager = self._engine.registry.resolve(FileLockManager)
+            except Exception:
+                pass
+
+        # 1. Enforce Optimistic lock check (before writing)
+        if lock_manager:
+            for path in self._acquired_locks:
+                if not lock_manager.verify_optimistic_lock(path):
+                    self._release_all_locks(lock_manager)
+                    self.rollback()
+                    raise TransactionError(f"Optimistic lock verification failed: file '{os.path.basename(path)}' was modified externally.")
 
         committed_files: List[str] = []
         try:
@@ -81,10 +125,23 @@ class FileTransaction(ITransaction):
                         f.write(original)
             self.rollback()
             raise TransactionError(f"Commit failed. Rolled back committed changes. Error: {str(e)}")
+        finally:
+            if lock_manager:
+                self._release_all_locks(lock_manager)
 
         self._active = False
 
     def rollback(self) -> None:
+        lock_manager = None
+        if self._engine.registry:
+            try:
+                from agent_os.execution.lock_manager import FileLockManager
+                lock_manager = self._engine.registry.resolve(FileLockManager)
+            except Exception:
+                pass
+        if lock_manager:
+            self._release_all_locks(lock_manager)
+
         self._backups.clear()
         self._updates.clear()
         self._active = False
@@ -92,8 +149,11 @@ class FileTransaction(ITransaction):
 
 class TransactionalExecutionEngine(ITransactionalExecutionEngine):
     """Execution engine coordinating transactions, syntax validation AST, and conflicts."""
-    def create_transaction(self) -> ITransaction:
-        return FileTransaction(self)
+    def __init__(self, registry: Optional[Any] = None) -> None:
+        self.registry = registry
+
+    def create_transaction(self, agent_name: str = "default_agent") -> ITransaction:
+        return FileTransaction(self, agent_name)
 
     def validate_patch(self, file_path: str, current_content: str, target_content: str, replacement_content: str) -> str:
         # 1. Merge Conflict check (check if target exists in current content)

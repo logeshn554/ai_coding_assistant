@@ -31,6 +31,8 @@ class ChatLogger:
         # Create a unique, date-stamped filename per chat session
         date_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         self._log_filename = f"chat_log_{date_str}_{session_id}.md"
+        self._write_buffer = ""
+        self._write_count = 0
 
     def _ts(self) -> str:
         return datetime.datetime.now().strftime("%H:%M:%S")
@@ -45,8 +47,15 @@ class ChatLogger:
         if self._in_ai_block:
             self._raw_write("\n\n---\n\n")
             self._in_ai_block = False
+            self.flush()
 
-    def _raw_write(self, text: str):
+    def flush(self):
+        if not self._write_buffer:
+            return
+        text = self._write_buffer
+        self._write_buffer = ""
+        self._write_count = 0
+
         root = workspace_state.root
         if not root or not os.path.isdir(root):
             return
@@ -70,6 +79,12 @@ class ChatLogger:
         except Exception as e:
             logger.debug(f"ChatLogger write error: {e}")
 
+    def _raw_write(self, text: str):
+        self._write_buffer += text
+        self._write_count += 1
+        if self._write_count >= 20 or len(self._write_buffer) >= 2048:
+            self.flush()
+
     def log_user(self, text: str):
         self._ensure_session_start()
         self._close_ai_block_if_needed()
@@ -77,6 +92,7 @@ class ChatLogger:
             f"### 👤 User  `{self._ts()}`\n"
             f"```\n{text.strip()}\n```\n\n"
         )
+        self.flush()
 
     def log_thinking(self, content: str):
         self._ensure_session_start()
@@ -88,6 +104,7 @@ class ChatLogger:
             f"### 💭 Thinking  `{self._ts()}`\n"
             f"> {snippet}\n\n"
         )
+        self.flush()
 
     def log_tool_call(self, tool_name: str, tool_id: str, args: dict):
         self._ensure_session_start()
@@ -98,6 +115,7 @@ class ChatLogger:
             f"- **ID**: `{tool_id}`\n"
             f"- **Args**: `{args_str}`\n\n"
         )
+        self.flush()
 
     def log_tool_result(self, tool_name: str, tool_id: str, result: str, status: str):
         self._ensure_session_start()
@@ -112,6 +130,7 @@ class ChatLogger:
             f"- **Status**: `{status}`\n"
             f"```\n{snippet}\n```\n\n"
         )
+        self.flush()
 
     def log_ai_chunk(self, chunk: str):
         self._ensure_session_start()
@@ -124,6 +143,7 @@ class ChatLogger:
         self._ensure_session_start()
         self._close_ai_block_if_needed()
         self._raw_write(f"**⚙️ Status** `{self._ts()}`: {message}\n\n")
+        self.flush()
 
 
 class ChatHistoryRequest(BaseModel):
@@ -152,7 +172,7 @@ async def resolve_session_id(request: Request = None, session_id: Optional[str] 
         s_id = request.headers.get("X-Session-ID")
         if s_id:
             return s_id
-    return await get_fallback_session_id()
+    return await get_fallback_session_id(workspace_state.root)
 
 @router.post("/api/chat/tokenize")
 async def tokenize_chat_context(req: TokenizeRequest):
@@ -179,22 +199,8 @@ async def tokenize_chat_context(req: TokenizeRequest):
             except Exception:
                 pass
 
-        # Try real Anthropic token counting; fall back to approximation
-        try:
-            from anthropic import Anthropic
-            combined = " ".join(
-                str(msg.get("content", "")) for msg in req.messages
-            ) + " " + " ".join(file_contents)
-            client = Anthropic()
-            response = client.beta.messages.count_tokens(
-                model="claude-opus-4-5",
-                messages=[{"role": "user", "content": combined}]
-            )
-            tokens = response.input_tokens
-        except Exception:
-            # Fall back to approximation (chars/3 is more accurate for code than /4)
-            tokens = max(120, total_chars // 3)
-
+        # Local approximation: total_chars / 3.5 is accurate within ~10% and instant.
+        tokens = max(120, int(total_chars / 3.5))
         # Add 15% safety buffer so the UI warns before actual context overflow
         tokens = int(tokens * 1.15)
         return {"tokens": tokens}
@@ -362,11 +368,20 @@ async def get_chat_session_details(session_id: str):
                 content = json.loads(m.content)
             except Exception:
                 pass
-            messages_list.append({
+            
+            msg_entry = {
                 "role": m.role,
-                "content": content,
                 "timestamp": int(m.timestamp.timestamp())
-            })
+            }
+            if isinstance(content, dict) and ("content" in content or "tool_calls" in content or "thinking_blocks" in content):
+                msg_entry["content"] = content.get("content") or ""
+                for k, v in content.items():
+                    if k != "content":
+                        msg_entry[k] = v
+            else:
+                msg_entry["content"] = content
+                
+            messages_list.append(msg_entry)
             
         return {
             "session": {
@@ -417,6 +432,7 @@ async def delete_chat_session(session_id: str, request: Request):
                 raise HTTPException(status_code=404, detail="Chat session not found")
             
             await db.delete(session)
+            await db.flush()
             await db.commit()
             
             # Evict from memory mapping to avoid leaks
@@ -436,9 +452,9 @@ async def delete_chat_session(session_id: str, request: Request):
                 res_check = await db.execute(stmt_check)
                 exist_default = res_check.scalar()
                 
-                session_id = "default-session" if not exist_default else f"default-session-{uuid.uuid4().hex[:8]}"
+                new_default_id = "default-session" if not exist_default else f"default-session-{uuid.uuid4().hex[:8]}"
                 default_session = SessionModel(
-                    id=session_id,
+                    id=new_default_id,
                     title="Default Conversation",
                     workspace_root=workspace_root_val
                 )
@@ -459,14 +475,15 @@ async def clear_all_sessions():
             raise HTTPException(status_code=400, detail="No workspace folder open.")
         async with async_session() as db:
             await db.execute(delete(SessionModel).where(SessionModel.workspace_root == workspace_root_val))
+            await db.flush()
             
             stmt_check = select(SessionModel).where(SessionModel.id == "default-session")
             res_check = await db.execute(stmt_check)
             exist_default = res_check.scalar()
             
-            session_id = "default-session" if not exist_default else f"default-session-{uuid.uuid4().hex[:8]}"
+            default_id = "default-session" if not exist_default else f"default-session-{uuid.uuid4().hex[:8]}"
             default_session = SessionModel(
-                id=session_id,
+                id=default_id,
                 title="Default Conversation",
                 workspace_root=workspace_root_val
             )

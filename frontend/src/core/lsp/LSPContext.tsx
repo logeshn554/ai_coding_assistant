@@ -104,7 +104,7 @@ export function LSPProvider({ children }: { children: React.ReactNode }) {
         );
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/lsp/${language}`;
+        const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/lsp/${language}`;
 
         const webSocket = new WebSocket(wsUrl);
 

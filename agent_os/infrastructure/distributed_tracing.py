@@ -60,6 +60,3 @@ class DistributedTracer:
         return [s for s in self._spans.values() if s.trace_id == trace_id]
 
 
-# ── Singleton ───────────────────────────────────────────────────────────────
-
-distributed_tracer = DistributedTracer()

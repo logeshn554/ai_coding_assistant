@@ -132,6 +132,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   // Debounced tokenization from the backend
   useEffect(() => {
+    if (isGenerating) return;
     const updateTokenCount = async () => {
       try {
         const res = await fetch('/api/chat/tokenize', {
@@ -155,7 +156,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
     const timer = setTimeout(updateTokenCount, 500);
     return () => clearTimeout(timer);
-  }, [messages, openFiles]);
+  }, [messages, openFiles, isGenerating]);
 
   useEffect(() => {
     const handleExplainError = (e: Event) => {
@@ -189,7 +190,11 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        setMessages(data.messages || []);
+        const msgs = (data.messages || []).map((msg: any, idx: number) => ({
+          ...msg,
+          id: msg.id || `hist_${idx}_${Date.now()}`
+        }));
+        setMessages(msgs);
       }
       await fetchSessions(false);
     } catch (e) {
@@ -203,7 +208,11 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       if (res.ok) {
         const data = await res.json();
         setActiveSessionId(sessionId);
-        setMessages(data.session?.messages || []);
+        const msgs = (data.session?.messages || []).map((msg: any, idx: number) => ({
+          ...msg,
+          id: msg.id || `hist_${idx}_${Date.now()}`
+        }));
+        setMessages(msgs);
         await fetchSessions(false);
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: 'change_profile' }));
@@ -249,7 +258,11 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
           const sessionDetailsRes = await fetch(`/api/chat/sessions/${newActiveId}`);
           if (sessionDetailsRes.ok) {
             const detailsData = await sessionDetailsRes.json();
-            setMessages(detailsData.session?.messages || []);
+            const msgs = (detailsData.session?.messages || []).map((msg: any, idx: number) => ({
+              ...msg,
+              id: msg.id || `hist_${idx}_${Date.now()}`
+            }));
+            setMessages(msgs);
           }
         }
       }
@@ -290,7 +303,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/chat?session_id=${activeSessionId}`;
+    const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/chat?session_id=${activeSessionId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -307,79 +320,142 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+
+      const ensureAssistantMessage = (prevMessages: ChatMessage[], newContent: string = '', initialThinkingStep?: string, signature?: string): { updatedMessages: ChatMessage[], activeId: string } => {
+        const lastMsg = prevMessages[prevMessages.length - 1];
+        const needsNewMessage = !lastMsg || 
+                                lastMsg.role !== 'assistant' || 
+                                lastMsg.isConfirmPending ||
+                                (lastMsg.tool_calls && lastMsg.tool_calls.length > 0);
+                                
+        if (needsNewMessage) {
+          const newId = `assistant_${Date.now()}`;
+          lastAssistantMsgIdRef.current = newId;
+          const newMsg: ChatMessage = {
+            id: newId,
+            role: 'assistant',
+            content: newContent,
+            timestamp: Math.floor(Date.now() / 1000)
+          };
+          if (initialThinkingStep) {
+            if (signature) {
+              newMsg.thinking_blocks = [{
+                type: 'thinking',
+                thinking: initialThinkingStep,
+                signature: signature
+              }];
+            } else {
+              newMsg.thinkingSteps = [initialThinkingStep];
+            }
+          }
+          return {
+            updatedMessages: [...prevMessages, newMsg],
+            activeId: newId
+          };
+        }
+        
+        return {
+          updatedMessages: prevMessages,
+          activeId: lastAssistantMsgIdRef.current || (lastMsg ? lastMsg.id : '')
+        };
+      };
+
       switch (data.type) {
         case 'ping':
           wsRef.current?.send(JSON.stringify({ type: 'pong' }));
           break;
         case 'text_delta':
-          const currentAssistantId = lastAssistantMsgIdRef.current;
-          if (currentAssistantId) {
-            setMessages((prev) =>
-              prev.map((msg) => {
-                if (msg.id !== currentAssistantId) return msg;
-                const newContent = (msg.content || '') + data.content;
-                
-                // Parse run command blocks and store in localStorage
-                const runMatch = newContent.match(/```run\s*\n([\s\S]*?)\n```/);
-                if (runMatch) {
-                  localStorage.setItem('devpilot_detected_run_command', runMatch[1].trim());
-                }
-                
-                // Filter out raw JSON or reasoning objects
-                const trimmed = newContent.trim();
-                if (trimmed.startsWith('{')) {
-                  try {
-                    const parsed = JSON.parse(trimmed);
-                    const steps: string[] = [];
-                    if (parsed.reasoning) {
-                      steps.push(parsed.reasoning);
-                    }
-                    if (parsed.descriptions && Array.isArray(parsed.descriptions)) {
-                      steps.push(...parsed.descriptions);
-                    }
-                    if (parsed.agents && Array.isArray(parsed.agents)) {
-                      steps.push(...parsed.agents.map((a: string) => `Routing: ${a}`));
-                    }
-                    
-                    // Filter duplicate steps
-                    const currentSteps = msg.thinkingSteps || [];
-                    const uniqueNewSteps = steps.filter(s => !currentSteps.includes(s));
-                    
+          setMessages((prev) => {
+            const { updatedMessages, activeId } = ensureAssistantMessage(prev, data.content);
+            const isNewMsg = updatedMessages.length > prev.length;
+            if (isNewMsg) return updatedMessages;
+
+            return updatedMessages.map((msg) => {
+              if (msg.id !== activeId) return msg;
+              const newContent = (msg.content || '') + data.content;
+              
+              // Parse run command blocks and store in localStorage
+              const runMatch = newContent.match(/```run\s*\n([\s\S]*?)\n```/);
+              if (runMatch) {
+                localStorage.setItem('devpilot_detected_run_command', runMatch[1].trim());
+              }
+              
+              // Filter out raw JSON or reasoning objects
+              const trimmed = newContent.trim();
+              if (trimmed.startsWith('{')) {
+                try {
+                  const parsed = JSON.parse(trimmed);
+                  const steps: string[] = [];
+                  if (parsed.reasoning) {
+                    steps.push(parsed.reasoning);
+                  }
+                  if (parsed.descriptions && Array.isArray(parsed.descriptions)) {
+                    steps.push(...parsed.descriptions);
+                  }
+                  if (parsed.agents && Array.isArray(parsed.agents)) {
+                    steps.push(...parsed.agents.map((a: string) => `Routing: ${a}`));
+                  }
+                  
+                  // Filter duplicate steps
+                  const currentSteps = msg.thinkingSteps || [];
+                  const uniqueNewSteps = steps.filter(s => !currentSteps.includes(s));
+                  
+                  return {
+                    ...msg,
+                    content: '', // Hide raw JSON content
+                    thinkingSteps: [...currentSteps, ...uniqueNewSteps]
+                  };
+                } catch {
+                  // If it contains JSON routing keys but is not fully parsed yet, hide it from rendering raw JSON
+                  if (trimmed.includes('"reasoning"') || trimmed.includes('"agents"') || trimmed.includes('"descriptions"')) {
                     return {
                       ...msg,
-                      content: '', // Hide raw JSON content
-                      thinkingSteps: [...currentSteps, ...uniqueNewSteps]
+                      content: '', // Keep content hidden while streaming JSON
                     };
-                  } catch {
-                    // If it contains JSON routing keys but is not fully parsed yet, hide it from rendering raw JSON
-                    if (trimmed.includes('"reasoning"') || trimmed.includes('"agents"') || trimmed.includes('"descriptions"')) {
-                      return {
-                        ...msg,
-                        content: '', // Keep content hidden while streaming JSON
-                      };
-                    }
                   }
                 }
-                
-                return { ...msg, content: newContent };
-              })
-            );
-          }
+              }
+              
+              return { ...msg, content: newContent };
+            });
+          });
           break;
         case 'thinking':
-          const thinkingAssistantId = lastAssistantMsgIdRef.current;
-          if (thinkingAssistantId && data.content) {
-            setMessages((prev) =>
-              prev.map((msg) => {
-                if (msg.id !== thinkingAssistantId) return msg;
-                const currentSteps = msg.thinkingSteps || [];
-                if (currentSteps.includes(data.content)) return msg;
-                return {
-                  ...msg,
-                  thinkingSteps: [...currentSteps, data.content]
-                };
-              })
-            );
+          if (data.content) {
+            setMessages((prev) => {
+              const { updatedMessages, activeId } = ensureAssistantMessage(prev, '', data.content, data.signature);
+              const isNewMsg = updatedMessages.length > prev.length;
+              if (isNewMsg) return updatedMessages;
+
+              return updatedMessages.map((msg) => {
+                if (msg.id !== activeId) return msg;
+                if (data.signature) {
+                  const blocks = msg.thinking_blocks ? [...msg.thinking_blocks] : [];
+                  const existingIdx = blocks.findIndex(b => b.signature === data.signature);
+                  if (existingIdx >= 0) {
+                    blocks[existingIdx] = {
+                      type: 'thinking',
+                      thinking: data.content,
+                      signature: data.signature
+                    };
+                  } else {
+                    blocks.push({
+                      type: 'thinking',
+                      thinking: data.content,
+                      signature: data.signature
+                    });
+                  }
+                  return { ...msg, thinking_blocks: blocks };
+                } else {
+                  const currentSteps = msg.thinkingSteps || [];
+                  if (currentSteps.includes(data.content)) return msg;
+                  return {
+                    ...msg,
+                    thinkingSteps: [...currentSteps, data.content]
+                  };
+                }
+              });
+            });
           }
           break;
         case 'status':
@@ -482,6 +558,16 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
           if (typeof data.total_cost_usd === 'number') {
             setTotalCostUsd(data.total_cost_usd);
           }
+          break;
+        case 'cost_limit_advisory':
+          // Soft limit reached — show a non-blocking toast to inform the user
+          if (typeof data.total_cost_usd === 'number') {
+            setTotalCostUsd(data.total_cost_usd);
+          }
+          showToast(
+            `💰 Cost advisory: $${data.total_cost_usd?.toFixed(3)} spent (limit: $${data.cost_limit_usd?.toFixed(2)}). Click Stop to cancel.`,
+            'error'
+          );
           break;
         case 'cost_confirmation_request':
           setIsGenerating(false);

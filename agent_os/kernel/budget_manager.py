@@ -241,6 +241,3 @@ class BudgetManager(IKernelService):
         self._fired_alerts.pop(key, None)
 
 
-# ── Singleton ───────────────────────────────────────────────────────────────
-
-budget_manager = BudgetManager()

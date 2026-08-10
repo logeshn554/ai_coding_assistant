@@ -131,6 +131,17 @@ AGENT_MODE_INSTRUCTIONS = """
 │ 10. Stay within {max_orchestrator_steps} orchestration steps. If    │
 │     approaching the limit, finish the current phase and write a     │
 │     clear handover note listing exactly what's left, then stop.     │
+│                                                                     │
+│ 11. DIRECTORY & FILE CREATION RULES:                                │
+│     • NEVER use mkdir or run_terminal_command to create directories.│
+│       Use write_file with the full path — parent directories are    │
+│       created automatically. mkdir creates empty dirs with no code. │
+│     • NEVER create .gitkeep files. They are placeholder anti-       │
+│       patterns. Every directory must contain real implementation.   │
+│     • When building a project, write ALL code files with complete   │
+│       content FIRST, then run terminal commands (npm install, etc). │
+│     • Each write_file call MUST contain complete, working code —    │
+│       never write stub files or TODO placeholders as first pass.    │
 └─────────────────────────────────────────────────────────────────────┘
 
 TOOL REFERENCE

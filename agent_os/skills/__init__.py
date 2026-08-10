@@ -7,8 +7,11 @@ from agent_os.skills.plugins import (
     ReviewPatchSkill,
     RefactorMethodSkill,
     OptimizeSQLSkill,
-    UpdateDependencySkill
+    UpdateDependencySkill,
+    SecurityScanSkill,
+    IDEContext
 )
+from agent_os.skills.orchestrator import SkillOrchestrator
 
 __all__ = [
     "ISkillRegistry",
@@ -22,5 +25,8 @@ __all__ = [
     "ReviewPatchSkill",
     "RefactorMethodSkill",
     "OptimizeSQLSkill",
-    "UpdateDependencySkill"
+    "UpdateDependencySkill",
+    "SecurityScanSkill",
+    "IDEContext",
+    "SkillOrchestrator"
 ]

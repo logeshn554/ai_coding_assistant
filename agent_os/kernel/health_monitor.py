@@ -210,6 +210,3 @@ class HealthMonitor(IKernelService):
         }
 
 
-# ── Singleton ───────────────────────────────────────────────────────────────
-
-health_monitor = HealthMonitor()

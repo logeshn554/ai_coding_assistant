@@ -117,6 +117,12 @@ class AgentSession:
         self._workspace_index = None
         self._failed_request = None
         self._last_request_snapshot = None
+        self.total_cost_usd: float = 0.0
+        self._cost_advisory_sent: bool = False
+        # System prompt cache: avoid rebuilding the full prompt on every LLM turn.
+        # Keyed by (mode, workspace_mtime) — invalidated when files change.
+        self._cached_system_prompt: dict[str, tuple[float, str]] = {}
+
 
         # ── 14-Phase Agent Intelligence Layer ────────────────────────────
         self.task_memory: TaskMemory = TaskMemory()
@@ -246,6 +252,10 @@ class AgentSession:
             if not t.done():
                 t.cancel()
         self._monitor_tasks.clear()
+
+        # 6. Reset per-run state flags so they fire correctly on the next request.
+        self._cost_advisory_sent = False
+
 
         await self.send_ws_message({
             "type": "queue_status",
@@ -515,7 +525,7 @@ class AgentSession:
             else:
                 if not last_was_trim_marker:
                     trimmed_history.append({
-                        "role": "system",
+                        "role": "user",
                         "content": "[System Note: Older low-priority history entries truncated to preserve context budget]"
                     })
                     last_was_trim_marker = True
@@ -601,7 +611,22 @@ class AgentSession:
         Returns:
             Fully rendered master system prompt, including relevant skills.md.
         """
+        # ── System-prompt cache (mtime-keyed) ────────────────────────────────
+        # Rebuilding the full prompt involves os.walk, build_skills_prompt_section,
+        # and render_system_prompt on every LLM turn — expensive on large repos.
+        # Cache the result keyed by workspace mtime; invalidate when files change.
+        current_mtime: float = 0.0
+        if self.workspace_root and os.path.isdir(self.workspace_root):
+            try:
+                current_mtime = os.path.getmtime(self.workspace_root)
+            except OSError:
+                pass
+        cached = self._cached_system_prompt.get(mode)
+        if cached and cached[0] == current_mtime and current_mtime > 0:
+            return cached[1]
+
         workspace_context = ""
+
         from ..workspace_index import WorkspaceIndex
         try:
             # B9: Reuse the cached WorkspaceIndex instance across turns.
@@ -668,6 +693,11 @@ class AgentSession:
         )
         if skills_section:
             prompt = prompt.rstrip() + "\n\n" + skills_section
+
+        # Store in cache for subsequent turns (invalidated when workspace mtime changes)
+        if current_mtime > 0:
+            self._cached_system_prompt[mode] = (current_mtime, prompt)
+
         return prompt
 
     async def _run_agent_intelligence_pipeline(self, text: str, base_system_prompt: str) -> str:
@@ -707,7 +737,14 @@ class AgentSession:
 
             # ── Phase 1: Context Collector ──────────────────────────────
             collected_ctx = None
-            if intent_result.needs_context:
+            # Check if last 6 messages already contain tool results
+            has_recent_tool_results = False
+            for msg in self.conversation_history[-6:]:
+                if msg.get("role") == "tool" or (msg.get("role") == "assistant" and msg.get("tool_calls")):
+                    has_recent_tool_results = True
+                    break
+
+            if intent_result.needs_context and not has_recent_tool_results:
                 await self.send_ws_message({
                     "type": "status",
                     "status": "thinking",
@@ -932,10 +969,10 @@ class AgentSession:
             })
             await self.send_ws_message({
                 "type": "session_done",
-                "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
+                "total_cost_usd": self.total_cost_usd,
                 "wasted_turns": getattr(self, "wasted_turns", 0),
             })
-            raise ValueError(contradiction)
+            return
 
         import time
         self._running_since = time.monotonic()
@@ -1053,6 +1090,29 @@ class AgentSession:
             # hundreds of dollars silently. Now capped at max_turns*4 (ceiling 200).
             turn = 0
             self._agent_tool_call_count = 0  # reset per-run counter
+
+            def _tool_stage(tc_name: str) -> str:
+                """Map a tool name to a UI progress stage status code."""
+                _READ_TOOLS = (
+                    "list_directory", "list_files", "list_dir", "ls",
+                    "read_file", "view_file", "get_file", "open_file",
+                    "search_codebase", "search_files", "search_code", "grep",
+                    "glob", "glob_search",
+                )
+                _WRITE_TOOLS = (
+                    "write_file", "create_file", "write_to_file", "save_file",
+                    "edit_file", "apply_patch", "patch",
+                )
+                _VALIDATE_TOOLS = ("run_terminal_command", "execute_command", "run_command",)
+                n = tc_name.lower()
+                if n in _READ_TOOLS:
+                    return "reading_workspace"
+                if n in _WRITE_TOOLS:
+                    return "writing_files"
+                if n in _VALIDATE_TOOLS:
+                    return "validating"
+                return "tool_executing"
+
             while turn < effective_max_turns:
                 turn += 1
 
@@ -1066,7 +1126,7 @@ class AgentSession:
                 )
                 await self.send_ws_message({
                     "type": "status",
-                    "status": "thinking",
+                    "status": "generating_code" if mode == "Agent" else "thinking",
                     "message": _status_msg,
                     "mode": mode,
                 })
@@ -1099,11 +1159,21 @@ class AgentSession:
                                 "thinking": chunk.get("thinking", ""),
                                 "signature": chunk.get("signature"),
                             })
+                            await self.send_ws_message({
+                                "type": "thinking",
+                                "content": chunk.get("thinking", ""),
+                                "signature": chunk.get("signature"),
+                            })
                         elif chunk["type"] == "redacted_thinking":
                             # A6: capture redacted_thinking block
                             thinking_blocks_current_turn.append({
                                 "type": "redacted_thinking",
                                 "data": chunk.get("data", ""),
+                            })
+                            await self.send_ws_message({
+                                "type": "thinking",
+                                "content": chunk.get("data", "") or "Thinking...",
+                                "signature": "redacted",
                             })
                         elif chunk["type"] == "tool_call_error":
                             # A7: model produced malformed JSON surface as a tool result error
@@ -1114,18 +1184,7 @@ class AgentSession:
                                 "content": f"\n\n[WARNING] {err_msg}\n"
                             })
                         elif chunk["type"] == "usage":
-                            # B3: Accumulate real API cost from token usage.
-                            # Pricing for claude-opus-4-5: $15/MTok input, $75/MTok output.
-                            # Other models will be under-counted but this is safe.
-                            input_tok = chunk.get("input_tokens", 0) or 0
-                            output_tok = chunk.get("output_tokens", 0) or 0
-                            turn_cost = (input_tok * 15 + output_tok * 75) / 1_000_000
-                            self.total_cost_usd = getattr(self, "total_cost_usd", 0.0) + turn_cost
-                            await self.send_ws_message({
-                                "type": "cost_update",
-                                "total_cost_usd": round(self.total_cost_usd, 6),
-                                "turn_cost_usd": round(turn_cost, 6),
-                            })
+                            pass
                         elif chunk["type"] == "done":
                             stop_reason = chunk["stop_reason"]
                 except Exception as e:
@@ -1149,6 +1208,27 @@ class AgentSession:
                                     })
                                 elif chunk["type"] == "tool_call":
                                     tool_calls_to_run.append(chunk)
+                                elif chunk["type"] == "thinking":
+                                    thinking_blocks_current_turn.append({
+                                        "type": "thinking",
+                                        "thinking": chunk.get("thinking", ""),
+                                        "signature": chunk.get("signature"),
+                                    })
+                                    await self.send_ws_message({
+                                        "type": "thinking",
+                                        "content": chunk.get("thinking", ""),
+                                        "signature": chunk.get("signature"),
+                                    })
+                                elif chunk["type"] == "redacted_thinking":
+                                    thinking_blocks_current_turn.append({
+                                        "type": "redacted_thinking",
+                                        "data": chunk.get("data", ""),
+                                    })
+                                    await self.send_ws_message({
+                                        "type": "thinking",
+                                        "content": chunk.get("data", "") or "Thinking...",
+                                        "signature": "redacted",
+                                    })
                                 elif chunk["type"] == "done":
                                     stop_reason = chunk["stop_reason"]
                         except Exception as retry_err:
@@ -1246,10 +1326,11 @@ class AgentSession:
                             tc_name = tc["name"]
                             tc_args = tc["input"]
 
+                            _stage = _tool_stage(tc_name)
                             await self.send_ws_message({
                                 "type": "status",
-                                "status": "tool_executing",
-                                "message": f"Preparing tool '{tc_name}'...",
+                                "status": _stage,
+                                "message": f"{_stage.replace('_', ' ').title()}: {tc_name}...",
                                 "tool_call": {"id": tc_id, "name": tc_name, "args": tc_args}
                             })
 
@@ -1303,10 +1384,11 @@ class AgentSession:
                             tc_name = tc["name"]
                             tc_args = tc["input"]
 
+                            _stage = _tool_stage(tc_name)
                             await self.send_ws_message({
                                 "type": "status",
-                                "status": "tool_executing",
-                                "message": f"Preparing tool '{tc_name}'...",
+                                "status": _stage,
+                                "message": f"{_stage.replace('_', ' ').title()}: {tc_name}...",
                                 "tool_call": {"id": tc_id, "name": tc_name, "args": tc_args}
                             })
 
@@ -1425,6 +1507,18 @@ class AgentSession:
                             if chunk["type"] == "text":
                                 _extra_response += chunk["content"]
                                 await self.send_ws_message({"type": "text_delta", "content": chunk["content"]})
+                            elif chunk["type"] == "thinking":
+                                await self.send_ws_message({
+                                    "type": "thinking",
+                                    "content": chunk.get("thinking", ""),
+                                    "signature": chunk.get("signature"),
+                                })
+                            elif chunk["type"] == "redacted_thinking":
+                                await self.send_ws_message({
+                                    "type": "thinking",
+                                    "content": chunk.get("data", "") or "Thinking...",
+                                    "signature": "redacted",
+                                })
                         if _extra_response:
                             self.conversation_history.append({"role": "assistant", "content": _extra_response})
 
@@ -1574,6 +1668,18 @@ class AgentSession:
                         "type": "text_delta",
                         "content": chunk["content"]
                     })
+                elif chunk["type"] == "thinking":
+                    await self.send_ws_message({
+                        "type": "thinking",
+                        "content": chunk.get("thinking", ""),
+                        "signature": chunk.get("signature"),
+                    })
+                elif chunk["type"] == "redacted_thinking":
+                    await self.send_ws_message({
+                        "type": "thinking",
+                        "content": chunk.get("data", "") or "Thinking...",
+                        "signature": "redacted",
+                    })
 
             if response_text:
                 self.conversation_history.append({
@@ -1645,19 +1751,56 @@ class AgentSession:
     async def _stream_chat_wrapper(self, adapter, messages, tools, system_prompt):
         """
         Wraps adapter.stream_chat to capture usage chunks, calculate costs,
-        and perform cost limit warnings.
+        and enforce cost circuit-breakers:
+        - Soft limit (COST_LIMIT_USD, default $5): pauses and asks user to confirm.
+        - Hard limit (DEVPILOT_HARD_COST_LIMIT, default $10): immediately terminates.
         """
+        from ..config import settings
+        soft_limit = float(getattr(settings, "COST_LIMIT_USD", 5.0))
+        hard_limit = float(getattr(settings, "DEVPILOT_HARD_COST_LIMIT", 10.0))
+
         async for chunk in adapter.stream_chat(messages, tools, system_prompt):
             if chunk.get("type") == "usage":
                 turn_cost = float(chunk.get("cost_usd", 0.0))
-                self.total_cost_usd = getattr(self, "total_cost_usd", 0.0) + turn_cost
-                
+                self.total_cost_usd = self.total_cost_usd + turn_cost
+
                 await self.send_ws_message({
                     "type": "cost_update",
                     "total_cost_usd": round(self.total_cost_usd, 6),
                     "turn_cost_usd": round(turn_cost, 6),
                 })
+
+                # Hard limit: unconditionally terminate the agent loop
+                if self.total_cost_usd >= hard_limit:
+                    logger.warning(
+                        f"Hard cost limit ${hard_limit:.2f} reached "
+                        f"(spent ${self.total_cost_usd:.4f}). Terminating agent."
+                    )
+                    await self.send_ws_message({
+                        "type": "error",
+                        "message": (
+                            f"⛔ Hard cost limit of ${hard_limit:.2f} reached "
+                            f"(${self.total_cost_usd:.4f} spent this session). "
+                            "Agent has been terminated. Increase DEVPILOT_HARD_COST_LIMIT in .env to override."
+                        )
+                    })
+                    return  # stop yielding — caller's async-for loop will end
+
+                # Soft limit: send advisory to frontend (handled by cost_limit_advisory in AIContext)
+                if soft_limit > 0 and self.total_cost_usd >= soft_limit and not getattr(self, "_cost_advisory_sent", False):
+                    self._cost_advisory_sent = True
+                    await self.send_ws_message({
+                        "type": "cost_limit_advisory",
+                        "total_cost_usd": round(self.total_cost_usd, 6),
+                        "cost_limit_usd": soft_limit,
+                        "message": (
+                            f"💰 This session has used ${self.total_cost_usd:.3f} "
+                            f"(soft limit: ${soft_limit:.2f}). Continue?"
+                        )
+                    })
+
             yield chunk
+
 
 
 

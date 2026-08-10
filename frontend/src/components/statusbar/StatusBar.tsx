@@ -1,19 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { GitBranch, AlertCircle, AlertTriangle, Zap, Cpu, CheckCircle2 } from 'lucide-react';
+import { GitBranch, AlertCircle, AlertTriangle, Zap, Cpu, CheckCircle2, DollarSign } from 'lucide-react';
 import { useWorkspace } from '../../core/workspace/WorkspaceContext';
 import { useGit } from '../../core/git/GitContext';
 import { useSettings } from '../../core/settings/SettingsContext';
 import { useAI } from '../../core/ai/AIContext';
 import { useUI } from '../../core/ui/UIContext';
 import { useEditor } from '../../core/editor/EditorContext';
+import { useLSP } from '../../core/lsp/LSPContext';
 
 export const StatusBar: React.FC = () => {
   const { workspacePath } = useWorkspace();
   const { statusBarBranch, statusBarDebug } = useGit();
   const { activeProfileName } = useSettings();
-  const { isGenerating, isWsConnected, isModelFallback } = useAI();
+  const { isGenerating, isWsConnected, isModelFallback, totalCostUsd } = useAI();
   const { activeFilePath } = useEditor();
   const { setSidebarTab, setIsSidebarOpen } = useUI();
+  const { activeLanguage, isReady, error: lspError } = useLSP();
 
   const [cursorInfo, setCursorInfo] = useState({ line: 1, column: 1 });
   const [diagnostics, setDiagnostics] = useState({ errors: 0, warnings: 0 });
@@ -137,9 +139,32 @@ export const StatusBar: React.FC = () => {
           </div>
         )}
 
-        {/* Language */}
+        {/* Cost tracker — only shown when real cost is being tracked */}
+        {totalCostUsd > 0 && (
+          <div
+            className="flex items-center gap-1 px-2 h-full cursor-default"
+            title={`Session cost: $${totalCostUsd.toFixed(6)}`}
+            style={{ color: totalCostUsd >= 1.0 ? '#FFB74D' : '#9DA0A8' }}
+          >
+            <DollarSign className="w-3 h-3" />
+            <span className="font-mono">{totalCostUsd.toFixed(3)}</span>
+          </div>
+        )}
+
+        {/* Language + LSP status — dot color reflects connection health */}
         {getFileLanguage() && (
-          <div className="flex items-center px-2 h-full cursor-pointer hover:bg-white/5 transition-colors">
+          <div
+            className="flex items-center gap-1 px-2 h-full cursor-pointer hover:bg-white/5 transition-colors"
+            title={activeLanguage ? (isReady ? `LSP: ${activeLanguage} connected` : lspError || `LSP: ${activeLanguage} unavailable`) : 'Language mode'}
+          >
+            {activeLanguage && (
+              <span
+                className="w-1.5 h-1.5 rounded-full shrink-0 transition-colors"
+                style={{
+                  background: isReady ? '#62D26F' : lspError ? '#FF6B6B' : '#6F737A',
+                }}
+              />
+            )}
             <span>{getFileLanguage()}</span>
           </div>
         )}

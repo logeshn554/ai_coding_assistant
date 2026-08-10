@@ -88,6 +88,3 @@ class WorkflowStore:
         self._states.clear()
 
 
-# ── Singleton ───────────────────────────────────────────────────────────────
-
-workflow_store = WorkflowStore()

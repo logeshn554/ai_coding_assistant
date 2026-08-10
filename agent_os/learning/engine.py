@@ -4,6 +4,7 @@ import sqlite3
 import os
 import threading
 import time
+import asyncio
 from typing import Any, Dict, List
 from agent_os.learning.interfaces import ILearningEngine
 
@@ -15,19 +16,27 @@ class LearningEngine(ILearningEngine):
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._chroma_client = None
         self._init_db()
 
     def _get_chroma_collection(self, name: str):
         # Ephemeral test database should not persist files in directory to maintain test isolation
         if self.db_path == ":memory:":
             return None
+        
+        if self._chroma_client is not None:
+            try:
+                return self._chroma_client.get_or_create_collection(name=name)
+            except Exception:
+                pass
+
         try:
             import chromadb
             # Put Chroma next to SQLite DB
             chroma_dir = os.path.join(os.path.dirname(self.db_path), "chroma")
             os.makedirs(chroma_dir, exist_ok=True)
-            client = chromadb.PersistentClient(path=chroma_dir)
-            return client.get_or_create_collection(name=name)
+            self._chroma_client = chromadb.PersistentClient(path=chroma_dir)
+            return self._chroma_client.get_or_create_collection(name=name)
         except Exception:
             return None
 
@@ -96,6 +105,10 @@ class LearningEngine(ILearningEngine):
             except Exception:
                 pass
 
+    async def async_store_fix(self, error_type: str, file_path: str, error_msg: str, solution_diff: str) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.store_fix, error_type, file_path, error_msg, solution_diff)
+
     def store_summary(self, repo_path: str, summary: Dict[str, Any]) -> None:
         summary_str = json.dumps(summary, ensure_ascii=False)
         with self._lock:
@@ -104,6 +117,10 @@ class LearningEngine(ILearningEngine):
                     INSERT OR REPLACE INTO repo_summaries (repo_path, summary_json)
                     VALUES (?, ?);
                 """, (repo_path, summary_str))
+
+    async def async_store_summary(self, repo_path: str, summary: Dict[str, Any]) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.store_summary, repo_path, summary)
 
     def store_pattern(self, pattern_name: str, pattern_type: str, code_snippet: str) -> None:
         with self._lock:
@@ -127,6 +144,10 @@ class LearningEngine(ILearningEngine):
             except Exception:
                 pass
 
+    async def async_store_pattern(self, pattern_name: str, pattern_type: str, code_snippet: str) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.store_pattern, pattern_name, pattern_type, code_snippet)
+
     def store_convention(self, convention_name: str, rule: str) -> None:
         with self._lock:
             with self._conn:
@@ -135,6 +156,10 @@ class LearningEngine(ILearningEngine):
                     VALUES (?, ?);
                 """, (convention_name, rule))
 
+    async def async_store_convention(self, convention_name: str, rule: str) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.store_convention, convention_name, rule)
+
     def store_performance(self, operation: str, duration_sec: float, token_count: int) -> None:
         with self._lock:
             with self._conn:
@@ -142,6 +167,10 @@ class LearningEngine(ILearningEngine):
                     INSERT INTO performance_stats (operation, duration_sec, token_count)
                     VALUES (?, ?, ?);
                 """, (operation, duration_sec, token_count))
+
+    async def async_store_performance(self, operation: str, duration_sec: float, token_count: int) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.store_performance, operation, duration_sec, token_count)
 
     def _jaccard_similarity(self, query: str, text: str) -> float:
         query_words = set(re.findall(r'\b[A-Za-z0-9_]+\b', query.lower()))
@@ -194,6 +223,10 @@ class LearningEngine(ILearningEngine):
         matches.sort(key=lambda x: x["similarity_score"], reverse=True)
         return matches
 
+    async def async_find_similar_fixes(self, query: str) -> List[Dict[str, Any]]:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self.find_similar_fixes, query)
+
     def find_similar_patterns(self, query: str) -> List[Dict[str, Any]]:
         # Attempt Chroma retrieval
         col = self._get_chroma_collection("patterns")
@@ -235,3 +268,7 @@ class LearningEngine(ILearningEngine):
                 
         matches.sort(key=lambda x: x["similarity_score"], reverse=True)
         return matches
+
+    async def async_find_similar_patterns(self, query: str) -> List[Dict[str, Any]]:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self.find_similar_patterns, query)

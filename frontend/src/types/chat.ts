@@ -142,11 +142,18 @@ export interface ChatMessage {
   portConflictPid?: number;
   portConflictProcessName?: string;
   thinkingSteps?: string[];
+  thinking_blocks?: {
+    type: string;
+    thinking?: string;
+    data?: string;
+    signature?: string;
+  }[];
 
   // Cost Confirmation Request Fields
   isCostConfirmationRequest?: boolean;
   costLimitUsd?: number;
   totalCostUsd?: number;
+  timestamp?: number;
 }
 
 export interface Session {

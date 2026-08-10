@@ -1,8 +1,9 @@
 import os
 from typing import Any, Dict, List, Set
 from agent_os.repository.repository import RepositoryKernel
+from agent_os.repository.interfaces import IRepositoryKnowledgeGraph
 
-class RepositoryKnowledgeGraph:
+class RepositoryKnowledgeGraph(IRepositoryKnowledgeGraph):
     """Repository Knowledge Graph extracting dependency and call-graph relationships from SQLite."""
     def __init__(self, kernel: RepositoryKernel) -> None:
         self.kernel = kernel

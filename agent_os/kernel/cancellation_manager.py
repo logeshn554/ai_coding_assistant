@@ -139,6 +139,3 @@ class CancellationManager(IKernelService):
         return self._tokens.get(task_id)
 
 
-# ── Singleton ───────────────────────────────────────────────────────────────
-
-cancellation_manager = CancellationManager()

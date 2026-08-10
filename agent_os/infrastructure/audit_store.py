@@ -70,7 +70,9 @@ class AuditStore:
     def get_records(self) -> List[AuditRecord]:
         return list(self._records)
 
+    def clear(self) -> None:
+        self._records.clear()
+        self._last_hash = "genesis"
 
-# ── Singleton ───────────────────────────────────────────────────────────────
 
-audit_store = AuditStore()
+

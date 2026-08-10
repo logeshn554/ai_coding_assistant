@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     # Auto QA & Dev Server Settings
     AUTO_INSPECT_ON_SERVER_START: bool = False
 
+    # Cost Circuit Breaker
+    # Soft advisory — user is prompted to approve continuation above this threshold
+    COST_LIMIT_USD: float = 5.0
+    # Hard ceiling — session is forcibly terminated above this amount, no user override
+    DEVPILOT_HARD_COST_LIMIT: float = 10.0
+
     # Web Search Fallback Settings
     WEB_SEARCH_FALLBACK_ENABLED: bool = False
     REPEAT_ERROR_THRESHOLD: int = 2

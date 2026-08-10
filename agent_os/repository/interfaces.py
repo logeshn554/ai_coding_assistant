@@ -70,3 +70,23 @@ class ISourceControl(ABC):
     @abstractmethod
     def commit_changes(self, message: str) -> str:
         pass
+
+
+class IRepositoryKnowledgeGraph(ABC):
+    """Repository Knowledge Graph interface querying dependencies, call graphs, and impact maps."""
+    @abstractmethod
+    def get_dependencies(self, path: str) -> Dict[str, List[str]]:
+        pass
+
+    @abstractmethod
+    def get_call_graph(self, function_name: str) -> Dict[str, List[Dict[str, Any]]]:
+        pass
+
+    @abstractmethod
+    def get_impact_analysis(self, symbol_name: str) -> Dict[str, List[str]]:
+        pass
+
+    @abstractmethod
+    def get_related_symbols(self, symbol_name: str) -> List[str]:
+        pass
+

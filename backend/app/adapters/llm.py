@@ -28,6 +28,22 @@ except ImportError:
 
 from .base import ModelAdapter
 
+_anthropic_clients: dict = {}
+_openai_clients: dict = {}
+
+def _get_anthropic_client(api_key: str, base_url: Optional[str] = None, timeout: float = 180.0):
+    key = (api_key, base_url, timeout)
+    if key not in _anthropic_clients:
+        _anthropic_clients[key] = AsyncAnthropic(api_key=api_key, base_url=base_url, timeout=timeout)
+    return _anthropic_clients[key]
+
+def _get_openai_client(api_key: str, base_url: Optional[str] = None, timeout: float = 180.0):
+    key = (api_key, base_url, timeout)
+    if key not in _openai_clients:
+        _openai_clients[key] = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+    return _openai_clients[key]
+
+
 class LLMAdapter(ModelAdapter):
     """
     Unified LLM adapter for both Anthropic and OpenAI.
@@ -65,7 +81,7 @@ class LLMAdapter(ModelAdapter):
             
         api_key = self.api_key if self.api_key else "dummy-key"
         timeout_val = float(os.environ.get("DEVPILOT_STREAMING_TIMEOUT") or os.environ.get("ANTHROPIC_TIMEOUT") or "180.0")
-        client = AsyncAnthropic(api_key=api_key, base_url=base_url, timeout=timeout_val)
+        client = _get_anthropic_client(api_key, base_url, timeout_val)
 
         anthropic_tools = []
         for tool in tools:
@@ -77,6 +93,15 @@ class LLMAdapter(ModelAdapter):
 
         anthropic_messages = self._to_anthropic_messages(messages)
         is_agent_mode = "OPERATING MODE: Agent" in system_prompt or "MULTI-AGENT ORCHESTRATION" in system_prompt
+        from ..state import config_manager
+        profile = config_manager.get_active_profile()
+        _supports_thinking = profile.get("supports_thinking")
+        if _supports_thinking is None:
+            _model_lower = self.model_name.lower()
+            _supports_thinking = (
+                "claude-3-7" in _model_lower or
+                ("claude" in _model_lower and "opus-4" in _model_lower)
+            )
         try:
             kwargs = {
                 "model": self.model_name,
@@ -86,13 +111,17 @@ class LLMAdapter(ModelAdapter):
                 "stream": True,
             }
             if is_agent_mode:
-                kwargs["max_tokens"] = 16000
-                kwargs["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": 10000
-                }
+                if _supports_thinking:
+                    kwargs["max_tokens"] = 16000
+                    kwargs["thinking"] = {
+                        "type": "enabled",
+                        "budget_tokens": 8000
+                    }
+                else:
+                    kwargs["max_tokens"] = 16000
             else:
                 kwargs["max_tokens"] = 4000
+
 
             stream = await client.messages.create(**kwargs)
             current_tool_calls = {}
@@ -192,7 +221,7 @@ class LLMAdapter(ModelAdapter):
         base_url = self.base_url if self.base_url else None
         api_key = self.api_key if self.api_key else "dummy-key"
         timeout_val = float(os.environ.get("DEVPILOT_STREAMING_TIMEOUT") or os.environ.get("OPENAI_TIMEOUT") or "180.0")
-        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout_val)
+        client = _get_openai_client(api_key, base_url, timeout_val)
 
         openai_tools = []
         for tool in tools:
@@ -326,6 +355,26 @@ class LLMAdapter(ModelAdapter):
     def _to_anthropic_messages(self, internal_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         anthropic_msgs = []
         current_user_blocks = []
+        
+        from ..state import config_manager
+        profile = config_manager.get_active_profile()
+        _supports_thinking = profile.get("supports_thinking")
+        if _supports_thinking is None:
+            _model_lower = self.model_name.lower()
+            _supports_thinking = (
+                "claude-3-7" in _model_lower or
+                ("claude" in _model_lower and "opus-4" in _model_lower)
+            )
+
+        def flush_user_blocks():
+            if not current_user_blocks:
+                return
+            if len(current_user_blocks) == 1 and current_user_blocks[0]["type"] == "text":
+                anthropic_msgs.append({"role": "user", "content": current_user_blocks[0]["text"]})
+            else:
+                anthropic_msgs.append({"role": "user", "content": list(current_user_blocks)})
+            current_user_blocks.clear()
+
         for msg in internal_messages:
             role = msg["role"]
             if role == "system":
@@ -337,24 +386,29 @@ class LLMAdapter(ModelAdapter):
                     "content": str(msg["content"])
                 })
             elif role == "user":
-                if current_user_blocks:
-                    anthropic_msgs.append({"role": "user", "content": current_user_blocks})
-                    current_user_blocks = []
-                anthropic_msgs.append({"role": "user", "content": msg["content"]})
+                content = msg["content"]
+                if isinstance(content, list):
+                    current_user_blocks.extend(content)
+                else:
+                    current_user_blocks.append({
+                        "type": "text",
+                        "text": str(content)
+                    })
             elif role == "assistant":
-                if current_user_blocks:
-                    anthropic_msgs.append({"role": "user", "content": current_user_blocks})
-                    current_user_blocks = []
+                flush_user_blocks()
+                
                 content_blocks = []
-                for tb in msg.get("thinking_blocks") or []:
-                    tb_type = tb.get("type")
-                    if tb_type == "thinking":
-                        block = {"type": "thinking", "thinking": tb.get("thinking", "")}
-                        if tb.get("signature"):
-                            block["signature"] = tb["signature"]
-                        content_blocks.append(block)
-                    elif tb_type == "redacted_thinking":
-                        content_blocks.append({"type": "redacted_thinking", "data": tb.get("data", "")})
+                if _supports_thinking:
+                    for tb in msg.get("thinking_blocks") or []:
+                        tb_type = tb.get("type")
+                        if tb_type == "thinking":
+                            block = {"type": "thinking", "thinking": tb.get("thinking", "")}
+                            if tb.get("signature"):
+                                block["signature"] = tb["signature"]
+                            content_blocks.append(block)
+                        elif tb_type == "redacted_thinking":
+                            content_blocks.append({"type": "redacted_thinking", "data": tb.get("data", "")})
+                
                 if msg.get("content"):
                     content_blocks.append({"type": "text", "text": msg["content"]})
                 if msg.get("tool_calls"):
@@ -366,9 +420,12 @@ class LLMAdapter(ModelAdapter):
                             "input": tc["input"]
                         })
                 if content_blocks:
-                    anthropic_msgs.append({"role": "assistant", "content": content_blocks})
-        if current_user_blocks:
-            anthropic_msgs.append({"role": "user", "content": current_user_blocks})
+                    if anthropic_msgs and anthropic_msgs[-1]["role"] == "assistant":
+                        anthropic_msgs[-1]["content"].extend(content_blocks)
+                    else:
+                        anthropic_msgs.append({"role": "assistant", "content": content_blocks})
+        
+        flush_user_blocks()
         return anthropic_msgs
 
     def _to_openai_messages(self, internal_messages: List[Dict[str, Any]], system_prompt: str) -> List[Dict[str, Any]]:

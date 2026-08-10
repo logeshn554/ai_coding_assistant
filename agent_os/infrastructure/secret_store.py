@@ -65,6 +65,3 @@ class SecretStore:
         self._secrets.clear()
 
 
-# ── Singleton ───────────────────────────────────────────────────────────────
-
-secret_store = SecretStore()

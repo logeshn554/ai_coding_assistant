@@ -79,6 +79,7 @@ class MetricsCollector:
         self._gauges.clear()
 
 
-# ── Singleton ───────────────────────────────────────────────────────────────
-
 metrics_collector = MetricsCollector()
+
+
+

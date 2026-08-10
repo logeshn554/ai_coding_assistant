@@ -2843,12 +2843,30 @@ class AgentOrchestrator:
         from agent_os.kernel.interfaces import ITaskStateMachine
         from agent_os.skills.interfaces import ISkillScheduler
 
+        from agent_os.kernel.budget_manager import BudgetManager
+        from agent_os.kernel.health_monitor import HealthMonitor
+        from agent_os.kernel.cancellation_manager import CancellationManager
+        from agent_os.kernel.policy_engine import PolicyEngine
+
         self.registry = ServiceRegistry()
         self.aos_event_bus = AOSEventBus()
         self.config = DictionaryConfig(session.profile)
         self.logger_os = StandardLogger("AgentOS")
 
+        # Instantiate and register standard services to satisfy Kernel resolve requirement
+        workspace_root = getattr(session, "workspace_root", None) or ""
+        budget_mgr = BudgetManager()
+        health_mon = HealthMonitor()
+        cancel_mgr = CancellationManager()
+        policy_eng = PolicyEngine(workspace_root=workspace_root)
+
+        self.registry.register_singleton(BudgetManager, budget_mgr)
+        self.registry.register_singleton(HealthMonitor, health_mon)
+        self.registry.register_singleton(CancellationManager, cancel_mgr)
+        self.registry.register_singleton(PolicyEngine, policy_eng)
+
         self.kernel = Kernel(self.registry, self.aos_event_bus, self.config, self.logger_os)
+
 
         # Compute persistent directory inside ~/.devpilot/<workspace-hash>/
         import os
@@ -2871,7 +2889,7 @@ class AgentOrchestrator:
             except Exception as load_err:
                 self.logger_os.error(f"Failed to load memory state: {load_err}")
 
-        self.exec_engine = TransactionalExecutionEngine()
+        self.exec_engine = TransactionalExecutionEngine(self.registry)
         self.compiler = PromptCompiler()
         self.router = AgentOSModelRouterBridge(session)
         self.state_machine = TaskStateMachine(event_bus=self.aos_event_bus)

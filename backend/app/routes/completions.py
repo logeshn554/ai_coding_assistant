@@ -14,6 +14,33 @@ logger = logging.getLogger("devpilot.completions")
 
 router = APIRouter()
 
+_anthropic_clients: dict = {}
+_openai_clients: dict = {}
+
+def _get_anthropic_client(api_key: Optional[str] = None, base_url: Optional[str] = None):
+    key = (api_key, base_url)
+    if key not in _anthropic_clients:
+        import anthropic
+        kwargs = {}
+        if api_key:
+            kwargs["api_key"] = api_key
+        if base_url:
+            kwargs["base_url"] = base_url
+        _anthropic_clients[key] = anthropic.AsyncAnthropic(**kwargs)
+    return _anthropic_clients[key]
+
+def _get_openai_client(api_key: Optional[str] = None, base_url: Optional[str] = None):
+    key = (api_key, base_url)
+    if key not in _openai_clients:
+        import openai
+        kwargs = {}
+        if api_key:
+            kwargs["api_key"] = api_key
+        if base_url:
+            kwargs["base_url"] = base_url
+        _openai_clients[key] = openai.AsyncOpenAI(**kwargs)
+    return _openai_clients[key]
+
 
 class CompletionRequest(BaseModel):
     """Request body for POST /api/completions."""
@@ -48,16 +75,28 @@ async def create_completion(req: CompletionRequest) -> CompletionResponse:
     """
     profile = config_manager.get_active_profile()
     provider: str = (profile.get("provider") or "anthropic").lower()
-    model: str = profile.get("model") or "claude-opus-4-5"
+    model: str = profile.get("completion_model") or "claude-haiku-4-5-20251001"
     api_key: Optional[str] = profile.get("api_key") or None
 
     # Build a tight fill-in-the-middle style prompt
     lang_hint = f"Language: {req.language}\n" if req.language else ""
     path_hint = f"File: {req.file_path}\n" if req.file_path else ""
+
+    # Trim to local context (last 100 lines of prefix, first 30 lines of suffix)
+    prefix_lines = req.prefix.splitlines()
+    trimmed_prefix = "\n".join(prefix_lines[-100:])
+    if req.prefix.endswith("\n") and trimmed_prefix and not trimmed_prefix.endswith("\n"):
+        trimmed_prefix += "\n"
+
+    suffix_lines = req.suffix.splitlines()
+    trimmed_suffix = "\n".join(suffix_lines[:30])
+    if req.suffix.endswith("\n") and trimmed_suffix and not trimmed_suffix.endswith("\n"):
+        trimmed_suffix += "\n"
+
     user_content = (
         f"{lang_hint}{path_hint}"
-        f"<prefix>{req.prefix}</prefix>"
-        f"<suffix>{req.suffix}</suffix>"
+        f"<prefix>{trimmed_prefix}</prefix>"
+        f"<suffix>{trimmed_suffix}</suffix>"
         "\nComplete the code at the cursor:"
     )
 
@@ -89,10 +128,10 @@ async def _call_model(
 ) -> str:
     """Dispatch to the configured LLM provider and return the text completion."""
 
-    if provider in ("anthropic", "claude"):
-        import anthropic
+    base_url = profile_base_url(provider)
 
-        client = anthropic.AsyncAnthropic(api_key=api_key) if api_key else anthropic.AsyncAnthropic()
+    if provider in ("anthropic", "claude"):
+        client = _get_anthropic_client(api_key, base_url)
         response = await client.messages.create(
             model=model,
             max_tokens=max_tokens,
@@ -105,9 +144,7 @@ async def _call_model(
         )
 
     if provider in ("openai", "gpt"):
-        import openai
-
-        client = openai.AsyncOpenAI(api_key=api_key) if api_key else openai.AsyncOpenAI()
+        client = _get_openai_client(api_key, base_url)
         response = await client.chat.completions.create(
             model=model,
             max_tokens=max_tokens,

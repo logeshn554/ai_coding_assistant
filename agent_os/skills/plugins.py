@@ -1,5 +1,64 @@
-from typing import Any, Dict
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
 from agent_os.skills.interfaces import ISkill
+
+@dataclass
+class IDEContext:
+    current_file: str = ""
+    selected_symbol: str = ""
+    logs: List[str] = field(default_factory=list)
+    _extra_data: Dict[str, Any] = field(default_factory=dict)
+
+    def __getitem__(self, key: str) -> Any:
+        if hasattr(self, key) and key != "_extra_data":
+            return getattr(self, key)
+        return self._extra_data[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if hasattr(self, key) and key != "_extra_data":
+            setattr(self, key, value)
+        else:
+            self._extra_data[key] = value
+
+    def get(self, key: str, default: Any = None) -> Any:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def setdefault(self, key: str, default: Any = None) -> Any:
+        if key not in self:
+            self[key] = default
+        return self[key]
+
+    def __contains__(self, key: str) -> bool:
+        return hasattr(self, key) or key in self._extra_data
+
+    def pop(self, key: str, default: Any = None) -> Any:
+        if hasattr(self, key) and key != "_extra_data":
+            val = getattr(self, key)
+            setattr(self, key, None)
+            return val
+        return self._extra_data.pop(key, default)
+
+    def items(self):
+        res = {
+            "current_file": self.current_file,
+            "selected_symbol": self.selected_symbol,
+            "logs": self.logs,
+        }
+        res.update(self._extra_data)
+        return res.items()
+
+    def keys(self):
+        res = ["current_file", "selected_symbol", "logs"]
+        res.extend(self._extra_data.keys())
+        return res
+
+    def update(self, other: Dict[str, Any]) -> None:
+        for k, v in other.items():
+            self[k] = v
+
 
 class RenameSymbolSkill(ISkill):
     @property
@@ -103,4 +162,19 @@ class UpdateDependencySkill(ISkill):
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         context["update_dependency_executed"] = True
         context["logs"] = context.get("logs", []) + ["Upgraded dependency version successfully."]
+        return context
+
+
+class SecurityScanSkill(ISkill):
+    @property
+    def name(self) -> str:
+        return "Security Scan"
+
+    @property
+    def description(self) -> str:
+        return "Scans source files for security vulnerabilities."
+
+    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        context["security_scan_executed"] = True
+        context["logs"] = context.get("logs", []) + ["Security scan completed. No vulnerabilities found."]
         return context

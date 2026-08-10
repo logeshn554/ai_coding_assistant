@@ -89,6 +89,8 @@ class WorkspaceIndex:
         # Cache maps relative_path -> {"mtime": float, "size": int, "first_lines": str}
         self.cache = {}
         self._dirty = True
+        self._last_context = ""
+        self._last_context_time = 0.0
 
     def update(self):
         if not self.workspace_root or not os.path.isdir(self.workspace_root):
@@ -148,6 +150,12 @@ class WorkspaceIndex:
         """
         Formats workspace context up to max_tokens.
         """
+        import time
+        now = time.time()
+        if not self._dirty or (now - self._last_context_time < 10.0):
+            if self._last_context:
+                return self._last_context
+
         if self._dirty:
             self.update()
             self._dirty = False
@@ -173,7 +181,10 @@ class WorkspaceIndex:
             parts.append(file_header + content)
             current_len += len(file_header) + len(content)
             
-        return "".join(parts)
+        res = "".join(parts)
+        self._last_context = res
+        self._last_context_time = now
+        return res
 
     def get_symbols(self, rel_path: str) -> List[Dict[str, Any]]:
         """

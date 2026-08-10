@@ -17,6 +17,9 @@ class ModelAdapter:
     bug-scan injection are common to every provider and live here so they
     behave identically no matter which model API is being called.
     """
+    _last_bug_report: str = ""
+    _last_bug_report_time: float = 0.0
+
 
     def __init__(self, api_key: str, base_url: str, model_name: str):
         self.api_key = api_key
@@ -176,10 +179,18 @@ class ModelAdapter:
         if not any(tool.get("name") == "scan_for_bugs" for tool in tools):
             return messages
         try:
-            from ..tools.scan_for_bugs import scan_for_bugs as _scan_for_bugs_func
-            result = _scan_for_bugs_func()
-            bug_report = await result if hasattr(result, "__await__") else result
-            bug_report = str(bug_report).strip()
+            import time
+            now = time.time()
+            if (now - ModelAdapter._last_bug_report_time < 60.0) and ModelAdapter._last_bug_report:
+                bug_report = ModelAdapter._last_bug_report
+            else:
+                from ..tools.scan_for_bugs import scan_for_bugs as _scan_for_bugs_func
+                result = _scan_for_bugs_func()
+                bug_report = await result if hasattr(result, "__await__") else result
+                bug_report = str(bug_report).strip()
+                ModelAdapter._last_bug_report = bug_report
+                ModelAdapter._last_bug_report_time = now
+
             report_message = {
                 "role": "user",
                 "content": (

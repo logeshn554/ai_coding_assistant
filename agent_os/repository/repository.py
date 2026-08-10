@@ -1,5 +1,7 @@
 import os
 import hashlib
+import asyncio
+import concurrent.futures
 from typing import Any, List, Dict
 from agent_os.repository.interfaces import IRepository
 from agent_os.repository.db import DatabaseManager
@@ -34,52 +36,69 @@ class RepositoryKernel(IRepository):
         return files
 
     def scan_workspace(self, workspace_root: str) -> None:
+        self.scan_workspace_sync(workspace_root)
+
+    def scan_workspace_sync(self, workspace_root: str) -> None:
         self.workspace_root = workspace_root
         
+        # 1. Query all existing files from DB to build mtimes mapping
+        db_files = self.db.query_files("")
+        db_mtimes = {f["path"]: (f["modified_time"], f["id"]) for f in db_files}
+        
+        # 2. Collect all files in workspace root
+        all_paths = []
         for root, dirs, filenames in os.walk(workspace_root):
-            # Ignore standard directories
             dirs[:] = [d for d in dirs if d not in {".git", "node_modules", "dist", "build", "target", "__pycache__", "venv", ".venv", "env", ".env"}]
-            
-            for filename in filenames:
-                full_path = os.path.join(root, filename)
+            for f in filenames:
+                full_path = os.path.join(root, f)
                 rel_path = os.path.relpath(full_path, workspace_root).replace("\\", "/")
+                all_paths.append((full_path, rel_path))
                 
-                try:
-                    size = os.path.getsize(full_path)
-                    mtime = int(os.path.getmtime(full_path))
+        # 3. Use ThreadPoolExecutor to parse and insert files in parallel
+        def _index_file(full_path: str, rel_path: str) -> None:
+            try:
+                size = os.path.getsize(full_path)
+                mtime = int(os.path.getmtime(full_path))
+                
+                # Check incremental cache
+                if rel_path in db_mtimes:
+                    cached_mtime, file_id = db_mtimes[rel_path]
+                    if mtime == cached_mtime:
+                        # File hasn't changed, skip parsing!
+                        return
+                
+                # Read & parse
+                with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                    content = f.read()
                     
-                    with open(full_path, "r", encoding="utf-8", errors="replace") as f:
-                        content = f.read()
-                        
-                    content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
-                    language = detect_language(rel_path)
-                    
-                    self.db.clear_file_metadata(rel_path)
-                    file_id = self.db.insert_file(rel_path, language, size, mtime, content_hash)
-                    
-                    symbols, references = parse_code(content, language)
-                    
-                    for sym in symbols:
-                        self.db.insert_symbol(
-                            file_id=file_id,
-                            name=sym.name,
-                            sym_type=sym.sym_type,
-                            start_line=sym.start_line,
-                            start_col=sym.start_col,
-                            end_line=sym.end_line,
-                            end_col=sym.end_col,
-                            signature=sym.signature
-                        )
-                        
-                    for ref in references:
-                        self.db.insert_reference(
-                            file_id=file_id,
-                            symbol_name=ref.name,
-                            line=ref.line,
-                            col=ref.col
-                        )
-                except Exception:
-                    pass
+                content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+                language = detect_language(rel_path)
+                
+                # Clear and insert (cascade delete takes care of old symbols/refs)
+                self.db.clear_file_metadata(rel_path)
+                file_id = self.db.insert_file(rel_path, language, size, mtime, content_hash)
+                
+                symbols, references = parse_code(content, language)
+                
+                self.db.insert_symbols_batch(file_id, symbols)
+                self.db.insert_references_batch(file_id, references)
+            except Exception:
+                pass
+
+        # Run in parallel thread pool
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(_index_file, fp, rp) for fp, rp in all_paths]
+            concurrent.futures.wait(futures)
+            
+        # 4. Clean up deleted/stale records from DB
+        scanned_paths = {rp for _, rp in all_paths}
+        for path in db_mtimes:
+            if path not in scanned_paths:
+                self.db.clear_file_metadata(path)
+
+    async def scan_workspace_parallel(self, workspace_root: str) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.scan_workspace_sync, workspace_root)
 
     def find_file(self, pattern: str) -> List[Dict[str, Any]]:
         return self.db.query_files(pattern)

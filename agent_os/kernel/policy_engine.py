@@ -86,6 +86,54 @@ class PolicyEngine(IKernelService):
 
         return True
 
+    def is_command_safe(self, command: str) -> bool:
+        """Statically inspects a command for security and boundary violations."""
+        if not command:
+            return True
+
+        command_clean = command.strip().lower()
+
+        # 1. Deny list of dangerous commands/utilities
+        dangerous_utilities = {
+            "rm -rf /", "rm -rf /*", "mkfs", "fdisk", "reboot", "shutdown", 
+            "format", "dd if=", "chown -r", "chmod -r 777"
+        }
+        for util in dangerous_utilities:
+            if util in command_clean:
+                logger.warning(f"Policy Engine blocked command containing dangerous utility: '{command}'")
+                return False
+
+        # 2. Block any command with parent directory traversal that goes outside the workspace
+        if self._workspace_root:
+            if "../" in command or "..\\" in command:
+                import re
+                paths = re.findall(r'[A-Za-z0-9_\-\./\\]+', command)
+                for p in paths:
+                    if ".." in p:
+                        try:
+                            resolved = os.path.abspath(os.path.join(self._workspace_root, p))
+                            workspace_abs = os.path.abspath(self._workspace_root)
+                            if not resolved.startswith(workspace_abs):
+                                logger.warning(f"Policy Engine blocked command due to path traversal outside workspace: '{p}' in '{command}'")
+                                return False
+                        except Exception:
+                            return False
+
+        # 3. Block execution of absolute/system commands outside workspace
+        if self._workspace_root:
+            import re
+            workspace_abs = os.path.abspath(self._workspace_root).replace("\\", "/").lower()
+            paths = re.findall(r'/[A-Za-z0-9_\-\./]+|[A-Za-z]:\\[A-Za-z0-9_\-\.\\ ]+', command)
+            for p in paths:
+                p_norm = os.path.abspath(p).replace("\\", "/").lower()
+                if not p_norm.startswith(workspace_abs):
+                    basename = os.path.basename(p_norm)
+                    if basename not in {"python", "python3", "git", "npm", "node", "cargo", "pip", "pip3", "go", "pytest", "npx"}:
+                        logger.warning(f"Policy Engine blocked command referencing absolute path outside workspace: '{p}'")
+                        return False
+
+        return True
+
     def is_path_safe(self, path_str: str, write_requested: bool = False) -> bool:
         """Check if a path is safe and within sandboxed boundaries."""
         if not self._workspace_root:
@@ -115,6 +163,3 @@ class PolicyEngine(IKernelService):
             return False
 
 
-# ── Singleton ───────────────────────────────────────────────────────────────
-
-policy_engine = PolicyEngine()

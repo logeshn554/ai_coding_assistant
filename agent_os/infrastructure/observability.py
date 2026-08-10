@@ -44,6 +44,7 @@ class Observability:
         self._spans.clear()
 
 
-# ── Singleton ───────────────────────────────────────────────────────────────
-
 observability = Observability()
+
+
+

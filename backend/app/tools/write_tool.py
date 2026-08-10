@@ -270,7 +270,9 @@ async def write_or_edit_file(
         proposed_content = norm_original[:start] + replacement + norm_original[end:]
 
     # Confirmation guardrail
-    if not auto_apply:
+    # Skip confirmation for brand-new files (no existing content to diff — nothing to lose)
+    is_new_file = not os.path.exists(abs_path)
+    if not auto_apply and not is_new_file:
         from ..diff_utils import generate_hunks, apply_hunks
         hunks = generate_hunks(original_content, proposed_content)
 

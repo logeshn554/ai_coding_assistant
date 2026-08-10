@@ -97,6 +97,3 @@ class DurableEventBus:
         self._sequence_counter = 0
 
 
-# ── Singleton ───────────────────────────────────────────────────────────────
-
-durable_event_bus = DurableEventBus()
