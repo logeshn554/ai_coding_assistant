@@ -504,6 +504,17 @@ class ParallelAgentAdapter(BaseAgent):
     async def execute(self, task_description: str, session, task_id: int) -> str:
         from parallel_agent_system.core.config import SystemConfig
         from parallel_agent_system.core.state import SubTask
+        from parallel_agent_system.runtime.secret_registry import SecretRegistry
+        
+        # Synchronize active session credentials with parallel agent system
+        profile = getattr(session, "profile", {})
+        api_key = profile.get("api_key", "")
+        if api_key:
+            SecretRegistry.set("LLM_API_KEY", api_key)
+            api_format = (profile.get("api_format") or "openai").upper()
+            SecretRegistry.set(f"{api_format}_API_KEY", api_key)
+            SecretRegistry.set("OPENAI_API_KEY", api_key)
+            SecretRegistry.set("ANTHROPIC_API_KEY", api_key)
         
         # Late imports
         if self.agent_cls_name == "CodeAgent":

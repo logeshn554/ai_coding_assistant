@@ -1069,13 +1069,13 @@ class AgentSession:
 
             self.last_mode = mode
 
-            # Direct tool-calling loop for all modes (Ask/Plan/Agent)
-            # The multi-agent orchestrator is bypassed because it requires
-            # pre-populated shared memory (target_files / file_contents) and
-            # produces no output for ad-hoc requests like "run this" or "what
-            # is the localhost URL?".  The direct loop lets the LLM call any
-            # available tool itself, which is the correct behavior.
-            adapter = self._get_adapter(is_agent=(mode == "Agent"))
+            if mode == "Agent":
+                await self.orchestrator.run_task(text, self)
+                return
+
+            # Direct tool-calling loop for all other modes (Ask/Plan)
+            # The direct loop lets the LLM call any available tool itself.
+            adapter = self._get_adapter(is_agent=False)
             system_prompt = self._get_system_prompt(mode)
             tools = self._get_tools_for_mode(mode)
 
