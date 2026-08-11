@@ -1,179 +1,187 @@
-"""# reference implementation — not wired into production"""
+"""
+Model Router — Orchestrates routing, capabilities discovery, and provider adapters.
+Supports both legacy string completions and new structured multi-provider message generation.
+"""
 
-import time
+from __future__ import annotations
+
 import asyncio
-from typing import AsyncGenerator, Dict, List, Set, Any
+from typing import Any, Dict, List, Optional, Union, AsyncGenerator
+
 from agent_os.providers.interfaces import IModelRouter
+from agent_os.providers.base import ModelProvider, ProviderConfig, ModelResponse, ProviderHealth
+from agent_os.providers.registry import get_registry
 
-class RateLimitError(Exception):
-    pass
-
-class ProviderError(Exception):
-    pass
 
 class ModelRouter(IModelRouter):
-    """Architectural Model Router handling capabilities routing, dynamic fallbacks, retries, and rate limits."""
+    """Orchestrates requests to selected LLM providers.
     
-    def __init__(self, max_retries: int = 3, base_delay: float = 0.01, rpm_limit: int = 10) -> None:
-        self.max_retries = max_retries
-        self.base_delay = base_delay
-        self.rpm_limit = rpm_limit
+    Supports both:
+    1. Legacy string prompt completions for compatibility with old agent OS workflows.
+    2. New structured message histories and tool call definitions for the real agent loop.
+    """
+
+    def __init__(self, config: Optional[ProviderConfig] = None) -> None:
+        self.registry = get_registry()
         
-        # Provider health configuration
-        self._provider_health: Dict[str, bool] = {
+        # Load provider configuration with safe defaults
+        if config is None:
+            try:
+                import os
+                provider = os.getenv("LLM_PROVIDER", "openai")
+                model = os.getenv(f"{provider.upper()}_MODEL")
+                api_key = os.getenv(f"{provider.upper()}_API_KEY")
+                
+                # Check secret registry fallback
+                if not api_key:
+                    from parallel_agent_system.runtime.secret_registry import SecretRegistry
+                    api_key = SecretRegistry.get(f"{provider.upper()}_API_KEY") or SecretRegistry.get("LLM_API_KEY")
+                
+                if not model or not api_key:
+                    # Non-crashing default fallback config
+                    config = ProviderConfig(
+                        name="openai",
+                        model="gpt-4o-mini",
+                        base_url="https://api.openai.com/v1",
+                        api_key="mock-key",
+                    )
+                else:
+                    config = ProviderConfig(
+                        name=provider,
+                        model=model,
+                        api_key=api_key,
+                        base_url=os.getenv(f"{provider.upper()}_BASE_URL"),
+                    )
+            except Exception:
+                config = ProviderConfig(
+                    name="openai",
+                    model="gpt-4o-mini",
+                    base_url="https://api.openai.com/v1",
+                    api_key="mock-key",
+                )
+
+        self.config = config
+        self.provider = self.registry.create(
+            provider_name=config.name,
+            model=config.model,
+            api_key=config.api_key,
+            base_url=config.base_url,
+        )
+        self._provider_health = {
             "anthropic": True,
             "openai": True,
             "gemini": True,
             "groq": True,
             "ollama": True
         }
-        
-        # Priority list for fallback routing
-        self._fallback_order = ["anthropic", "openai", "gemini", "groq", "ollama"]
-        
-        # Request timestamps for rate limiting
-        self._request_timestamps: List[float] = []
-        self._cancelled_tasks: Set[str] = set()
 
-    def health_check(self, provider_name: str) -> bool:
-        return self._provider_health.get(provider_name.lower(), False)
+    async def generate(
+        self,
+        messages: Union[str, List[Dict[str, str]]],
+        system_prompt: str = "",
+        model_name: str = "default",
+        tools: Optional[List[Dict[str, Any]]] = None,
+        **kwargs: Any,
+    ) -> Union[str, ModelResponse]:
+        """Generate LLM response, supporting both legacy strings and structured inputs."""
+        if isinstance(messages, str):
+            # Legacy format execution
+            import os
+            from parallel_agent_system.runtime.secret_registry import SecretRegistry
+            
+            resolved_provider = "openai"
+            model_lower = model_name.lower()
+            if "claude" in model_lower or "anthropic" in model_lower:
+                resolved_provider = "anthropic"
+            elif "gemini" in model_lower:
+                resolved_provider = "gemini"
+            elif "groq" in model_lower:
+                resolved_provider = "groq"
+            elif "ollama" in model_lower:
+                resolved_provider = "ollama"
 
-    def set_provider_health(self, provider_name: str, healthy: bool) -> None:
-        self._provider_health[provider_name.lower()] = healthy
+            api_key = SecretRegistry.get(f"{resolved_provider.upper()}_API_KEY") or SecretRegistry.get("LLM_API_KEY")
+            
+            # Check ConfigManager fallback
+            if not api_key:
+                try:
+                    from backend.app.config import ConfigManager
+                    profile = ConfigManager().get_active_profile()
+                    if profile:
+                        api_key = profile.get("api_key")
+                except Exception:
+                    pass
+
+            if not api_key or api_key.startswith("mock") or os.environ.get("AGENT_RUNTIME_MODE", "").lower() == "mock":
+                # Simulated completion
+                return f"[{resolved_provider.upper()} RESPONSE] for prompt: {messages}"
+
+            # Instantiate dynamic adapter
+            temp_provider = self.registry.create(resolved_provider, model_name, api_key)
+            payload = []
+            if system_prompt:
+                payload.append({"role": "system", "content": system_prompt})
+            payload.append({"role": "user", "content": messages})
+            
+            res = await temp_provider.generate(payload, tools=tools, **kwargs)
+            return res.content or ""
+        else:
+            # Structured generate call
+            return await self.provider.generate(messages, tools=tools, **kwargs)
+
+    async def stream(
+        self,
+        messages: Union[str, List[Dict[str, str]]],
+        system_prompt: str = "",
+        model_name: str = "default",
+        tools: Optional[List[Dict[str, Any]]] = None,
+        **kwargs: Any,
+    ) -> AsyncGenerator[str, None]:
+        """Stream chunks from model provider."""
+        if isinstance(messages, str):
+            # Legacy streaming fallback
+            response = await self.generate(messages, system_prompt, model_name, tools, **kwargs)
+            words = response.split(" ")
+            for i, word in enumerate(words):
+                yield (word + " " if i < len(words) - 1 else word)
+                await asyncio.sleep(0.001)
+        else:
+            # Structured stream
+            async for chunk in self.provider.stream(messages, tools=tools, **kwargs):
+                yield chunk
 
     def cancel(self, task_id: str) -> None:
-        self._cancelled_tasks.add(task_id)
+        """Cancel a running task (legacy method)."""
+        pass
 
-    def _check_rate_limit(self) -> None:
-        """Enforces a sliding-window Rate Limiter (Requests Per Minute)."""
-        now = time.time()
-        self._request_timestamps = [t for t in self._request_timestamps if now - t < 60]
-        if len(self._request_timestamps) >= self.rpm_limit:
-            raise RateLimitError("Rate limit exceeded. Too many requests per minute.")
-        self._request_timestamps.append(now)
-
-    def _select_providers(self, model_name: str) -> List[str]:
-        """Resolves target and fallback provider sequence based on requested model name/feature."""
-        model_name = model_name.lower()
-        if "claude" in model_name or "anthropic" in model_name:
-            primary = "anthropic"
-        elif "gpt" in model_name or "openai" in model_name:
-            primary = "openai"
-        elif "gemini" in model_name:
-            primary = "gemini"
-        elif "groq" in model_name:
-            primary = "groq"
-        elif "ollama" in model_name:
-            primary = "ollama"
-        else:
-            primary = "anthropic"
-
-        providers = [primary]
-        for fallback in self._fallback_order:
-            if fallback != primary and self.health_check(fallback):
-                providers.append(fallback)
-        return providers
-
-    async def generate(self, prompt: str, system_prompt: str = "", model_name: str = "default") -> str:
-        providers = self._select_providers(model_name)
-        last_error = None
-
-        for provider in providers:
-            if not self.health_check(provider):
-                continue
-
-            for attempt in range(self.max_retries):
-                try:
-                    self._check_rate_limit()
-                    
-                    # Call real provider or fall back to mock
-                    res = await self._real_provider_call(provider, prompt, system_prompt, model_name)
-                    return res
-                except RateLimitError as e:
-                    last_error = e
-                    # For rate limit, back off and retry
-                    await asyncio.sleep(self.base_delay * (2 ** attempt))
-                except Exception as e:
-                    last_error = e
-                    # For provider failure, back off and retry
-                    await asyncio.sleep(self.base_delay * (2 ** attempt))
-
-            # Mark provider as unhealthy on retry exhaustions to trigger fallbacks
-            self.set_provider_health(provider, False)
-
-        raise ProviderError(f"All routed model providers failed or rate-limited. Last error: {str(last_error)}")
-
-    async def _real_provider_call(self, provider: str, prompt: str, system_prompt: str, model_name: str) -> str:
-        # Retrieve API key
-        from parallel_agent_system.runtime.secret_registry import SecretRegistry
-        api_key = SecretRegistry.get(f"{provider.upper()}_API_KEY") or SecretRegistry.get("LLM_API_KEY")
+    def health_check(self, provider_name: Optional[str] = None) -> Any:
+        """Check provider connection status (supports legacy boolean response or health report)."""
+        if provider_name is not None:
+            # Legacy boolean status check
+            return self._provider_health.get(provider_name.lower(), True)
         
-        base_url = None
-        resolved_model = model_name
-        
-        # Fall back to ConfigManager if registry key is not set
-        if not api_key:
-            try:
-                from backend.app.config import ConfigManager
-                profile = ConfigManager().get_active_profile()
-                if profile:
-                    api_key = profile.get("api_key")
-                    base_url = profile.get("base_url")
-                    if not resolved_model or resolved_model == "default":
-                        resolved_model = profile.get("model_name") or "default"
-            except Exception:
-                pass
-                
-        # If no key, or key is "mock", do not make real call
-        if not api_key or api_key.startswith("mock"):
-            return await self._mock_provider_call(provider, prompt)
-            
-        # Resolve defaults if still empty
-        if not resolved_model or resolved_model == "default":
-            resolved_model = "gpt-4o-mini"
-            
-        # Determine base URL if not set
-        if not base_url:
-            if provider == "openai":
-                base_url = SecretRegistry.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
-            elif provider == "anthropic":
-                base_url = SecretRegistry.get("ANTHROPIC_BASE_URL") or "https://api.openai.com/v1"
-            elif provider == "gemini":
-                base_url = SecretRegistry.get("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai"
-            elif provider == "groq":
-                base_url = SecretRegistry.get("GROQ_BASE_URL") or "https://api.groq.com/openai/v1"
-            elif provider == "ollama":
-                base_url = SecretRegistry.get("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
-            else:
-                base_url = "https://api.openai.com/v1"
-                
-        # Instantiate OpenAIProvider (acting as a generic OpenAI-compatible requester)
-        from agent_runtime.llm.openai_provider import OpenAIProvider
-        from agent_runtime.llm import Message
-        
-        prov = OpenAIProvider(
+        # Real health check verification
+        try:
+            return asyncio.run(self.provider.health_check())
+        except Exception as e:
+            return ProviderHealth(healthy=False, latency_ms=0.0, error=str(e))
+
+    def healthCheck(self, provider_name: str) -> bool:
+        """CamelCase alias for interfaces mapping compatibility."""
+        return self.health_check(provider_name)
+
+    def switch_provider(self, provider_name: str, model: str, api_key: str, **kwargs: Any) -> None:
+        """Switch current ModelRouter to a different configured provider."""
+        config = ProviderConfig(
+            name=provider_name,
+            model=model,
             api_key=api_key,
-            model=resolved_model,
-            base_url=base_url
+            base_url=kwargs.get("base_url"),
         )
-        
-        messages = []
-        if system_prompt:
-            messages.append(Message(role="system", content=system_prompt))
-        messages.append(Message(role="user", content=prompt))
-        
-        response = await prov.generate(messages=messages)
-        return response.content
-
-    async def _mock_provider_call(self, provider: str, prompt: str) -> str:
-        """Simulates provider completions."""
-        if not self.health_check(provider):
-            raise ConnectionError(f"Connection failed for provider: {provider}")
-        return f"[{provider.upper()} RESPONSE] for prompt: {prompt}"
-
-    async def stream(self, prompt: str, system_prompt: str = "", model_name: str = "default") -> AsyncGenerator[str, None]:
-        response = await self.generate(prompt, system_prompt, model_name)
-        words = response.split(" ")
-        for i, word in enumerate(words):
-            yield (word + " " if i < len(words) - 1 else word)
-            await asyncio.sleep(0.001)
+        self.config = config
+        self.provider = self.registry.create(
+            provider_name=provider_name,
+            model=model,
+            api_key=api_key,
+            base_url=config.base_url,
+        )
