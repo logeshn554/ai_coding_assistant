@@ -303,7 +303,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/chat?session_id=${activeSessionId}`;
+    const wsUrl = `${protocol}//${window.location.host}/ws/chat?session_id=${activeSessionId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

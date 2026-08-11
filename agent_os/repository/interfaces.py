@@ -12,6 +12,14 @@ class IRepository(ABC):
         pass
 
     @abstractmethod
+    def create_file(self, file_path: str, content: str = "") -> bool:
+        pass
+
+    @abstractmethod
+    def edit_file(self, file_path: str, target: str, replacement: str) -> bool:
+        pass
+
+    @abstractmethod
     def list_files(self) -> List[str]:
         pass
 

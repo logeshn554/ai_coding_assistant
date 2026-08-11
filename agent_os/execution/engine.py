@@ -34,7 +34,20 @@ class FileTransaction(ITransaction):
         if not self._active:
             raise TransactionError("Transaction is not active. Call begin() first.")
 
-        abs_path = os.path.abspath(file_path)
+        workspace_root = ""
+        if self._engine.registry:
+            try:
+                from agent_os.core.config import DictionaryConfig
+                config = self._engine.registry.resolve(DictionaryConfig)
+                workspace_root = config.get("workspace_root")
+            except Exception:
+                pass
+
+        if workspace_root and not os.path.isabs(file_path):
+            abs_path = os.path.abspath(os.path.join(workspace_root, file_path))
+        else:
+            abs_path = os.path.abspath(file_path)
+
         normalized_path = os.path.normpath(abs_path).replace("\\", "/")
 
         # 1. Enforce Pessimistic File Locking

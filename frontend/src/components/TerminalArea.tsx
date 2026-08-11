@@ -125,7 +125,7 @@ function TerminalPane({
       if (shell) params.set('shell', shell);
       if (workspacePath) params.set('workspace', workspacePath);
       if (sessionId) params.set('session_id', sessionId);
-      const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/terminal?${params.toString()}`;
+      const wsUrl = `${protocol}//${window.location.host}/ws/terminal?${params.toString()}`;
       const socket = new WebSocket(wsUrl);
       ws = socket;
       wsRef.current = socket;

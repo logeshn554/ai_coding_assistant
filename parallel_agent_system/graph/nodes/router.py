@@ -1,9 +1,12 @@
 import asyncio
+import logging
 from typing import Any
 
 from parallel_agent_system.core.state import SubTask, AgentResult, GraphState
 from parallel_agent_system.core.config import SystemConfig
 from parallel_agent_system.monitor.stuck_detector import StuckDetector
+
+logger = logging.getLogger("parallel_agent_system.graph.nodes.router")
 
 
 # --- Dependency Resolution Helper ---
@@ -29,9 +32,14 @@ async def run_agents_parallel_node(state: GraphState) -> dict:
     """
     Executes independent subtasks concurrently in parallel batches using asyncio.gather.
     Resolves dependencies iteratively in multiple passes until no more tasks can progress.
+
+    Key fixes over the original implementation:
+    - Uses ``return_exceptions=True`` so one failing subtask does NOT kill its siblings.
+    - Wraps each subtask in ``asyncio.wait_for`` with a per-agent timeout.
+    - Converts raw Exception objects into proper AgentResult(status="failed").
     """
     config = SystemConfig()
-    
+
     # Track accumulated results in this step (reducer accumulates them to state["results"] at the end)
     current_results: list[AgentResult] = list(state.get("results", []))
     new_results: list[AgentResult] = []
@@ -56,6 +64,9 @@ async def run_agents_parallel_node(state: GraphState) -> dict:
         t.run_id = run_id
         t.attempt = attempt
 
+    # Per-agent timeout from config
+    agent_timeout = getattr(config, "max_agent_execution_timeout_seconds", 300.0)
+
     async def run_one(subtask: SubTask) -> AgentResult:
         """Executes a single subtask, falling back to a mock result if the registry is missing."""
         if subtask.agent_type in agent_registry:
@@ -76,6 +87,35 @@ async def run_agents_parallel_node(state: GraphState) -> dict:
                 event_log_key=f"events:mock:{subtask.id}"
             )
 
+    async def run_one_guarded(subtask: SubTask) -> AgentResult:
+        """Wraps run_one with a timeout guard and exception-to-AgentResult conversion."""
+        try:
+            return await asyncio.wait_for(run_one(subtask), timeout=agent_timeout)
+        except asyncio.TimeoutError:
+            logger.error(f"Subtask '{subtask.id}' ({subtask.agent_type}) timed out after {agent_timeout}s")
+            return AgentResult(
+                subtask_id=subtask.id,
+                agent_type=subtask.agent_type,
+                status="failed",
+                output=f"Agent execution timed out after {agent_timeout}s",
+                cost_usd=0.0,
+                iterations=0,
+                event_log_key=f"events:timeout:{subtask.id}",
+                error=f"TimeoutError: exceeded {agent_timeout}s limit"
+            )
+        except Exception as e:
+            logger.error(f"Subtask '{subtask.id}' ({subtask.agent_type}) raised unhandled error: {e}")
+            return AgentResult(
+                subtask_id=subtask.id,
+                agent_type=subtask.agent_type,
+                status="failed",
+                output=f"Agent execution failed: {e}",
+                cost_usd=0.0,
+                iterations=0,
+                event_log_key=f"events:error:{subtask.id}",
+                error=str(e)
+            )
+
     stuck_detector = StuckDetector(config=config)
 
     # Dependency resolution loop
@@ -92,10 +132,31 @@ async def run_agents_parallel_node(state: GraphState) -> dict:
             break
 
         # Execute the entire pending batch concurrently
-        batch_results = list(await asyncio.gather(
-            *[run_one(t) for t in pending_batch],
-            return_exceptions=False
-        ))
+        # return_exceptions=True → a single failure does NOT kill siblings
+        raw_results = await asyncio.gather(
+            *[run_one_guarded(t) for t in pending_batch],
+            return_exceptions=True
+        )
+
+        # Convert any stray Exception objects to proper AgentResult
+        batch_results: list[AgentResult] = []
+        for i, r in enumerate(raw_results):
+            if isinstance(r, Exception):
+                # Should not happen (run_one_guarded catches everything) but be defensive
+                st = pending_batch[i]
+                logger.error(f"Unexpected exception for subtask '{st.id}': {r}")
+                batch_results.append(AgentResult(
+                    subtask_id=st.id,
+                    agent_type=st.agent_type,
+                    status="failed",
+                    output=f"Unhandled exception: {r}",
+                    cost_usd=0.0,
+                    iterations=0,
+                    event_log_key=f"events:unhandled:{st.id}",
+                    error=str(r)
+                ))
+            else:
+                batch_results.append(r)
 
         # Check for stuck tasks and recurring errors using StuckDetector
         threshold = 2
@@ -134,7 +195,7 @@ async def run_agents_parallel_node(state: GraphState) -> dict:
                             if t.id == st_id and formatted_search not in t.description:
                                 t.description += formatted_search
             except Exception as ws_err:
-                pass
+                logger.warning(f"Web search fallback failed: {ws_err}")
 
         # Accumulate results for dependency tracking in the next iteration
         current_results.extend(batch_results)

@@ -14,15 +14,31 @@ class RepositoryKernel(IRepository):
         self.workspace_root = ""
 
     def read_file(self, path: str) -> str:
-        full_path = os.path.join(self.workspace_root, path) if self.workspace_root else path
-        with open(full_path, "r", encoding="utf-8", errors="replace") as f:
-            return f.read()
+        from agent_os.repository.file_operations import FileOperations
+        ops = FileOperations(self.workspace_root)
+        result = ops.read_file(path)
+        if not result.success:
+            raise FileNotFoundError(result.message)
+        return result.content or ""
 
     def write_file(self, path: str, content: str) -> None:
-        full_path = os.path.join(self.workspace_root, path) if self.workspace_root else path
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        with open(full_path, "w", encoding="utf-8") as f:
-            f.write(content)
+        from agent_os.repository.file_operations import FileOperations
+        ops = FileOperations(self.workspace_root)
+        result = ops.write_file(path, content)
+        if not result.success:
+            raise IOError(result.message)
+
+    def create_file(self, file_path: str, content: str = "") -> bool:
+        from agent_os.repository.file_operations import FileOperations
+        ops = FileOperations(self.workspace_root)
+        result = ops.create_file(file_path, content)
+        return result.success
+
+    def edit_file(self, file_path: str, target: str, replacement: str) -> bool:
+        from agent_os.repository.file_operations import FileOperations
+        ops = FileOperations(self.workspace_root)
+        result = ops.edit_file(file_path, target, replacement)
+        return result.success
 
     def list_files(self) -> List[str]:
         if not self.workspace_root:

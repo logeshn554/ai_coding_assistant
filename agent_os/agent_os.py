@@ -1,6 +1,7 @@
 import os
 import asyncio
-from typing import Any, Dict, List, Callable, Coroutine, Optional
+import logging
+from typing import Any, Dict, List, Callable, Coroutine, Optional, Set
 
 from agent_os.core.logging import StandardLogger
 from agent_os.core.config import DictionaryConfig
@@ -57,6 +58,9 @@ from agent_os.skills.plugins import (
     IDEContext
 )
 
+logger = logging.getLogger("agentos.facade")
+
+
 class OSStatus(dict):
     """Custom dict subclass returning a clean string representation for AgentOS status."""
     def __str__(self) -> str:
@@ -71,7 +75,14 @@ class OSStatus(dict):
 
 
 class AgentOS:
-    """Unified AgentOS v2 Facade coordinating IDE, Parallel DAG Scheduler, and Repository scanning."""
+    """Unified AgentOS v2 Facade coordinating IDE, Parallel DAG Scheduler, and Repository scanning.
+
+    Improvements over the original:
+      - Tracks running async tasks for proper lifecycle management.
+      - ``shutdown_async()`` cancels all in-flight tasks before tearing down services.
+      - Thread-safe ServiceRegistry and FileLockManager prevent parallel corruption.
+      - DependencyScheduler uses asyncio.Lock to prevent race conditions.
+    """
     def __init__(
         self,
         workspace_root: str,
@@ -131,7 +142,8 @@ class AgentOS:
 
         self.reasoning_engine = ReasoningEngine(self.registry)
 
-
+        # ── Task lifecycle tracking ──
+        self._running_tasks: Set[asyncio.Task] = set()
 
         self._booted = False
 
@@ -178,10 +190,6 @@ class AgentOS:
         self.registry.register_singleton(IPerformanceOptimizer, self.performance_optimizer)
         self.registry.register_singleton(PerformanceOptimizer, self.performance_optimizer)
 
-
-
-
-
         # Register Sandbox factory for auto-wiring ISandbox instances
         self.registry.register_factory(ISandbox, lambda: create_sandbox(
             use_docker=None,
@@ -221,13 +229,24 @@ class AgentOS:
             "token_budget": self.token_budget,
             "current_tokens": self.context_manager.estimate_tokens(),
             "concurrency_limit": self.concurrency_limit,
-            "total_files_indexed": len(self.repository.list_files()) if self._booted else 0
+            "total_files_indexed": len(self.repository.list_files()) if self._booted else 0,
+            "running_tasks": len(self._running_tasks),
         })
+
+    def _track_task(self, task: asyncio.Task) -> asyncio.Task:
+        """Register an async task for lifecycle tracking."""
+        self._running_tasks.add(task)
+        task.add_done_callback(self._running_tasks.discard)
+        return task
 
     async def run_skills_parallel(self, skill_names: List[str], context: IDEContext) -> IDEContext:
         """Runs multiple skills concurrently with deep-copied contexts."""
         if not self._booted:
             raise RuntimeError("AgentOS is not booted. Call await boot() first.")
+        if hasattr(context, "workspace_root") and not context.workspace_root:
+            context.workspace_root = self.workspace_root
+        elif isinstance(context, dict) and "workspace_root" not in context:
+            context["workspace_root"] = self.workspace_root
         return await self.skill_orchestrator.run_parallel(skill_names, context)
 
     async def run_tasks(
@@ -257,10 +276,57 @@ class AgentOS:
             repair_fn=repair_fn
         )
 
-
-    def shutdown(self) -> None:
+    async def shutdown_async(self) -> None:
+        """Gracefully shut down AgentOS, cancelling all in-flight async tasks."""
         if not self._booted:
             return
+
+        logger.info("AgentOS: Initiating async shutdown...")
+
+        # 1. Cancel all tracked running tasks
+        if self._running_tasks:
+            logger.info(f"AgentOS: Cancelling {len(self._running_tasks)} running task(s)...")
+            tasks_to_cancel = list(self._running_tasks)
+            for task in tasks_to_cancel:
+                task.cancel()
+            # Give tasks a moment to handle CancelledError
+            await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+            self._running_tasks.clear()
+
+        # 2. Shut down kernel services
         self.kernel.shutdown()
+
+        # 3. Release all held file locks
+        if self.lock_manager:
+            all_locks = self.lock_manager.get_all_locks()
+            if all_locks:
+                logger.info(f"AgentOS: Releasing {len(all_locks)} held file lock(s)...")
+                for path, (agent_name, _) in list(all_locks.items()):
+                    self.lock_manager.release_lock(path, agent_name)
+
+        # 4. Clear caches
         self.cache.clear()
+
         self._booted = False
+        logger.info("AgentOS: Async shutdown complete.")
+
+    def shutdown(self) -> None:
+        """Synchronous shutdown — delegates to async version if an event loop is running."""
+        if not self._booted:
+            return
+
+        try:
+            loop = asyncio.get_running_loop()
+            # We're inside an async context — schedule the async shutdown
+            loop.create_task(self.shutdown_async())
+        except RuntimeError:
+            # No event loop running — perform synchronous cleanup
+            if self._running_tasks:
+                self._running_tasks.clear()
+            self.kernel.shutdown()
+            if self.lock_manager:
+                all_locks = self.lock_manager.get_all_locks()
+                for path, (agent_name, _) in list(all_locks.items()):
+                    self.lock_manager.release_lock(path, agent_name)
+            self.cache.clear()
+            self._booted = False

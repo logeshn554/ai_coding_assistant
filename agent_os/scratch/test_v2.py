@@ -546,5 +546,97 @@ class TestAgentOSV2(unittest.TestCase):
         self.assertEqual(new_mem.get_current_task(), "Test Memory Goal")
         self.assertEqual(new_mem.get_current_plan(), task_graph)
 
+    # 14. Real skill operations & transactions integration tests
+    def test_real_skill_operations_and_transactions(self):
+        import os
+        import asyncio
+        workspace = os.path.join(self.temp_dir, "skills_workspace_real")
+        os.makedirs(workspace, exist_ok=True)
+
+        # Create a source file in the workspace
+        source_code = (
+            "import sys\n"
+            "import os  # Unused\n"
+            "\n"
+            "class Calculator:\n"
+            "    def add(self, x, y):\n"
+            "        return x + y\n"
+        )
+        file_path = "calc.py"
+        with open(os.path.join(workspace, file_path), "w", encoding="utf-8") as f:
+            f.write(source_code)
+
+        aos = AgentOS(workspace_root=workspace, db_path=self.db_path)
+        asyncio.run(aos.boot())
+
+        # 1. Test context manager loading file robustly
+        content = aos.context_manager.load_file(file_path)
+        self.assertEqual(content, source_code)
+
+        # 2. Test RenameSymbolSkill actually renaming and writing to disk
+        ctx = IDEContext(
+            current_file=file_path,
+            file_path=file_path,
+            selected_symbol="Calculator",
+            file_content=source_code,
+            workspace_root=workspace
+        )
+        ctx["old_symbol_name"] = "Calculator"
+        ctx["new_symbol_name"] = "SimpleCalc"
+        ctx = asyncio.run(aos.run_skills_parallel(["rename_symbol"], ctx))
+        self.assertTrue(ctx.modified)
+        self.assertIn("SimpleCalc", ctx.file_content)
+        self.assertNotIn("Calculator", ctx.file_content)
+
+        # Verify it was written to disk
+        with open(os.path.join(workspace, file_path), "r", encoding="utf-8") as f:
+            disk_content = f.read()
+        self.assertIn("class SimpleCalc:", disk_content)
+
+        # 3. Test FixImportSkill actually removing unused import and writing to disk
+        ctx = IDEContext(
+            current_file=file_path,
+            file_path=file_path,
+            file_content=disk_content,
+            workspace_root=workspace
+        )
+        ctx = asyncio.run(aos.run_skills_parallel(["fix_import"], ctx))
+        self.assertTrue(ctx.modified)
+        self.assertNotIn("import os", ctx.file_content)
+
+        # Verify disk content updated
+        with open(os.path.join(workspace, file_path), "r", encoding="utf-8") as f:
+            disk_content = f.read()
+        self.assertNotIn("import os", disk_content)
+
+        # 4. Test GenerateTestSkill writing test template to disk
+        ctx = IDEContext(
+            current_file=file_path,
+            file_path=file_path,
+            selected_symbol="SimpleCalc",
+            file_content=disk_content,
+            workspace_root=workspace
+        )
+        ctx = asyncio.run(aos.run_skills_parallel(["generate_test"], ctx))
+        self.assertIsNotNone(ctx.get("generated_test"))
+        self.assertIn("test_SimpleCalc", ctx["generated_test"])
+
+        # Verify test file test_calc.py was written to disk
+        test_file_path = os.path.join(workspace, "test_calc.py")
+        self.assertTrue(os.path.exists(test_file_path))
+        with open(test_file_path, "r", encoding="utf-8") as f:
+            test_content = f.read()
+        self.assertIn("def test_SimpleCalc():", test_content)
+
+        # 5. Test FileTransaction with relative path path-resolving and locking
+        tx = aos.execution_engine.create_transaction("agent_alpha")
+        tx.begin()
+        tx.apply_patch(file_path, "def add(self, x, y):", "def sum(self, x, y):")
+        tx.commit()
+
+        with open(os.path.join(workspace, file_path), "r", encoding="utf-8") as f:
+            final_content = f.read()
+        self.assertIn("def sum(self, x, y):", final_content)
+
 if __name__ == "__main__":
     unittest.main()

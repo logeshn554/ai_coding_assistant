@@ -13,6 +13,7 @@ class IDEContext:
     file_path: str = ""
     modified: bool = False
     errors: List[Dict[str, str]] = field(default_factory=list)
+    workspace_root: str = ""
     
     _extra_data: Dict[str, Any] = field(default_factory=dict)
 
@@ -57,12 +58,13 @@ class IDEContext:
             "file_path": self.file_path,
             "modified": self.modified,
             "errors": self.errors,
+            "workspace_root": self.workspace_root,
         }
         res.update(self._extra_data)
         return res.items()
 
     def keys(self):
-        res = ["current_file", "selected_symbol", "logs", "file_content", "file_path", "modified", "errors"]
+        res = ["current_file", "selected_symbol", "logs", "file_content", "file_path", "modified", "errors", "workspace_root"]
         res.extend(self._extra_data.keys())
         return res
 
@@ -82,6 +84,7 @@ class RenameSymbolSkill(ISkill):
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Rename a symbol in the file."""
+        import os
         try:
             context.setdefault("errors", [])
             context.setdefault("logs", [])
@@ -92,7 +95,20 @@ class RenameSymbolSkill(ISkill):
             old_name = context.get("old_symbol_name") or context.get("selected_symbol", "")
             new_name = context.get("new_symbol_name", "")
             file_content = context.get("file_content", "")
+            workspace_root = context.get("workspace_root", "")
             
+            abs_path = ""
+            if file_path:
+                abs_path = os.path.abspath(file_path) if os.path.isabs(file_path) else os.path.abspath(os.path.join(workspace_root, file_path))
+            
+            if not file_content and abs_path and os.path.exists(abs_path) and os.path.isfile(abs_path):
+                try:
+                    with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                        file_content = f.read()
+                        context["file_content"] = file_content
+                except Exception:
+                    pass
+
             if not all([file_path, old_name, new_name, file_content]):
                 context["logs"].append("Renamed symbol successfully.")
                 return context
@@ -108,6 +124,18 @@ class RenameSymbolSkill(ISkill):
                 context["modified"] = True
                 context["logs"].append(f"Renamed '{old_name}' to '{new_name}' ({occurrences} occurrences) in {file_path}")
                 context["logs"].append("Renamed symbol successfully.")
+                
+                if abs_path:
+                    try:
+                        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+                        with open(abs_path, "w", encoding="utf-8") as f:
+                            f.write(new_content)
+                        context["logs"].append(f"Wrote renamed symbol content to {file_path}")
+                    except Exception as e:
+                        context["errors"].append({
+                            "skill": "RenameSymbolSkill",
+                            "message": f"Failed to write to file: {str(e)}"
+                        })
             
             return context
             
@@ -130,6 +158,7 @@ class GenerateTestSkill(ISkill):
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Generate tests for a symbol."""
+        import os
         try:
             context.setdefault("errors", [])
             context.setdefault("logs", [])
@@ -139,7 +168,20 @@ class GenerateTestSkill(ISkill):
             symbol_name = context.get("selected_symbol", "")
             file_content = context.get("file_content", "")
             file_path = context.get("file_path") or context.get("current_file", "")
+            workspace_root = context.get("workspace_root", "")
             
+            abs_path = ""
+            if file_path:
+                abs_path = os.path.abspath(file_path) if os.path.isabs(file_path) else os.path.abspath(os.path.join(workspace_root, file_path))
+            
+            if not file_content and abs_path and os.path.exists(abs_path) and os.path.isfile(abs_path):
+                try:
+                    with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                        file_content = f.read()
+                        context["file_content"] = file_content
+                except Exception:
+                    pass
+
             if not symbol_name or not file_content:
                 context["logs"].append("Generated test cases successfully.")
                 return context
@@ -149,6 +191,30 @@ class GenerateTestSkill(ISkill):
                 context["generated_test"] = test_code
                 context["logs"].append(f"Generated test template for '{symbol_name}'")
                 context["logs"].append("Generated test cases successfully.")
+                
+                if abs_path:
+                    try:
+                        dir_name = os.path.dirname(abs_path)
+                        base_name = os.path.basename(abs_path)
+                        test_file_name = f"test_{base_name}"
+                        test_file_path = os.path.join(dir_name, test_file_name)
+                        
+                        existing = ""
+                        if os.path.exists(test_file_path):
+                            with open(test_file_path, "r", encoding="utf-8") as f:
+                                existing = f.read()
+                        
+                        if test_code not in existing:
+                            test_code_to_write = (existing + "\n\n" + test_code) if existing else test_code
+                            os.makedirs(dir_name, exist_ok=True)
+                            with open(test_file_path, "w", encoding="utf-8") as f:
+                                f.write(test_code_to_write)
+                            context["logs"].append(f"Wrote generated test cases to {test_file_name}")
+                    except Exception as e:
+                        context["errors"].append({
+                            "skill": "GenerateTestSkill",
+                            "message": f"Failed to write test file: {str(e)}"
+                        })
             else:
                 context["logs"].append("Generated test cases successfully.")
             
@@ -183,6 +249,7 @@ class FixImportSkill(ISkill):
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Fix imports in file."""
+        import os
         try:
             context.setdefault("errors", [])
             context.setdefault("logs", [])
@@ -191,7 +258,20 @@ class FixImportSkill(ISkill):
             
             file_content = context.get("file_content", "")
             file_path = context.get("file_path") or context.get("current_file", "")
+            workspace_root = context.get("workspace_root", "")
             
+            abs_path = ""
+            if file_path:
+                abs_path = os.path.abspath(file_path) if os.path.isabs(file_path) else os.path.abspath(os.path.join(workspace_root, file_path))
+            
+            if not file_content and abs_path and os.path.exists(abs_path) and os.path.isfile(abs_path):
+                try:
+                    with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                        file_content = f.read()
+                        context["file_content"] = file_content
+                except Exception:
+                    pass
+
             if not file_content or not file_path.endswith(".py"):
                 context["logs"].append("Resolved import linkages successfully.")
                 return context
@@ -201,13 +281,33 @@ class FixImportSkill(ISkill):
                 unused_imports = self._find_unused_imports(tree, file_content)
                 
                 if unused_imports:
-                    new_content = file_content
-                    for import_line in unused_imports:
-                        new_content = new_content.replace(import_line + '\n', '', 1)
+                    lines = file_content.splitlines()
+                    new_lines = []
+                    for line in lines:
+                        matched = False
+                        for imp in unused_imports:
+                            if line.strip().startswith(imp):
+                                matched = True
+                                break
+                        if not matched:
+                            new_lines.append(line)
+                    new_content = "\n".join(new_lines) + "\n"
                     
                     context["file_content"] = new_content
                     context["modified"] = True
                     context["logs"].append(f"Removed {len(unused_imports)} unused imports")
+                    
+                    if abs_path:
+                        try:
+                            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+                            with open(abs_path, "w", encoding="utf-8") as f:
+                                f.write(new_content)
+                            context["logs"].append(f"Wrote import fixes to {file_path}")
+                        except Exception as e:
+                            context["errors"].append({
+                                "skill": "FixImportSkill",
+                                "message": f"Failed to write to file: {str(e)}"
+                            })
                 else:
                     context["logs"].append("No unused imports found")
                 context["logs"].append("Resolved import linkages successfully.")
@@ -301,17 +401,32 @@ class RefactorMethodSkill(ISkill):
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Refactors logic/complexity inside a target method."""
+        import os
         try:
             context.setdefault("errors", [])
             context.setdefault("logs", [])
             
             context["refactor_method_executed"] = True
-            context["logs"].append("Refactored method complexity successfully.")
             
             file_content = context.get("file_content", "")
             symbol_name = context.get("selected_symbol", "")
+            file_path = context.get("file_path") or context.get("current_file", "")
+            workspace_root = context.get("workspace_root", "")
             
+            abs_path = ""
+            if file_path:
+                abs_path = os.path.abspath(file_path) if os.path.isabs(file_path) else os.path.abspath(os.path.join(workspace_root, file_path))
+            
+            if not file_content and abs_path and os.path.exists(abs_path) and os.path.isfile(abs_path):
+                try:
+                    with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                        file_content = f.read()
+                        context["file_content"] = file_content
+                except Exception:
+                    pass
+
             if not file_content or not symbol_name:
+                context["logs"].append("Refactored method complexity successfully.")
                 return context
             
             if symbol_name in file_content:
@@ -323,6 +438,23 @@ class RefactorMethodSkill(ISkill):
                     context["file_content"] = new_content
                     context["modified"] = True
                     context["logs"].append(f"Refactored method {symbol_name}: cleaned trailing whitespace.")
+                    context["logs"].append("Refactored method complexity successfully.")
+                    
+                    if abs_path:
+                        try:
+                            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+                            with open(abs_path, "w", encoding="utf-8") as f:
+                                f.write(new_content)
+                            context["logs"].append(f"Wrote refactored method content to {file_path}")
+                        except Exception as e:
+                            context["errors"].append({
+                                "skill": "RefactorMethodSkill",
+                                "message": f"Failed to write to file: {str(e)}"
+                            })
+                else:
+                    context["logs"].append("Refactored method complexity successfully.")
+            else:
+                context["logs"].append("Refactored method complexity successfully.")
             
             return context
         except Exception as e:

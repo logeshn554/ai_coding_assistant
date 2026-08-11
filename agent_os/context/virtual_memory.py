@@ -1,6 +1,6 @@
 from typing import Any, Dict, List
 from collections import OrderedDict
-from agent_os.context.interfaces import IContextManager
+from .interfaces import IContextManager
 
 class VirtualMemoryContextManager(IContextManager):
     """Context Virtual Memory manager implementing Hot, Warm, and Cold pools with LRU paging."""

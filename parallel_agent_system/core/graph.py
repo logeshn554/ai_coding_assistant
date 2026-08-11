@@ -2,6 +2,13 @@
 Native DAG Executor — A lightweight, compatible implementation of StateGraph and CompiledStateGraph.
 
 Replaces the langgraph library with a native python execution engine.
+
+Supports:
+  - Sequential node execution with conditional routing
+  - **Parallel fan-out groups**: independent nodes declared via ``add_parallel_group``
+    are executed concurrently via ``asyncio.gather`` and their state updates merged.
+  - In-memory checkpointing with ``MemorySaver``
+  - Human-in-the-loop interrupts
 """
 from __future__ import annotations
 
@@ -9,7 +16,7 @@ import asyncio
 import inspect
 import logging
 import operator
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Set, Tuple, Union
 
 logger = logging.getLogger("parallel_agent_system.core.graph")
 
@@ -46,19 +53,27 @@ class MemorySaver:
 
 
 class CompiledStateGraph:
-    """Compiled native state graph ready for execution."""
+    """Compiled native state graph ready for execution.
+
+    Supports both sequential edges and **parallel fan-out groups** where
+    independent nodes execute concurrently via ``asyncio.gather``.
+    """
 
     def __init__(
         self,
         nodes: Dict[str, Callable],
         edges: Dict[str, str],
         conditional_edges: Dict[str, Tuple[Callable, Dict[str, str]]],
+        parallel_groups: Dict[str, List[str]],
+        parallel_group_exit_edges: Dict[str, str],
         checkpointer: Optional[MemorySaver] = None,
         interrupt_before: Optional[List[str]] = None,
     ) -> None:
         self.nodes = nodes
         self.edges = edges
         self.conditional_edges = conditional_edges
+        self.parallel_groups = parallel_groups  # group_id -> [node_name, ...]
+        self.parallel_group_exit_edges = parallel_group_exit_edges  # group_id -> next_node
         self.checkpointer = checkpointer or MemorySaver()
         self.interrupt_before = interrupt_before or []
 
@@ -91,6 +106,51 @@ class CompiledStateGraph:
                 if current_node == END:
                     break
 
+            # ── Check if current_node is a parallel group ──
+            if current_node in self.parallel_groups:
+                group_id = current_node
+                member_nodes = self.parallel_groups[group_id]
+                logger.info(f"Native Graph: Executing parallel group '{group_id}' with nodes {member_nodes}")
+
+                async def _exec_member(node_name: str) -> Optional[dict]:
+                    action = self.nodes.get(node_name)
+                    if not action:
+                        logger.error(f"Native Graph Error: Parallel member node '{node_name}' not registered.")
+                        return None
+                    if inspect.iscoroutinefunction(action):
+                        return await action(state)
+                    else:
+                        return action(state)
+
+                # Fan-out: execute all members concurrently
+                member_results = await asyncio.gather(
+                    *[_exec_member(n) for n in member_nodes],
+                    return_exceptions=True
+                )
+
+                # Merge all results back into state
+                for i, result in enumerate(member_results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Native Graph: Parallel node '{member_nodes[i]}' raised: {result}")
+                        state["status"] = "failed"
+                        if "messages" not in state:
+                            state["messages"] = []
+                        try:
+                            from langchain_core.messages import AIMessage
+                            state["messages"].append(AIMessage(content=f"Error in parallel node {member_nodes[i]}: {result}"))
+                        except ImportError:
+                            pass
+                    elif isinstance(result, dict):
+                        self._merge_state(state, result)
+
+                # Determine next node from the parallel group exit edge
+                current_node = self.parallel_group_exit_edges.get(group_id, END)
+                state["__current_node__"] = current_node
+
+                if thread_id:
+                    self.checkpointer.put(thread_id, state)
+                continue
+
             # Handle human-in-the-loop interrupts
             if current_node in self.interrupt_before and not state.get("__resumed_from_interrupt__", False):
                 logger.info(f"Native Graph: Interrupting execution before node '{current_node}'")
@@ -121,8 +181,11 @@ class CompiledStateGraph:
                 state["status"] = "failed"
                 if "messages" not in state:
                     state["messages"] = []
-                from langchain_core.messages import AIMessage
-                state["messages"].append(AIMessage(content=f"Error executing {current_node}: {e}"))
+                try:
+                    from langchain_core.messages import AIMessage
+                    state["messages"].append(AIMessage(content=f"Error executing {current_node}: {e}"))
+                except ImportError:
+                    pass
                 break
 
             # Merge update into state with reducer awareness
@@ -174,13 +237,21 @@ class CompiledStateGraph:
 
 
 class StateGraph:
-    """A native implementation of StateGraph."""
+    """A native implementation of StateGraph with parallel fan-out support.
+
+    Use ``add_parallel_group`` to declare independent nodes that should
+    execute concurrently.  The compiled graph will run them via
+    ``asyncio.gather`` and merge their state updates.
+    """
 
     def __init__(self, state_schema: Any) -> None:
         self.state_schema = state_schema
         self.nodes: Dict[str, Callable] = {}
         self.edges: Dict[str, str] = {}
         self.conditional_edges: Dict[str, Tuple[Callable, Dict[str, str]]] = {}
+        # Parallel fan-out groups
+        self._parallel_groups: Dict[str, List[str]] = {}  # group_id -> [node_names]
+        self._parallel_group_exit_edges: Dict[str, str] = {}  # group_id -> next_node
 
     def add_node(self, name: str, action: Callable) -> None:
         self.nodes[name] = action
@@ -191,6 +262,27 @@ class StateGraph:
     def add_conditional_edges(self, from_node: str, router_fn: Callable, path_map: Dict[str, str]) -> None:
         self.conditional_edges[from_node] = (router_fn, path_map)
 
+    def add_parallel_group(
+        self,
+        group_id: str,
+        node_names: List[str],
+        exit_to: str = END,
+    ) -> None:
+        """Declare a set of nodes that should execute in parallel.
+
+        When the graph reaches ``group_id`` (use it like a virtual node name in
+        ``add_edge``), all ``node_names`` will be dispatched concurrently via
+        ``asyncio.gather``.  After all complete, execution continues to
+        ``exit_to``.
+
+        All member nodes must already be registered via ``add_node``.
+        """
+        for n in node_names:
+            if n not in self.nodes:
+                raise ValueError(f"Parallel group '{group_id}' references unregistered node '{n}'")
+        self._parallel_groups[group_id] = list(node_names)
+        self._parallel_group_exit_edges[group_id] = exit_to
+
     def compile(
         self,
         checkpointer: Optional[MemorySaver] = None,
@@ -200,6 +292,8 @@ class StateGraph:
             nodes=self.nodes,
             edges=self.edges,
             conditional_edges=self.conditional_edges,
+            parallel_groups=self._parallel_groups,
+            parallel_group_exit_edges=self._parallel_group_exit_edges,
             checkpointer=checkpointer,
             interrupt_before=interrupt_before
         )

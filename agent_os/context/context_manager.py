@@ -1,6 +1,6 @@
 import os
 from typing import Any, Dict, List, Optional
-from agent_os.context.virtual_memory import VirtualMemoryContextManager
+from .virtual_memory import VirtualMemoryContextManager
 
 class WorkspaceContextManager(VirtualMemoryContextManager):
     """Manages workspace files, active symbols, conversation history, and editor/git states."""
@@ -67,18 +67,22 @@ class WorkspaceContextManager(VirtualMemoryContextManager):
 
     def load_file(self, path: str) -> str:
         """Load file content from workspace and track in context."""
-        full_path = os.path.join(self._workspace_root, path) if not os.path.isabs(path) else path
-        with open(full_path, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
+        from agent_os.repository.file_operations import FileOperations
+        ops = FileOperations(self._workspace_root)
+        result = ops.read_file(path)
+        if not result.success:
+            raise FileNotFoundError(result.message)
+        content = result.content or ""
         self.add_retrieved_file(path, content)
         return content
 
     def save_file(self, path: str, content: str) -> None:
         """Save file content to workspace and track in context."""
-        full_path = os.path.join(self._workspace_root, path) if not os.path.isabs(path) else path
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        with open(full_path, "w", encoding="utf-8") as f:
-            f.write(content)
+        from agent_os.repository.file_operations import FileOperations
+        ops = FileOperations(self._workspace_root)
+        result = ops.write_file(path, content)
+        if not result.success:
+            raise IOError(result.message)
         self.add_retrieved_file(path, content)
 
     def track_unsaved_change(self, path: str, content: str) -> None:
