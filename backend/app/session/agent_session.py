@@ -45,20 +45,14 @@ logger = logging.getLogger("devpilot.agent")
 
 
 def detect_contradiction(text: str) -> Optional[str]:
-    """Detect contradictory instructions or frameworks in user prompts."""
+    """Detect contradictory instructions in user prompts.
+    
+    Allows multi-language, multi-framework, and fullstack setup instructions (e.g., Python + TypeScript,
+    React + FastAPI) without raising false positive warnings.
+    """
     text_lower = text.lower()
     
-    # 1. Conflicting stacks in project setup/creation
-    if ("react" in text_lower and "vue" in text_lower) and any(x in text_lower for x in ("scaffold", "setup", "create project", "initialize", "npm install")):
-        return "The prompt contains conflicting instructions for React and Vue in the same project setup."
-        
-    if ("django" in text_lower and "fastapi" in text_lower) and any(x in text_lower for x in ("scaffold", "setup", "create project", "initialize", "pip install")):
-        return "The prompt contains conflicting instructions for Django and FastAPI in the same project setup."
-
-    if ("typescript" in text_lower and "python" in text_lower) and any(x in text_lower for x in ("scaffold", "setup", "create project", "initialize")):
-        return "The prompt asks to initialize/scaffold a project in both Python and TypeScript."
-
-    # 2. Mutually exclusive file operations (e.g. delete and edit/create/write)
+    # Check for mutually exclusive file operations (e.g. delete and edit/create/write) on the exact same file in one prompt
     words = re.findall(r'\b[\w\.\-]+\b', text_lower)
     files = [w for w in words if '.' in w and not w.endswith('.')]
     for f in files:

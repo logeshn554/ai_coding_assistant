@@ -49,6 +49,8 @@ class LLMAdapter(ModelAdapter):
     Unified LLM adapter for both Anthropic and OpenAI.
     Provider-specific behaviors are routed internally based on self.provider.
     """
+    _global_semaphore = None
+
     def __init__(self, api_key: str, base_url: str, model_name: str, provider: str):
         super().__init__(api_key, base_url, model_name)
         self.provider = provider
@@ -59,15 +61,21 @@ class LLMAdapter(ModelAdapter):
         tools: List[Dict[str, Any]], 
         system_prompt: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
+        # Lazily initialize global semaphore to prevent parallel burst 429 errors from LLM providers
+        if LLMAdapter._global_semaphore is None:
+            import asyncio
+            LLMAdapter._global_semaphore = asyncio.Semaphore(1)
+
         # Shared: auto-invoke scan_for_bugs and inject its report if requested.
         messages = await self.maybe_inject_bug_scan(messages, tools)
 
-        if self.provider == "anthropic":
-            async for chunk in self._stream_anthropic(messages, tools, system_prompt):
-                yield chunk
-        else:
-            async for chunk in self._stream_openai(messages, tools, system_prompt):
-                yield chunk
+        async with LLMAdapter._global_semaphore:
+            if self.provider == "anthropic":
+                async for chunk in self._stream_anthropic(messages, tools, system_prompt):
+                    yield chunk
+            else:
+                async for chunk in self._stream_openai(messages, tools, system_prompt):
+                    yield chunk
 
     async def _stream_anthropic(
         self,
