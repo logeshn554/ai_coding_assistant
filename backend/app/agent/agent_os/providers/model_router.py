@@ -34,7 +34,7 @@ class ModelRouter(IModelRouter):
                 
                 # Check secret registry fallback
                 if not api_key:
-                    from parallel_agent_system.runtime.secret_registry import SecretRegistry
+                    from agent_os.core.secret_registry import SecretRegistry
                     api_key = SecretRegistry.get(f"{provider.upper()}_API_KEY") or SecretRegistry.get("LLM_API_KEY")
                 
                 if not model or not api_key:
@@ -87,7 +87,7 @@ class ModelRouter(IModelRouter):
         if isinstance(messages, str):
             # Legacy format execution
             import os
-            from parallel_agent_system.runtime.secret_registry import SecretRegistry
+            from agent_os.core.secret_registry import SecretRegistry
             
             resolved_provider = "openai"
             model_lower = model_name.lower()

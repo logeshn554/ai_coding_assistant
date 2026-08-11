@@ -20,6 +20,7 @@ else:
 os.chdir(project_root)
 sys.path.insert(0, backend_dir)
 sys.path.insert(0, project_root)
+sys.path.insert(0, os.path.join(backend_dir, "app", "agent"))
 
 import uvicorn
 

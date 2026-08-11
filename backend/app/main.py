@@ -1,6 +1,13 @@
 import os
 import sys
 import logging
+
+# Add agent subdirectory to path to support consolidated imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+agent_dir = os.path.join(current_dir, "agent")
+if agent_dir not in sys.path:
+    sys.path.insert(0, agent_dir)
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware

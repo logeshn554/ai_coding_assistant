@@ -15,6 +15,7 @@ class SettingsUpdateRequest(BaseModel):
     auto_inspect_on_server_start: Optional[bool] = False
     agent_model_name: Optional[str] = ""
     agent_models: Optional[dict] = None
+    agent_profiles: Optional[dict] = None
     image_analysis_model: Optional[str] = ""
     mcp_servers: Optional[list] = None
     # Web Search Fallback settings
@@ -32,6 +33,8 @@ class SettingsUpdateRequest(BaseModel):
     terminal_command_rules: Optional[list] = None
     unsandboxed_command_rules: Optional[list] = None
     mcp_tool_rules: Optional[list] = None
+    devpilot_rpm: Optional[int] = Field(default=15, ge=1)
+    concurrency_mode: Optional[str] = "parallel"
 
 
 @router.get("/api/config/settings")
@@ -42,6 +45,7 @@ def get_settings():
         "auto_inspect_on_server_start": config_manager.get_auto_inspect_on_server_start(),
         "agent_model_name": config_manager.get_agent_model_name(),
         "agent_models": config_manager.get_agent_models(),
+        "agent_profiles": config_manager.get_agent_profiles(),
         "image_analysis_model": config_manager.get_image_analysis_model(),
         "mcp_servers": config_manager.get_mcp_servers(),
         "web_search_fallback_enabled": config_manager.get_web_search_fallback_enabled(),
@@ -58,6 +62,8 @@ def get_settings():
         "terminal_command_rules": config_manager.get_terminal_command_rules(),
         "unsandboxed_command_rules": config_manager.get_unsandboxed_command_rules(),
         "mcp_tool_rules": config_manager.get_mcp_tool_rules(),
+        "devpilot_rpm": config_manager.get_devpilot_rpm(),
+        "concurrency_mode": config_manager.get_concurrency_mode(),
     }
 
 
@@ -71,6 +77,8 @@ def save_settings(req: SettingsUpdateRequest):
         config_manager.set_agent_model_name(req.agent_model_name)
         if req.agent_models is not None:
             config_manager.set_agent_models(req.agent_models)
+        if req.agent_profiles is not None:
+            config_manager.set_agent_profiles(req.agent_profiles)
         if req.image_analysis_model is not None:
             config_manager.set_image_analysis_model(req.image_analysis_model)
         if req.mcp_servers is not None:
@@ -106,6 +114,10 @@ def save_settings(req: SettingsUpdateRequest):
             config_manager.set_unsandboxed_command_rules(req.unsandboxed_command_rules)
         if req.mcp_tool_rules is not None:
             config_manager.set_mcp_tool_rules(req.mcp_tool_rules)
+        if req.devpilot_rpm is not None:
+            config_manager.set_devpilot_rpm(req.devpilot_rpm)
+        if req.concurrency_mode is not None:
+            config_manager.set_concurrency_mode(req.concurrency_mode)
         return {"success": True}
     except HTTPException:
         raise

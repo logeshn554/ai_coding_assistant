@@ -182,15 +182,17 @@ class Conversation:
         # Setup real LLM provider
         from agent_runtime.llm.openai_provider import OpenAIProvider
         
-        # Check active profile in ConfigManager for base_url
-        base_url = "https://api.openai.com/v1"
-        try:
-            from backend.app.config import ConfigManager
-            profile = ConfigManager().get_active_profile()
-            if profile and profile.get("base_url"):
-                base_url = profile.get("base_url")
-        except Exception:
-            pass
+        # Check active profile or SecretRegistry for base_url
+        from parallel_agent_system.runtime.secret_registry import SecretRegistry
+        base_url = SecretRegistry.get("LLM_BASE_URL") or "https://api.openai.com/v1"
+        if not SecretRegistry.get("LLM_BASE_URL"):
+            try:
+                from backend.app.config import ConfigManager
+                profile = ConfigManager().get_active_profile()
+                if profile and profile.get("base_url"):
+                    base_url = profile.get("base_url")
+            except Exception:
+                pass
 
         llm = OpenAIProvider(
             api_key=api_key,

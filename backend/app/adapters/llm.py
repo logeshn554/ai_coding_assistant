@@ -44,12 +44,49 @@ def _get_openai_client(api_key: str, base_url: Optional[str] = None, timeout: fl
     return _openai_clients[key]
 
 
+import time
+
+class _RpmLimiter:
+    def __init__(self):
+        self.history = []
+        self.lock = asyncio.Lock()
+
+    def get_limit(self) -> int:
+        from ..state import config_manager
+        env_limit = os.environ.get("DEVPILOT_RPM")
+        if env_limit:
+            try:
+                return int(env_limit)
+            except ValueError:
+                pass
+        try:
+            return config_manager.get_devpilot_rpm()
+        except Exception:
+            return 15
+
+    async def acquire(self):
+        async with self.lock:
+            while True:
+                now = time.time()
+                limit = self.get_limit()
+                # Remove timestamps older than 60 seconds
+                self.history = [t for t in self.history if now - t < 60.0]
+                if len(self.history) < limit:
+                    self.history.append(now)
+                    break
+                # Wait until the oldest request in the window falls out of the window
+                sleep_time = 60.0 - (now - self.history[0])
+                if sleep_time > 0:
+                    logger.info(f"RPM limit ({limit}) reached. Sleeping for {sleep_time:.2f}s...")
+                    await asyncio.sleep(sleep_time)
+
+
 class LLMAdapter(ModelAdapter):
     """
     Unified LLM adapter for both Anthropic and OpenAI.
     Provider-specific behaviors are routed internally based on self.provider.
     """
-    _global_semaphore = None
+    _rpm_limiter = None
 
     def __init__(self, api_key: str, base_url: str, model_name: str, provider: str):
         super().__init__(api_key, base_url, model_name)
@@ -61,21 +98,22 @@ class LLMAdapter(ModelAdapter):
         tools: List[Dict[str, Any]], 
         system_prompt: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        # Lazily initialize global semaphore to prevent parallel burst 429 errors from LLM providers
-        if LLMAdapter._global_semaphore is None:
-            import asyncio
-            LLMAdapter._global_semaphore = asyncio.Semaphore(1)
+        # Lazily initialize global RPM limiter
+        if LLMAdapter._rpm_limiter is None:
+            LLMAdapter._rpm_limiter = _RpmLimiter()
 
         # Shared: auto-invoke scan_for_bugs and inject its report if requested.
         messages = await self.maybe_inject_bug_scan(messages, tools)
 
-        async with LLMAdapter._global_semaphore:
-            if self.provider == "anthropic":
-                async for chunk in self._stream_anthropic(messages, tools, system_prompt):
-                    yield chunk
-            else:
-                async for chunk in self._stream_openai(messages, tools, system_prompt):
-                    yield chunk
+        # Acquire rate limiter ticket before calling LLM providers
+        await LLMAdapter._rpm_limiter.acquire()
+
+        if self.provider == "anthropic":
+            async for chunk in self._stream_anthropic(messages, tools, system_prompt):
+                yield chunk
+        else:
+            async for chunk in self._stream_openai(messages, tools, system_prompt):
+                yield chunk
 
     async def _stream_anthropic(
         self,

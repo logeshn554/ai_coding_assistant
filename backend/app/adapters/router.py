@@ -79,13 +79,23 @@ class ModelRouter:
                 f"but messages contain image inputs. This request may fail."
             )
 
+    def _resolve_profile(self, profile: dict, is_agent: bool, task_type: str) -> dict:
+        if is_agent and task_type:
+            from ..config import config_manager as config
+            agent_profiles = config.get_agent_profiles()
+            mapped_profile_id = agent_profiles.get(task_type)
+            if mapped_profile_id:
+                mapped_profile = config.get_profile(mapped_profile_id)
+                if mapped_profile:
+                    logger.info(f"ModelRouter: Overriding active profile with mapped profile '{mapped_profile['name']}' for agent '{task_type}'")
+                    return mapped_profile
+        return profile
+
     def get_adapter(self, profile: dict, is_agent: bool = False, task_type: str = "general"):
         """
         Returns the appropriate LLM adapter based on the active profile and task category.
         """
-        # 1. Check if a custom model mapping exists in config for agent routing
-        from ..config import config_manager as config
-        
+        profile = self._resolve_profile(profile, is_agent, task_type)
         key = profile.get("api_key", "")
         url = profile.get("base_url", "")
         model = profile.get("model_name", "") or profile.get("model") or ""
@@ -143,6 +153,7 @@ class ModelRouter:
         """
         Queries the routed model and aggregates streamed text chunks.
         """
+        profile = self._resolve_profile(profile, is_agent, task_type)
         model_name = profile.get("model_name") or profile.get("model") or "unknown"
         self.check_capabilities(model_name, messages)
 

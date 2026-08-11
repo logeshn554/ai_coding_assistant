@@ -2,7 +2,6 @@ import React, { useRef, useEffect } from 'react';
 import type { ChatMessage, TaskMemoryData } from '../../types/chat';
 import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
-import { ProgressCard } from './ProgressCard';
 import { TaskProgressPanel } from './TaskProgressPanel';
 import { useEditor } from '../../core/editor/EditorContext';
 
@@ -179,9 +178,6 @@ export const MessageList: React.FC<MessageListProps> = ({
             />
           );
         })}
-
-        {/* Streaming Progress indicators */}
-        <ProgressCard statusMessage={activeStatusMessage} isGenerating={Boolean(isGenerating)} />
 
         {/* Task continuation board */}
         {taskMemory && (

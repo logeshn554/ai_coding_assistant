@@ -1,5 +1,9 @@
 import pytest
 import asyncio
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from unittest.mock import AsyncMock, MagicMock
 from backend.app.session.agent_session import AgentSession
 from backend.app.orchestrator import AgentOrchestrator
@@ -67,3 +71,60 @@ async def test_ask_mode_runs_direct_loop():
     
     # Verify run_task was not called
     run_task_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_per_agent_profile_routing():
+    """Verify that when a custom connection profile is mapped for a specific agent role,
+    the router resolves it and overrides the default active profile.
+    """
+    from backend.app.config import config_manager
+    from backend.app.adapters.router import ModelRouter
+    
+    # Configure custom mock profiles in ConfigManager
+    profile_1 = {
+        "id": "profile-active",
+        "name": "Active Profile",
+        "api_key": "active-api-key",
+        "base_url": "https://api.openai.com/v1",
+        "model_name": "gpt-4o-mini",
+        "api_format": "openai"
+    }
+    
+    profile_2 = {
+        "id": "profile-custom",
+        "name": "Custom Profile for Coding Agent",
+        "api_key": "custom-coding-key",
+        "base_url": "https://api.custom.com/v1",
+        "model_name": "claude-3-5-sonnet",
+        "api_format": "anthropic"
+    }
+    
+    # Stub get_profile and get_agent_profiles on config_manager
+    original_get_profile = config_manager.get_profile
+    original_get_agent_profiles = config_manager.get_agent_profiles
+    
+    config_manager.get_profile = lambda pid: profile_1 if pid == "profile-active" else (profile_2 if pid == "profile-custom" else {})
+    config_manager.get_agent_profiles = lambda: {"Coding Agent": "profile-custom"}
+    
+    try:
+        router = ModelRouter()
+        
+        # Test case 1: Routing general prompt (no agent override)
+        resolved_general = router._resolve_profile(profile_1, is_agent=False, task_type="general")
+        assert resolved_general["api_key"] == "active-api-key"
+        
+        # Test case 2: Routing general prompt for Planner Agent (which doesn't have custom mapping)
+        resolved_planner = router._resolve_profile(profile_1, is_agent=True, task_type="Planner Agent")
+        assert resolved_planner["api_key"] == "active-api-key"
+        
+        # Test case 3: Routing prompt for Coding Agent (which has custom mapping)
+        resolved_coder = router._resolve_profile(profile_1, is_agent=True, task_type="Coding Agent")
+        assert resolved_coder["api_key"] == "custom-coding-key"
+        assert resolved_coder["model_name"] == "claude-3-5-sonnet"
+        assert resolved_coder["base_url"] == "https://api.custom.com/v1"
+        
+    finally:
+        # Restore stubs
+        config_manager.get_profile = original_get_profile
+        config_manager.get_agent_profiles = original_get_agent_profiles

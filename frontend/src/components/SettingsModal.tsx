@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Plus, Trash2, ShieldCheck, Check, AlertCircle, RefreshCw, Bug } from 'lucide-react';
 
 const AGENTS_LIST = [
@@ -114,7 +114,10 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   const [autoBackupEnabled, setAutoBackupEnabled] = useState<boolean>(true);
   const [agentModelName, setAgentModelName] = useState<string>('');
   const [agentModels, setAgentModels] = useState<Record<string, string>>({});
+  const [agentProfiles, setAgentProfiles] = useState<Record<string, string>>({});
   const [imageAnalysisModel, setImageAnalysisModel] = useState<string>('');
+  const [devpilotRpm, setDevpilotRpm] = useState<number>(15);
+  const [concurrencyMode, setConcurrencyMode] = useState<string>('parallel');
 
   // Agent Behavior & Local Permissions State
   const [artifactReviewPolicy, setArtifactReviewPolicy] = useState<string>('Always Ask');
@@ -164,7 +167,10 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         setAutoBackupEnabled(data?.auto_backup_enabled ?? true);
         setAgentModelName(data?.agent_model_name || '');
         setAgentModels(data?.agent_models && typeof data.agent_models === 'object' ? data.agent_models : {});
+        setAgentProfiles(data?.agent_profiles && typeof data.agent_profiles === 'object' ? data.agent_profiles : {});
         setImageAnalysisModel(data?.image_analysis_model || '');
+        if (data?.devpilot_rpm !== undefined) setDevpilotRpm(data.devpilot_rpm);
+        if (data?.concurrency_mode !== undefined) setConcurrencyMode(data.concurrency_mode);
         // Terminal preferences
         setDefaultShell(data?.default_shell || '');
         if (data?.terminal_font_size) setTermFontSize(data.terminal_font_size);
@@ -193,7 +199,10 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     termRulesOverride?: any[],
     unsandboxedRulesOverride?: any[],
     mcpRulesOverride?: any[],
-    newImgModel?: string
+    newImgModel?: string,
+    newRpm?: number,
+    newConcurrency?: string,
+    newAgentProfiles?: Record<string, string>
   ) => {
     try {
       await fetch('/api/config/settings', {
@@ -204,6 +213,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           auto_backup_enabled: newBackup,
           agent_model_name: newAgentModel !== undefined ? newAgentModel : agentModelName,
           agent_models: newAgentModels !== undefined ? newAgentModels : agentModels,
+          agent_profiles: newAgentProfiles !== undefined ? newAgentProfiles : agentProfiles,
           image_analysis_model: newImgModel !== undefined ? newImgModel : imageAnalysisModel,
           default_shell: defaultShell,
           terminal_font_size: termFontSize,
@@ -214,6 +224,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           terminal_command_rules: termRulesOverride !== undefined ? termRulesOverride : terminalCommandRules,
           unsandboxed_command_rules: unsandboxedRulesOverride !== undefined ? unsandboxedRulesOverride : unsandboxedCommandRules,
           mcp_tool_rules: mcpRulesOverride !== undefined ? mcpRulesOverride : mcpToolRules,
+          devpilot_rpm: newRpm !== undefined ? newRpm : devpilotRpm,
+          concurrency_mode: newConcurrency !== undefined ? newConcurrency : concurrencyMode,
         })
       });
       onProfileChanged();
@@ -232,6 +244,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           auto_backup_enabled: autoBackupEnabled,
           agent_model_name: agentModelName,
           agent_models: agentModels,
+          agent_profiles: agentProfiles,
           default_shell: shell,
           terminal_font_size: fontSize,
           terminal_scrollback: scrollback,
@@ -241,6 +254,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           terminal_command_rules: terminalCommandRules,
           unsandboxed_command_rules: unsandboxedCommandRules,
           mcp_tool_rules: mcpToolRules,
+          devpilot_rpm: devpilotRpm,
+          concurrency_mode: concurrencyMode,
         })
       });
     } catch (e) {
@@ -1184,6 +1199,82 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                     }}
                   />
                 ))}
+              </div>
+            </div>
+
+            {/* Per-Agent Connection Profiles (API Keys) */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-400 block">
+                Per-Agent Connection Profiles (API Keys)
+              </label>
+              <span className="text-[10px] text-gray-500 block mb-2">
+                Configure specific connection profiles (API keys & endpoints) for individual agents. When set to 'Default', the agent uses the active profile.
+              </span>
+              <div className="grid grid-cols-2 gap-3 max-h-[220px] overflow-y-auto pr-1 border border-white/5 rounded-lg p-3 bg-black/20">
+                {AGENTS_LIST.map((agent) => (
+                  <div key={agent} className="flex flex-col gap-1.5 p-3 bg-white/[0.02] border border-white/5 rounded-lg">
+                    <span className="text-[11px] font-semibold text-gray-300">{agent}</span>
+                    <select
+                      value={agentProfiles[agent] || ''}
+                      onChange={(e) => {
+                        const updated = { ...agentProfiles, [agent]: e.target.value };
+                        setAgentProfiles(updated);
+                        savePreferences(excludeList, autoBackupEnabled, agentModelName, agentModels, undefined, undefined, undefined, undefined, undefined, undefined, imageAnalysisModel, devpilotRpm, concurrencyMode, updated);
+                      }}
+                      className="w-full px-2.5 py-1 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF]"
+                    >
+                      <option value="">Default (Active Profile)</option>
+                      {profiles.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* LLM Rate Limit & Execution Mode */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-400 block">
+                  LLM Request Rate Limit (RPM)
+                </label>
+                <span className="text-[10px] text-gray-500 block">
+                  Maximum requests per minute. Set to 3 for free tier Anthropic/OpenAI keys.
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  value={devpilotRpm}
+                  onChange={(e) => {
+                    const val = Math.max(1, parseInt(e.target.value, 10) || 15);
+                    setDevpilotRpm(val);
+                    savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                  }}
+                  className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
+                  placeholder="e.g. 15"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-400 block">
+                  Execution Mode
+                </label>
+                <span className="text-[10px] text-gray-500 block">
+                  Run specialist tasks in parallel (faster) or sequentially (safer for low RPM limits).
+                </span>
+                <select
+                  value={concurrencyMode}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setConcurrencyMode(val);
+                    savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                  }}
+                  className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF]"
+                >
+                  <option value="parallel">Parallel Execution</option>
+                  <option value="sequential">Sequential (Low RPM)</option>
+                </select>
               </div>
             </div>
 

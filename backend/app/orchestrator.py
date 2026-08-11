@@ -1,6 +1,14 @@
+import sys
+import os
 import json
 import logging
 import asyncio
+
+# Add agent subdirectory to path to support consolidated imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+agent_dir = os.path.join(current_dir, "agent")
+if agent_dir not in sys.path:
+    sys.path.insert(0, agent_dir)
 import uuid
 import time
 import re
@@ -506,8 +514,17 @@ class ParallelAgentAdapter(BaseAgent):
         from parallel_agent_system.core.state import SubTask
         from parallel_agent_system.runtime.secret_registry import SecretRegistry
         
-        # Synchronize active session credentials with parallel agent system
+        # Check if a custom connection profile is mapped for this specialist agent
         profile = getattr(session, "profile", {})
+        from backend.app.config import config_manager as config
+        agent_profiles = config.get_agent_profiles()
+        mapped_profile_id = agent_profiles.get(self.name)
+        if mapped_profile_id:
+            mapped_profile = config.get_profile(mapped_profile_id)
+            if mapped_profile:
+                profile = mapped_profile
+        
+        # Synchronize resolved profile credentials with parallel agent system
         api_key = profile.get("api_key", "")
         if api_key:
             SecretRegistry.set("LLM_API_KEY", api_key)
@@ -515,6 +532,8 @@ class ParallelAgentAdapter(BaseAgent):
             SecretRegistry.set(f"{api_format}_API_KEY", api_key)
             SecretRegistry.set("OPENAI_API_KEY", api_key)
             SecretRegistry.set("ANTHROPIC_API_KEY", api_key)
+        if profile.get("base_url"):
+            SecretRegistry.set("LLM_BASE_URL", profile.get("base_url"))
         
         # Late imports
         if self.agent_cls_name == "CodeAgent":
@@ -527,12 +546,15 @@ class ParallelAgentAdapter(BaseAgent):
             from parallel_agent_system.agents.review_agent import ReviewAgent
             agent_cls = ReviewAgent
         elif self.agent_cls_name == "TestAgent":
-            from parallel_agent_system.agents.test_agent import TestAgent
+            from parallel_agent_system.agents.tester_agent import TestAgent
             agent_cls = TestAgent
         else:
             raise ValueError(f"Unknown parallel agent: {self.agent_cls_name}")
             
-        parallel_agent = agent_cls(SystemConfig())
+        sys_config = SystemConfig()
+        if profile.get("model_name"):
+            sys_config.llm_model = profile.get("model_name")
+        parallel_agent = agent_cls(sys_config)
         
         subtask = SubTask(
             id=f"subtask_{task_id}_{uuid.uuid4().hex[:6]}",
@@ -888,9 +910,16 @@ class CodingAgent(BaseAgent):
                 
             return path, clean_code
 
-        # Concurrently generate proposed code for all target files
-        tasks = [process_file(path) for path in target_files]
-        results = await asyncio.gather(*tasks)
+        # Concurrently or sequentially generate proposed code for all target files
+        from .state import config_manager
+        concurrency_mode = config_manager.get_concurrency_mode()
+        if concurrency_mode == "sequential":
+            results = []
+            for path in target_files:
+                results.append(await process_file(path))
+        else:
+            tasks = [process_file(path) for path in target_files]
+            results = await asyncio.gather(*tasks)
 
         # Apply the changes (either concurrently or sequentially based on auto_apply)
         auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
@@ -1390,9 +1419,16 @@ class FrontendDeveloperAgent(BaseAgent):
                 new_code = "\n".join(lines)
             return path, new_code
 
-        # Concurrently generate proposed code for all frontend files
-        tasks = [process_file(p) for p in frontend_files]
-        results = await asyncio.gather(*tasks)
+        # Concurrently or sequentially generate proposed code for all frontend files
+        from .state import config_manager
+        concurrency_mode = config_manager.get_concurrency_mode()
+        if concurrency_mode == "sequential":
+            results = []
+            for p in frontend_files:
+                results.append(await process_file(p))
+        else:
+            tasks = [process_file(p) for p in frontend_files]
+            results = await asyncio.gather(*tasks)
 
         # Apply the changes (either concurrently or sequentially based on auto_apply)
         auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
@@ -1468,9 +1504,16 @@ class BackendDeveloperAgent(BaseAgent):
                 new_code = "\n".join(lines)
             return path, new_code
 
-        # Concurrently generate proposed code for all backend files
-        tasks = [process_file(p) for p in backend_files]
-        results = await asyncio.gather(*tasks)
+        # Concurrently or sequentially generate proposed code for all backend files
+        from .state import config_manager
+        concurrency_mode = config_manager.get_concurrency_mode()
+        if concurrency_mode == "sequential":
+            results = []
+            for p in backend_files:
+                results.append(await process_file(p))
+        else:
+            tasks = [process_file(p) for p in backend_files]
+            results = await asyncio.gather(*tasks)
 
         # Apply the changes (either concurrently or sequentially based on auto_apply)
         auto_apply = bool(getattr(session, "auto_apply", False) or (getattr(session, "profile", {}) and session.profile.get("auto_apply", False)))
@@ -3290,60 +3333,79 @@ class AgentOrchestrator:
                     if hasattr(self, "state_manager") and self.state_manager:
                         self.state_manager.remove_active_agent(st_agent_name)
 
-            # Execute graph via the concurrency scheduler
+            # Execute graph via the concurrency scheduler (adjusting concurrency limit dynamically)
+            from .state import config_manager
+            concurrency_mode = config_manager.get_concurrency_mode()
+            if concurrency_mode == "sequential":
+                self.scheduler_concurrent.concurrency_limit = 1
+            else:
+                self.scheduler_concurrent.concurrency_limit = 3
             await self.scheduler_concurrent.execute_graph(subtasks, execute_one_subtask)
 
             # 5. State: EDIT -> VERIFY
-            state_machine.transition_to("VERIFY")
-            await self.context.log("AgentOS: Transitioned to VERIFY. Running integration check...")
-            
-            # Evidence Verification Grid (Security & Architecture checks)
             target_files = self.context.memory.get("target_files", [])
-            sec_ok = security_scanner.scan_files(target_files)
-            await self.context.log(f"[Evidence Verification Grid] Security scan: {'PASSED' if sec_ok else 'FAILED'}")
-            
-            for tf in target_files:
-                violations = architecture_rules.validate_dependency_rules(tf)
-                for violation in violations:
-                    await self.context.log(f"[Evidence Verification Grid] Violation: {violation}")
+            any_code_agents_ran = any(
+                st.get("agent") in ("Coding Agent", "Frontend Developer Agent", "Backend Developer Agent")
+                and st.get("status") in ("completed", "success")
+                for st in subtasks
+            )
+            should_verify = bool(target_files and any_code_agents_ran)
+            sec_ok = True
 
-            verify_agent = self.agents["Integration Agent"]
-            verify_res = await verify_agent.execute(task_description, session, task_id=len(subtasks)+3)
-            await self.context.log(f"Integration Check: {verify_res}")
+            if should_verify:
+                state_machine.transition_to("VERIFY")
+                await self.context.log("AgentOS: Transitioned to VERIFY. Running integration check...")
+                
+                # Evidence Verification Grid (Security & Architecture checks)
+                sec_ok = security_scanner.scan_files(target_files)
+                await self.context.log(f"[Evidence Verification Grid] Security scan: {'PASSED' if sec_ok else 'FAILED'}")
+                
+                for tf in target_files:
+                    violations = architecture_rules.validate_dependency_rules(tf)
+                    for violation in violations:
+                        await self.context.log(f"[Evidence Verification Grid] Violation: {violation}")
 
-            # 6. State: VERIFY -> TEST
-            state_machine.transition_to("TEST")
-            await self.context.log("AgentOS: Transitioned to TEST. Running test suite...")
-            
-            # Incremental Testing via Test Graph
-            if target_files:
+                verify_agent = self.agents["Integration Agent"]
+                verify_res = await verify_agent.execute(task_description, session, task_id=len(subtasks)+3)
+                await self.context.log(f"Integration Check: {verify_res}")
+
+                # 6. State: VERIFY -> TEST
+                state_machine.transition_to("TEST")
+                await self.context.log("AgentOS: Transitioned to TEST. Running test suite...")
+                
+                # Incremental Testing via Test Graph
                 tests_to_run = test_graph.get_tests_for_file(target_files[0])
                 if tests_to_run:
                     await self.context.log(f"[Evidence Verification Grid] Running incremental tests: {tests_to_run}")
                     t_res = test_runner.run_tests(tests_to_run)
                     await self.context.log(f"[Evidence Verification Grid] Test runner success: {t_res.success}")
 
-            testing_agent = self.agents["Testing Agent"]
-            test_res = await testing_agent.execute(task_description, session, task_id=len(subtasks)+4)
-            await self.context.log(f"Test Suite: {test_res}")
+                testing_agent = self.agents["Testing Agent"]
+                test_res = await testing_agent.execute(task_description, session, task_id=len(subtasks)+4)
+                await self.context.log(f"Test Suite: {test_res}")
 
-            # 7. State: TEST -> REVIEW
-            state_machine.transition_to("REVIEW")
-            await self.context.log("AgentOS: Transitioned to REVIEW. Performing patch review...")
+                # 7. State: TEST -> REVIEW
+                state_machine.transition_to("REVIEW")
+                await self.context.log("AgentOS: Transitioned to REVIEW. Performing patch review...")
 
-            # Debate Engine & Consensus
-            critiques = debate_engine.hold_debate("diff of modifications placeholder")
-            for critique in critiques:
-                await self.context.log(
-                    f"[Debate Engine] Critique from {critique.agent_name}: "
-                    f"score={critique.score}, feedback='{critique.feedback}'"
-                )
-            agreed = consensus_engine.resolve_consensus(critiques)
-            await self.context.log(f"[Debate Engine] Consensus status: {'APPROVED' if agreed else 'REJECTED'}")
+                # Debate Engine & Consensus
+                critiques = debate_engine.hold_debate("diff of modifications placeholder")
+                for critique in critiques:
+                    await self.context.log(
+                        f"[Debate Engine] Critique from {critique.agent_name}: "
+                        f"score={critique.score}, feedback='{critique.feedback}'"
+                    )
+                agreed = consensus_engine.resolve_consensus(critiques)
+                await self.context.log(f"[Debate Engine] Consensus status: {'APPROVED' if agreed else 'REJECTED'}")
 
-            review_agent = self.agents["Code Review Agent"]
-            review_res = await review_agent.execute(task_description, session, task_id=len(subtasks)+5)
-            await self.context.log(f"Patch Review: {review_res}")
+                review_agent = self.agents["Code Review Agent"]
+                review_res = await review_agent.execute(task_description, session, task_id=len(subtasks)+5)
+                await self.context.log(f"Patch Review: {review_res}")
+            else:
+                await self.context.log("Skipping Integration, Testing, and Code Review agents as no code changes were made.")
+                state_machine.transition_to("VERIFY")
+                state_machine.transition_to("TEST")
+                state_machine.transition_to("REVIEW")
 
             # 8. State: REVIEW -> DONE
             state_machine.transition_to("DONE")

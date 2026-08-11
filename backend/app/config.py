@@ -468,6 +468,15 @@ class ConfigManager:
         config["agent_models"] = agent_models
         self._save_raw_config(config)
 
+    def get_agent_profiles(self) -> dict:
+        config = self._read_raw_config()
+        return config.get("agent_profiles", {})
+
+    def set_agent_profiles(self, agent_profiles: dict):
+        config = self._read_raw_config()
+        config["agent_profiles"] = agent_profiles
+        self._save_raw_config(config)
+
     def get_image_analysis_model(self) -> str:
         config = self._read_raw_config()
         return config.get("image_analysis_model", "")
@@ -475,6 +484,26 @@ class ConfigManager:
     def set_image_analysis_model(self, name: str):
         config = self._read_raw_config()
         config["image_analysis_model"] = str(name or "")
+        self._save_raw_config(config)
+
+    def get_devpilot_rpm(self) -> int:
+        config = self._read_raw_config()
+        return config.get("devpilot_rpm", 15)
+
+    def set_devpilot_rpm(self, val: int):
+        config = self._read_raw_config()
+        config["devpilot_rpm"] = max(1, int(val))
+        self._save_raw_config(config)
+
+    def get_concurrency_mode(self) -> str:
+        config = self._read_raw_config()
+        return config.get("concurrency_mode", "parallel")
+
+    def set_concurrency_mode(self, mode: str):
+        config = self._read_raw_config()
+        if mode not in ("sequential", "parallel"):
+            mode = "parallel"
+        config["concurrency_mode"] = mode
         self._save_raw_config(config)
 
     def get_mcp_servers(self) -> list:
