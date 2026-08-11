@@ -61,16 +61,35 @@ class LLMIntegration(ILLMIntegration):
         # Build system prompt with tool instructions
         system_prompt = self._build_system_prompt(tools)
 
-        # Call LLM
+        # Call LLM with tools
         try:
-            response_text = await self.model_router.generate(
+            response = await self.model_router.generate(
                 messages=provider_messages,
                 system_prompt=system_prompt,
                 max_tokens=max_tokens,
+                tools=tool_schemas,  # FIX: Pass tool schemas to LLM
             )
 
-            # Parse response for tool calls and content
-            tool_calls, content = self._parse_response(response_text, tools)
+            # Handle ModelResponse vs string response
+            if isinstance(response, str):
+                # Legacy string response - parse for tool calls
+                tool_calls, content = self._parse_response(response, tools)
+            else:
+                # Structured ModelResponse with tool_calls
+                import time
+                from ..providers.base import ModelResponse
+                
+                content = response.content or ""
+                tool_calls = []
+                
+                # Map provider ToolCall to agent ToolCall
+                for provider_tc in (response.tool_calls or []):
+                    tool_calls.append(ToolCall(
+                        tool_name=provider_tc.name,  # Provider uses 'name'
+                        arguments=provider_tc.arguments,
+                        tool_call_id=provider_tc.id,  # Provider uses 'id'
+                        timestamp=time.time()
+                    ))
 
             # Return as LLMMessage
             return LLMMessage(

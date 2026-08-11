@@ -121,38 +121,52 @@ planner_prompt_template = PromptTemplate.from_template(
 )
 
 requirement_prompt_template = PromptTemplate.from_template(
-    "You are the Requirement Analysis Agent (Research Agent). Walk the live workspace file tree and identify "
-    "exactly which files need to be read or modified for this task, and generate a markdown report of findings.\n\n"
+    "You are the Requirement Analysis Agent. Analyse the task and the current workspace to determine "
+    "what files must be created or modified.\n\n"
     "Task: {task_description}\n\n"
-    "Workspace files:\n{codebase_details}\n\n"
+    "Workspace files (empty list means a brand-new project):\n{codebase_details}\n\n"
     "RULES:\n"
-    "1. You must output ONLY a valid JSON object. No other text or markdown wrapper.\n"
-    "2. The JSON object must be structured exactly as follows:\n"
+    "1. Output ONLY a valid JSON object — no markdown, no prose.\n"
+    "2. If the workspace is EMPTY or has no relevant files, this is a NEW PROJECT. "
+    "You MUST populate 'files_to_create' with every file needed from scratch.\n"
+    "3. If relevant files already exist, put them in 'target_files' (to be read & modified).\n"
+    "4. NEVER return both lists empty for a new-project task.\n"
+    "5. Structure:\n"
     "{{\n"
-    "  \"report\": \"# Research Findings and analysis details...\",\n"
-    "  \"target_files\": [\"relative/path/to/file1\", \"relative/path/to/file2\"]\n"
+    "  \"is_new_project\": true,\n"
+    "  \"files_to_create\": [\"main.py\", \"models.py\", \"requirements.txt\"],\n"
+    "  \"target_files\": []\n"
     "}}\n"
-    "3. Limit to relevant files."
+    "For an existing project the structure is:\n"
+    "{{\n"
+    "  \"is_new_project\": false,\n"
+    "  \"files_to_create\": [],\n"
+    "  \"target_files\": [\"relative/path/to/file1\", \"relative/path/to/file2\"]\n"
+    "}}"
 )
 
 coding_prompt_template = PromptTemplate.from_template(
-    "You are the Coding Agent — a senior software engineer. Implement the required changes "
-    "precisely and completely.\n\n"
+    "You are the Coding Agent — a senior software engineer.\n\n"
     "Task: {task_description}\n"
     "Target file: {path}\n"
-    "File context (targeted excerpts):\n{file_context}\n\n"
+    "Is this a new file? {is_new_file}\n"
+    "Existing file context:\n{file_context}\n\n"
     "RULES:\n"
-    "1. You must output ONLY a valid JSON object. No other text or markdown wrapper.\n"
-    "2. The JSON object must be structured exactly as follows:\n"
+    "1. Output ONLY a valid JSON object — no markdown wrapper, no prose.\n"
+    "2. If 'Is this a new file?' is YES, write the COMPLETE file from scratch. "
+    "Do not reference or depend on content that does not exist yet.\n"
+    "3. If 'Is this a new file?' is NO, produce the full updated file contents.\n"
+    "4. NEVER use placeholder comments like '# TODO', '# implement here', or '... rest of code'.\n"
+    "5. Write production-ready, fully working code.\n"
+    "6. Structure:\n"
     "{{\n"
     "  \"files\": [\n"
     "    {{\n"
     "      \"path\": \"{path}\",\n"
-    "      \"content\": \"complete, untruncated file content\"\n"
+    "      \"content\": \"complete file content here\"\n"
     "    }}\n"
     "  ]\n"
-    "}}\n"
-    "3. NEVER use placeholder comments like '# TODO' or '... rest of code'. Write production-ready code."
+    "}}"
 )
 
 terminal_prompt_template = PromptTemplate.from_template(
@@ -729,24 +743,38 @@ class RequirementAnalysisAgent(BaseAgent):
             data = json.loads(clean_res.strip())
             report = ""
             target_files = []
+            files_to_create = []
+            is_new_project = False
+
             if isinstance(data, dict):
                 report = data.get("report", "")
                 target_files = data.get("target_files", [])
+                files_to_create = data.get("files_to_create", [])
+                is_new_project = data.get("is_new_project", False)
             elif isinstance(data, list):
                 target_files = data
-            
-            # Save research findings report to RESEARCH_REPORT.md
+
+            # Don't save research report to avoid unwanted files
             if report:
-                report_path = os.path.join(session.workspace_root, "RESEARCH_REPORT.md")
-                with open(report_path, "w", encoding="utf-8") as f:
-                    f.write(report)
-                await self.orchestrator.context.log(f"Requirement Analysis Agent: Saved research report to RESEARCH_REPORT.md")
-                
+                await self.orchestrator.context.log(f"Requirement Analysis Agent: Analysis complete")
+
+            # Store both lists and the new-project flag in shared memory
             if isinstance(target_files, list):
                 self.orchestrator.context.memory["target_files"] = target_files
-                await self.orchestrator.context.log(f"Requirement Analysis Agent: Identified target files: {target_files}")
             else:
                 self.orchestrator.context.memory["target_files"] = []
+
+            if isinstance(files_to_create, list):
+                self.orchestrator.context.memory["files_to_create"] = files_to_create
+            else:
+                self.orchestrator.context.memory["files_to_create"] = []
+
+            self.orchestrator.context.memory["is_new_project"] = bool(is_new_project)
+
+            await self.orchestrator.context.log(
+                f"Requirement Analysis Agent: is_new_project={is_new_project}, "
+                f"target_files={target_files}, files_to_create={files_to_create}"
+            )
         except Exception as e:
             logger.error(f"Requirement Analysis JSON parsing failed: {e}. Raw response: {response}")
             self.orchestrator.context.memory["target_files"] = []
@@ -826,16 +854,26 @@ class CodingAgent(BaseAgent):
     async def execute(self, task_description: str, session, task_id: int) -> str:
         await self.orchestrator.context.log(f"Coding Agent: Starting parallel code generation...")
         await self.orchestrator.update_task_progress(task_id, 10, session)
-        
+
         target_files = self.orchestrator.context.memory.get("target_files", [])
+        files_to_create = self.orchestrator.context.memory.get("files_to_create", [])
+        is_new_project = self.orchestrator.context.memory.get("is_new_project", False)
         file_contents = self.orchestrator.context.memory.get("file_contents", {})
-        
+
+        # --- Bug 3 fix: merge files_to_create into target_files for new projects ---
+        if is_new_project and files_to_create:
+            # New project: work list is the scaffold list, no existing content
+            target_files = files_to_create
+            await self.orchestrator.context.log(
+                f"Coding Agent: New project — scaffolding {len(target_files)} file(s): {target_files}"
+            )
+
         if not target_files:
-            # Infer target files from task_description or standard game/project structure
+            # Last-resort inference (keeps existing fallback behaviour)
             infer_prompt = (
-                f"Identify relative file paths that need to be created or modified for this task:\n"
+                f"List every relative file path that must be created or modified for this task.\n"
                 f"Task: {task_description}\n\n"
-                "Output ONLY a JSON array of string file paths, e.g. [\"index.html\", \"style.css\", \"script.js\", \"README.md\"]."
+                "Output ONLY a JSON array of strings, e.g. [\"main.py\", \"models.py\", \"requirements.txt\"]."
             )
             try:
                 llm = DevPilotChatModel(session=session, agent_name=self.name)
@@ -857,6 +895,9 @@ class CodingAgent(BaseAgent):
             
         async def process_file(path: str):
             original = file_contents.get(path, "")
+            # Bug 4 fix: tell the LLM whether it is writing a brand-new file
+            is_new_file = "YES" if not original else "NO"
+
             from .context_config import CODING_ORIGINAL_MAX_CHARS
             from .context_helpers import build_relevant_file_context
             file_context = build_relevant_file_context(
@@ -873,7 +914,8 @@ class CodingAgent(BaseAgent):
             prompt_content = coding_prompt_template.format(
                 task_description=task_description,
                 path=path,
-                file_context=file_context
+                is_new_file=is_new_file,
+                file_context=file_context if file_context else "(new file — no existing content)"
             )
             
             llm = DevPilotChatModel(session=session, agent_name=self.name)

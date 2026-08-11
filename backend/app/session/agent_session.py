@@ -1064,8 +1064,9 @@ class AgentSession:
             self.last_mode = mode
 
             if mode == "Agent":
-                await self.orchestrator.run_task(text, self)
-                return
+                # Run the 14-phase intelligence pipeline first, then fall through
+                # to the direct tool-calling loop below — do NOT short-circuit.
+                pass  # pipeline runs below at the ── 14-Phase ── block
 
             # Direct tool-calling loop for all other modes (Ask/Plan)
             # The direct loop lets the LLM call any available tool itself.

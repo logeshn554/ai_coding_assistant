@@ -1,0 +1,136 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    AI CODING AGENT - QUICK CHEATSHEET                      ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌─ SETUP (ONE TIME) ──────────────────────────────────────────────────────┐
+│                                                                          │
+│  1. Get API Key: https://console.anthropic.com/                         │
+│                                                                          │
+│  2. Set Key:                                                             │
+│     $env:ANTHROPIC_API_KEY = "sk-ant-your-key-here"                     │
+│                                                                          │
+│  3. Install:                                                             │
+│     pip install anthropic                                                │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌─ RUNNING THE AGENT ─────────────────────────────────────────────────────┐
+│                                                                          │
+│  Interactive Mode (recommended):                                         │
+│     python coding_agent.py                                               │
+│                                                                          │
+│  Single Command:                                                         │
+│     python coding_agent.py "create a Flask REST API"                    │
+│                                                                          │
+│  Quick Demo:                                                             │
+│     python demo_quick.py                                                 │
+│                                                                          │
+│  Easy Startup:                                                           │
+│     .\start_agent.ps1                                                    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌─ WHAT YOU'LL SEE ───────────────────────────────────────────────────────┐
+│                                                                          │
+│  🤖 Agent received: create a Flask REST API for blog posts             │
+│                                                                          │
+│  🔧 Executing operations...                                             │
+│                                                                          │
+│     Creating Flask application                                           │
+│     ✓ Created file: app.py                                              │
+│     Creating database models                                             │
+│     ✓ Created file: models.py                                           │
+│     Creating requirements                                                │
+│     ✓ Created file: requirements.txt                                    │
+│                                                                          │
+│  💬 Created Flask REST API with CRUD endpoints                          │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌─ EXAMPLE REQUESTS ──────────────────────────────────────────────────────┐
+│                                                                          │
+│  Web Apps:                                                               │
+│  • "create a Flask REST API for user management"                        │
+│  • "create a Django blog with authentication"                           │
+│  • "create a FastAPI app with SQLAlchemy"                               │
+│                                                                          │
+│  Scripts:                                                                │
+│  • "create a Python script to rename files in bulk"                     │
+│  • "create a CLI tool for file encryption"                              │
+│  • "make a backup script for databases"                                 │
+│                                                                          │
+│  Updates:                                                                │
+│  • "add error handling to the API"                                      │
+│  • "add unit tests for the models"                                      │
+│  • "add JWT authentication"                                             │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌─ COMMON ISSUES ─────────────────────────────────────────────────────────┐
+│                                                                          │
+│  ❌ "API key not set"                                                   │
+│     → $env:ANTHROPIC_API_KEY = "your-key"                              │
+│                                                                          │
+│  ❌ "File already exists"                                               │
+│     → Ask to "update" instead of "create"                               │
+│                                                                          │
+│  ❌ No files created                                                     │
+│     → Check API key is valid                                            │
+│     → Run: python demo_quick.py to test                                 │
+│                                                                          │
+│  ❌ Creates research.md                                                  │
+│     → Say "Do NOT create documentation files"                           │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌─ IMPORTANT ─────────────────────────────────────────────────────────────┐
+│                                                                          │
+│  ❌ DON'T USE: DevPilot AI Assistant (top-right panel in IDE)          │
+│     → Only gives advice, doesn't create files                           │
+│                                                                          │
+│  ✅ USE THIS: python coding_agent.py (in terminal)                      │
+│     → Creates actual files with working code                            │
+│                                                                          │
+│  Press Ctrl+` to open terminal in DevPilot IDE                          │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌─ FILES TO READ ─────────────────────────────────────────────────────────┐
+│                                                                          │
+│  START_HERE.txt          ← Quick overview                                │
+│  QUICK_START.md          ← 60-second setup                              │
+│  WHICH_AGENT_TO_USE.md   ← Explains the confusion                       │
+│  AGENT_GUIDE.md          ← Complete guide with examples                 │
+│  SESSION_SUMMARY.md      ← Full technical details                       │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌─ QUICK COMMANDS ────────────────────────────────────────────────────────┐
+│                                                                          │
+│  # Test the agent                                                        │
+│  python test_agent.py                                                    │
+│                                                                          │
+│  # See quick demo                                                        │
+│  python demo_quick.py                                                    │
+│                                                                          │
+│  # Run interactive agent                                                 │
+│  python coding_agent.py                                                  │
+│                                                                          │
+│  # Run with startup checks                                               │
+│  .\start_agent.ps1                                                       │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌─ TIPS FOR BEST RESULTS ─────────────────────────────────────────────────┐
+│                                                                          │
+│  ✓ Be specific: "Flask REST API with SQLite"                            │
+│  ✓ Mention stack: "Use PostgreSQL and FastAPI"                          │
+│  ✓ Break into steps: Start simple, add features iteratively             │
+│  ✓ Review code: Check files before running them                         │
+│  ✓ Use git: Commit before using agent                                   │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║  NEXT STEP: Run python demo_quick.py to see it work!                      ║
+╚════════════════════════════════════════════════════════════════════════════╝
