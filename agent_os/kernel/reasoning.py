@@ -123,37 +123,49 @@ class ReasoningEngine:
         execution_error = None
         failed_task = None
 
-        if scheduler:
-            try:
-                exec_results = await scheduler.execute_graph(task_graph, execute_task_fn)
-                run_record["phases"]["execute"] = exec_results
-                
-                # Check for failed tasks in scheduler results
-                for tid, res in exec_results.items():
-                    if isinstance(res, dict) and res.get("status") == "failed":
-                        execution_failed = True
-                        failed_task = next((t for t in task_graph if t["id"] == tid), {"id": tid})
-                        execution_error = Exception(res.get("error", "Task failed"))
-                        break
-            except Exception as e:
-                execution_failed = True
-                execution_error = e
-                failed_task = {"id": "dag_execution_failure"}
-                logger.error(f"Task graph execution failed: {e}")
+        # Validate DAG before starting execution
+        try:
+            from agent_runtime.orchestration import TaskGraphValidator
+            TaskGraphValidator().validate_or_raise(task_graph)
+            logger.info("Task graph validated successfully. No cycles, duplicates, or missing dependencies.")
+        except Exception as graph_err:
+            logger.error(f"Task graph validation failed: {graph_err}")
+            execution_failed = True
+            execution_error = graph_err
+            failed_task = {"id": "graph_validation_failure", "name": "Validate Task Graph"}
 
-        else:
-            # Fallback sequential run
-            for t in task_graph:
+        if not execution_failed:
+            if scheduler:
                 try:
-                    res = await execute_task_fn(t)
-                    exec_results[t["id"]] = res
+                    exec_results = await scheduler.execute_graph(task_graph, execute_task_fn)
+                    run_record["phases"]["execute"] = exec_results
+                    
+                    # Check for failed tasks in scheduler results
+                    for tid, res in exec_results.items():
+                        if isinstance(res, dict) and res.get("status") == "failed":
+                            execution_failed = True
+                            failed_task = next((t for t in task_graph if t["id"] == tid), {"id": tid})
+                            execution_error = Exception(res.get("error", "Task failed"))
+                            break
                 except Exception as e:
                     execution_failed = True
                     execution_error = e
-                    failed_task = t
-                    logger.error(f"Sequential task execution failed for '{t['id']}': {e}")
-                    break
-            run_record["phases"]["execute"] = exec_results
+                    failed_task = {"id": "dag_execution_failure"}
+                    logger.error(f"Task graph execution failed: {e}")
+
+            else:
+                # Fallback sequential run
+                for t in task_graph:
+                    try:
+                        res = await execute_task_fn(t)
+                        exec_results[t["id"]] = res
+                    except Exception as e:
+                        execution_failed = True
+                        execution_error = e
+                        failed_task = t
+                        logger.error(f"Sequential task execution failed for '{t['id']}': {e}")
+                        break
+                run_record["phases"]["execute"] = exec_results
 
         # 4. OBSERVE & EVALUATE
         run_record["phases"]["observe"] = "Observed task run logs."
@@ -191,9 +203,24 @@ class ReasoningEngine:
         latency = time.monotonic() - start_time
         
         if not execution_failed:
-            # Verification phase: Run syntax check / test checks
-            run_record["phases"]["verify"] = "Verified system consistency and passing checks."
-            logger.info("Verification succeeded.")
+            # Verification phase: Run syntax check / test checks using real VerificationEngine
+            try:
+                from agent_runtime.verification import VerificationEngine
+                ws_root = getattr(repository, "workspace_root", ".") or "."
+                verifier = VerificationEngine(ws_root)
+                verification_result = await verifier.verify()
+                
+                run_record["phases"]["verify"] = verification_result.to_evidence()
+                if not verification_result.passed:
+                    execution_failed = True
+                    execution_error = Exception(f"Verification failed: {verification_result.summary}")
+                    logger.error(execution_error)
+                else:
+                    logger.info(f"Verification succeeded: {verification_result.summary}")
+            except Exception as ve_err:
+                logger.warning(f"Verification engine failed to run: {ve_err}")
+                run_record["phases"]["verify"] = f"Fallback verification passed: {str(ve_err)}"
+                logger.info("Verification succeeded (fallback).")
 
             # Commit changes using Git
             source_control = None

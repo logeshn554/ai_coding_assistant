@@ -60,25 +60,19 @@ async def reduce_node(state: GraphState) -> dict:
 # back to run_agents.  Otherwise it passes through to monitor_node.
 # ---------------------------------------------------------------------------
 
-# Keywords that indicate a high-severity problem in free-text agent output.
-_HIGH_SEVERITY_KEYWORDS = frozenset([
-    "critical", "high severity", "high-severity",
-    "securityerror", "security error",
-    "FAILED", "error:", "exception:",
-])
-
-
 def _is_high_severity(result: AgentResult) -> bool:
-    """Return True if an evaluator result carries a high-severity signal."""
-    # Prefer the structured field when agents populate it.
+    """Return True if an evaluator result carries a high-severity signal.
+
+    Relies strictly on structured status, severity, and test failure counts
+    to eliminate brittle keyword-matching in text logs.
+    """
+    if result.status in ("failed", "stuck", "budget_exceeded"):
+        return True
     if result.severity and result.severity.lower() in ("high", "critical"):
         return True
-    # Test-failure count is an unambiguous numeric signal.
     if result.test_failures > 0:
         return True
-    # Fall back to keyword heuristics for agents that only emit prose output.
-    lower_output = result.output.lower()
-    return any(kw.lower() in lower_output for kw in _HIGH_SEVERITY_KEYWORDS)
+    return False
 
 
 async def refine_node(state: GraphState) -> dict:
@@ -291,8 +285,9 @@ def build_supervisor_graph(config: SystemConfig) -> CompiledStateGraph:
         "failed": END,
     })
 
-    # Setup checkpointer
-    checkpointer = MemorySaver()
+    # Setup checkpointer - use DurableJSONSaver to persist state on disk
+    from parallel_agent_system.core.graph import DurableJSONSaver
+    checkpointer = DurableJSONSaver("graph_checkpoints.json")
 
     # Compile the graph with interrupt before the monitor node for human-in-the-loop
     return graph.compile(checkpointer=checkpointer, interrupt_before=["monitor"])

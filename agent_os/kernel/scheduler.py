@@ -41,9 +41,14 @@ class DependencyScheduler:
 
         for t in tasks:
             tid = t["id"]
-            deps = set(t.get("dependencies", []))
-            # Filter out dependencies not in the task list
-            deps = {d for d in deps if d in task_map}
+            deps = set(t.get("depends_on", []))
+            # Reject unknown dependencies instead of silently dropping them
+            unknown = {d for d in deps if d not in task_map}
+            if unknown:
+                raise ValueError(
+                    f"Task '{tid}' depends on unknown task(s): {unknown}. "
+                    f"Known task IDs: {set(task_map.keys())}"
+                )
             in_degree[tid] = len(deps)
             for d in deps:
                 dependents[d].add(tid)

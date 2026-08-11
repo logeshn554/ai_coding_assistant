@@ -52,6 +52,51 @@ class MemorySaver:
             self._checkpoints[thread_id] = copy.copy(state)
 
 
+class DurableJSONSaver:
+    """JSON-file backed durable checkpointer saving graph execution states."""
+
+    def __init__(self, filepath: str = "graph_checkpoints.json") -> None:
+        self.filepath = filepath
+        self._checkpoints: Dict[str, Dict[str, Any]] = {}
+        self._load()
+
+    def _load(self) -> None:
+        import os
+        import json
+        if os.path.exists(self.filepath):
+            try:
+                with open(self.filepath, "r", encoding="utf-8") as f:
+                    self._checkpoints = json.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to load checkpoints from {self.filepath}: {e}")
+
+    def _save(self) -> None:
+        import json
+        try:
+            def default_serializer(obj):
+                if hasattr(obj, "model_dump"):
+                    return obj.model_dump()
+                if hasattr(obj, "dict"):
+                    return obj.dict()
+                return str(obj)
+                
+            with open(self.filepath, "w", encoding="utf-8") as f:
+                json.dump(self._checkpoints, f, indent=4, default=default_serializer)
+        except Exception as e:
+            logger.warning(f"Failed to save checkpoints to {self.filepath}: {e}")
+
+    def get(self, thread_id: str) -> Optional[Dict[str, Any]]:
+        return self._checkpoints.get(thread_id)
+
+    def put(self, thread_id: str, state: Dict[str, Any]) -> None:
+        import copy
+        try:
+            self._checkpoints[thread_id] = copy.deepcopy(state)
+        except Exception:
+            self._checkpoints[thread_id] = copy.copy(state)
+        self._save()
+
+
 class CompiledStateGraph:
     """Compiled native state graph ready for execution.
 

@@ -74,17 +74,19 @@ async def run_agents_parallel_node(state: GraphState) -> dict:
             agent_instance = agent_cls(config=config)
             return await agent_instance.run(subtask, session=session)
         else:
-            # Fallback mock runner for Phase 2 testing
-            await asyncio.sleep(0.01)
+            # Hard failure: agent type not registered — never silently succeed
+            logger.error(f"No agent registered for type '{subtask.agent_type}' (subtask {subtask.id})")
             return AgentResult(
                 subtask_id=subtask.id,
                 agent_type=subtask.agent_type,
-                status="success",
-                output=f"Executed mock agent for task: {subtask.description}",
-                files_changed=["src/main.py"] if subtask.agent_type == "code" else [],
-                cost_usd=0.05,
-                iterations=1,
-                event_log_key=f"events:mock:{subtask.id}"
+                status="failed",
+                output=f"Agent type '{subtask.agent_type}' is not registered. "
+                       f"Available types: {list(agent_registry.keys()) if agent_registry else 'none'}",
+                files_changed=[],
+                cost_usd=0.0,
+                iterations=0,
+                event_log_key=f"events:not_registered:{subtask.id}",
+                error=f"AgentNotRegisteredError: No agent for type '{subtask.agent_type}'"
             )
 
     async def run_one_guarded(subtask: SubTask) -> AgentResult:

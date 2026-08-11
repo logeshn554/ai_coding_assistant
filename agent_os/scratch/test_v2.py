@@ -28,10 +28,10 @@ class TestAgentOSV2(unittest.TestCase):
     def test_dependency_scheduler(self):
         scheduler = DependencyScheduler(concurrency_limit=2)
         tasks = [
-            {"id": "A", "dependencies": [], "priority": 1},
-            {"id": "B", "dependencies": ["A"], "priority": 0},
-            {"id": "C", "dependencies": ["A"], "priority": 2},
-            {"id": "D", "dependencies": ["B", "C"], "priority": 0},
+            {"id": "A", "depends_on": [], "priority": 1},
+            {"id": "B", "depends_on": ["A"], "priority": 0},
+            {"id": "C", "depends_on": ["A"], "priority": 2},
+            {"id": "D", "depends_on": ["B", "C"], "priority": 0},
         ]
         
         execution_order = []
@@ -54,8 +54,8 @@ class TestAgentOSV2(unittest.TestCase):
     def test_scheduler_cycle_detection(self):
         scheduler = DependencyScheduler(concurrency_limit=2)
         tasks = [
-            {"id": "A", "dependencies": ["B"]},
-            {"id": "B", "dependencies": ["A"]},
+            {"id": "A", "depends_on": ["B"]},
+            {"id": "B", "depends_on": ["A"]},
         ]
         async def mock_execute(task):
             return "ok"
@@ -69,9 +69,9 @@ class TestAgentOSV2(unittest.TestCase):
     def test_scheduler_cascading_failure(self):
         scheduler = DependencyScheduler(concurrency_limit=2)
         tasks = [
-            {"id": "A", "dependencies": []},
-            {"id": "B", "dependencies": ["A"]},
-            {"id": "C", "dependencies": ["B"]},
+            {"id": "A", "depends_on": []},
+            {"id": "B", "depends_on": ["A"]},
+            {"id": "C", "depends_on": ["B"]},
         ]
         async def mock_execute(task):
             if task["id"] == "A":
@@ -637,6 +637,68 @@ class TestAgentOSV2(unittest.TestCase):
         with open(os.path.join(workspace, file_path), "r", encoding="utf-8") as f:
             final_content = f.read()
         self.assertIn("def sum(self, x, y):", final_content)
+
+    # 15. New agent_runtime loop, tools, verifier, and DAG validator integration tests
+    def test_real_agent_loop_and_observability(self):
+        from agent_runtime.tools import ToolRegistry
+        from agent_runtime.tools.filesystem import create_filesystem_tools
+        from agent_runtime.verification import VerificationEngine
+        from agent_runtime.orchestration import TaskGraphValidator
+        from agent_runtime.observability.events import EventTracer
+        
+        workspace = os.path.join(self.temp_dir, "agent_runtime_workspace")
+        os.makedirs(workspace, exist_ok=True)
+        
+        # 1. Test ToolRegistry and Filesystem tools
+        registry = ToolRegistry()
+        for t in create_filesystem_tools(workspace):
+            registry.register(t)
+            
+        write_tool = registry.get("write_file")
+        self.assertIsNotNone(write_tool)
+        
+        # Run write_file tool
+        res_write = asyncio.run(registry.execute("write_file", {"file_path": "hello.py", "content": "print('hello world')"}))
+        self.assertTrue(res_write.success)
+        self.assertTrue(os.path.exists(os.path.join(workspace, "hello.py")))
+        
+        # Run read_file tool
+        res_read = asyncio.run(registry.execute("read_file", {"file_path": "hello.py"}))
+        self.assertTrue(res_read.success)
+        self.assertEqual(res_read.output.strip(), "print('hello world')")
+        
+        # 2. Test Verification Engine
+        verifier = VerificationEngine(workspace)
+        ver_result = asyncio.run(verifier.verify())
+        self.assertTrue(ver_result.passed)
+        
+        # 3. Test DAG Validator
+        validator = TaskGraphValidator()
+        valid_graph = [
+            {"id": "task-A", "depends_on": []},
+            {"id": "task-B", "depends_on": ["task-A"]}
+        ]
+        val_res = validator.validate(valid_graph)
+        self.assertTrue(val_res.valid)
+        
+        invalid_graph = [
+            {"id": "task-A", "depends_on": ["task-B"]},
+            {"id": "task-B", "depends_on": ["task-A"]}
+        ]
+        val_res_invalid = validator.validate(invalid_graph)
+        self.assertFalse(val_res_invalid.valid)
+        self.assertIn("Cyclic dependency detected", val_res_invalid.errors[0])
+        
+        # 4. Test Event Tracer
+        tracer = EventTracer()
+        tracer.record(run_id="run-123", event_type="test.started", payload={"msg": "booting"})
+        tracer.record(run_id="run-123", event_type="tool.executed", task_id="t1", payload={"tool": "write"})
+        
+        trace = tracer.get_run_trace("run-123")
+        self.assertEqual(len(trace), 2)
+        self.assertEqual(trace[0].event_type, "test.started")
+        self.assertEqual(trace[1].event_type, "tool.executed")
+        self.assertEqual(trace[1].task_id, "t1")
 
 if __name__ == "__main__":
     unittest.main()

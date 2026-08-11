@@ -86,8 +86,8 @@ class ModelRouter(IModelRouter):
                 try:
                     self._check_rate_limit()
                     
-                    # Simulate API execution
-                    res = await self._mock_provider_call(provider, prompt)
+                    # Call real provider or fall back to mock
+                    res = await self._real_provider_call(provider, prompt, system_prompt, model_name)
                     return res
                 except RateLimitError as e:
                     last_error = e
@@ -102,6 +102,68 @@ class ModelRouter(IModelRouter):
             self.set_provider_health(provider, False)
 
         raise ProviderError(f"All routed model providers failed or rate-limited. Last error: {str(last_error)}")
+
+    async def _real_provider_call(self, provider: str, prompt: str, system_prompt: str, model_name: str) -> str:
+        # Retrieve API key
+        from parallel_agent_system.runtime.secret_registry import SecretRegistry
+        api_key = SecretRegistry.get(f"{provider.upper()}_API_KEY") or SecretRegistry.get("LLM_API_KEY")
+        
+        base_url = None
+        resolved_model = model_name
+        
+        # Fall back to ConfigManager if registry key is not set
+        if not api_key:
+            try:
+                from backend.app.config import ConfigManager
+                profile = ConfigManager().get_active_profile()
+                if profile:
+                    api_key = profile.get("api_key")
+                    base_url = profile.get("base_url")
+                    if not resolved_model or resolved_model == "default":
+                        resolved_model = profile.get("model_name") or "default"
+            except Exception:
+                pass
+                
+        # If no key, or key is "mock", do not make real call
+        if not api_key or api_key.startswith("mock"):
+            return await self._mock_provider_call(provider, prompt)
+            
+        # Resolve defaults if still empty
+        if not resolved_model or resolved_model == "default":
+            resolved_model = "gpt-4o-mini"
+            
+        # Determine base URL if not set
+        if not base_url:
+            if provider == "openai":
+                base_url = SecretRegistry.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
+            elif provider == "anthropic":
+                base_url = SecretRegistry.get("ANTHROPIC_BASE_URL") or "https://api.openai.com/v1"
+            elif provider == "gemini":
+                base_url = SecretRegistry.get("GEMINI_BASE_URL") or "https://generativelanguage.googleapis.com/v1beta/openai"
+            elif provider == "groq":
+                base_url = SecretRegistry.get("GROQ_BASE_URL") or "https://api.groq.com/openai/v1"
+            elif provider == "ollama":
+                base_url = SecretRegistry.get("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
+            else:
+                base_url = "https://api.openai.com/v1"
+                
+        # Instantiate OpenAIProvider (acting as a generic OpenAI-compatible requester)
+        from agent_runtime.llm.openai_provider import OpenAIProvider
+        from agent_runtime.llm import Message
+        
+        prov = OpenAIProvider(
+            api_key=api_key,
+            model=resolved_model,
+            base_url=base_url
+        )
+        
+        messages = []
+        if system_prompt:
+            messages.append(Message(role="system", content=system_prompt))
+        messages.append(Message(role="user", content=prompt))
+        
+        response = await prov.generate(messages=messages)
+        return response.content
 
     async def _mock_provider_call(self, provider: str, prompt: str) -> str:
         """Simulates provider completions."""

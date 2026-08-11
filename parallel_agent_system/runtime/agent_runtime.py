@@ -140,7 +140,7 @@ class Conversation:
         self.state = ConversationState()
 
     async def stream(self, description: str) -> AsyncGenerator[Event, None]:
-        """Simulates streaming events for the agent's tasks, supporting custom test hooks."""
+        """Runs the real agent reasoning loop if credentials exist, else falls back to simulation."""
         is_stuck_test = "trigger stuck" in description.lower()
         is_budget_test = "trigger budget" in description.lower()
 
@@ -151,15 +151,114 @@ class Conversation:
             for _ in range(5):
                 yield ActionEvent(action=action, cost_usd=0.01)
                 yield ObservationEvent(observation=observation, cost_usd=0.01)
+            return
         elif is_budget_test:
             # Emit high costs to trigger BudgetExceeded
             yield ActionEvent(action=Action(content="run massive job"), cost_usd=10.0)
-        else:
-            # Standard successful path
+            return
+
+        # Check if we should run mock/simulated mode
+        from parallel_agent_system.runtime.secret_registry import SecretRegistry
+        import os as _os
+        api_key = self.agent.llm.api_key or SecretRegistry.get("LLM_API_KEY")
+        mock_mode = _os.environ.get("AGENT_RUNTIME_MODE", "").lower() == "mock"
+
+        if not api_key or api_key.startswith("mock") or mock_mode:
+            # Standard successful path simulation fallback
             yield ActionEvent(action=Action(type="bash", content="cat hello.py"), cost_usd=0.02)
             yield ObservationEvent(observation=Observation(content="print('hello')"), cost_usd=0.02)
             yield ActionEvent(action=Action(type="bash", content="pytest"), cost_usd=0.05)
             yield ObservationEvent(observation=Observation(content="3 passed"), cost_usd=0.05)
-            
-            # Populate files changed in output
             self.state.last_finish_action.outputs = {"files_changed": ["src/hello.py"]}
+            return
+
+        # Real Agent Loop Execution
+        workspace_root = "."
+        for host_path, volume_info in self.workspace.volumes.items():
+            if volume_info.get("mode") == "rw":
+                workspace_root = host_path
+                break
+
+        # Setup real LLM provider
+        from agent_runtime.llm.openai_provider import OpenAIProvider
+        
+        # Check active profile in ConfigManager for base_url
+        base_url = "https://api.openai.com/v1"
+        try:
+            from backend.app.config import ConfigManager
+            profile = ConfigManager().get_active_profile()
+            if profile and profile.get("base_url"):
+                base_url = profile.get("base_url")
+        except Exception:
+            pass
+
+        llm = OpenAIProvider(
+            api_key=api_key,
+            model=self.agent.llm.model or "gpt-4o-mini",
+            base_url=base_url
+        )
+
+        # Setup real tools based on requested tools
+        from agent_runtime.tools import ToolRegistry
+        from agent_runtime.tools.filesystem import create_filesystem_tools
+        from agent_runtime.tools.terminal import create_terminal_tools
+        from agent_runtime.tools.search import create_search_tools
+
+        tool_registry = ToolRegistry()
+        req_tool_names = {t.name for t in self.agent.tools}
+
+        if "file_editor" in req_tool_names or any("file" in t for t in req_tool_names):
+            for t in create_filesystem_tools(workspace_root):
+                tool_registry.register(t)
+        if "bash" in req_tool_names or "run_command" in req_tool_names:
+            for t in create_terminal_tools(workspace_root):
+                tool_registry.register(t)
+        # Register search tools for all agents to aid context discovery
+        for t in create_search_tools(workspace_root):
+            tool_registry.register(t)
+
+        from agent_runtime.loop import agent_loop, LoopConfig
+        config = LoopConfig(
+            max_iterations=50,
+            max_cost_usd=5.0,
+            temperature=0.0
+        )
+
+        from agent_runtime.workspace.changes import get_workspace_snapshot, detect_changed_files
+        before_snapshot = get_workspace_snapshot(workspace_root)
+
+        # Run real loop
+        async for event in agent_loop(
+            llm=llm,
+            tool_registry=tool_registry,
+            system_prompt=self.agent.system_prompt,
+            user_message=description,
+            config=config
+        ):
+            if event.type == "llm_call":
+                # Convert to ActionEvent
+                yield ActionEvent(
+                    action=Action(type="thought", content=event.content or "(thinking)", is_tool_call=False),
+                    cost_usd=event.cost_usd
+                )
+            elif event.type == "tool_call":
+                yield ActionEvent(
+                    action=Action(
+                        type="bash",
+                        content=f"Calling tool: {event.tool_name} with arguments: {event.tool_args}",
+                        is_tool_call=True
+                    ),
+                    cost_usd=0.0
+                )
+            elif event.type == "tool_result":
+                yield ObservationEvent(
+                    observation=Observation(content=event.tool_result or ""),
+                    cost_usd=0.0
+                )
+            elif event.type == "final":
+                # Perform robust mtime/size snapshot + Git status changed files detection
+                changed_files = await detect_changed_files(workspace_root, before_snapshot)
+                self.state.last_finish_action = FinishAction(
+                    final_thought=event.content,
+                    outputs={"files_changed": changed_files}
+                )
