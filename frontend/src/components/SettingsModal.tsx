@@ -118,6 +118,13 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   const [imageAnalysisModel, setImageAnalysisModel] = useState<string>('');
   const [devpilotRpm, setDevpilotRpm] = useState<number>(15);
   const [concurrencyMode, setConcurrencyMode] = useState<string>('parallel');
+  const [temperature, setTemperature] = useState<number>(1.0);
+  const [topP, setTopP] = useState<number>(1.0);
+  const [maxTokens, setMaxTokens] = useState<number>(16384);
+  const [seed, setSeed] = useState<number>(42);
+  const [stream, setStream] = useState<boolean>(true);
+  const [decisionEngine, setDecisionEngine] = useState<string>('rule_based');
+  const [dualLlmMode, setDualLlmMode] = useState<boolean>(false);
 
   // Agent Behavior & Local Permissions State
   const [artifactReviewPolicy, setArtifactReviewPolicy] = useState<string>('Always Ask');
@@ -171,6 +178,13 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         setImageAnalysisModel(data?.image_analysis_model || '');
         if (data?.devpilot_rpm !== undefined) setDevpilotRpm(data.devpilot_rpm);
         if (data?.concurrency_mode !== undefined) setConcurrencyMode(data.concurrency_mode);
+        if (data?.temperature !== undefined) setTemperature(data.temperature);
+        if (data?.top_p !== undefined) setTopP(data.top_p);
+        if (data?.max_tokens !== undefined) setMaxTokens(data.max_tokens);
+        if (data?.seed !== undefined) setSeed(data.seed);
+        if (data?.stream !== undefined) setStream(data.stream);
+        if (data?.decision_engine !== undefined) setDecisionEngine(data.decision_engine);
+        if (data?.dual_llm_mode !== undefined) setDualLlmMode(data.dual_llm_mode);
         // Terminal preferences
         setDefaultShell(data?.default_shell || '');
         if (data?.terminal_font_size) setTermFontSize(data.terminal_font_size);
@@ -202,7 +216,14 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     newImgModel?: string,
     newRpm?: number,
     newConcurrency?: string,
-    newAgentProfiles?: Record<string, string>
+    newAgentProfiles?: Record<string, string>,
+    newTemperature?: number,
+    newTopP?: number,
+    newMaxTokens?: number,
+    newSeed?: number,
+    newStream?: boolean,
+    newDecisionEngine?: string,
+    newDualLlmMode?: boolean
   ) => {
     try {
       await fetch('/api/config/settings', {
@@ -226,6 +247,13 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           mcp_tool_rules: mcpRulesOverride !== undefined ? mcpRulesOverride : mcpToolRules,
           devpilot_rpm: newRpm !== undefined ? newRpm : devpilotRpm,
           concurrency_mode: newConcurrency !== undefined ? newConcurrency : concurrencyMode,
+          temperature: newTemperature !== undefined ? newTemperature : temperature,
+          top_p: newTopP !== undefined ? newTopP : topP,
+          max_tokens: newMaxTokens !== undefined ? newMaxTokens : maxTokens,
+          seed: newSeed !== undefined ? newSeed : seed,
+          stream: newStream !== undefined ? newStream : stream,
+          decision_engine: newDecisionEngine !== undefined ? newDecisionEngine : decisionEngine,
+          dual_llm_mode: newDualLlmMode !== undefined ? newDualLlmMode : dualLlmMode,
         })
       });
       onProfileChanged();
@@ -256,6 +284,13 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           mcp_tool_rules: mcpToolRules,
           devpilot_rpm: devpilotRpm,
           concurrency_mode: concurrencyMode,
+          temperature: temperature,
+          top_p: topP,
+          max_tokens: maxTokens,
+          seed: seed,
+          stream: stream,
+          decision_engine: decisionEngine,
+          dual_llm_mode: dualLlmMode,
         })
       });
     } catch (e) {
@@ -1275,6 +1310,179 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   <option value="parallel">Parallel Execution</option>
                   <option value="sequential">Sequential (Low RPM)</option>
                 </select>
+              </div>
+            </div>
+
+            {/* Model Generation Parameters */}
+            <div className="space-y-4 border-t border-white/5 pt-5">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-400 block">
+                  Model Generation Parameters
+                </label>
+                <span className="text-[10px] text-gray-500 block">
+                  Fine-tune the output behavior, randomness, and length parameters for LLM responses.
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Temperature */}
+                <div className="space-y-2 p-3 bg-white/[0.02] border border-white/5 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] font-semibold text-gray-300">Temperature (Randomness)</span>
+                    <span className="text-[11px] font-mono text-[#4C8DFF]">{temperature.toFixed(2)}</span>
+                  </div>
+                  <div className="flex gap-3 items-center">
+                    <input
+                      type="range"
+                      min={0.0}
+                      max={2.0}
+                      step={0.1}
+                      value={temperature}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setTemperature(val);
+                      }}
+                      onMouseUp={(e) => {
+                        const val = parseFloat((e.target as HTMLInputElement).value);
+                        savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                      }}
+                      className="accent-[#4C8DFF] flex-1 cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Top P */}
+                <div className="space-y-2 p-3 bg-white/[0.02] border border-white/5 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] font-semibold text-gray-300">Top P (Nucleus Sampling)</span>
+                    <span className="text-[11px] font-mono text-[#4C8DFF]">{topP.toFixed(2)}</span>
+                  </div>
+                  <div className="flex gap-3 items-center">
+                    <input
+                      type="range"
+                      min={0.0}
+                      max={1.0}
+                      step={0.05}
+                      value={topP}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setTopP(val);
+                      }}
+                      onMouseUp={(e) => {
+                        const val = parseFloat((e.target as HTMLInputElement).value);
+                        savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                      }}
+                      className="accent-[#4C8DFF] flex-1 cursor-pointer"
+                    />
+                  </div>
+                </div>
+
+                {/* Max Tokens */}
+                <div className="space-y-2 p-3 bg-white/[0.02] border border-white/5 rounded-lg">
+                  <label className="text-[11px] font-semibold text-gray-300 block">Max Output Tokens</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000000}
+                    value={maxTokens}
+                    onChange={(e) => {
+                      const val = Math.max(1, parseInt(e.target.value, 10) || 16384);
+                      setMaxTokens(val);
+                    }}
+                    onBlur={(e) => {
+                      const val = Math.max(1, parseInt(e.target.value, 10) || 16384);
+                      savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                    }}
+                    className="w-full px-2.5 py-1.5 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF] font-mono"
+                  />
+                </div>
+
+                {/* Seed */}
+                <div className="space-y-2 p-3 bg-white/[0.02] border border-white/5 rounded-lg">
+                  <label className="text-[11px] font-semibold text-gray-300 block">Random Seed</label>
+                  <input
+                    type="number"
+                    value={seed ?? ''}
+                    placeholder="None (random)"
+                    onChange={(e) => {
+                      const val = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                      setSeed(val as any);
+                    }}
+                    onBlur={(e) => {
+                      const val = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                      savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                    }}
+                    className="w-full px-2.5 py-1.5 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF] font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Streaming responses checkbox */}
+              <div className="flex items-start gap-3 bg-white/2 border border-white/5 rounded-xl p-4">
+                <input
+                  type="checkbox"
+                  id="model-stream-check"
+                  checked={stream}
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    setStream(val);
+                    savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                  }}
+                  className="accent-[#4C8DFF] mt-1 cursor-pointer w-4 h-4 rounded"
+                />
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="model-stream-check" className="text-xs font-semibold text-white cursor-pointer select-none">
+                    Stream Model Responses
+                  </label>
+                  <span className="text-[10px] text-gray-500">
+                    When enabled, response chunks are displayed as they are generated by the model. When disabled, the complete response is displayed only after generation finishes.
+                  </span>
+                </div>
+              </div>
+
+              {/* File Selection Decision Engine */}
+              <div className="space-y-2 p-3 bg-white/[0.02] border border-white/5 rounded-lg">
+                <label className="text-xs font-semibold text-gray-400 block">
+                  File Selection Decision Engine
+                </label>
+                <span className="text-[10px] text-gray-500 block">
+                  Choose the strategy for selecting target codebase files. LLM-based selection calls the model to decide which files to write/modify.
+                </span>
+                <select
+                  value={decisionEngine}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDecisionEngine(val);
+                    savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                  }}
+                  className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF]"
+                >
+                  <option value="rule_based">Rule-Based Heuristic (RAG)</option>
+                  <option value="llm">LLM-Based Selection Engine (LLM Decides)</option>
+                </select>
+              </div>
+
+              {/* Dual-LLM Execution Mode */}
+              <div className="flex items-start gap-3 bg-white/2 border border-white/5 rounded-xl p-4">
+                <input
+                  type="checkbox"
+                  id="dual-llm-mode-check"
+                  checked={dualLlmMode}
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    setDualLlmMode(val);
+                    savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                  }}
+                  className="accent-[#4C8DFF] mt-1 cursor-pointer w-4 h-4 rounded"
+                />
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="dual-llm-mode-check" className="text-xs font-semibold text-white cursor-pointer select-none">
+                    Enable Dual-LLM Mode (Brain + Generator)
+                  </label>
+                  <span className="text-[10px] text-gray-500">
+                    When enabled, the Brain LLM acts as high-level planner and delegates execution tasks to a separate Generator LLM, conveying context strictly through the Shared Memory.
+                  </span>
+                </div>
               </div>
             </div>
 

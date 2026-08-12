@@ -65,7 +65,11 @@ class CommonAdapter(ModelProvider):
                 "messages": formatted_messages,
                 "temperature": kwargs.get("temperature", self.config.temperature),
                 "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
+                "top_p": kwargs.get("top_p", getattr(self.config, "top_p", 1.0)),
             }
+            seed_val = kwargs.get("seed", getattr(self.config, "seed", None))
+            if seed_val is not None:
+                call_kwargs["seed"] = seed_val
             if openai_tools:
                 call_kwargs["tools"] = openai_tools
                 call_kwargs["tool_choice"] = "auto"
@@ -132,13 +136,28 @@ class CommonAdapter(ModelProvider):
             })
 
         try:
-            response = await client.chat.completions.create(
-                model=self.config.model,
-                messages=formatted_messages,
-                temperature=kwargs.get("temperature", self.config.temperature),
-                max_tokens=kwargs.get("max_tokens", self.config.max_tokens),
-                stream=True,
-            )
+            call_kwargs = {
+                "model": self.config.model,
+                "messages": formatted_messages,
+                "temperature": kwargs.get("temperature", self.config.temperature),
+                "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
+                "top_p": kwargs.get("top_p", getattr(self.config, "top_p", 1.0)),
+            }
+            seed_val = kwargs.get("seed", getattr(self.config, "seed", None))
+            if seed_val is not None:
+                call_kwargs["seed"] = seed_val
+
+            stream_val = kwargs.get("stream", getattr(self.config, "stream", True))
+            if not stream_val:
+                call_kwargs["stream"] = False
+                response = await client.chat.completions.create(**call_kwargs)
+                content = response.choices[0].message.content
+                if content:
+                    yield content
+                return
+
+            call_kwargs["stream"] = True
+            response = await client.chat.completions.create(**call_kwargs)
             async for chunk in response:
                 content = chunk.choices[0].delta.content
                 if content:
@@ -215,6 +234,7 @@ class AnthropicAdapter(ModelProvider):
                 "messages": formatted_messages,
                 "temperature": kwargs.get("temperature", self.config.temperature),
                 "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
+                "top_p": kwargs.get("top_p", getattr(self.config, "top_p", 1.0)),
             }
             if system_prompt:
                 call_kwargs["system"] = system_prompt
@@ -289,9 +309,21 @@ class AnthropicAdapter(ModelProvider):
                 "messages": formatted_messages,
                 "temperature": kwargs.get("temperature", self.config.temperature),
                 "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
+                "top_p": kwargs.get("top_p", getattr(self.config, "top_p", 1.0)),
             }
             if system_prompt:
                 call_kwargs["system"] = system_prompt
+
+            stream_val = kwargs.get("stream", getattr(self.config, "stream", True))
+            if not stream_val:
+                response = await client.messages.create(**call_kwargs)
+                content = ""
+                for block in response.content:
+                    if block.type == "text":
+                        content += block.text
+                if content:
+                    yield content
+                return
 
             async with client.messages.stream(**call_kwargs) as stream:
                 async for text in stream.text_stream:

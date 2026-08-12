@@ -36,7 +36,14 @@ describe('SettingsModal', () => {
             exclude_list: ['.git', 'node_modules'],
             auto_backup_enabled: true,
             agent_model_name: '',
-            agent_models: {}
+            agent_models: {},
+            temperature: 1.0,
+            top_p: 1.0,
+            max_tokens: 16384,
+            seed: 42,
+            stream: true,
+            decision_engine: 'rule_based',
+            dual_llm_mode: false
           })
         });
       }

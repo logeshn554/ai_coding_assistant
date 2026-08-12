@@ -68,7 +68,7 @@ class BaseParallelAgent:
         )
         
         # Open conversation session attached to workspace
-        conversation = Conversation(agent=agent, workspace=workspace)
+        conversation = Conversation(agent=agent, workspace=workspace, run_id=subtask.run_id or subtask.id)
         
         # Setup Redis stream logs
         event_store = RedisEventStore(run_id=subtask.run_id or subtask.id, subtask_id=subtask.id, attempt=subtask.attempt)

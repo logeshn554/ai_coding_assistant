@@ -138,8 +138,13 @@ class LLMAdapter(ModelAdapter):
             })
 
         anthropic_messages = self._to_anthropic_messages(messages)
-        is_agent_mode = "OPERATING MODE: Agent" in system_prompt or "MULTI-AGENT ORCHESTRATION" in system_prompt
         from ..state import config_manager
+        temp_setting = config_manager.get_temperature()
+        top_p_setting = config_manager.get_top_p()
+        max_tokens_setting = config_manager.get_max_tokens()
+        stream_setting = config_manager.get_stream()
+
+        is_agent_mode = "OPERATING MODE: Agent" in system_prompt or "MULTI-AGENT ORCHESTRATION" in system_prompt
         profile = config_manager.get_active_profile()
         _supports_thinking = profile.get("supports_thinking")
         if _supports_thinking is None:
@@ -154,20 +159,47 @@ class LLMAdapter(ModelAdapter):
                 "system": system_prompt,
                 "messages": anthropic_messages,
                 "tools": anthropic_tools,
-                "stream": True,
+                "stream": stream_setting,
+                "temperature": temp_setting,
+                "top_p": top_p_setting,
+                "max_tokens": max_tokens_setting,
             }
             if is_agent_mode:
                 if _supports_thinking:
-                    kwargs["max_tokens"] = 16000
+                    kwargs["max_tokens"] = max(max_tokens_setting, 16000)
                     kwargs["thinking"] = {
                         "type": "enabled",
-                        "budget_tokens": 8000
+                        "budget_tokens": min(8000, kwargs["max_tokens"] - 1000)
                     }
+                    kwargs.pop("temperature", None)
+                    kwargs.pop("top_p", None)
                 else:
-                    kwargs["max_tokens"] = 16000
+                    kwargs["max_tokens"] = max_tokens_setting
             else:
-                kwargs["max_tokens"] = 4000
+                kwargs["max_tokens"] = max_tokens_setting
 
+
+            if not stream_setting:
+                response = await client.messages.create(**kwargs)
+                if hasattr(response, "usage") and response.usage:
+                    yield self.build_usage_chunk(
+                        getattr(response.usage, "input_tokens", 0),
+                        getattr(response.usage, "output_tokens", 0),
+                        self.model_name
+                    )
+                for block in response.content:
+                    if block.type == "text":
+                        yield self.build_text_chunk(block.text)
+                    elif block.type == "tool_use":
+                        parsed_input, error_msg = self.parse_tool_arguments(block.name, json.dumps(block.input))
+                        yield self.build_tool_call_chunk(block.id, block.name, parsed_input, error_msg)
+                
+                stop_reason = response.stop_reason
+                if stop_reason == "tool_use":
+                    yield self.build_done_chunk("tool_use")
+                else:
+                    yield self.build_done_chunk("stop")
+                return
 
             stream = await client.messages.create(**kwargs)
             current_tool_calls = {}
@@ -281,16 +313,56 @@ class LLMAdapter(ModelAdapter):
             })
 
         openai_messages = self._to_openai_messages(messages, system_prompt)
+        from ..state import config_manager
+        temp_setting = config_manager.get_temperature()
+        top_p_setting = config_manager.get_top_p()
+        max_tokens_setting = config_manager.get_max_tokens()
+        seed_setting = config_manager.get_seed()
+        stream_setting = config_manager.get_stream()
+
         try:
             kwargs = {
                 "model": self.model_name,
                 "messages": openai_messages,
-                "stream": True,
-                "stream_options": {"include_usage": True}
+                "temperature": temp_setting,
+                "top_p": top_p_setting,
+                "max_tokens": max_tokens_setting,
             }
+            if seed_setting is not None:
+                kwargs["seed"] = seed_setting
             if openai_tools:
                 kwargs["tools"] = openai_tools
 
+            if not stream_setting:
+                kwargs["stream"] = False
+                response = await client.chat.completions.create(**kwargs)
+                if hasattr(response, "usage") and response.usage:
+                    yield self.build_usage_chunk(
+                        getattr(response.usage, "prompt_tokens", 0),
+                        getattr(response.usage, "completion_tokens", 0),
+                        self.model_name
+                    )
+                if response.choices:
+                    choice = response.choices[0]
+                    if getattr(choice.message, "content", None) is not None:
+                        yield self.build_text_chunk(choice.message.content)
+                    tcs = getattr(choice.message, "tool_calls", None)
+                    if tcs:
+                        for idx, tc in enumerate(tcs):
+                            tc_id = tc.id or f"call_{idx}"
+                            parsed_input, error_msg = self.parse_tool_arguments(
+                                tc.function.name, tc.function.arguments
+                            )
+                            yield self.build_tool_call_chunk(tc_id, tc.function.name, parsed_input, error_msg)
+                        yield self.build_done_chunk("tool_use")
+                    else:
+                        yield self.build_done_chunk(choice.finish_reason or "stop")
+                else:
+                    yield self.build_done_chunk("stop")
+                return
+
+            kwargs["stream"] = True
+            kwargs["stream_options"] = {"include_usage": True}
             tool_calls_accum = {}
             try:
                 response = await client.chat.completions.create(**kwargs)

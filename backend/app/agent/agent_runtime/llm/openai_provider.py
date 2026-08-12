@@ -127,12 +127,31 @@ class OpenAIProvider(LLMProvider):
             "Content-Type": "application/json",
         }
 
+        # Load from config manager defaults if not overridden
+        temp = temperature
+        max_tok = max_tokens
+        top_p = 1.0
+        seed = None
+        try:
+            from backend.app.config import config_manager
+            if temperature == 0.0:
+                temp = config_manager.get_temperature()
+            if max_tokens == 4096:
+                max_tok = config_manager.get_max_tokens()
+            top_p = config_manager.get_top_p()
+            seed = config_manager.get_seed()
+        except Exception:
+            pass
+
         body: dict[str, Any] = {
             "model": self.model,
             "messages": _messages_to_openai(messages),
-            "temperature": temperature,
-            "max_tokens": max_tokens,
+            "temperature": temp,
+            "max_tokens": max_tok,
+            "top_p": top_p,
         }
+        if seed is not None:
+            body["seed"] = seed
 
         if tools:
             body["tools"] = _tools_to_openai(tools)

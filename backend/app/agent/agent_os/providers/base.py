@@ -65,6 +65,9 @@ class ProviderConfig:
     timeout: float = 60.0
     temperature: float = 0.0
     max_tokens: int = 4096
+    top_p: float = 1.0
+    seed: Optional[int] = None
+    stream: bool = True
 
 
 class ModelProvider(ABC):

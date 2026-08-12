@@ -87,6 +87,8 @@ class AgentSession:
         self.profile = profile
         self.send_ws_message = send_ws_message
         self.permission_manager = permission_manager
+        from ..agent.agent_runtime import AgentRuntime
+        self.agent_runtime = AgentRuntime(self.workspace_root)
         self.orchestrator = AgentOrchestrator(session=self)
         self.conversation_history = []
         self.pending_confirmations = {}  # tool_call_id -> {"event": asyncio.Event(), "approved": bool}
@@ -235,6 +237,10 @@ class AgentSession:
         # 3. Cancel the active handle_user_message task if running separately
         if self.active_task and not self.active_task.done():
             self.active_task.cancel()
+
+        # Propagate cancellation to canonical AgentRuntime
+        if hasattr(self, "agent_runtime") and self.agent_runtime:
+            await self.agent_runtime.cancel(self.session_id)
 
         # 4. B2: Clear pending confirmations so stale events cannot fire on
         #    the next request. Any tool awaiting confirmation will be cancelled

@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 import json
 import logging
 import subprocess
@@ -682,6 +683,69 @@ class ConfigManager:
     def set_mcp_tool_rules(self, rules: list):
         config = self._read_raw_config()
         config["mcp_tool_rules"] = rules
+        self._save_raw_config(config)
+
+    def get_temperature(self) -> float:
+        config = self._read_raw_config()
+        return config.get("temperature", 1.0)
+
+    def set_temperature(self, val: float):
+        config = self._read_raw_config()
+        config["temperature"] = float(val)
+        self._save_raw_config(config)
+
+    def get_top_p(self) -> float:
+        config = self._read_raw_config()
+        return config.get("top_p", 1.0)
+
+    def set_top_p(self, val: float):
+        config = self._read_raw_config()
+        config["top_p"] = float(val)
+        self._save_raw_config(config)
+
+    def get_max_tokens(self) -> int:
+        config = self._read_raw_config()
+        return config.get("max_tokens", 16384)
+
+    def set_max_tokens(self, val: int):
+        config = self._read_raw_config()
+        config["max_tokens"] = int(val)
+        self._save_raw_config(config)
+
+    def get_seed(self) -> Optional[int]:
+        config = self._read_raw_config()
+        return config.get("seed", 42)
+
+    def set_seed(self, val: Optional[int]):
+        config = self._read_raw_config()
+        config["seed"] = int(val) if val is not None else None
+        self._save_raw_config(config)
+
+    def get_stream(self) -> bool:
+        config = self._read_raw_config()
+        return config.get("stream", True)
+
+    def set_stream(self, val: bool):
+        config = self._read_raw_config()
+        config["stream"] = bool(val)
+        self._save_raw_config(config)
+
+    def get_decision_engine(self) -> str:
+        config = self._read_raw_config()
+        return config.get("decision_engine", "rule_based")
+
+    def set_decision_engine(self, val: str):
+        config = self._read_raw_config()
+        config["decision_engine"] = str(val)
+        self._save_raw_config(config)
+
+    def get_dual_llm_mode(self) -> bool:
+        config = self._read_raw_config()
+        return config.get("dual_llm_mode", False)
+
+    def set_dual_llm_mode(self, val: bool):
+        config = self._read_raw_config()
+        config["dual_llm_mode"] = bool(val)
         self._save_raw_config(config)
 
 config_manager = ConfigManager()

@@ -66,6 +66,7 @@ async def agent_loop(
     system_prompt: str,
     user_message: str,
     config: LoopConfig | None = None,
+    run_id: str | None = None,
 ) -> AsyncGenerator[AgentEvent, None]:
     """Run the agent reasoning loop, yielding events as they occur.
 
@@ -87,6 +88,22 @@ async def agent_loop(
     """
     if config is None:
         config = LoopConfig()
+
+    from backend.app.config import config_manager
+    from backend.app.shared_memory import sm_get, sm_set
+    
+    is_dual_llm = config_manager.get_dual_llm_mode()
+    if is_dual_llm:
+        system_prompt = (
+            f"{system_prompt}\n\n"
+            f"CRITICAL INSTRUCTION FOR DUAL-LLM EXECUTION MODE:\n"
+            f"You are acting as the high-level Planner/Brain. You do NOT execute filesystem or terminal tools directly.\n"
+            f"Instead, you orchestrate by writing tasks and context into the Shared Memory using the `shared_memory_set` tool:\n"
+            f"1. Call `shared_memory_set` with key='generator_input' and value set to a JSON string or string containing only the necessary context, variables, files, or arguments needed by the generator LLM.\n"
+            f"2. Call `shared_memory_set` with key='generator_task' containing a clear, concise instruction describing the tool invocation or code generation task you want the Generator LLM to execute.\n"
+            f"Once you set 'generator_task', the Generator LLM will automatically run, execute the appropriate tool, and write the execution result to the Shared Memory under key 'generator_output'.\n"
+            f"On your subsequent turns, you MUST call `shared_memory_get` with key='generator_output' to retrieve and analyze the generator's execution result."
+        )
 
     # Build initial messages
     messages: list[Message] = [
@@ -201,6 +218,99 @@ async def agent_loop(
                     name=tool_call.name,
                 ))
 
+            # If dual_llm_mode is enabled, check if generator_task was set in shared memory
+            if is_dual_llm:
+                sm_key = run_id or "default"
+                generator_task = await sm_get(sm_key, "generator_task")
+                if generator_task:
+                    generator_input = await sm_get(sm_key, "generator_input") or ""
+                    
+                    # Clear these keys immediately so we don't trigger again next time
+                    await sm_set(sm_key, "generator_task", "")
+                    await sm_set(sm_key, "generator_input", "")
+                    
+                    # Log / yield event
+                    yield AgentEvent(
+                        type="llm_call",
+                        content=f"[Generator LLM] Delegated task: {generator_task}",
+                    )
+                    
+                    # Call Generator LLM
+                    generator_system = (
+                        "You are the Generator/Executor LLM. Your job is to execute the delegated task using ONLY "
+                        "the inputs provided from the shared memory. Do not assume or search for other context. "
+                        "You must call the appropriate tool to complete this task."
+                    )
+                    generator_user = (
+                        f"Delegated Task: {generator_task}\n\n"
+                        f"Inputs from Shared Memory:\n{generator_input}\n\n"
+                        f"Execute the task by calling the appropriate tool."
+                    )
+                    
+                    try:
+                        gen_messages = [
+                            Message(role="system", content=generator_system),
+                            Message(role="user", content=generator_user),
+                        ]
+                        # Generator has access to all tools (e.g. filesystem, terminal)
+                        gen_response = await llm.generate(
+                            messages=gen_messages,
+                            tools=tool_schemas if tool_schemas else None,
+                            temperature=0.0,
+                            max_tokens=config.max_tokens,
+                        )
+                        
+                        gen_result_str = ""
+                        if gen_response.has_tool_calls:
+                            yield AgentEvent(
+                                type="llm_call",
+                                content=f"[Generator LLM] Calling tools: {', '.join([tc.name for tc in gen_response.tool_calls])}",
+                            )
+                            for tool_call in gen_response.tool_calls:
+                                yield AgentEvent(
+                                    type="tool_call",
+                                    tool_name=tool_call.name,
+                                    tool_args=tool_call.arguments,
+                                )
+                                # Execute tool
+                                res = await tool_registry.execute(tool_call.name, tool_call.arguments)
+                                if res.success:
+                                    res_text = res.output
+                                else:
+                                    res_text = f"Error: {res.error}" if res.error else "Tool execution failed"
+                                
+                                yield AgentEvent(
+                                    type="tool_result",
+                                    tool_name=tool_call.name,
+                                    tool_result=res_text[:10_000],
+                                )
+                                if gen_result_str:
+                                    gen_result_str += "\n\n"
+                                gen_result_str += res_text
+                        else:
+                            gen_result_str = gen_response.content or "No output from Generator LLM."
+                            
+                        # Save result to shared memory
+                        await sm_set(sm_key, "generator_output", gen_result_str)
+                        
+                        # Notify the Brain
+                        messages.append(Message(
+                            role="user",
+                            content=(
+                                f"System Notification: Generator LLM completed the task.\n"
+                                f"Result has been stored in shared memory under key 'generator_output'.\n"
+                                f"Please call `shared_memory_get` with key='generator_output' to inspect the results."
+                            )
+                        ))
+                    except Exception as gen_err:
+                        logger.error("Generator LLM invocation failed: %s", gen_err)
+                        # Save error to shared memory
+                        await sm_set(sm_key, "generator_output", f"Generator Error: {gen_err}")
+                        messages.append(Message(
+                            role="user",
+                            content=f"System Notification: Generator LLM failed with error: {gen_err}"
+                        ))
+
             # Continue the loop — LLM will see the tool results
             continue
 
@@ -228,6 +338,7 @@ async def run_agent(
     system_prompt: str,
     user_message: str,
     config: LoopConfig | None = None,
+    run_id: str | None = None,
 ) -> LoopResult:
     """Convenience wrapper that collects all events and returns a LoopResult.
 
@@ -240,7 +351,7 @@ async def run_agent(
     final_output = ""
     error = None
 
-    async for event in agent_loop(llm, tool_registry, system_prompt, user_message, config):
+    async for event in agent_loop(llm, tool_registry, system_prompt, user_message, config, run_id):
         events.append(event)
         if event.type == "final":
             final_output = event.content

@@ -134,10 +134,11 @@ class Agent:
 class Conversation:
     """Active conversation session connecting an Agent with their Workspace."""
     
-    def __init__(self, agent: Agent, workspace: DockerWorkspace):
+    def __init__(self, agent: Agent, workspace: DockerWorkspace, run_id: str | None = None):
         self.agent = agent
         self.workspace = workspace
         self.state = ConversationState()
+        self.run_id = run_id
 
     async def stream(self, description: str) -> AsyncGenerator[Event, None]:
         """Runs the real agent reasoning loop if credentials exist, else falls back to simulation."""
@@ -219,6 +220,16 @@ class Conversation:
         for t in create_search_tools(workspace_root):
             tool_registry.register(t)
 
+        # Register shared memory tools for all agents
+        try:
+            from agent_runtime.tools.shared_memory import create_shared_memory_tools
+            conv_run_id = self.run_id or "default"
+            for t in create_shared_memory_tools(conv_run_id):
+                tool_registry.register(t)
+        except Exception as e:
+            import logging
+            logging.getLogger("parallel_agent_system.runtime").warning("Failed to register shared memory tools: %s", e)
+
         from agent_runtime.loop import agent_loop, LoopConfig
         config = LoopConfig(
             max_iterations=50,
@@ -235,7 +246,8 @@ class Conversation:
             tool_registry=tool_registry,
             system_prompt=self.agent.system_prompt,
             user_message=description,
-            config=config
+            config=config,
+            run_id=conv_run_id
         ):
             if event.type == "llm_call":
                 # Convert to ActionEvent

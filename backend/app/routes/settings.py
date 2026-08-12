@@ -35,6 +35,13 @@ class SettingsUpdateRequest(BaseModel):
     mcp_tool_rules: Optional[list] = None
     devpilot_rpm: Optional[int] = Field(default=15, ge=1)
     concurrency_mode: Optional[str] = "parallel"
+    temperature: Optional[float] = Field(default=1.0, ge=0.0, le=2.0)
+    top_p: Optional[float] = Field(default=1.0, ge=0.0, le=1.0)
+    max_tokens: Optional[int] = Field(default=16384, ge=1, le=1000000)
+    seed: Optional[int] = Field(default=42)
+    stream: Optional[bool] = True
+    decision_engine: Optional[str] = "rule_based"
+    dual_llm_mode: Optional[bool] = False
 
 
 @router.get("/api/config/settings")
@@ -64,6 +71,13 @@ def get_settings():
         "mcp_tool_rules": config_manager.get_mcp_tool_rules(),
         "devpilot_rpm": config_manager.get_devpilot_rpm(),
         "concurrency_mode": config_manager.get_concurrency_mode(),
+        "temperature": config_manager.get_temperature(),
+        "top_p": config_manager.get_top_p(),
+        "max_tokens": config_manager.get_max_tokens(),
+        "seed": config_manager.get_seed(),
+        "stream": config_manager.get_stream(),
+        "decision_engine": config_manager.get_decision_engine(),
+        "dual_llm_mode": config_manager.get_dual_llm_mode(),
     }
 
 
@@ -118,6 +132,22 @@ def save_settings(req: SettingsUpdateRequest):
             config_manager.set_devpilot_rpm(req.devpilot_rpm)
         if req.concurrency_mode is not None:
             config_manager.set_concurrency_mode(req.concurrency_mode)
+        if req.temperature is not None:
+            config_manager.set_temperature(req.temperature)
+        if req.top_p is not None:
+            config_manager.set_top_p(req.top_p)
+        if req.max_tokens is not None:
+            config_manager.set_max_tokens(req.max_tokens)
+        if req.seed is not None:
+            config_manager.set_seed(req.seed)
+        else:
+            config_manager.set_seed(None)
+        if req.stream is not None:
+            config_manager.set_stream(req.stream)
+        if req.decision_engine is not None:
+            config_manager.set_decision_engine(req.decision_engine)
+        if req.dual_llm_mode is not None:
+            config_manager.set_dual_llm_mode(req.dual_llm_mode)
         return {"success": True}
     except HTTPException:
         raise

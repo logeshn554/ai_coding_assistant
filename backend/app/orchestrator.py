@@ -675,27 +675,57 @@ class RequirementAnalysisAgent(BaseAgent):
                     rel_path = os.path.relpath(abs_path, session.workspace_root).replace("\\", "/")
                     workspace_files.append(rel_path)
             
-            # If the workspace contains too many files, filter down to the most relevant files using RAG
+            # If the workspace contains too many files, filter down to the most relevant files using RAG or LLM decision engine
             if len(workspace_files) > 100:
-                import re
-                task_words = [w.lower() for w in re.findall(r'[a-zA-Z0-9_]+', task_description) if len(w) > 2]
-                scored_files = []
-                for f in workspace_files:
-                    score = 0
-                    f_lower = f.lower()
-                    for word in task_words:
-                        if word in f_lower:
-                            score += 10
-                    basename = os.path.basename(f).lower()
-                    if basename in ("package.json", "tsconfig.json", "requirements.txt", "pyproject.toml", "main.py", "app.py", "index.ts", "index.tsx", "vite.config.ts"):
-                        score += 5
-                    scored_files.append((score, f))
-                
-                scored_files.sort(key=lambda x: x[0], reverse=True)
-                
-                # Keep top 60 relevant files
-                top_files = [f for score, f in scored_files[:60]]
-                
+                from backend.app.config import config_manager
+                is_llm_engine = config_manager.get_decision_engine() == "llm"
+
+                if is_llm_engine:
+                    # LLM-based decision engine selects the target files
+                    await self.orchestrator.context.log("Requirement Analysis Agent: Using LLM decision engine for file selection...")
+                    llm = DevPilotChatModel(session=session, agent_name=self.name)
+                    # Pass a reasonable list of files to select from (up to 400)
+                    all_files_list = workspace_files[:400]
+                    select_prompt = (
+                        f"Given the following user task, select up to 60 file paths from the list that are most likely "
+                        f"relevant to read, write, or modify for implementing the task.\n\n"
+                        f"Task: {task_description}\n\n"
+                        f"File Paths:\n" + "\n".join(all_files_list) + "\n\n"
+                        f"Output ONLY a valid JSON array of string file paths, e.g. [\"src/main.py\", \"config.json\"]. No markdown wrapper or prose."
+                    )
+                    try:
+                        res = await llm.ainvoke([("system", "Output ONLY a valid JSON array of strings."), ("human", select_prompt)])
+                        clean_res = res.content.strip()
+                        if "```json" in clean_res:
+                            clean_res = clean_res.split("```json")[1].split("```")[0].strip()
+                        elif "```" in clean_res:
+                            clean_res = clean_res.split("```")[1].split("```")[0].strip()
+                        top_files = json.loads(clean_res)
+                        if not isinstance(top_files, list):
+                            top_files = []
+                        top_files = [str(f) for f in top_files if f in workspace_files]
+                    except Exception as select_err:
+                        logger.error(f"LLM-based file selection failed, falling back to top files: {select_err}")
+                        top_files = workspace_files[:60]
+                else:
+                    # Rule-based RAG scoring
+                    import re
+                    task_words = [w.lower() for w in re.findall(r'[a-zA-Z0-9_]+', task_description) if len(w) > 2]
+                    scored_files = []
+                    for f in workspace_files:
+                        score = 0
+                        f_lower = f.lower()
+                        for word in task_words:
+                            if word in f_lower:
+                                score += 10
+                        basename = os.path.basename(f).lower()
+                        if basename in ("package.json", "tsconfig.json", "requirements.txt", "pyproject.toml", "main.py", "app.py", "index.ts", "index.tsx", "vite.config.ts"):
+                            score += 5
+                        scored_files.append((score, f))
+
+                    scored_files.sort(key=lambda x: x[0], reverse=True)
+                    top_files = [f for score, f in scored_files[:60]]
+
                 # Form top-level directory layout summary
                 dirs_list = set()
                 for f in workspace_files:
@@ -704,9 +734,9 @@ class RequirementAnalysisAgent(BaseAgent):
                         dirs_list.add(parts[0] + "/")
                         if len(parts) > 2:
                             dirs_list.add(parts[0] + "/" + parts[1] + "/")
-                
+
                 trimmed_list = sorted(list(dirs_list))[:30] + ["... (folders layout)"] + sorted(top_files)
-                codebase_details = "Actual files in the workspace (filtered by relevance/RAG):\n" + "\n".join(trimmed_list)
+                codebase_details = "Actual files in the workspace (filtered by relevance/RAG/LLM):\n" + "\n".join(trimmed_list)
             else:
                 codebase_details = "Actual files in the workspace:\n" + "\n".join(workspace_files)
         except Exception as e:
@@ -974,12 +1004,15 @@ class CodingAgent(BaseAgent):
                 "message": f"Writing {path}...",
                 "tool_call": {"id": tc_id, "name": "write_file", "args": {"path": path, "content": clean_code}}
             })
-            result = await session._execute_tool_with_guardrails(tc_id, "write_file", {"path": path, "content": clean_code}, auto_apply=auto_apply)
+            from .agent.agent_runtime import ToolExecutor
+            executor = ToolExecutor(session.workspace_root, session=session)
+            tool_res = await executor.execute(tc_id, "write_file", {"path": path, "content": clean_code})
+            result = tool_res.output if tool_res.success else (tool_res.error or "Error writing file")
             await session.send_ws_message({
                 "type": "tool_result",
                 "tool_call_id": tc_id,
                 "name": "write_file",
-                "status": "success",
+                "status": "success" if tool_res.success else "error",
                 "result": result
             })
             await self.orchestrator.context.log(f"Coding Agent: Wrote modifications to {path}.")

@@ -515,3 +515,13 @@ async def api_scan_bugs():
 
     asyncio.create_task(run_scan_and_save())
     return {"success": True, "message": "Background bug scanning initiated on-demand."}
+
+
+@router.get("/api/context/debug")
+async def api_context_debug(query: str = "", workspace_root: Optional[str] = None):
+    """Context Engine Debug & Provenance inspection endpoint (Step 22)."""
+    from ..agent.context_engine import ContextEngine
+    root = workspace_root or workspace_state.root_path or os.getcwd()
+    engine = ContextEngine.get_instance(root)
+    info = await engine.get_debug_info(query)
+    return info
