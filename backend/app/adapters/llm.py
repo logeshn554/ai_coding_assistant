@@ -453,9 +453,75 @@ class LLMAdapter(ModelAdapter):
                     logger.error(f"OpenAI API request timed out ({stream_err})")
                     raise TimeoutError(f"Request timed out connecting to provider ({base_url or 'OpenAI API'}). Please check network or model endpoint.") from stream_err
 
+                # If the provider rejected stream_options during stream initialization, retry streaming without it
+                if "stream_options" in err_str and kwargs.get("stream_options"):
+                    logger.warning(f"Provider rejected stream_options ({stream_err}), retrying stream without stream_options.")
+                    kwargs.pop("stream_options", None)
+                    try:
+                        response = await client.chat.completions.create(**kwargs)
+                        async for chunk in response:
+                            if hasattr(chunk, "usage") and chunk.usage:
+                                yield self.build_usage_chunk(
+                                    getattr(chunk.usage, "prompt_tokens", 0),
+                                    getattr(chunk.usage, "completion_tokens", 0),
+                                    self.model_name
+                                )
+                            if not chunk.choices:
+                                continue
+                            delta = chunk.choices[0].delta
+                            if getattr(delta, "content", None) is not None:
+                                yield self.build_text_chunk(delta.content)
+                            if getattr(delta, "tool_calls", None) is not None:
+                                for tc_chunk in delta.tool_calls:
+                                    idx = tc_chunk.index
+                                    if idx not in tool_calls_accum:
+                                        tool_calls_accum[idx] = {
+                                            "id": "",
+                                            "name": "",
+                                            "arguments": "",
+                                            "thought_signature": None
+                                        }
+                                    if getattr(tc_chunk, "id", None) is not None:
+                                        tool_calls_accum[idx]["id"] = tc_chunk.id
+                                    if getattr(tc_chunk, "function", None) is not None:
+                                        func = tc_chunk.function
+                                        if getattr(func, "name", None) is not None:
+                                            tool_calls_accum[idx]["name"] = func.name
+                                        if getattr(func, "arguments", None) is not None:
+                                            tool_calls_accum[idx]["arguments"] += func.arguments
+                                    try:
+                                        def get_nested_val(obj, *keys):
+                                            for key in keys:
+                                                if obj is None:
+                                                    return None
+                                                if isinstance(obj, dict):
+                                                    obj = obj.get(key)
+                                                else:
+                                                    obj = getattr(obj, key, None)
+                                            return obj
+                                        sig = get_nested_val(tc_chunk, "extra_content", "google", "thought_signature")
+                                        if sig:
+                                            tool_calls_accum[idx]["thought_signature"] = sig
+                                    except Exception as e:
+                                        logger.debug(f"Failed to extract thought_signature: {e}")
+
+                        for idx, tc in tool_calls_accum.items():
+                            tc_id = tc["id"] or f"call_{idx}"
+                            parsed_input, error_msg = self.parse_tool_arguments(tc["name"], tc["arguments"])
+                            yield self.build_tool_call_chunk(
+                                tc_id, tc["name"], parsed_input, error_msg, tc.get("thought_signature")
+                            )
+                        stop_reason = "tool_use" if tool_calls_accum else "stop"
+                        yield self.build_done_chunk(stop_reason)
+                        return
+                    except Exception as retry_err:
+                        stream_err = retry_err
+                        err_str = str(retry_err).lower()
+
                 if openai_tools:
                     logger.warning(f"Streaming failed with tools ({stream_err}), falling back to non-streaming request.")
                     kwargs["stream"] = False
+                    kwargs.pop("stream_options", None)
                     try:
                         non_stream_resp = await client.chat.completions.create(**kwargs)
                         if hasattr(non_stream_resp, "usage") and non_stream_resp.usage:
