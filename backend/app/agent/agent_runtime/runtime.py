@@ -247,6 +247,7 @@ class AgentRuntime:
         event_callback: Optional[Callable[[AgentEvent], Any]] = None,
         max_turns: int = 25,
         llm_provider_func: Optional[Callable] = None,
+        agent_session: Optional[Any] = None,  # added actual AgentSession reference
     ) -> AgentResult:
         """Execute a canonical agent coding session."""
         if session_id not in self._sessions:
@@ -305,7 +306,7 @@ class AgentRuntime:
             "context_files": [item.file for item in agent_context.items],
         }))
 
-        tool_executor = ToolExecutor(session.workspace_root)
+        tool_executor = ToolExecutor(session.workspace_root, session=agent_session)
         tx_workspace = TransactionalWorkspace(session.workspace_root)
 
         # 2. State transition -> EXECUTING
@@ -377,6 +378,7 @@ class AgentRuntime:
                         tool_name=tc.name,
                         arguments=tc.arguments,
                         timeout=60.0,
+                        auto_apply=task_obj.auto_apply,
                     )
 
                     session.tool_calls.append({
@@ -393,6 +395,35 @@ class AgentRuntime:
                         "output": tool_res.output if tool_res.success else None,
                         "error": tool_res.error,
                     }))
+
+                    if agent_session is not None:
+                        from backend.app.context_helpers import prepare_tool_result_for_history
+                        compact_result = prepare_tool_result_for_history(
+                            tool_res.output if tool_res.success else (tool_res.error or "Error executing tool"),
+                            tool_name=tc.name
+                        )
+
+                        entry = {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "name": tc.name,
+                            "content": compact_result
+                        }
+                        if len(str(tool_res.output if tool_res.success else (tool_res.error or ""))) > len(compact_result):
+                            entry["metadata"] = {
+                                "truncated": True,
+                                "original_chars": len(str(tool_res.output if tool_res.success else (tool_res.error or ""))),
+                                "retained_chars": len(compact_result)
+                            }
+                        agent_session.conversation_history.append(entry)
+
+                        await agent_session.send_ws_message({
+                            "type": "tool_result",
+                            "tool_call_id": tc.id,
+                            "name": tc.name,
+                            "status": "success" if tool_res.success else "error",
+                            "result": tool_res.output if tool_res.success else tool_res.error
+                        })
 
                     # Capture post-modification diff and update change set
                     if target_file and tc.name in ("write_file", "edit_file", "delete_file", "apply_patch"):

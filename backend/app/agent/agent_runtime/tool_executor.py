@@ -108,6 +108,7 @@ class ToolExecutor:
         tool_name: str,
         arguments: Dict[str, Any],
         timeout: float = 60.0,
+        auto_apply: bool = True,
     ) -> ToolResult:
         """Execute a normalized tool call with bounded execution and logging."""
         start_ts = time.time()
@@ -127,7 +128,7 @@ class ToolExecutor:
 
         try:
             res = await asyncio.wait_for(
-                self._dispatch(tool_call_id, tool_name, arguments),
+                self._dispatch(tool_call_id, tool_name, arguments, auto_apply=auto_apply),
                 timeout=timeout,
             )
             # Redact secrets from output string if text result
@@ -163,7 +164,7 @@ class ToolExecutor:
         self.execution_history.append(record)
         return res
 
-    async def _dispatch(self, tc_id: str, tool_name: str, args: Dict[str, Any]) -> ToolResult:
+    async def _dispatch(self, tc_id: str, tool_name: str, args: Dict[str, Any], auto_apply: bool = True) -> ToolResult:
         """Internal router mapping normalized tool names to workspace operations."""
         name = tool_name.lower().strip()
 
@@ -209,7 +210,7 @@ class ToolExecutor:
         bridge = _SessionBridge(self.workspace_root, self.session)
 
         try:
-            out = await dispatch_tool(bridge, tc_id, name, args, True)
+            out = await dispatch_tool(bridge, tc_id, name, args, auto_apply)
             is_err = isinstance(out, str) and (out.lower().startswith("error") or "failed" in out.lower()[:30])
             return ToolResult(
                 success=not is_err,

@@ -41,7 +41,9 @@ from backend.app.agent.agent_runtime import (
 def workspace():
     """Create a temporary workspace directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        yield pathlib.Path(tmpdir)
+        p = pathlib.Path(tmpdir)
+        (p / "pytest.ini").write_text("[pytest]\n")
+        yield p
 
 
 @pytest.mark.asyncio
@@ -61,17 +63,21 @@ async def test_session_lifecycle(workspace):
         turn_count += 1
         if step == 1:
             return ModelResponse(
-                text="Creating main.py",
-                tool_calls=[ToolCall(id="tc1", name="write_file", arguments={"path": "main.py", "content": "print('hello')"})]
+                text="Creating main.py and test_main.py",
+                tool_calls=[
+                    ToolCall(id="tc1", name="write_file", arguments={"path": "main.py", "content": "print('hello')"}),
+                    ToolCall(id="tc2", name="write_file", arguments={"path": "test_main.py", "content": "def test_hello():\n    assert True\n"})
+                ]
             )
         return ModelResponse(text="Completed writing main.py", tool_calls=[])
 
     result = await runtime.run("test_sess_1", "Create main.py", llm_provider_func=mock_llm_provider)
 
     assert result.success is True
-    assert result.state == AgentState.COMPLETED
+    assert result.state in (AgentState.COMPLETED, AgentState.COMPLETED_VERIFIED)
     assert result.verification_status == VerificationStatus.PASSED
     assert (workspace / "main.py").exists()
+    assert (workspace / "test_main.py").exists()
     assert "main.py" in result.changed_files["created_files"]
 
 

@@ -277,19 +277,39 @@ class LLMAdapter(ModelAdapter):
                         )
             yield self.build_done_chunk("stop")
         except Exception as e:
+            from ..errors import LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMNetworkError, LLMProviderError
+            # Don't double-wrap already-structured errors
+            if isinstance(e, LLMProviderError):
+                raise
             err_str = str(e).lower()
-            is_timeout = False
-            if isinstance(e, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)):
-                is_timeout = True
-            elif "timeout" in err_str or "timed out" in err_str or "connecttimeout" in err_str:
-                is_timeout = True
+            provider = "anthropic"
 
+            # Timeout
+            is_timeout = isinstance(e, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException))
+            if not is_timeout:
+                is_timeout = any(kw in err_str for kw in ("timeout", "timed out", "connecttimeout", "readtimeout"))
             if is_timeout:
                 logger.error(f"Anthropic API request timed out ({e})")
-                raise TimeoutError(f"Request timed out connecting to provider ({base_url or 'Anthropic API'}). Please check network or model endpoint.") from e
+                raise LLMTimeoutError(provider=provider) from e
 
-            logger.error(f"Anthropic API Error: {str(e)}")
-            raise e
+            # Auth errors
+            status_code = getattr(getattr(e, 'response', None), 'status_code', None) or getattr(e, 'status_code', None)
+            if status_code in (401, 403) or any(kw in err_str for kw in ("authentication", "invalid api key", "api key", "unauthorized")):
+                logger.error(f"Anthropic auth error: {e}")
+                raise LLMAuthError(provider=provider, message=str(e)) from e
+
+            # Rate limit
+            if status_code == 429 or any(kw in err_str for kw in ("rate limit", "rate_limit", "ratelimit", "too many requests")):
+                logger.error(f"Anthropic rate limit: {e}")
+                raise LLMRateLimitError(provider=provider) from e
+
+            # Network / connectivity
+            if any(kw in err_str for kw in ("connection", "network", "connect error", "failed to connect")):
+                logger.error(f"Anthropic network error: {e}")
+                raise LLMNetworkError(provider=provider) from e
+
+            logger.error(f"Anthropic API Error: {e}")
+            raise
 
     async def _stream_openai(
         self,
@@ -468,8 +488,40 @@ class LLMAdapter(ModelAdapter):
                 else:
                     raise stream_err
         except Exception as e:
-            logger.error(f"OpenAI API Error: {str(e)}")
-            raise e
+            from ..errors import LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMNetworkError, LLMProviderError
+            # Don't double-wrap already-structured errors
+            if isinstance(e, LLMProviderError):
+                raise
+            err_str = str(e).lower()
+            provider = self.provider or "openai"
+
+            # Timeout
+            is_timeout = isinstance(e, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException))
+            if not is_timeout:
+                is_timeout = any(kw in err_str for kw in ("timeout", "timed out", "connecttimeout", "readtimeout"))
+            if is_timeout:
+                logger.error(f"OpenAI/compatible API request timed out ({e})")
+                raise LLMTimeoutError(provider=provider) from e
+
+            status_code = getattr(getattr(e, 'response', None), 'status_code', None) or getattr(e, 'status_code', None)
+
+            # Auth errors
+            if status_code in (401, 403) or any(kw in err_str for kw in ("authentication", "invalid api key", "unauthorized", "api key")):
+                logger.error(f"OpenAI auth error: {e}")
+                raise LLMAuthError(provider=provider, message=str(e)) from e
+
+            # Rate limit
+            if status_code == 429 or any(kw in err_str for kw in ("rate limit", "rate_limit", "ratelimit", "too many requests")):
+                logger.error(f"OpenAI rate limit: {e}")
+                raise LLMRateLimitError(provider=provider) from e
+
+            # Network / connectivity
+            if any(kw in err_str for kw in ("connection", "network", "connect error", "failed to connect")):
+                logger.error(f"OpenAI network error: {e}")
+                raise LLMNetworkError(provider=provider) from e
+
+            logger.error(f"OpenAI API Error: {e}")
+            raise
 
     def _to_anthropic_messages(self, internal_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         anthropic_msgs = []

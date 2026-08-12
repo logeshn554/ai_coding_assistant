@@ -89,17 +89,21 @@ class ModelAdapter:
         return {"type": "text", "content": content}
 
     @staticmethod
-    def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
+    def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> tuple[float, bool]:
         """Estimate cost using a generic default rate.
 
         Provider-specific pricing should be configured in the user profile
         rather than hardcoded here. This fallback uses a conservative
         mid-range estimate ($3/$15 per million tokens) so cost tracking
         is never zero, but users should set accurate rates in their profile.
+
+        Returns:
+            (cost_usd, is_estimated) — is_estimated=True when using fallback rates.
         """
         # Default mid-range pricing (per million tokens)
         input_rate = 3.00
         output_rate = 15.00
+        is_estimated = True  # Assume estimate unless overridden with a known rate
 
         # Allow profile-level overrides via environment variables
         import os
@@ -108,25 +112,32 @@ class ModelAdapter:
         if env_input:
             try:
                 input_rate = float(env_input)
+                is_estimated = False  # User provided explicit rate
             except ValueError:
                 pass
         if env_output:
             try:
                 output_rate = float(env_output)
+                is_estimated = False
             except ValueError:
                 pass
 
-        return (input_tokens * input_rate + output_tokens * output_rate) / 1_000_000
+        cost = (input_tokens * input_rate + output_tokens * output_rate) / 1_000_000
+        return cost, is_estimated
 
     @staticmethod
     def build_usage_chunk(input_tokens: int, output_tokens: int, model_name: str = "unknown") -> Dict[str, Any]:
-        cost = ModelAdapter.calculate_cost(model_name, input_tokens, output_tokens)
-        return {
+        cost, is_estimated = ModelAdapter.calculate_cost(model_name, input_tokens, output_tokens)
+        chunk = {
             "type": "usage",
             "input_tokens": input_tokens or 0,
             "output_tokens": output_tokens or 0,
             "cost_usd": cost,
         }
+        if is_estimated:
+            chunk["cost_estimated"] = True
+        return chunk
+
 
     @staticmethod
     def build_done_chunk(stop_reason: str) -> Dict[str, Any]:

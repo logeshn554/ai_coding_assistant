@@ -79,17 +79,33 @@ class VerificationEngine:
             elif os.path.exists(os.path.join(root, "yarn.lock")):
                 pm = "yarn"
 
+            # Parse package.json to see which scripts actually exist
+            has_test = False
+            has_lint = False
+            has_build = False
+            has_typecheck = False
+            try:
+                with open(pkg_path, "r", encoding="utf-8") as f:
+                    pkg_data = json.load(f)
+                    scripts = pkg_data.get("scripts", {})
+                    has_test = "test" in scripts
+                    has_lint = "lint" in scripts
+                    has_build = "build" in scripts
+                    has_typecheck = "typecheck" in scripts
+            except Exception:
+                pass
+
             return VerificationProfile(
                 language="typescript",
                 package_manager=pm,
-                test_command=f"{pm} test",
-                typecheck_command=f"{pm} run typecheck" if os.path.exists(os.path.join(root, "tsconfig.json")) else None,
-                lint_command=f"{pm} run lint",
-                build_command=f"{pm} run build",
+                test_command=f"{pm} test" if has_test else None,
+                typecheck_command=f"{pm} run typecheck" if (has_typecheck or os.path.exists(os.path.join(root, "tsconfig.json"))) else None,
+                lint_command=f"{pm} run lint" if has_lint else None,
+                build_command=f"{pm} run build" if has_build else None,
             )
 
         # Default fallback
-        return VerificationProfile(language="python", test_command="pytest")
+        return VerificationProfile(language="unknown", test_command=None)
 
     async def run_scoped_verification(
         self,
@@ -97,19 +113,33 @@ class VerificationEngine:
         test_files: Optional[List[str]] = None,
     ) -> VerificationResult:
         """Execute cheap targeted verification before running broad suites."""
+        cmd = self.profile.test_command
+        if not cmd:
+            return VerificationResult(
+                success=True,
+                command="none",
+                output="No verification tests configured.",
+                duration_seconds=0.0,
+            )
+
         # 1. Scope target test file if provided
-        cmd = self.profile.test_command or "pytest"
         if test_files and self.profile.language == "python":
             cmd = f"pytest {' '.join(test_files)}"
         elif test_files and self.profile.language == "typescript":
             cmd = f"{self.profile.package_manager} test -- {' '.join(test_files)}"
 
+        # Clean environment to prevent nested pytest process inheriting parent test configurations
+        clean_env = os.environ.copy()
+        for k in list(clean_env.keys()):
+            if k.startswith("PYTEST"):
+                clean_env.pop(k)
         start_time = asyncio.get_event_loop().time()
 
         try:
             proc = await asyncio.create_subprocess_shell(
                 cmd,
                 cwd=self.workspace_root,
+                env=clean_env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )

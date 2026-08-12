@@ -1029,69 +1029,28 @@ class AgentSession:
 
             # ── 14-Phase Agent Intelligence Layer (Agent mode only) ───────
             if mode == "Agent":
-                system_prompt = await self._run_agent_intelligence_pipeline(
-                    text, system_prompt
-                )
-
-            effective_max_turns = min(self.max_turns * 4, 200) if mode in ("Agent", "Goal") else self.max_turns
-            # B1: Previously 10000 in Agent mode, which could run API costs into
-            # hundreds of dollars silently. Now capped at max_turns*4 (ceiling 200).
-            turn = 0
-            self._agent_tool_call_count = 0  # reset per-run counter
-
-            def _tool_stage(tc_name: str) -> str:
-                """Map a tool name to a UI progress stage status code."""
-                _READ_TOOLS = (
-                    "list_directory", "list_files", "list_dir", "ls",
-                    "read_file", "view_file", "get_file", "open_file",
-                    "search_codebase", "search_files", "search_code", "grep",
-                    "glob", "glob_search",
-                )
-                _WRITE_TOOLS = (
-                    "write_file", "create_file", "write_to_file", "save_file",
-                    "edit_file", "apply_patch", "patch",
-                )
-                _VALIDATE_TOOLS = ("run_terminal_command", "execute_command", "run_command",)
-                n = tc_name.lower()
-                if n in _READ_TOOLS:
-                    return "reading_workspace"
-                if n in _WRITE_TOOLS:
-                    return "writing_files"
-                if n in _VALIDATE_TOOLS:
-                    return "validating"
-                return "tool_executing"
-
-            while turn < effective_max_turns:
-                turn += 1
-
-                # Send mode-aware status update
-                _status_msg = (
-                    "Thinking..."
-                    if mode == "Ask"
-                    else f"Planning (turn {turn})..."
-                    if mode == "Plan"
-                    else f"Agent turn {turn}..."
-                )
-                await self.send_ws_message({
-                    "type": "status",
-                    "status": "generating_code" if mode == "Agent" else "thinking",
-                    "message": _status_msg,
-                    "mode": mode,
-                })
-
-                response_text = ""
-                tool_calls_to_run = []
-                thinking_blocks_current_turn: list = []  # A6: accumulate per-turn thinking blocks
-                if self._exec_logger:
-                    self._exec_logger.increment_turns()
-
-                # 1. Stream the model's text response and collect tool calls
-                try:
-                    # Trim history to fit within token budget before each API call
-                    trimmed_history = self._trim_history_for_context(
-                        self.conversation_history, system_prompt, tools
+                async def agent_llm_provider(task_desc: str, step_num: int):
+                    sys_prompt = self._get_system_prompt("Agent")
+                    sys_prompt = await self._run_agent_intelligence_pipeline(
+                        task_desc, sys_prompt
                     )
-                    async for chunk in self._stream_chat_wrapper(adapter, trimmed_history, tools, system_prompt):
+
+                    # Send status update
+                    await self.send_ws_message({
+                        "type": "status",
+                        "status": "generating_code",
+                        "message": f"Agent turn {step_num}...",
+                        "mode": "Agent",
+                    })
+
+                    response_text = ""
+                    tool_calls_to_run = []
+                    thinking_blocks_current_turn = []
+
+                    trimmed_history = self._trim_history_for_context(
+                        self.conversation_history, sys_prompt, tools
+                    )
+                    async for chunk in self._stream_chat_wrapper(adapter, trimmed_history, tools, sys_prompt):
                         if chunk["type"] == "text":
                             response_text += chunk["content"]
                             await self.send_ws_message({
@@ -1101,7 +1060,6 @@ class AgentSession:
                         elif chunk["type"] == "tool_call":
                             tool_calls_to_run.append(chunk)
                         elif chunk["type"] == "thinking":
-                            # A6: capture thinking block for re-emission next turn
                             thinking_blocks_current_turn.append({
                                 "type": "thinking",
                                 "thinking": chunk.get("thinking", ""),
@@ -1113,7 +1071,6 @@ class AgentSession:
                                 "signature": chunk.get("signature"),
                             })
                         elif chunk["type"] == "redacted_thinking":
-                            # A6: capture redacted_thinking block
                             thinking_blocks_current_turn.append({
                                 "type": "redacted_thinking",
                                 "data": chunk.get("data", ""),
@@ -1123,373 +1080,557 @@ class AgentSession:
                                 "content": chunk.get("data", "") or "Thinking...",
                                 "signature": "redacted",
                             })
-                        elif chunk["type"] == "tool_call_error":
-                            # A7: model produced malformed JSON surface as a tool result error
-                            err_msg = chunk.get("error", "Unknown tool call error")
-                            logger.warning(f"A7 tool_call_error: {err_msg}")
-                            await self.send_ws_message({
-                                "type": "text_delta",
-                                "content": f"\n\n[WARNING] {err_msg}\n"
-                            })
-                        elif chunk["type"] == "usage":
-                            pass
-                        elif chunk["type"] == "done":
-                            stop_reason = chunk["stop_reason"]
-                except Exception as e:
-                    # Auto-retry with aggressively trimmed history on 413 (context too large)
-                    err_str = str(e)
-                    if "413" in err_str or "too large" in err_str.lower() or "tokens" in err_str.lower():
-                        logger.warning(f"Context too large, retrying with trimmed history: {err_str}")
-                        try:
-                            trimmed_history = self._trim_history_for_context(
-                                self.conversation_history, system_prompt, tools,
-                                max_chars=6000  # Aggressive trim for small models
-                            )
-                            response_text = ""
-                            tool_calls_to_run = []
-                            async for chunk in self._stream_chat_wrapper(adapter, trimmed_history, tools, system_prompt):
-                                if chunk["type"] == "text":
-                                    response_text += chunk["content"]
-                                    await self.send_ws_message({
-                                        "type": "text_delta",
-                                        "content": chunk["content"]
-                                    })
-                                elif chunk["type"] == "tool_call":
-                                    tool_calls_to_run.append(chunk)
-                                elif chunk["type"] == "thinking":
-                                    thinking_blocks_current_turn.append({
-                                        "type": "thinking",
-                                        "thinking": chunk.get("thinking", ""),
-                                        "signature": chunk.get("signature"),
-                                    })
-                                    await self.send_ws_message({
-                                        "type": "thinking",
-                                        "content": chunk.get("thinking", ""),
-                                        "signature": chunk.get("signature"),
-                                    })
-                                elif chunk["type"] == "redacted_thinking":
-                                    thinking_blocks_current_turn.append({
-                                        "type": "redacted_thinking",
-                                        "data": chunk.get("data", ""),
-                                    })
-                                    await self.send_ws_message({
-                                        "type": "thinking",
-                                        "content": chunk.get("data", "") or "Thinking...",
-                                        "signature": "redacted",
-                                    })
-                                elif chunk["type"] == "done":
-                                    stop_reason = chunk["stop_reason"]
-                        except Exception as retry_err:
-                            raise retry_err
-                    elif isinstance(e, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)) or "time" in err_str.lower() or "timeout" in err_str.lower() or "connecttimeout" in err_str.lower():
-                        logger.error(f"Agent session API call timed out: {e}")
-                        raise TimeoutError("API Request Timed Out") from e
-                    else:
-                        raise e
 
-
-                # Fallback: if no native tool calls were found, try to parse a JSON tool call from the response text.
-                if not tool_calls_to_run and response_text:
-                    parsed_tc = self._extract_tool_call_from_text(response_text)
-                    if parsed_tc:
-                        tc_name = parsed_tc.get("name")
-                        tc_input = parsed_tc.get("arguments") or parsed_tc.get("input") or {}
-                        if tc_name:
-                            import uuid
-                            mock_id = f"call_{uuid.uuid4().hex[:8]}"
-                            tool_calls_to_run.append({
-                                "type": "tool_call",
-                                "id": mock_id,
-                                "name": tc_name,
-                                "input": tc_input
-                            })
-                            # Clean response_text so we don't display raw JSON to user as text
-                            if response_text.strip().startswith("{") and response_text.strip().endswith("}"):
-                                response_text = f"Calling tool `{tc_name}`..."
-
-                # 2. Append assistant response to history
-                assistant_msg = {
-                    "role": "assistant",
-                    "content": response_text
-                }
-                # A6: store thinking blocks so _to_anthropic_messages re-emits them next turn
-                if thinking_blocks_current_turn:
-                    assistant_msg["thinking_blocks"] = thinking_blocks_current_turn
-
-                if tool_calls_to_run:
-                    assistant_msg["tool_calls"] = [
-                        {
+                    # Form raw tool calls list for AgentRuntime normalizer
+                    import json
+                    raw_tool_calls = []
+                    for tc in tool_calls_to_run:
+                        raw_tool_calls.append({
                             "id": tc["id"],
                             "name": tc["name"],
-                            "input": tc["input"],
-                            "thought_signature": tc.get("thought_signature")
-                        }
-                        for tc in tool_calls_to_run
-                    ]
-
-                self.conversation_history.append(assistant_msg)
-
-                # If no tool calls, the turn loop is complete
-                if not tool_calls_to_run:
-                    break
-
-                # 3. Execute tool calls (potentially seeking user confirmation)
-                tool_results = []
-                
-                # Chunk tool_calls_to_run into batches. Consecutive 'delegate_to_agent' tool calls
-                # run concurrently using asyncio.gather, while other tools run sequentially.
-                batches = []
-                current_batch = []
-                is_parallel_batch = False
-
-                for tc in tool_calls_to_run:
-                    is_delegate = (tc["name"] == "delegate_to_agent")
-                    if not current_batch:
-                        current_batch.append(tc)
-                        is_parallel_batch = is_delegate
-                    else:
-                        if is_delegate == is_parallel_batch and is_parallel_batch:
-                            current_batch.append(tc)
-                        else:
-                            batches.append((current_batch, is_parallel_batch))
-                            current_batch = [tc]
-                            is_parallel_batch = is_delegate
-                if current_batch:
-                    batches.append((current_batch, is_parallel_batch))
-
-                for batch, is_parallel in batches:
-                    _wasted_signals = (
-                        "timed out", "timeout",
-                        "Action cancelled", "cancelled",
-                        "Target block not found", "Edit failed",
-                        "near-match was detected",
-                        "differs starting at line",
-                        "malformed JSON arguments",
-                    )
-
-                    if is_parallel:
-                        # Run consecutive delegate_to_agent calls in parallel
-                        async def run_single_tool(tc):
-                            tc_id = tc["id"]
-                            tc_name = tc["name"]
-                            tc_args = tc["input"]
-
-                            _stage = _tool_stage(tc_name)
-                            await self.send_ws_message({
-                                "type": "status",
-                                "status": _stage,
-                                "message": f"{_stage.replace('_', ' ').title()}: {tc_name}...",
-                                "tool_call": {"id": tc_id, "name": tc_name, "args": tc_args}
-                            })
-
-                            if tc.get("error"):
-                                result = tc["error"]
-                                status = "error"
-                            else:
-                                try:
-                                    result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
-                                    status = "success"
-                                except Exception as e:
-                                    result = f"Error executing tool '{tc_name}': {str(e)}"
-                                    status = "error"
-
-                            if any(sig.lower() in result.lower() for sig in _wasted_signals):
-                                if hasattr(self, "wasted_turns"):
-                                    self.wasted_turns += 1
-
-                            # Send result back to frontend for chat display
-                            await self.send_ws_message({
-                                "type": "tool_result",
-                                "tool_call_id": tc_id,
-                                "name": tc_name,
-                                "status": status,
-                                "result": result
-                            })
-
-                            from ..context_helpers import prepare_tool_result_for_history
-                            compact_result = prepare_tool_result_for_history(result, tool_name=tc_name)
-                            
-                            entry = {
-                                "role": "tool",
-                                "tool_call_id": tc_id,
-                                "name": tc_name,
-                                "content": compact_result
-                            }
-                            if len(str(result)) > len(compact_result):
-                                entry["metadata"] = {
-                                    "truncated": True,
-                                    "original_chars": len(str(result)),
-                                    "retained_chars": len(compact_result)
-                                }
-                            return entry
-
-                        results = await asyncio.gather(*(run_single_tool(tc) for tc in batch))
-                        tool_results.extend(results)
-                    else:
-                        # Run sequentially
-                        for tc in batch:
-                            tc_id = tc["id"]
-                            tc_name = tc["name"]
-                            tc_args = tc["input"]
-
-                            _stage = _tool_stage(tc_name)
-                            await self.send_ws_message({
-                                "type": "status",
-                                "status": _stage,
-                                "message": f"{_stage.replace('_', ' ').title()}: {tc_name}...",
-                                "tool_call": {"id": tc_id, "name": tc_name, "args": tc_args}
-                            })
-
-                            if tc.get("error"):
-                                result = tc["error"]
-                                status = "error"
-                            else:
-                                try:
-                                    result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
-                                    status = "success"
-                                except Exception as e:
-                                    result = f"Error executing tool '{tc_name}': {str(e)}"
-                                    status = "error"
-
-                            from ..context_helpers import prepare_tool_result_for_history
-                            compact_result = prepare_tool_result_for_history(result, tool_name=tc_name)
-
-                            entry = {
-                                "role": "tool",
-                                "tool_call_id": tc_id,
-                                "name": tc_name,
-                                "content": compact_result
-                            }
-                            if len(str(result)) > len(compact_result):
-                                entry["metadata"] = {
-                                    "truncated": True,
-                                    "original_chars": len(str(result)),
-                                    "retained_chars": len(compact_result)
-                                }
-                            tool_results.append(entry)
-
-                            # A8: count wasted turns for diagnostics
-                            if any(sig.lower() in result.lower() for sig in _wasted_signals):
-                                if hasattr(self, "wasted_turns"):
-                                    self.wasted_turns += 1
-
-                            # Send result back to frontend for chat display
-                            await self.send_ws_message({
-                                "type": "tool_result",
-                                "tool_call_id": tc_id,
-                                "name": tc_name,
-                                "status": status,
-                                "result": result
-                            })
-
-                # Append tool outputs to history
-                self.conversation_history.extend(tool_results)
-
-                # Track tool calls in exec_logger and task_memory
-                if self._exec_logger:
-                    for tc in tool_calls_to_run:
-                        status = "success"
-                        tc_result = next(
-                            (r.get("content", "") for r in tool_results if r.get("tool_call_id") == tc["id"]),
-                            ""
-                        )
-                        self._exec_logger.finish_tool_call(result=tc_result, status=status)
-                # Track file writes in task_memory
-                for tc in tool_calls_to_run:
-                    if tc["name"] in ("write_file", "edit_file", "patch", "apply_patch"):
-                        fp = tc.get("input", {}).get("path") or tc.get("input", {}).get("file_path", "")
-                        if fp:
-                            self.task_memory.record_write(str(fp))
-                self._agent_tool_call_count += len(tool_calls_to_run)
-
-                # Continue loop if more turns are needed
-                # (implicitly handled by presence of tool calls)
-
-            if turn >= effective_max_turns:
-                await self.send_ws_message({
-                    "type": "text_delta",
-                    "content": (
-                        f"\n\n[WARNING] **Agent reached the maximum limit of {effective_max_turns} turns.** "
-                        "To continue, send another message or increase `max_turns` in Settings."
-                    )
-                })
-            try:
-                from ..project_detector import detect_project_metadata
-                detect_project_metadata(self.workspace_root)
-            except Exception as pe:
-                logger.debug(f"Failed auto project detection: {pe}")
-
-            # ── Phase 8+9: Validator + Critic (Agent mode only) ───────────
-            if mode == "Agent" and self.task_memory.files_written:
-                try:
-                    val_result = self._validator.validate(
-                        files_written=self.task_memory.files_written,
-                        plan_steps=self.task_memory.to_dict().get("steps"),
-                    )
-                    if self._exec_logger:
-                        self._exec_logger.set_validation(val_result.to_summary())
-
-                    critic_result = self._critic.review(
-                        intent=self._current_intent or IntentType.GENERAL,
-                        task_memory=self.task_memory,
-                        validation_result=val_result,
-                        total_turns=turn,
-                        response_text=response_text,
-                        tool_calls_made=self._agent_tool_call_count,
-                    )
-                    if self._exec_logger:
-                        self._exec_logger.set_critic(critic_result.reason)
-
-                    if not critic_result.complete and turn < effective_max_turns - 1:
-                        # Inject critic feedback and run one more turn
-                        self.conversation_history.append({
-                            "role": "user",
-                            "content": (
-                                "[SYSTEM] Critic review found issues that must be fixed:\n"
-                                + critic_result.injected_message
-                            )
+                            "arguments": json.dumps(tc["input"]) if isinstance(tc["input"], dict) else tc["input"]
                         })
-                        # Run one extra turn to address critic findings
-                        _extra_response = ""
-                        async for chunk in self._stream_chat_wrapper(adapter, self._trim_history_for_context(self.conversation_history, system_prompt, tools), tools, system_prompt):
+
+                    # Record assistant message in the conversation history
+                    assistant_msg = {
+                        "role": "assistant",
+                        "content": response_text
+                    }
+                    if thinking_blocks_current_turn:
+                        assistant_msg["thinking_blocks"] = thinking_blocks_current_turn
+                    if tool_calls_to_run:
+                        assistant_msg["tool_calls"] = [
+                            {
+                                "id": tc["id"],
+                                "name": tc["name"],
+                                "input": tc["input"],
+                                "thought_signature": tc.get("thought_signature")
+                            }
+                            for tc in tool_calls_to_run
+                        ]
+                    self.conversation_history.append(assistant_msg)
+
+                    if self._exec_logger:
+                        self._exec_logger.increment_turns()
+                    self._agent_tool_call_count += len(tool_calls_to_run)
+
+                    return {
+                        "content": response_text,
+                        "tool_calls": raw_tool_calls
+                    }
+
+                effective_max_turns = min(self.max_turns * 4, 200)
+                self._agent_tool_call_count = 0
+
+                run_res = await self.agent_runtime.run(
+                    session_id=self.session_id,
+                    task=text,
+                    mode="Agent",
+                    auto_apply=auto_apply,
+                    max_turns=effective_max_turns,
+                    llm_provider_func=agent_llm_provider,
+                    agent_session=self
+                )
+
+                # Set task memory files written
+                self.task_memory.files_written = list(
+                    set(run_res.changed_files.get("created_files", [])) |
+                    set(run_res.changed_files.get("modified_files", []))
+                )
+
+                # Verification results
+                _verification_evidence = None
+                if run_res.verification_status != "NOT_RUN" and self.task_memory.files_written:
+                    try:
+                        await self.send_ws_message({
+                            "type": "status",
+                            "status": "verifying",
+                            "message": "Verifying changes...",
+                        })
+                        from ..agent.agent_runtime.verification import VerificationEngine
+                        _ve = VerificationEngine(self.workspace_root, timeout=60.0)
+                        _vr = await _ve.verify()
+                        _verification_evidence = _vr.to_evidence()
+                        await self.send_ws_message({
+                            "type": "verification_result",
+                            "passed": _vr.passed,
+                            "summary": _vr.summary,
+                            "checks": _verification_evidence.get("checks", []),
+                        })
+                    except Exception as ve_err:
+                        logger.warning(f"VerificationEngine error (non-fatal): {ve_err}")
+
+                if self._exec_logger:
+                    self._exec_logger.set_cost(getattr(self, "total_cost_usd", 0.0))
+                    self._exec_logger.finish("completed" if run_res.success else "failed")
+                    self._exec_logger.emit()
+
+                await self.send_ws_message({
+                    "type": "session_done",
+                    "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
+                    "wasted_turns": getattr(self, "wasted_turns", 0),
+                    "task_memory": self.task_memory.to_dict(),
+                    "verification": _verification_evidence,
+                })
+
+            else:
+                effective_max_turns = min(self.max_turns * 4, 200) if mode in ("Agent", "Goal") else self.max_turns
+                # B1: Previously 10000 in Agent mode, which could run API costs into
+                # hundreds of dollars silently. Now capped at max_turns*4 (ceiling 200).
+                turn = 0
+                self._agent_tool_call_count = 0  # reset per-run counter
+
+                def _tool_stage(tc_name: str) -> str:
+                    """Map a tool name to a UI progress stage status code."""
+                    _READ_TOOLS = (
+                        "list_directory", "list_files", "list_dir", "ls",
+                        "read_file", "view_file", "get_file", "open_file",
+                        "search_codebase", "search_files", "search_code", "grep",
+                        "glob", "glob_search",
+                    )
+                    _WRITE_TOOLS = (
+                        "write_file", "create_file", "write_to_file", "save_file",
+                        "edit_file", "apply_patch", "patch",
+                    )
+                    _VALIDATE_TOOLS = ("run_terminal_command", "execute_command", "run_command",)
+                    n = tc_name.lower()
+                    if n in _READ_TOOLS:
+                        return "reading_workspace"
+                    if n in _WRITE_TOOLS:
+                        return "writing_files"
+                    if n in _VALIDATE_TOOLS:
+                        return "validating"
+                    return "tool_executing"
+
+                while turn < effective_max_turns:
+                    turn += 1
+
+                    # Send mode-aware status update
+                    _status_msg = (
+                        "Thinking..."
+                        if mode == "Ask"
+                        else f"Planning (turn {turn})..."
+                        if mode == "Plan"
+                        else f"Agent turn {turn}..."
+                    )
+                    await self.send_ws_message({
+                        "type": "status",
+                        "status": "generating_code" if mode == "Agent" else "thinking",
+                        "message": _status_msg,
+                        "mode": mode,
+                    })
+
+                    response_text = ""
+                    tool_calls_to_run = []
+                    thinking_blocks_current_turn: list = []  # A6: accumulate per-turn thinking blocks
+                    if self._exec_logger:
+                        self._exec_logger.increment_turns()
+
+                    # 1. Stream the model's text response and collect tool calls
+                    try:
+                        # Trim history to fit within token budget before each API call
+                        trimmed_history = self._trim_history_for_context(
+                            self.conversation_history, system_prompt, tools
+                        )
+                        async for chunk in self._stream_chat_wrapper(adapter, trimmed_history, tools, system_prompt):
                             if chunk["type"] == "text":
-                                _extra_response += chunk["content"]
-                                await self.send_ws_message({"type": "text_delta", "content": chunk["content"]})
+                                response_text += chunk["content"]
+                                await self.send_ws_message({
+                                    "type": "text_delta",
+                                    "content": chunk["content"]
+                                })
+                            elif chunk["type"] == "tool_call":
+                                tool_calls_to_run.append(chunk)
                             elif chunk["type"] == "thinking":
+                                # A6: capture thinking block for re-emission next turn
+                                thinking_blocks_current_turn.append({
+                                    "type": "thinking",
+                                    "thinking": chunk.get("thinking", ""),
+                                    "signature": chunk.get("signature"),
+                                })
                                 await self.send_ws_message({
                                     "type": "thinking",
                                     "content": chunk.get("thinking", ""),
                                     "signature": chunk.get("signature"),
                                 })
                             elif chunk["type"] == "redacted_thinking":
+                                # A6: capture redacted_thinking block
+                                thinking_blocks_current_turn.append({
+                                    "type": "redacted_thinking",
+                                    "data": chunk.get("data", ""),
+                                })
                                 await self.send_ws_message({
                                     "type": "thinking",
                                     "content": chunk.get("data", "") or "Thinking...",
                                     "signature": "redacted",
                                 })
-                        if _extra_response:
-                            self.conversation_history.append({"role": "assistant", "content": _extra_response})
+                            elif chunk["type"] == "tool_call_error":
+                                # A7: model produced malformed JSON surface as a tool result error
+                                err_msg = chunk.get("error", "Unknown tool call error")
+                                logger.warning(f"A7 tool_call_error: {err_msg}")
+                                await self.send_ws_message({
+                                    "type": "text_delta",
+                                    "content": f"\n\n[WARNING] {err_msg}\n"
+                                })
+                            elif chunk["type"] == "usage":
+                                pass
+                            elif chunk["type"] == "done":
+                                stop_reason = chunk["stop_reason"]
+                    except Exception as e:
+                        # Auto-retry with aggressively trimmed history on 413 (context too large)
+                        err_str = str(e)
+                        if "413" in err_str or "too large" in err_str.lower() or "tokens" in err_str.lower():
+                            logger.warning(f"Context too large, retrying with trimmed history: {err_str}")
+                            try:
+                                trimmed_history = self._trim_history_for_context(
+                                    self.conversation_history, system_prompt, tools,
+                                    max_chars=6000  # Aggressive trim for small models
+                                )
+                                response_text = ""
+                                tool_calls_to_run = []
+                                async for chunk in self._stream_chat_wrapper(adapter, trimmed_history, tools, system_prompt):
+                                    if chunk["type"] == "text":
+                                        response_text += chunk["content"]
+                                        await self.send_ws_message({
+                                            "type": "text_delta",
+                                            "content": chunk["content"]
+                                        })
+                                    elif chunk["type"] == "tool_call":
+                                        tool_calls_to_run.append(chunk)
+                                    elif chunk["type"] == "thinking":
+                                        thinking_blocks_current_turn.append({
+                                            "type": "thinking",
+                                            "thinking": chunk.get("thinking", ""),
+                                            "signature": chunk.get("signature"),
+                                        })
+                                        await self.send_ws_message({
+                                            "type": "thinking",
+                                            "content": chunk.get("thinking", ""),
+                                            "signature": chunk.get("signature"),
+                                        })
+                                    elif chunk["type"] == "redacted_thinking":
+                                        thinking_blocks_current_turn.append({
+                                            "type": "redacted_thinking",
+                                            "data": chunk.get("data", ""),
+                                        })
+                                        await self.send_ws_message({
+                                            "type": "thinking",
+                                            "content": chunk.get("data", "") or "Thinking...",
+                                            "signature": "redacted",
+                                        })
+                                    elif chunk["type"] == "done":
+                                        stop_reason = chunk["stop_reason"]
+                            except Exception as retry_err:
+                                raise retry_err
+                        elif isinstance(e, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)) or "time" in err_str.lower() or "timeout" in err_str.lower() or "connecttimeout" in err_str.lower():
+                            logger.error(f"Agent session API call timed out: {e}")
+                            raise TimeoutError("API Request Timed Out") from e
+                        else:
+                            raise e
 
-                    if not val_result.passed:
-                        prompt_block = val_result.to_prompt_block()
-                        if prompt_block.strip():
-                            await self.send_ws_message({"type": "text_delta", "content": prompt_block})
 
-                except Exception as ve:
-                    logger.warning(f"Validator/Critic error (non-fatal): {ve}")
+                    # Fallback: if no native tool calls were found, try to parse a JSON tool call from the response text.
+                    if not tool_calls_to_run and response_text:
+                        parsed_tc = self._extract_tool_call_from_text(response_text)
+                        if parsed_tc:
+                            tc_name = parsed_tc.get("name")
+                            tc_input = parsed_tc.get("arguments") or parsed_tc.get("input") or {}
+                            if tc_name:
+                                import uuid
+                                mock_id = f"call_{uuid.uuid4().hex[:8]}"
+                                tool_calls_to_run.append({
+                                    "type": "tool_call",
+                                    "id": mock_id,
+                                    "name": tc_name,
+                                    "input": tc_input
+                                })
+                                # Clean response_text so we don't display raw JSON to user as text
+                                if response_text.strip().startswith("{") and response_text.strip().endswith("}"):
+                                    response_text = f"Calling tool `{tc_name}`..."
 
-            # ── Finalize execution logger ─────────────────────────────────
-            if self._exec_logger:
-                self._exec_logger.set_cost(getattr(self, "total_cost_usd", 0.0))
-                self._exec_logger.finish("completed")
-                self._exec_logger.emit()
+                    # 2. Append assistant response to history
+                    assistant_msg = {
+                        "role": "assistant",
+                        "content": response_text
+                    }
+                    # A6: store thinking blocks so _to_anthropic_messages re-emits them next turn
+                    if thinking_blocks_current_turn:
+                        assistant_msg["thinking_blocks"] = thinking_blocks_current_turn
 
-            await self.send_ws_message({
-                "type": "session_done",
-                "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
-                "wasted_turns": getattr(self, "wasted_turns", 0),
-                "task_memory": self.task_memory.to_dict() if mode == "Agent" else None,
-            })
+                    if tool_calls_to_run:
+                        assistant_msg["tool_calls"] = [
+                            {
+                                "id": tc["id"],
+                                "name": tc["name"],
+                                "input": tc["input"],
+                                "thought_signature": tc.get("thought_signature")
+                            }
+                            for tc in tool_calls_to_run
+                        ]
+
+                    self.conversation_history.append(assistant_msg)
+
+                    # If no tool calls, the turn loop is complete
+                    if not tool_calls_to_run:
+                        break
+
+                    # 3. Execute tool calls (potentially seeking user confirmation)
+                    tool_results = []
+                
+                    # Chunk tool_calls_to_run into batches. Consecutive 'delegate_to_agent' tool calls
+                    # run concurrently using asyncio.gather, while other tools run sequentially.
+                    batches = []
+                    current_batch = []
+                    is_parallel_batch = False
+
+                    for tc in tool_calls_to_run:
+                        is_delegate = (tc["name"] == "delegate_to_agent")
+                        if not current_batch:
+                            current_batch.append(tc)
+                            is_parallel_batch = is_delegate
+                        else:
+                            if is_delegate == is_parallel_batch and is_parallel_batch:
+                                current_batch.append(tc)
+                            else:
+                                batches.append((current_batch, is_parallel_batch))
+                                current_batch = [tc]
+                                is_parallel_batch = is_delegate
+                    if current_batch:
+                        batches.append((current_batch, is_parallel_batch))
+
+                    for batch, is_parallel in batches:
+                        _wasted_signals = (
+                            "timed out", "timeout",
+                            "Action cancelled", "cancelled",
+                            "Target block not found", "Edit failed",
+                            "near-match was detected",
+                            "differs starting at line",
+                            "malformed JSON arguments",
+                        )
+
+                        if is_parallel:
+                            # Run consecutive delegate_to_agent calls in parallel
+                            async def run_single_tool(tc):
+                                tc_id = tc["id"]
+                                tc_name = tc["name"]
+                                tc_args = tc["input"]
+
+                                _stage = _tool_stage(tc_name)
+                                await self.send_ws_message({
+                                    "type": "status",
+                                    "status": _stage,
+                                    "message": f"{_stage.replace('_', ' ').title()}: {tc_name}...",
+                                    "tool_call": {"id": tc_id, "name": tc_name, "args": tc_args}
+                                })
+
+                                if tc.get("error"):
+                                    result = tc["error"]
+                                    status = "error"
+                                else:
+                                    try:
+                                        result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
+                                        status = "success"
+                                    except Exception as e:
+                                        result = f"Error executing tool '{tc_name}': {str(e)}"
+                                        status = "error"
+
+                                if any(sig.lower() in result.lower() for sig in _wasted_signals):
+                                    if hasattr(self, "wasted_turns"):
+                                        self.wasted_turns += 1
+
+                                # Send result back to frontend for chat display
+                                await self.send_ws_message({
+                                    "type": "tool_result",
+                                    "tool_call_id": tc_id,
+                                    "name": tc_name,
+                                    "status": status,
+                                    "result": result
+                                })
+
+                                from ..context_helpers import prepare_tool_result_for_history
+                                compact_result = prepare_tool_result_for_history(result, tool_name=tc_name)
+                            
+                                entry = {
+                                    "role": "tool",
+                                    "tool_call_id": tc_id,
+                                    "name": tc_name,
+                                    "content": compact_result
+                                }
+                                if len(str(result)) > len(compact_result):
+                                    entry["metadata"] = {
+                                        "truncated": True,
+                                        "original_chars": len(str(result)),
+                                        "retained_chars": len(compact_result)
+                                    }
+                                return entry
+
+                            results = await asyncio.gather(*(run_single_tool(tc) for tc in batch))
+                            tool_results.extend(results)
+                        else:
+                            # Run sequentially
+                            for tc in batch:
+                                tc_id = tc["id"]
+                                tc_name = tc["name"]
+                                tc_args = tc["input"]
+
+                                _stage = _tool_stage(tc_name)
+                                await self.send_ws_message({
+                                    "type": "status",
+                                    "status": _stage,
+                                    "message": f"{_stage.replace('_', ' ').title()}: {tc_name}...",
+                                    "tool_call": {"id": tc_id, "name": tc_name, "args": tc_args}
+                                })
+
+                                if tc.get("error"):
+                                    result = tc["error"]
+                                    status = "error"
+                                else:
+                                    try:
+                                        result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
+                                        status = "success"
+                                    except Exception as e:
+                                        result = f"Error executing tool '{tc_name}': {str(e)}"
+                                        status = "error"
+
+                                from ..context_helpers import prepare_tool_result_for_history
+                                compact_result = prepare_tool_result_for_history(result, tool_name=tc_name)
+
+                                entry = {
+                                    "role": "tool",
+                                    "tool_call_id": tc_id,
+                                    "name": tc_name,
+                                    "content": compact_result
+                                }
+                                if len(str(result)) > len(compact_result):
+                                    entry["metadata"] = {
+                                        "truncated": True,
+                                        "original_chars": len(str(result)),
+                                        "retained_chars": len(compact_result)
+                                    }
+                                tool_results.append(entry)
+
+                                # A8: count wasted turns for diagnostics
+                                if any(sig.lower() in result.lower() for sig in _wasted_signals):
+                                    if hasattr(self, "wasted_turns"):
+                                        self.wasted_turns += 1
+
+                                # Send result back to frontend for chat display
+                                await self.send_ws_message({
+                                    "type": "tool_result",
+                                    "tool_call_id": tc_id,
+                                    "name": tc_name,
+                                    "status": status,
+                                    "result": result
+                                })
+
+                    # Append tool outputs to history
+                    self.conversation_history.extend(tool_results)
+
+                    # Track tool calls in exec_logger and task_memory
+                    if self._exec_logger:
+                        for tc in tool_calls_to_run:
+                            status = "success"
+                            tc_result = next(
+                                (r.get("content", "") for r in tool_results if r.get("tool_call_id") == tc["id"]),
+                                ""
+                            )
+                            self._exec_logger.finish_tool_call(result=tc_result, status=status)
+                    # Track file writes in task_memory
+                    for tc in tool_calls_to_run:
+                        if tc["name"] in ("write_file", "edit_file", "patch", "apply_patch"):
+                            fp = tc.get("input", {}).get("path") or tc.get("input", {}).get("file_path", "")
+                            if fp:
+                                self.task_memory.record_write(str(fp))
+                    self._agent_tool_call_count += len(tool_calls_to_run)
+
+                    # Continue loop if more turns are needed
+                    # (implicitly handled by presence of tool calls)
+
+                if turn >= effective_max_turns:
+                    await self.send_ws_message({
+                        "type": "text_delta",
+                        "content": (
+                            f"\n\n[WARNING] **Agent reached the maximum limit of {effective_max_turns} turns.** "
+                            "To continue, send another message or increase `max_turns` in Settings."
+                        )
+                    })
+                try:
+                    from ..project_detector import detect_project_metadata
+                    detect_project_metadata(self.workspace_root)
+                except Exception as pe:
+                    logger.debug(f"Failed auto project detection: {pe}")
+
+                # ── Phase 8+9: Validator + Critic (Agent mode only) ───────────
+                if mode == "Agent" and self.task_memory.files_written:
+                    try:
+                        val_result = self._validator.validate(
+                            files_written=self.task_memory.files_written,
+                            plan_steps=self.task_memory.to_dict().get("steps"),
+                        )
+                        if self._exec_logger:
+                            self._exec_logger.set_validation(val_result.to_summary())
+
+                        critic_result = self._critic.review(
+                            intent=self._current_intent or IntentType.GENERAL,
+                            task_memory=self.task_memory,
+                            validation_result=val_result,
+                            total_turns=turn,
+                            response_text=response_text,
+                            tool_calls_made=self._agent_tool_call_count,
+                        )
+                        if self._exec_logger:
+                            self._exec_logger.set_critic(critic_result.reason)
+
+                        if not critic_result.complete and turn < effective_max_turns - 1:
+                            # Inject critic feedback and run one more turn
+                            self.conversation_history.append({
+                                "role": "user",
+                                "content": (
+                                    "[SYSTEM] Critic review found issues that must be fixed:\n"
+                                    + critic_result.injected_message
+                                )
+                            })
+                            # Run one extra turn to address critic findings
+                            _extra_response = ""
+                            async for chunk in self._stream_chat_wrapper(adapter, self._trim_history_for_context(self.conversation_history, system_prompt, tools), tools, system_prompt):
+                                if chunk["type"] == "text":
+                                    _extra_response += chunk["content"]
+                                    await self.send_ws_message({"type": "text_delta", "content": chunk["content"]})
+                                elif chunk["type"] == "thinking":
+                                    await self.send_ws_message({
+                                        "type": "thinking",
+                                        "content": chunk.get("thinking", ""),
+                                        "signature": chunk.get("signature"),
+                                    })
+                                elif chunk["type"] == "redacted_thinking":
+                                    await self.send_ws_message({
+                                        "type": "thinking",
+                                        "content": chunk.get("data", "") or "Thinking...",
+                                        "signature": "redacted",
+                                    })
+                            if _extra_response:
+                                self.conversation_history.append({"role": "assistant", "content": _extra_response})
+
+                        if not val_result.passed:
+                            prompt_block = val_result.to_prompt_block()
+                            if prompt_block.strip():
+                                await self.send_ws_message({"type": "text_delta", "content": prompt_block})
+
+                    except Exception as ve:
+                        logger.warning(f"Validator/Critic error (non-fatal): {ve}")
+
+                # ── Finalize execution logger ─────────────────────────────────
+                if self._exec_logger:
+                    self._exec_logger.set_cost(getattr(self, "total_cost_usd", 0.0))
+                    self._exec_logger.finish("completed")
+                    self._exec_logger.emit()
+
+                await self.send_ws_message({
+                    "type": "session_done",
+                    "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
+                    "wasted_turns": getattr(self, "wasted_turns", 0),
+                    "task_memory": self.task_memory.to_dict() if mode == "Agent" else None,
+                })
 
         except asyncio.CancelledError:
             # Agent was stopped by the user - send a clean cancellation notice
