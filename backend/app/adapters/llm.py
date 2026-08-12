@@ -441,6 +441,16 @@ class LLMAdapter(ModelAdapter):
                     )
                 stop_reason = "tool_use" if tool_calls_accum else "stop"
                 yield self.build_done_chunk(stop_reason)
+            except asyncio.CancelledError:
+                # asyncio.wait_for() cancelled this coroutine — treat as a turn timeout
+                logger.error(
+                    "LLM streaming coroutine was cancelled (likely due to a turn timeout). "
+                    "Increase DEVPILOT_LLM_TURN_TIMEOUT if the model needs more time."
+                )
+                raise TimeoutError(
+                    f"LLM turn timed out for provider ({base_url or 'OpenAI API'}). "
+                    "The request was cancelled. Try increasing DEVPILOT_LLM_TURN_TIMEOUT."
+                )
             except Exception as stream_err:
                 err_str = str(stream_err).lower()
                 is_timeout = False

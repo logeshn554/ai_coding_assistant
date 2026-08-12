@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Check, Copy, Loader2, Sparkles, ChevronRight, FileText, ThumbsUp, ThumbsDown, Brain, Terminal, FileCode, AlertTriangle, HelpCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Check, Copy, Loader2, Sparkles, ThumbsUp, ThumbsDown, AlertTriangle } from 'lucide-react';
 import type { ChatMessage, DiffHunk } from '../../types/chat';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { FileChangeCard } from './FileChangeCard';
@@ -8,6 +8,8 @@ import { DiffView } from './DiffView';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useAI } from '../../core/ai/AIContext';
 import { parseToolEvent } from './ReasoningTimeline';
+import ThinkingState from './ThinkingState';
+import ToolChips, { type ToolRow } from './ToolChips';
 
 export interface AiTurn {
   kind: 'ai';
@@ -17,6 +19,23 @@ export interface AiTurn {
   toolMessages: ChatMessage[];
   confirmMessages: ChatMessage[];
   isGenerating?: boolean;
+}
+
+interface TimelineBlock {
+  type: 'thinking' | 'tool' | 'text' | 'confirm' | 'running_tool';
+  id: string;
+  message?: ChatMessage;
+  thinkingContent?: string;
+  textContent?: string;
+  toolInfo?: {
+    action: string;
+    substep?: string;
+    detail?: string;
+    resultText?: string;
+    toolType: string;
+    status: 'running' | 'success' | 'error';
+    name: string;
+  };
 }
 
 interface AssistantMessageProps {
@@ -55,30 +74,8 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   const [copied, setCopied] = useState(false);
   const [activeDiffPath, setActiveDiffPath] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<'liked' | 'disliked' | null>(null);
-  const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
 
   const { liveToolCalls } = useAI();
-
-  interface TimelineBlock {
-    type: 'thinking' | 'tool' | 'text' | 'confirm' | 'running_tool';
-    id: string;
-    message?: ChatMessage;
-    thinkingContent?: string;
-    textContent?: string;
-    toolInfo?: {
-      action: string;
-      substep?: string;
-      detail?: string;
-      resultText?: string;
-      toolType: string;
-      status: 'running' | 'success' | 'error';
-      name: string;
-    };
-  }
-
-  const toggleBlock = (id: string) => {
-    setExpandedBlocks(prev => ({ ...prev, [id]: !prev[id] }));
-  };
 
   // Build the chronological sequence of blocks
   const blocks: TimelineBlock[] = [];
@@ -151,10 +148,19 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
         let textContent = '';
         if (typeof m.content === 'string') {
           textContent = m.content.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-        } else if (m.content) {
-          textContent = JSON.stringify(m.content);
+        } else if (m.content && typeof m.content === 'object') {
+          if (!('tool_calls' in m.content) && !('role' in m.content)) {
+            textContent = JSON.stringify(m.content);
+          }
         }
-        if (textContent) {
+
+        const isRawJsonDump =
+          textContent.startsWith('[{"id":"chatcmpl-tool') ||
+          textContent.startsWith('{"content":"","tool_calls":') ||
+          (textContent.startsWith('[{"') && textContent.includes('"tool_calls"')) ||
+          (textContent.startsWith('{"') && textContent.includes('"tool_calls"'));
+
+        if (textContent && !isRawJsonDump) {
           blocks.push({
             type: 'text',
             id: `${messageId}_text`,
@@ -188,16 +194,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     });
   }
 
-  // Auto-expand active reasoning block during execution
-  useEffect(() => {
-    const latestThinking = [...blocks].reverse().find(b => b.type === 'thinking');
-    if (latestThinking && turn.isGenerating) {
-      setExpandedBlocks(prev => {
-        if (prev[latestThinking.id] !== undefined) return prev;
-        return { ...prev, [latestThinking.id]: true };
-      });
-    }
-  }, [blocks.length, turn.isGenerating]);
+
 
   // Extract metadata / elapsed
   const textMessage = turn.assistantMessages.find((m: ChatMessage) => m.content && !m.isConfirmPending) || turn.assistantMessages[0];
@@ -223,25 +220,27 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   });
 
-  const getNodeIcon = (block: TimelineBlock) => {
-    switch (block.type) {
-      case 'thinking':
-        return <Brain className="w-3.5 h-3.5 text-blue-400" />;
-      case 'tool':
-      case 'running_tool': {
-        const t = block.toolInfo?.toolType || '';
-        if (t === 'file_read') return <FileText className="w-3.5 h-3.5 text-sky-400" />;
-        if (t === 'file_edit' || t === 'file_write') return <FileCode className="w-3.5 h-3.5 text-teal-400" />;
-        if (t === 'terminal') return <Terminal className="w-3.5 h-3.5 text-amber-400" />;
-        return <Loader2 className="w-3.5 h-3.5 text-zinc-400 animate-spin" />;
-      }
-      case 'confirm':
-        return <AlertTriangle className="w-3.5 h-3.5 text-orange-400 animate-pulse" />;
-      case 'text':
-        return <Sparkles className="w-3.5 h-3.5 text-purple-400" />;
-      default:
-        return <HelpCircle className="w-3.5 h-3.5 text-zinc-400" />;
-    }
+  const mapBlockToToolRow = (block: TimelineBlock): ToolRow => {
+    const t = block.toolInfo?.toolType || '';
+    let icon = 'think';
+    if (t === 'file_read') icon = 'read';
+    else if (t === 'file_edit' || t === 'file_write') icon = 'write';
+    else if (t === 'terminal') icon = 'run';
+    else if (t === 'search') icon = 'search';
+
+    const rawAction = block.toolInfo?.name || block.toolInfo?.action || 'Tool call';
+    const cleanLabel = rawAction.replace(/^Processing\s+/i, '').replace(/\.\.\.$/, '');
+    const chip = block.toolInfo?.substep || block.toolInfo?.detail || 'Execution';
+    const detailText = block.toolInfo?.detail || block.toolInfo?.resultText || 'Completed execution';
+
+    return {
+      icon,
+      label: cleanLabel.charAt(0).toUpperCase() + cleanLabel.slice(1),
+      chip,
+      mono: true,
+      detailMono: true,
+      detail: [{ text: detailText }],
+    };
   };
 
   const renderInlineFileChangeCard = (block: TimelineBlock, isPending: boolean = false) => {
@@ -283,7 +282,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
           if (h.type === 'add') addCount++;
           else if (h.type === 'remove') removeCount++;
           else if (h.content) {
-            h.content.split('\n').forEach(line => {
+            h.content.split('\n').forEach((line: string) => {
               if (line.startsWith('+')) addCount++;
               else if (line.startsWith('-')) removeCount++;
             });
@@ -392,69 +391,61 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       </div>
 
       {/* Chronological Steps Flow Timeline */}
-      <div className="flex-1 min-w-0 pl-1">
-        <div className="relative border-l border-zinc-800/80 space-y-6 ml-3 pl-6 py-2">
+      <div className="flex-1 min-w-0">
+        <div className="space-y-1 py-1">
           {blocks.map((block) => (
             <div key={block.id} className="relative group">
-              {/* Left-hand Node Icon */}
-              <div className="absolute -left-[31px] top-0.5 w-6.5 h-6.5 rounded-full bg-[#151823] border border-zinc-800/85 flex items-center justify-center shadow-sm select-none z-10">
-                {getNodeIcon(block)}
-              </div>
-              
               {/* Block Contents */}
               <div className="min-w-0">
                 {/* 1. Thinking block */}
                 {block.type === 'thinking' && (
-                  <div className="space-y-2 select-none animate-[fadeIn_120ms_ease-out]">
-                    <button
-                      type="button"
-                      onClick={() => toggleBlock(block.id)}
-                      className="flex items-center gap-2 text-xs font-semibold text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
-                    >
-                      <span>🧠 Model thinking</span>
-                      <ChevronRight
-                        className={`w-3 h-3 transform transition-transform duration-150 ${
-                          expandedBlocks[block.id] ? 'rotate-90 text-zinc-300' : ''
-                        }`}
-                      />
-                    </button>
-                    {expandedBlocks[block.id] && (
-                      <div className="pl-4 py-2 border-l border-zinc-800 bg-[#1e1f24]/20 text-[13px] font-mono leading-relaxed text-zinc-400 whitespace-pre-wrap rounded-r-lg max-h-80 overflow-y-auto select-text">
-                        {block.thinkingContent}
-                      </div>
-                    )}
+                  <div className="select-none animate-[fadeIn_120ms_ease-out]">
+                    <ThinkingState
+                      variant={
+                        block.thinkingContent && block.thinkingContent.includes('\n')
+                          ? 'Steps'
+                          : 'Reasoning'
+                      }
+                      customRows={
+                        block.thinkingContent
+                          ? block.thinkingContent
+                              .split(/\n+/)
+                              .map((line: string) => line.replace(/^[-*•\d.]+\s*/, '').trim())
+                              .filter(Boolean)
+                              .map((primary: string) => ({ primary }))
+                          : undefined
+                      }
+                      activeLabel="Thinking"
+                      doneLabel={`Thought for ${elapsed ? (elapsed / 1000).toFixed(0) : '4'} seconds`}
+                      isWorking={isExecuting}
+                    />
                   </div>
                 )}
 
                 {/* 2. Tool block */}
                 {block.type === 'tool' && (
-                  <div className="space-y-1 animate-[fadeIn_120ms_ease-out]">
-                    <div className="flex items-center justify-between text-[14px] leading-relaxed text-zinc-300 select-none">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-zinc-300">{block.toolInfo?.action}</span>
-                        {block.toolInfo?.substep && (
-                          <span className="text-xs text-zinc-500 font-mono">({block.toolInfo.substep})</span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-zinc-500 font-medium">Completed</span>
-                    </div>
+                  <div className="select-none animate-[fadeIn_120ms_ease-out] my-1">
+                    <ToolChips
+                      customRows={[mapBlockToToolRow(block)]}
+                      customDiffs={[]}
+                      headerLabel={`1 tool call: ${mapBlockToToolRow(block).label}`}
+                      messagesCount={1}
+                      initialExpanded={false}
+                    />
                     {renderInlineFileChangeCard(block)}
                   </div>
                 )}
 
                 {/* 3. Running tool block */}
                 {block.type === 'running_tool' && (
-                  <div className="flex items-center justify-between text-[14px] leading-relaxed text-zinc-400 animate-pulse select-none">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-zinc-400">{block.toolInfo?.action}</span>
-                      {block.toolInfo?.substep && (
-                        <span className="text-xs text-zinc-500 font-mono">({block.toolInfo.substep})</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-blue-400 font-semibold">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      <span>Running...</span>
-                    </div>
+                  <div className="select-none animate-[fadeIn_120ms_ease-out] my-1">
+                    <ToolChips
+                      customRows={[mapBlockToToolRow(block)]}
+                      customDiffs={[]}
+                      headerLabel={`Running: ${mapBlockToToolRow(block).label}`}
+                      messagesCount={1}
+                      initialExpanded={true}
+                    />
                   </div>
                 )}
 

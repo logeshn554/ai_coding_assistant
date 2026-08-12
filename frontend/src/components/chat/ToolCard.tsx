@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, FileText, Edit3, Terminal, CheckCircle, XCircle, Clock } from 'lucide-react';
+import ToolChips, { type ToolRow } from './ToolChips';
 
 interface ToolCardProps {
   name: string;
@@ -9,53 +9,66 @@ interface ToolCardProps {
   durationMs?: number;
 }
 
-export const ToolCard: React.FC<ToolCardProps> = ({ name, arguments: args, status, output, durationMs }) => {
-  const getToolIcon = () => {
-    switch (name.toLowerCase()) {
-      case 'search_files':
-      case 'find_symbol':
-        return <Search className="w-4 h-4 text-info" />;
-      case 'read_file':
-        return <FileText className="w-4 h-4 text-primary" />;
-      case 'write_file':
-      case 'edit_file':
-        return <Edit3 className="w-4 h-4 text-warning" />;
-      case 'run_command':
-      case 'run_test':
-        return <Terminal className="w-4 h-4 text-accent" />;
-      default:
-        return <FileText className="w-4 h-4" />;
-    }
-  };
+const mapIconName = (name: string): string => {
+  const n = name.toLowerCase();
+  if (n.includes('write') || n.includes('edit') || n.includes('replace')) return 'write';
+  if (n.includes('read') || n.includes('view')) return 'read';
+  if (n.includes('run') || n.includes('command') || n.includes('exec')) return 'run';
+  if (n.includes('search') || n.includes('grep')) return 'search';
+  return 'read';
+};
 
-  const getTargetLabel = () => {
-    return args.path || args.TargetFile || args.file_path || args.query || args.symbol || args.command || args.CommandLine || '';
+export const ToolCard: React.FC<ToolCardProps> = ({
+  name,
+  arguments: args,
+  status,
+  output,
+  durationMs,
+}) => {
+  const targetLabel =
+    args.TargetFile ||
+    args.path ||
+    args.AbsolutePath ||
+    args.file_path ||
+    args.query ||
+    args.Query ||
+    args.command ||
+    args.CommandLine ||
+    'action';
+
+  const filename = String(targetLabel).split(/[/\\]/).pop() || String(targetLabel);
+
+  const detailLines = output
+    ? output
+        .split('\n')
+        .slice(0, 5)
+        .map((line) => ({
+          text: line,
+          tone: line.startsWith('+')
+            ? ('add' as const)
+            : line.startsWith('-')
+            ? ('del' as const)
+            : ('normal' as const),
+        }))
+    : [{ text: `Status: ${status}${durationMs ? ` (${durationMs}ms)` : ''}` }];
+
+  const row: ToolRow = {
+    icon: mapIconName(name),
+    label: name,
+    chip: filename,
+    mono: true,
+    detailMono: true,
+    detail: detailLines,
   };
 
   return (
-    <div className="tool-card my-1.5 p-2 rounded bg-base-200 border border-base-300 text-xs font-sans">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 font-medium">
-          {getToolIcon()}
-          <span>{name}</span>
-          <span className="font-mono text-base-content/70 text-[11px] truncate max-w-[200px]">
-            {getTargetLabel()}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {durationMs && <span className="text-[10px] text-base-content/50">{durationMs}ms</span>}
-          {status === 'running' && <Clock className="w-3.5 h-3.5 text-info animate-spin" />}
-          {status === 'completed' && <CheckCircle className="w-3.5 h-3.5 text-success" />}
-          {status === 'failed' && <XCircle className="w-3.5 h-3.5 text-error" />}
-        </div>
-      </div>
-
-      {output && (
-        <pre className="mt-1.5 p-1.5 bg-base-300 rounded font-mono text-[10px] text-base-content/80 overflow-x-auto max-h-24">
-          {output}
-        </pre>
-      )}
+    <div className="my-1.5">
+      <ToolChips
+        customRows={[row]}
+        customDiffs={[]}
+        headerLabel={`1 tool call: ${name}`}
+        messagesCount={1}
+      />
     </div>
   );
 };

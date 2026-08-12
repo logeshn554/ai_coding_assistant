@@ -1,12 +1,12 @@
-﻿/**
+/**
  * ReasoningTimeline.tsx
  *
  * Clean, timeline-based activity log styled like ChatGPT Codex, Claude Code, and Warp Terminal.
  * Text-first, natural-language execution transcript that blends seamlessly into chat without cards or borders.
  */
-import React, { useState, useEffect, useRef } from 'react';
-import { ChevronRight } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
 import type { ToolExecutionItem, ChatMessage } from '../../types/chat';
+import ThinkingState, { type Row } from './ThinkingState';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,6 +28,7 @@ interface ReasoningTimelineProps {
   rows: TimelineRow[];
   isGenerating: boolean;
   elapsedMs?: number;
+  variant?: "Steps" | "Reasoning" | "Search" | "Coding";
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -152,59 +153,7 @@ export function parseToolEvent(
   };
 }
 
-// ── Timeline Entry Item ───────────────────────────────────────────────────────
 
-const TimelineEntryItem: React.FC<{
-  row: TimelineRow;
-  onToggleSubstep: () => void;
-  isOpen: boolean;
-}> = ({ row, onToggleSubstep, isOpen }) => {
-  return (
-    <div
-      className="flex flex-col space-y-1 py-1 px-1.5 rounded transition-colors duration-180 hover:bg-white/[0.02]"
-      style={{ fontFamily: 'Inter, sans-serif' }}
-    >
-      {/* Main Action Text (15px, #ECECEC, 1.7 line height) */}
-      <div className="text-[15px] leading-[1.7]" style={{ color: '#A9B7C6' }}>
-        {row.action}
-      </div>
-
-      {/* Substep Accordion */}
-      {row.substep && (
-        <div className="flex flex-col space-y-1">
-          <button
-            type="button"
-            onClick={onToggleSubstep}
-            className="flex items-center gap-1.5 text-[14px] leading-[1.7] cursor-pointer text-left focus:outline-none transition-colors"
-            style={{ color: '#5C6370' }}
-          >
-            <span>{row.substep}</span>
-            <span className="text-[10px]" style={{ color: '#6B7280' }}>
-              {isOpen ? '▼' : '►'}
-            </span>
-          </button>
-
-          {/* Indented Substep Detail */}
-          {isOpen && row.detail && (
-            <div
-              className="pl-5 text-[14px] leading-[1.7] font-mono transition-all duration-180 select-text"
-              style={{ color: '#6B7280' }}
-            >
-              {row.detail}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Optional Result Text */}
-      {row.resultText && (
-        <div className="text-[15px] leading-[1.7]" style={{ color: '#A9B7C6' }}>
-          {row.resultText}
-        </div>
-      )}
-    </div>
-  );
-};
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -212,72 +161,53 @@ export const ReasoningTimeline: React.FC<ReasoningTimelineProps> = ({
   rows,
   isGenerating,
   elapsedMs = 0,
+  variant = 'Reasoning',
 }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const [openSubstepId, setOpenSubstepId] = useState<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
 
-  // Calculate total execution duration
   const totalMs = elapsedMs > 0
     ? elapsedMs
     : rows.reduce((acc, r) => acc + (r.durationMs ?? 0), 0);
 
   const formattedHeaderTime = formatDurationHeader(totalMs);
 
-  // Auto-collapse previous entries when new steps arrive; expand latest step
-  useEffect(() => {
-    if (rows.length > 0) {
-      setOpenSubstepId(rows[rows.length - 1].id);
-    }
-  }, [rows.length]);
-
-  // Auto-scroll as new timeline events arrive
   useEffect(() => {
     if (isGenerating) {
       scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [rows.length, isGenerating]);
 
-  if (rows.length === 0 && !isGenerating) return null;
+  const traceRows: Row[] = rows.map((r) => {
+    const isCoding = r.tool === 'file_read' || r.tool === 'file_edit' || r.tool === 'terminal' || r.tool === 'search';
+    let verb = r.action;
+    let target = r.substep;
+    if (r.tool === 'file_read') { verb = 'Read'; }
+    else if (r.tool === 'file_edit') { verb = 'Edit'; }
+    else if (r.tool === 'terminal') { verb = 'Run'; }
+    else if (r.tool === 'search') { verb = 'Search'; }
+
+    return {
+      primary: isCoding ? verb : r.action,
+      secondary: isCoding ? target : r.substep,
+      mono: isCoding,
+    };
+  });
+
+  const isCoding = rows.some((r) => r.tool === 'file_read' || r.tool === 'file_edit' || r.tool === 'terminal');
+  const activeVariant = variant !== 'Reasoning' ? variant : (isCoding ? 'Coding' : 'Reasoning');
+  const activeLabel = activeVariant === 'Coding' ? 'Running tools' : 'Thinking';
+  const doneLabel = activeVariant === 'Coding' ? `Ran ${rows.length} tool${rows.length !== 1 ? 's' : ''}` : `Thought for ${formattedHeaderTime}`;
 
   return (
-    <div className="w-full my-2 bg-transparent text-left font-sans select-none" style={{ fontFamily: 'Inter, sans-serif' }}>
-      {/* ── Header: Worked for 6m > ── */}
-      <button
-        type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-1.5 py-1 text-[15px] font-medium transition-colors cursor-pointer focus:outline-none"
-        style={{ color: '#808080' }}
-      >
-        <span>Worked for {formattedHeaderTime}</span>
-        <ChevronRight
-          className="w-4 h-4 transition-transform duration-180"
-          style={{
-            color: '#808080',
-            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-          }}
-        />
-      </button>
-
-      {/* ── Timeline Activity Log ── */}
-      {isExpanded && (
-        <div className="mt-3 flex flex-col space-y-4">
-          {rows.map((row) => (
-            <TimelineEntryItem
-              key={row.id}
-              row={row}
-              isOpen={openSubstepId === row.id}
-              onToggleSubstep={() => setOpenSubstepId(openSubstepId === row.id ? null : row.id)}
-            />
-          ))}
-          {isGenerating && rows.length === 0 && (
-            <div className="text-[15px] leading-[1.7] animate-pulse" style={{ color: '#5C6370' }}>
-              Reading project files...
-            </div>
-          )}
-          <div ref={scrollAnchorRef} />
-        </div>
-      )}
+    <div className="w-full my-2">
+      <ThinkingState
+        variant={activeVariant}
+        customRows={traceRows.length > 0 ? traceRows : undefined}
+        activeLabel={activeLabel}
+        doneLabel={doneLabel}
+        isWorking={isGenerating}
+      />
+      <div ref={scrollAnchorRef} />
     </div>
   );
 };

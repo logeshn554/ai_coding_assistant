@@ -1,68 +1,407 @@
-import React, { useState } from 'react';
-import { ShieldAlert, Check, X, AlertTriangle } from 'lucide-react';
+import React, { useState } from "react";
 
-interface ApprovalCardProps {
-  payload: {
+/* ─────────────────────────────────────────────────────────
+ * APPROVAL CARD (human-in-the-loop)
+ * One question at a time; elongated pills show progress;
+ * the circular arrow up top advances (↑ sends on the last).
+ * Choices, paging, and submission are directly controlled.
+ * ───────────────────────────────────────────────────────── */
+
+export type QuestionItem = {
+  q: string;
+  type: "radio" | "check";
+  options: string[];
+};
+
+const DEFAULT_QUESTIONS: QuestionItem[] = [
+  {
+    q: "How many flavors should we launch?",
+    type: "radio",
+    options: ["Three (core line)", "Five (full case)", "Just one hero"],
+  },
+  {
+    q: "Which mix-ins should we stock?",
+    type: "check",
+    options: ["Chocolate chips", "Waffle bits", "Sprinkles"],
+  },
+  {
+    q: "Which market do we enter first?",
+    type: "radio",
+    options: ["Food trucks", "Grocery freezers", "Scoop shops"],
+  },
+];
+
+export interface ApprovalCardProps {
+  questions?: QuestionItem[];
+  payload?: {
     tool_name?: string;
     command?: string;
     risk?: string;
     reason?: string;
   };
-  onApprove: (scope: 'once' | 'session') => void;
-  onReject: (reason: string) => void;
+  onApprove?: (scope: "once" | "session") => void;
+  onReject?: (reason: string) => void;
 }
 
-export const ApprovalCard: React.FC<ApprovalCardProps> = ({ payload, onApprove, onReject }) => {
-  const [rejectReason, setRejectReason] = useState('');
-  const [showRejectInput, setShowRejectInput] = useState(false);
+export const ApprovalCard: React.FC<ApprovalCardProps> = ({
+  questions: customQuestions,
+  payload,
+  onApprove,
+  onReject,
+}) => {
+  // If real tool approval payload is passed, convert into questions format
+  const questions: QuestionItem[] = customQuestions
+    ? customQuestions
+    : payload
+    ? [
+        {
+          q: payload.risk === "CRITICAL" || payload.risk === "HIGH"
+            ? `🚨 Destructive Action: ${payload.tool_name || "Execute Command"}`
+            : `Permission Required for ${payload.tool_name || "Execute Command"}`,
+          type: "radio",
+          options: [
+            "Approve Once",
+            "Allow for Session",
+            "Reject with Reason",
+          ],
+        },
+      ]
+    : DEFAULT_QUESTIONS;
 
-  const isCritical = payload.risk === 'CRITICAL' || payload.risk === 'HIGH';
+  const [qi, setQi] = useState(0);
+  const [answers, setAnswers] = useState<Record<number, number[]>>({});
+  const [custom, setCustom] = useState<Record<number, string>>({});
+  const [sent, setSent] = useState(false);
+  const [open, setOpen] = useState(true);
+
+  const question = questions[qi] || questions[0];
+  const last = qi === questions.length - 1;
+  const selected = answers[qi] ?? [];
+  const hasAnswer = selected.length > 0 || Boolean(custom[qi]?.trim());
+
+  const toggle = (index: number) => {
+    setAnswers((current) => {
+      const picked = current[qi] ?? [];
+      const next =
+        question.type === "radio"
+          ? [index]
+          : picked.includes(index)
+          ? picked.filter((item) => item !== index)
+          : [...picked, index];
+      return { ...current, [qi]: next };
+    });
+
+    if (question.type === "radio") {
+      setCustom((current) => ({ ...current, [qi]: "" }));
+
+      // Bridge real tool callbacks if provided
+      if (payload && onApprove && onReject) {
+        if (index === 0) onApprove("once");
+        else if (index === 1) onApprove("session");
+        else if (index === 2) onReject(custom[qi] || "User rejected");
+      }
+
+      // Single-choice auto-advances
+      window.setTimeout(() => {
+        if (qi === questions.length - 1) setSent(true);
+        else setQi((current) => Math.min(questions.length - 1, current + 1));
+      }, 480);
+    }
+  };
+
+  const handleSubmit = () => {
+    if (payload && onApprove && onReject) {
+      const optionIndex = selected[0];
+      if (optionIndex === 0) onApprove("once");
+      else if (optionIndex === 1) onApprove("session");
+      else onReject(custom[qi] || "User rejected");
+    }
+    if (last) {
+      setSent(true);
+    } else {
+      setQi((current) => current + 1);
+    }
+  };
+
+  const reset = () => {
+    setQi(0);
+    setAnswers({});
+    setCustom({});
+    setSent(false);
+    setOpen(true);
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-control bg-surface px-3 py-2 text-[12.5px] font-medium text-ink shadow-btn transition-colors duration-150 hover:bg-hover cursor-pointer focus:outline-none"
+      >
+        Open approval
+      </button>
+    );
+  }
 
   return (
-    <div className={`approval-card p-3 my-2 rounded-lg border text-xs shadow-md ${isCritical ? 'bg-error/10 border-error' : 'bg-warning/10 border-warning'}`}>
-      <div className="flex items-center gap-2 font-semibold text-sm mb-1">
-        {isCritical ? <ShieldAlert className="w-5 h-5 text-error" /> : <AlertTriangle className="w-5 h-5 text-warning" />}
-        <span>{isCritical ? '🚨 Destructive Operation Approval' : '⚠ Permission Required'}</span>
-      </div>
+    <div className="flex min-h-[196px] w-full max-w-xs flex-col items-stretch font-sans select-none my-2">
+      <div className="w-full self-start overflow-hidden rounded-card bg-surface shadow-card border border-line">
+        {sent ? (
+          <div className="flex h-37 flex-col items-center justify-center gap-2 p-4">
+            <span
+              className="flex size-6 items-center justify-center rounded-full bg-green text-white"
+              style={{
+                animation: "pop-in 300ms cubic-bezier(0.23,1,0.32,1) both",
+              }}
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </span>
+            <span
+              className="text-[13px] font-medium text-ink"
+              style={{
+                animation:
+                  "fade-up 350ms cubic-bezier(0.23,1,0.32,1) 100ms both",
+              }}
+            >
+              Answers sent
+            </span>
+            <button
+              type="button"
+              onClick={reset}
+              className="text-[12px] font-medium text-accent-ink hover:underline cursor-pointer focus:outline-none"
+            >
+              Start over
+            </button>
+          </div>
+        ) : (
+          <div
+            key={qi}
+            className="primitive-card-pad"
+            style={{
+              animation: "fade-up 350ms cubic-bezier(0.23,1,0.32,1) both",
+            }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-[13px] font-medium text-ink leading-tight">
+                {question.q}
+              </span>
+              <button
+                type="button"
+                aria-label="Dismiss"
+                onClick={() => setOpen(false)}
+                className="primitive-icon-button shrink-0 text-ink-3 transition-colors duration-100 hover:bg-hover hover:text-ink focus:outline-none"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-      <div className="space-y-1 my-2 text-base-content/80">
-        <div><span className="font-semibold">Action:</span> {payload.tool_name || 'Execute Command'}</div>
-        {payload.command && (
-          <div className="font-mono bg-base-300 p-1.5 rounded text-[11px] overflow-x-auto my-1">
-            {payload.command}
+            {payload?.command && (
+              <div className="mt-2 font-mono bg-field p-2 rounded-md text-[11px] text-ink-2 overflow-x-auto border border-line">
+                {payload.command}
+              </div>
+            )}
+
+            <div className="mt-2.5 flex flex-col gap-0.5">
+              {question.options.map((option, i) => {
+                const on = selected.includes(i);
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => toggle(i)}
+                    className="-mx-1.5 flex items-center gap-2 rounded-control px-1.5 py-1 text-left transition-colors duration-100 hover:bg-hover cursor-pointer focus:outline-none"
+                  >
+                    <span
+                      className={`flex size-4 shrink-0 items-center justify-center transition-colors duration-200 ${
+                        question.type === "radio"
+                          ? "rounded-full"
+                          : "rounded-[5px]"
+                      } ${
+                        on
+                          ? "bg-ink text-canvas"
+                          : "shadow-[inset_0_0_0_1.5px_var(--line-strong)] text-transparent"
+                      }`}
+                    >
+                      {question.type === "radio" ? (
+                        <span
+                          className="size-1.5 rounded-full bg-canvas transition-transform duration-200"
+                          style={{ transform: on ? "scale(1)" : "scale(0)" }}
+                        />
+                      ) : (
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M20 6L9 17l-5-5" />
+                        </svg>
+                      )}
+                    </span>
+                    <span
+                      className={`text-[13px] transition-colors duration-200 ${
+                        on ? "text-ink font-medium" : "text-ink-2"
+                      }`}
+                    >
+                      {option}
+                    </span>
+                  </button>
+                );
+              })}
+              <label className="-mx-1.5 flex items-center gap-2 rounded-control px-1.5 py-1 transition-colors duration-100 focus-within:bg-hover hover:bg-hover cursor-text">
+                <span aria-hidden="true" className="size-4 shrink-0" />
+                <input
+                  value={custom[qi] ?? ""}
+                  onChange={(event) => {
+                    setCustom((current) => ({
+                      ...current,
+                      [qi]: event.target.value,
+                    }));
+                    if (question.type === "radio")
+                      setAnswers((current) => ({ ...current, [qi]: [] }));
+                  }}
+                  placeholder="Type something…"
+                  aria-label="Custom answer"
+                  className="min-w-0 flex-1 bg-transparent text-[13px] text-ink outline-none placeholder:text-ink-3"
+                />
+              </label>
+            </div>
           </div>
         )}
-        <div><span className="font-semibold">Risk Level:</span> <span className="badge badge-xs badge-outline font-bold">{payload.risk || 'MEDIUM'}</span></div>
-        <div><span className="font-semibold">Reason:</span> {payload.reason || 'Operation requires policy authorization'}</div>
-      </div>
 
-      {showRejectInput ? (
-        <div className="mt-2 space-y-2">
-          <input
-            type="text"
-            placeholder="Reason for rejection (e.g. Do not modify package.json)"
-            className="input input-xs input-bordered w-full"
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-          />
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowRejectInput(false)} className="btn btn-xs btn-ghost">Cancel</button>
-            <button onClick={() => onReject(rejectReason)} className="btn btn-xs btn-error">Confirm Reject</button>
-          </div>
+        {/* footer — ring-dot pager + send arrow */}
+        <div className="primitive-card-footer flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Previous"
+              disabled={qi === 0 || sent}
+              onClick={() => setQi((current) => Math.max(0, current - 1))}
+              className="flex size-6 items-center justify-center rounded-[5px] text-ink-3 transition-colors duration-100 enabled:hover:bg-hover enabled:hover:text-ink-2 disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed focus:outline-none"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+            <span className="flex items-center gap-1">
+              {questions.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  aria-label={`Go to question ${i + 1}`}
+                  aria-current={i === qi && !sent ? "step" : undefined}
+                  disabled={sent}
+                  onClick={() => setQi(i)}
+                  className="rounded-full transition-all duration-300 disabled:cursor-default cursor-pointer"
+                  style={
+                    i === qi && !sent
+                      ? {
+                          width: 9,
+                          height: 9,
+                          border: "2.5px solid var(--ink)",
+                        }
+                      : sent || i < qi
+                      ? { width: 7, height: 7, background: "var(--ink-3)" }
+                      : {
+                          width: 7,
+                          height: 7,
+                          border: "1.5px solid var(--ink-3)",
+                        }
+                  }
+                />
+              ))}
+            </span>
+            <button
+              type="button"
+              aria-label="Next"
+              disabled={last || sent}
+              onClick={() =>
+                setQi((current) => Math.min(questions.length - 1, current + 1))
+              }
+              className="flex size-6 items-center justify-center rounded-[5px] text-ink-3 transition-colors duration-100 enabled:hover:bg-hover enabled:hover:text-ink-2 disabled:opacity-35 cursor-pointer disabled:cursor-not-allowed focus:outline-none"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M9 6l6 6-6 6" />
+              </svg>
+            </button>
+          </span>
+          {!sent && (
+            <button
+              type="button"
+              aria-label={last ? "Send answers" : "Next question"}
+              disabled={!hasAnswer}
+              onClick={handleSubmit}
+              className="-mr-0.5 flex size-7 items-center justify-center rounded-[8px] transition-[background-color,color,transform] duration-200 enabled:active:scale-[0.96] cursor-pointer disabled:cursor-not-allowed focus:outline-none"
+              style={{
+                background: hasAnswer ? "var(--ink)" : "var(--field)",
+                color: hasAnswer ? "var(--surface)" : "var(--ink-3)",
+                boxShadow: hasAnswer
+                  ? "inset 0 1px 0 rgba(255,255,255,0.14)"
+                  : "var(--shadow-btn)",
+              }}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 19V5M5 12l7-7 7 7" />
+              </svg>
+            </button>
+          )}
         </div>
-      ) : (
-        <div className="flex flex-wrap gap-2 mt-3 pt-2 border-t border-base-300">
-          <button onClick={() => onApprove('once')} className="btn btn-xs btn-primary gap-1">
-            <Check className="w-3.5 h-3.5" /> Approve Once
-          </button>
-          <button onClick={() => onApprove('session')} className="btn btn-xs btn-outline btn-primary">
-            Allow for Session
-          </button>
-          <button onClick={() => setShowRejectInput(true)} className="btn btn-xs btn-ghost text-error gap-1">
-            <X className="w-3.5 h-3.5" /> Reject
-          </button>
-        </div>
-      )}
+      </div>
     </div>
   );
-};
+}
+
+export default ApprovalCard;

@@ -340,9 +340,13 @@ class AgentRuntime:
                 # LLM Generation Step
                 model_resp: ModelResponse
                 if llm_provider_func:
+                    import os as _os
+                    _llm_turn_timeout = float(
+                        _os.environ.get("DEVPILOT_LLM_TURN_TIMEOUT") or "600.0"
+                    )
                     raw_res = await asyncio.wait_for(
                         llm_provider_func(task_obj.description, step),
-                        timeout=120.0,
+                        timeout=_llm_turn_timeout,
                     )
                     model_resp = ModelResponseNormalizer.normalize_response(raw_res)
                 else:
