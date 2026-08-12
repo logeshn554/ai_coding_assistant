@@ -48,6 +48,22 @@ DEFAULT_AGENTS_METADATA = [
 def get_custom_agents_file_path() -> Path:
     return Path.home() / ".devpilot" / "custom_agents.json"
 
+@router.get("/api/agents/modes")
+async def get_agent_modes():
+    """Returns definitions and capabilities for all 8 universal DevPilot agent modes."""
+    return {
+        "modes": [
+            { "mode": "Ask", "description": "Read-only project context and technical Q&A", "read_only": True },
+            { "mode": "Plan", "description": "Structured implementation planning without modifying files", "read_only": True },
+            { "mode": "Assist", "description": "Interactive coding assistance and targeted edit suggestions", "read_only": False },
+            { "mode": "Code", "description": "Full feature implementation and code generation", "read_only": False },
+            { "mode": "Debug", "description": "Runtime log analysis, stack trace inspection, and root-cause repair", "read_only": False },
+            { "mode": "Review", "description": "Independent security, correctness, and architecture code review", "read_only": True },
+            { "mode": "Architect", "description": "System design, API boundaries, and migration planning", "read_only": True },
+            { "mode": "Autonomous", "description": "End-to-end multi-step autonomous execution with verification & self-repair", "read_only": False },
+        ]
+    }
+
 @router.get("/api/agents")
 async def get_agents():
     custom_agents_path = get_custom_agents_file_path()

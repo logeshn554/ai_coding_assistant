@@ -1,7 +1,9 @@
 import logging
+from typing import Optional, Dict
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from ..state import get_permission_manager, config_manager
+from ..permissions import Capability, DEFAULT_POLICY_MATRIX
 
 router = APIRouter()
 
@@ -13,6 +15,10 @@ class PermissionRevokeRequest(BaseModel):
     command: str
     scope: str  # "session" or "project"
 
+class PolicyUpdateRequest(BaseModel):
+    policy: str
+    custom_matrix: Optional[Dict[str, bool]] = None
+
 @router.get("/api/permissions")
 def get_permissions():
     pm = get_permission_manager()
@@ -21,7 +27,28 @@ def get_permissions():
     session_perms = list(pm.session_permissions)
     return {
         "project": project_perms,
-        "session": session_perms
+        "session": session_perms,
+        "policy": pm.active_policy,
+        "capabilities": [c.value for c in Capability]
+    }
+
+@router.get("/api/permissions/policy")
+def get_policy():
+    pm = get_permission_manager()
+    return {
+        "active_policy": pm.active_policy,
+        "matrix": DEFAULT_POLICY_MATRIX.get(pm.active_policy, {}),
+        "custom_overrides": pm.custom_overrides,
+        "all_presets": list(DEFAULT_POLICY_MATRIX.keys()) + ["Custom"]
+    }
+
+@router.post("/api/permissions/policy")
+def set_policy(req: PolicyUpdateRequest):
+    pm = get_permission_manager()
+    pm.set_policy(req.policy, req.custom_matrix)
+    return {
+        "success": True,
+        "active_policy": pm.active_policy
     }
 
 @router.post("/api/permissions/grant")

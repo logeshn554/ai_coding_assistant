@@ -1,62 +1,33 @@
-# AgentOS System Architecture
+# DevPilot System Architecture
 
-AgentOS is a modular operating system core for AI Coding Agents. It abstracts IDE systems into clean, decoupled layers, ensuring type safety, predictable execution boundaries, event-driven integrations, and resource containment.
+DevPilot is an AI-native developer operating system engineered around autonomous multi-agent software engineering, continuous codebase indexing, transactional state management, and failure-closed security boundaries.
 
-## 1. High-Level Architectural Flow
-
-The execution cycle of AgentOS requests follows a strict hierarchical layout:
-
-```text
-       ┌────────────────────────┐
-       │      Kernel Core       │
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │   Repository Kernel    │
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │    Knowledge Graph     │
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │ Context Virtual Memory │
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │    Prompt Compiler     │
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │      Model Router      │
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │   Execution Engine     │
-       └────────────────────────┘
+```mermaid
+graph TD
+    Client[React + TypeScript + Monaco IDE] --> API[FastAPI Backend Gateway]
+    API --> Security[Permission & Prompt Security Engine]
+    API --> Orchestrator[Universal Agent Orchestrator]
+    Orchestrator --> Brain[Project Brain & Symbol Graph]
+    Orchestrator --> TransFS[Transactional File System & Rollback]
+    Orchestrator --> Runtime[Terminal, Debugger, Browser Agents]
+    Runtime --> Playwright[Playwright Browser Automation]
+    Runtime --> Pytest[AI Test Lab Runner]
 ```
 
----
+## System Subsystems
 
-## 2. Core Architectural Layers
+1. **Frontend Core (`frontend/src`)**:
+   - Monaco Editor with multi-cursor, next-edit prediction, FIM completions, and sticky scroll.
+   - React state providers (`AIContext`, `WorkspaceContext`, `EditorContext`, `GitContext`, `LSPContext`).
+   - Visual panels: Universal Command Center (`Ctrl+K`), Agent Timeline, Browser Panel, AI Test Lab.
 
-### A. Kernel & Foundation Layer
-Manages the lifecycle of services (`IKernelService`), DI bindings (`DIContainer`), standard settings (`IConfig`), event-driven communication (`IEventBus`), and service resolution (`IServiceRegistry`).
+2. **Backend Core (`backend/app`)**:
+   - `orchestrator.py`: Multi-step state machine (`UNDERSTAND` → `PLAN` → `APPROVAL` → `EXECUTE` → `VERIFY` → `REPAIR` → `REVIEW` → `FINAL VERIFY` → `COMPLETE`).
+   - `permissions.py`: 14 capability categories (`READ_FILES`, `WRITE_FILES`, `RUN_COMMAND`, etc.) under `Safe`, `Balanced`, `Autonomous`, `Custom` policies.
+   - `transactional_fs.py`: Per-task atomic file change sets with instant rollbacks and unified diffs.
+   - `prompt_security.py`: Boundary tags `<UNTRUSTED_CONTENT>` protecting system instructions against repository prompt injection.
 
-### B. Repository Kernel & Knowledge Graph Layer
-Responsible for recursion limits, ignoring temp folder directories, detecting language profiles, AST symbol indexing, SQLite caches, imports tracking, and transitive impact-analysis graph trees.
-
-### C. Context & Compiler Layer
-Implements virtual memory paging (Hot/Warm/Cold memory pools), LRU evictions to protect token budgets, keyword relevance prioritizing, formatting templates (XML/JSON), and content deduplication.
-
-### D. Provider Router Layer
-Selects optimal LLMs (Groq, OpenAI, Anthropic, Gemini, Ollama), handles exponential backoffs, tracks request RPM rate-limit metrics, manages dynamic fallbacks, and executes streams.
-
-### E. Execution & Learning Layer
-Enforces transactional edits. Changes are buffered in-memory, parsed with AST checks for syntax correctness, verified for merge conflicts, committed atomically, or rolled back. Learns from successful fixes, conventions, patterns, and run metrics.
+3. **Runtime & Integrations**:
+   - `inspect_route.py` & Playwright: Visual screenshots, console log interception, network monitoring.
+   - `debug.py`: Structured call stack, scope variables, exception breakpoint inspection.
+   - `database_route.py`: SQLite schema exploration, safe query execution, and explain plans.

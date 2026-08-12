@@ -153,9 +153,16 @@ class FailureClassifier:
 
         # Code error
         if any(phrase in error_lower for phrase in [
+            "syntaxerror",
             "syntax error",
+            "typeerror",
             "type error",
+            "runtimeerror",
             "runtime error",
+            "attributeerror",
+            "nameerror",
+            "valueerror",
+            "indentationerror",
             "traceback",
         ]):
             return FailureType.CODE_ERROR

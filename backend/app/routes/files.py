@@ -16,6 +16,7 @@ from ..files import (
     search_workspace_codebase,
     rollback_file
 )
+from ..transactional_fs import transactional_fs
 from ..schemas.files import (
     FileItemResponse,
     FileCreateRequest,
@@ -235,3 +236,20 @@ async def upload_attachment(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"Failed to upload attachment: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/files/rollback-task")
+async def rollback_agent_task(task_id: str):
+    """Rolls back all file modifications made during an agent task execution."""
+    res = await asyncio.to_thread(transactional_fs.rollback_task, task_id)
+    if not res.get("success", False):
+        raise HTTPException(status_code=400, detail=res.get("reason", "Rollback failed"))
+    return res
+
+
+@router.get("/api/files/task-diff")
+async def get_agent_task_diff(task_id: str):
+    """Retrieves unified diffs for files changed during an agent task execution."""
+    diffs = await asyncio.to_thread(transactional_fs.get_task_diff, task_id)
+    return {"task_id": task_id, "diffs": diffs}
+

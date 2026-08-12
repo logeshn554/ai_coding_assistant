@@ -101,6 +101,7 @@ class CheckpointManager:
 
         # Save checkpoint metadata
         checkpoint_path = self._get_checkpoint_path(checkpoint_id)
+        checkpoint_path.mkdir(parents=True, exist_ok=True)
         metadata_file = checkpoint_path / "checkpoint.json"
         metadata_file.write_text(json.dumps(
             {
@@ -274,7 +275,7 @@ class CheckpointManager:
         if not latest:
             raise ValueError(f"No checkpoints found for run {run_id}")
 
-        snapshot_id = f"{run_id}/snapshot-{tag}-{datetime.utcnow().isoformat()}"
+        snapshot_id = f"{run_id}/snapshot-{tag}-{datetime.utcnow().isoformat().replace(':', '-')}"
         snapshot_path = self.checkpoint_dir / snapshot_id
         snapshot_path.mkdir(parents=True, exist_ok=True)
 
@@ -411,11 +412,11 @@ class ExecutionReplayer:
         return True
 
     def get_audit_trail(self, run_id: str) -> List[Dict[str, Any]]:
-        """Get complete audit trail for a run."""
+        """Get complete audit trail for a run (newest first)."""
         checkpoints = self.checkpoint_manager.list_checkpoints(run_id)
 
         trail = []
-        for checkpoint in reversed(checkpoints):
+        for checkpoint in checkpoints:
             trail.append({
                 "checkpoint_id": checkpoint["checkpoint_id"],
                 "timestamp": checkpoint["timestamp"],

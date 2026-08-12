@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Database, FileText, Code, GitBranch, Layers, Info } from 'lucide-react';
+import { Database, Layers, Info } from 'lucide-react';
 
 export interface ContextInspectorItem {
   file: string;

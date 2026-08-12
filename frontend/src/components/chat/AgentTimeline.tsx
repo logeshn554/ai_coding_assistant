@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AgentTimelineState, AgentTimelineStep } from '../../core/ai/agentTimelineStore';
+import type { AgentTimelineState } from '../../core/ai/agentTimelineStore';
 import { ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Clock, ShieldAlert, Wrench, PlayCircle } from 'lucide-react';
 
 interface AgentTimelineProps {
