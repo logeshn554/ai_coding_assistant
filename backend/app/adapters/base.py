@@ -90,43 +90,32 @@ class ModelAdapter:
 
     @staticmethod
     def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
-        model_name = (model_name or "").lower()
-        
-        # Default fallback pricing (Claude 3.5 Sonnet / standard medium model)
+        """Estimate cost using a generic default rate.
+
+        Provider-specific pricing should be configured in the user profile
+        rather than hardcoded here. This fallback uses a conservative
+        mid-range estimate ($3/$15 per million tokens) so cost tracking
+        is never zero, but users should set accurate rates in their profile.
+        """
+        # Default mid-range pricing (per million tokens)
         input_rate = 3.00
         output_rate = 15.00
-        
-        if "opus" in model_name:
-            input_rate = 15.00
-            output_rate = 75.00
-        elif "sonnet" in model_name:
-            input_rate = 3.00
-            output_rate = 15.00
-        elif "haiku" in model_name:
-            input_rate = 0.80
-            output_rate = 4.00
-        elif "gpt-4o-mini" in model_name:
-            input_rate = 0.15
-            output_rate = 0.60
-        elif "gpt-4o" in model_name:
-            input_rate = 2.50
-            output_rate = 10.00
-        elif "gpt-4" in model_name or "turbo" in model_name:
-            input_rate = 10.00
-            output_rate = 30.00
-        elif "o1-mini" in model_name:
-            input_rate = 3.00
-            output_rate = 12.00
-        elif "o1" in model_name:
-            input_rate = 15.00
-            output_rate = 60.00
-        elif "gemini-1.5-pro" in model_name or "gemini-pro" in model_name:
-            input_rate = 1.25
-            output_rate = 5.00
-        elif "gemini-1.5-flash" in model_name or "gemini-flash" in model_name:
-            input_rate = 0.075
-            output_rate = 0.30
-            
+
+        # Allow profile-level overrides via environment variables
+        import os
+        env_input = os.environ.get("DEVPILOT_INPUT_COST_PER_M")
+        env_output = os.environ.get("DEVPILOT_OUTPUT_COST_PER_M")
+        if env_input:
+            try:
+                input_rate = float(env_input)
+            except ValueError:
+                pass
+        if env_output:
+            try:
+                output_rate = float(env_output)
+            except ValueError:
+                pass
+
         return (input_tokens * input_rate + output_tokens * output_rate) / 1_000_000
 
     @staticmethod
@@ -144,11 +133,7 @@ class ModelAdapter:
         return {"type": "done", "stop_reason": stop_reason}
 
     async def generate_bug_report(self) -> str:
-        """
-        Scans the entire workspace for bugs using the `scan_for_bugs` tool and
-        returns a concise JSON report. Identical for every provider, so it
-        lives here once instead of being copy-pasted into each adapter.
-        """
+        """Scans the workspace for bugs. Only called when explicitly requested."""
         from ..tools.scan_for_bugs import scan_for_bugs_sync as scan_for_bugs
         try:
             loop = asyncio.get_event_loop()
@@ -167,44 +152,6 @@ class ModelAdapter:
         if len(report) > max_length:
             report = report[: max_length - 3] + "..."
         return report
-
-    @staticmethod
-    async def maybe_inject_bug_scan(
-        messages: List[Dict[str, Any]], tools: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """If the scan_for_bugs tool was supplied, run it once and inject the
-        result as a user message right after the first turn, before the model
-        generates a response. Shared across all providers so this behaves the
-        same regardless of which model API is being called."""
-        if not any(tool.get("name") == "scan_for_bugs" for tool in tools):
-            return messages
-        try:
-            import time
-            now = time.time()
-            if (now - ModelAdapter._last_bug_report_time < 60.0) and ModelAdapter._last_bug_report:
-                bug_report = ModelAdapter._last_bug_report
-            else:
-                from ..tools.scan_for_bugs import scan_for_bugs as _scan_for_bugs_func
-                result = _scan_for_bugs_func()
-                bug_report = await result if hasattr(result, "__await__") else result
-                bug_report = str(bug_report).strip()
-                ModelAdapter._last_bug_report = bug_report
-                ModelAdapter._last_bug_report_time = now
-
-            report_message = {
-                "role": "user",
-                "content": (
-                    "[AUTOMATED WORKSPACE SCAN — do not reference this as a user request]\n"
-                    f"Bug scan results for context:\n{bug_report}"
-                ),
-            }
-            msg_list = list(messages)
-            if msg_list:
-                return [msg_list[0], report_message] + msg_list[1:]
-            return [report_message]
-        except Exception as e:
-            logger.error(f"Failed to run scan_for_bugs tool: {e}")
-            return messages
 
 
 # Standardized tool definitions exposed to LLMs

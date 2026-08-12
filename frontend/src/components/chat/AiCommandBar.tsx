@@ -45,10 +45,19 @@ interface AiCommandBarProps {
   onCancel: () => void;
   mode: ChatMode;
   setMode: (mode: ChatMode) => void;
+  onOpenContextModal?: () => void;
+  contextPercentage?: number;
 }
 
 export const AiCommandBar: React.FC<AiCommandBarProps> = ({
-  inputText, setInputText, onSend, isGenerating, onCancel, mode
+  inputText,
+  setInputText,
+  onSend,
+  isGenerating,
+  onCancel,
+  mode,
+  onOpenContextModal,
+  contextPercentage = 0,
 }) => {
   const [autoApply, setAutoApply] = useState(true);
   const [showSlashMenu, setShowSlashMenu]     = useState(false);
@@ -57,11 +66,16 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
   const [workspaceFiles, setWorkspaceFiles]   = useState<string[]>([]);
   const [mentionFilter, setMentionFilter]     = useState('');
 
+  // Calculate Context Circle styling for Symbol near Send Button
+  const pct = typeof contextPercentage === 'number' ? contextPercentage : 0;
+  let circleColor = "border-emerald-400 text-emerald-400";
+  if (pct >= 95) circleColor = "border-red-400 text-red-400 animate-pulse";
+  else if (pct >= 90) circleColor = "border-amber-400 text-amber-400";
+  else if (pct >= 80) circleColor = "border-yellow-400 text-yellow-400";
+
   // Attachment state for images, files, and folders
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const [activeModel, setActiveModel] = useState('Claude-3.5-Sonnet');
-  const [showModelMenu, setShowModelMenu] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -406,8 +420,23 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
             </button>
           </div>
 
-          {/* Right: Round Send/Cancel Trigger */}
+          {/* Right: Context Symbol + Round Send/Cancel Trigger */}
           <div className="flex items-center gap-2">
+            {/* Context Symbol Indicator near Send Button */}
+            {onOpenContextModal && (
+              <button
+                type="button"
+                onClick={onOpenContextModal}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800/80 text-zinc-400 hover:text-white cursor-pointer transition-all text-[10.5px] font-mono group"
+                title="Click to view Context Window details & breakdown"
+              >
+                <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center text-[8px] font-bold ${circleColor}`}>
+                  ◯
+                </div>
+                <span className="font-bold">{pct}%</span>
+              </button>
+            )}
+
             {isGenerating ? (
               <button
                 type="button"
@@ -452,42 +481,6 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
         ) : (
           <div />
         )}
-
-        {/* Right: Model Selector Pill Dropdown */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowModelMenu(!showModelMenu)}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10.5px] font-bold text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-          >
-            <span>{activeModel}</span>
-            <ChevronRight className="w-3 h-3 transform rotate-90 text-zinc-500 shrink-0" />
-          </button>
-
-          {showModelMenu && (
-            <div className="absolute bottom-full right-0 mb-1.5 w-40 z-50 rounded-lg bg-zinc-900 border border-zinc-800 shadow-xl py-1 overflow-hidden font-sans">
-              {[
-                'Claude-3.5-Sonnet',
-                'GPT-4o',
-                'Gemini-1.5-Pro',
-                'DevPilot-Coder',
-              ].map((model) => (
-                <div
-                  key={model}
-                  onClick={() => {
-                    setActiveModel(model);
-                    setShowModelMenu(false);
-                  }}
-                  className={`px-3 py-1.5 text-[11px] font-semibold cursor-pointer transition-colors hover:bg-zinc-800 hover:text-white ${
-                    model === activeModel ? 'text-blue-400 font-bold bg-zinc-850' : 'text-zinc-400'
-                  }`}
-                >
-                  {model}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

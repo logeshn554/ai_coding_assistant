@@ -5,49 +5,14 @@ from ..tools.scan_for_bugs import generate_bug_report_async
 
 logger = logging.getLogger("devpilot.router")
 
-# Capability Registry for known models
-_MODEL_CAPABILITIES = {
-    # Anthropic models
-    "claude-3-5-sonnet": {"context_window": 200000, "vision": True, "tool_calling": True},
-    "claude-3-5-opus": {"context_window": 200000, "vision": True, "tool_calling": True},
-    "claude-3-opus": {"context_window": 200000, "vision": True, "tool_calling": True},
-    "claude-3-sonnet": {"context_window": 200000, "vision": True, "tool_calling": True},
-    "claude-3-haiku": {"context_window": 200000, "vision": True, "tool_calling": True},
-    # OpenAI models
-    "gpt-4o": {"context_window": 128000, "vision": True, "tool_calling": True},
-    "gpt-4o-mini": {"context_window": 128000, "vision": True, "tool_calling": True},
-    "gpt-4-turbo": {"context_window": 128000, "vision": True, "tool_calling": True},
-    "gpt-4": {"context_window": 8192, "vision": False, "tool_calling": True},
-    "gpt-3.5-turbo": {"context_window": 16385, "vision": False, "tool_calling": True},
-    "o1": {"context_window": 128000, "vision": True, "tool_calling": True},
-    "o3-mini": {"context_window": 200000, "vision": False, "tool_calling": True},
-    # Gemini models
-    "gemini-1.5-pro": {"context_window": 2000000, "vision": True, "tool_calling": True},
-    "gemini-1.5-flash": {"context_window": 1000000, "vision": True, "tool_calling": True},
-    "gemini-2.0-flash": {"context_window": 1048576, "vision": True, "tool_calling": True},
-}
-
-DEFAULT_CAPABILITY = {"context_window": 8192, "vision": False, "tool_calling": True}
-
-
 def get_model_capabilities(model_name: str) -> Dict[str, Any]:
-    """Retrieve capabilities from the registry for the given model name."""
+    """Dynamically construct capabilities for any model name without hardcoded lists."""
+    if not model_name:
+        return {"context_window": None, "vision": False, "tool_calling": True}
+
     model_name_lower = model_name.lower()
-    for key, caps in _MODEL_CAPABILITIES.items():
-        if key in model_name_lower:
-            return caps
-    
-    # Fuzzy fallback logic based on brand prefixes
-    if "claude" in model_name_lower:
-        return {"context_window": 200000, "vision": True, "tool_calling": True}
-    if "gpt" in model_name_lower:
-        return {"context_window": 128000, "vision": "gpt-4" in model_name_lower or "gpt-4o" in model_name_lower, "tool_calling": True}
-    if "gemini" in model_name_lower:
-        return {"context_window": 1000000, "vision": True, "tool_calling": True}
-    if "llama" in model_name_lower or "qwen" in model_name_lower or "mistral" in model_name_lower:
-        return {"context_window": 32768, "vision": "vision" in model_name_lower, "tool_calling": True}
-    
-    return DEFAULT_CAPABILITY
+    vision = "vision" in model_name_lower or "vl" in model_name_lower or "4o" in model_name_lower or "claude-3" in model_name_lower or "gemini" in model_name_lower
+    return {"context_window": None, "vision": vision, "tool_calling": True}
 
 
 class ModelRouter:
@@ -182,76 +147,8 @@ class ModelRouter:
             logger.error(f"ModelRouter: Bug scan failed: {str(e)}")
             raise e
 
-
-# ── Reputation, Latency and Cost Optimizers ──────────────────────────────────
-
-class AgentReputationEngine:
-    def __init__(self):
-        self._success_rates = {
-            "claude-3-5-sonnet": 0.95,
-            "gpt-4o": 0.90,
-            "gemini-2.0-flash": 0.88,
-            "gpt-4o-mini": 0.82,
-        }
-
-    def record_success(self, model: str):
-        rates = self._success_rates.get(model, 0.80)
-        self._success_rates[model] = min(1.0, rates + 0.01)
-
-    def record_failure(self, model: str):
-        rates = self._success_rates.get(model, 0.80)
-        self._success_rates[model] = max(0.0, rates - 0.05)
-
-    def get_reputation(self, model: str) -> float:
-        return self._success_rates.get(model, 0.80)
-
-
-class CostOptimizer:
-    def __init__(self):
-        self._costs = {
-            "claude-3-5-sonnet": 3.0,  # per M input tokens
-            "gpt-4o": 5.0,
-            "gemini-2.0-flash": 0.075,
-            "gpt-4o-mini": 0.150,
-        }
-
-    def find_cheapest(self, allowed_models: list, min_reputation: float) -> str:
-        candidates = [m for m in allowed_models if agent_reputation_engine.get_reputation(m) >= min_reputation]
-        if not candidates:
-            return allowed_models[0] if allowed_models else "gemini-2.0-flash"
-        return min(candidates, key=lambda m: self._costs.get(m, 10.0))
-
-
-class LatencyOptimizer:
-    def __init__(self):
-        self._latencies = {
-            "gemini-2.0-flash": 0.5,
-            "gpt-4o-mini": 0.8,
-            "gpt-4o": 1.5,
-            "claude-3-5-sonnet": 2.0,
-        }
-
-    def find_fastest(self, allowed_models: list) -> str:
-        if not allowed_models:
-            return "gemini-2.0-flash"
-        return min(allowed_models, key=lambda m: self._latencies.get(m, 5.0))
-
-
-class ProviderHealthMonitor:
-    def __init__(self):
-        self._errors = {}
-
-    def record_error(self, provider: str):
-        self._errors[provider] = self._errors.get(provider, 0) + 1
-
-    def record_success(self, provider: str):
-        self._errors[provider] = max(0, self._errors.get(provider, 0) - 1)
-
-    def is_healthy(self, provider: str) -> bool:
-        return self._errors.get(provider, 0) < 5
-
-
-agent_reputation_engine = AgentReputationEngine()
-cost_optimizer = CostOptimizer()
-latency_optimizer = LatencyOptimizer()
-provider_health_monitor = ProviderHealthMonitor()
+# NOTE: Previous versions contained AgentReputationEngine, CostOptimizer,
+# LatencyOptimizer, and ProviderHealthMonitor classes with hardcoded model
+# data. These were removed to comply with the dynamic multi-provider
+# architecture. Reputation/cost/latency tracking should be implemented
+# dynamically using data from provider profiles or runtime observations.

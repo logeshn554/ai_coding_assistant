@@ -252,13 +252,28 @@ async def agent_loop(
                             Message(role="system", content=generator_system),
                             Message(role="user", content=generator_user),
                         ]
+                        secondary_model = config_manager.get_secondary_agent_model().strip()
+                        gen_llm = llm
+                        if secondary_model:
+                            try:
+                                from agent_runtime.llm.openai_provider import OpenAIProvider
+                                active_profile = config_manager.get_active_profile()
+                                api_key = active_profile.get("api_key", "")
+                                base_url = active_profile.get("base_url", "https://api.openai.com/v1")
+                                gen_llm = OpenAIProvider(api_key=api_key, model=secondary_model, base_url=base_url)
+                                logger.info("Dual-LLM Mode: Generator using secondary_agent_model '%s'", secondary_model)
+                            except Exception as sec_err:
+                                logger.warning("Failed to initialize secondary LLM provider '%s': %s", secondary_model, sec_err)
+                                gen_llm = llm
+
                         # Generator has access to all tools (e.g. filesystem, terminal)
-                        gen_response = await llm.generate(
+                        gen_response = await gen_llm.generate(
                             messages=gen_messages,
                             tools=tool_schemas if tool_schemas else None,
                             temperature=0.0,
                             max_tokens=config.max_tokens,
                         )
+
                         
                         gen_result_str = ""
                         if gen_response.has_tool_calls:

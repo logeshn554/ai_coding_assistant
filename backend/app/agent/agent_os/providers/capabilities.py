@@ -18,53 +18,22 @@ class ModelCapabilities:
     max_context_tokens: int
 
 
-# Default model capabilities mapping
-MODEL_CAPABILITIES_MAP = {
-    # Anthropic
-    "claude-3-5-sonnet": ModelCapabilities(
-        streaming=True, tool_calling=True, structured_output=True, vision=True, reasoning=True, max_context_tokens=200000
-    ),
-    "claude-3-opus": ModelCapabilities(
-        streaming=True, tool_calling=True, structured_output=False, vision=True, reasoning=True, max_context_tokens=200000
-    ),
-    "claude-3-haiku": ModelCapabilities(
-        streaming=True, tool_calling=True, structured_output=False, vision=True, reasoning=False, max_context_tokens=200000
-    ),
-    # OpenAI
-    "gpt-4o": ModelCapabilities(
-        streaming=True, tool_calling=True, structured_output=True, vision=True, reasoning=True, max_context_tokens=128000
-    ),
-    "gpt-4o-mini": ModelCapabilities(
-        streaming=True, tool_calling=True, structured_output=True, vision=True, reasoning=False, max_context_tokens=128000
-    ),
-    "o3-mini": ModelCapabilities(
-        streaming=True, tool_calling=True, structured_output=True, vision=False, reasoning=True, max_context_tokens=200000
-    ),
-    # Gemini
-    "gemini-1.5-pro": ModelCapabilities(
-        streaming=True, tool_calling=True, structured_output=True, vision=True, reasoning=True, max_context_tokens=1000000
-    ),
-    "gemini-1.5-flash": ModelCapabilities(
-        streaming=True, tool_calling=True, structured_output=True, vision=True, reasoning=False, max_context_tokens=1000000
-    ),
-    # DeepSeek / OpenRouter / Groq / Ollama defaults
-    "deepseek-coder": ModelCapabilities(
-        streaming=True, tool_calling=True, structured_output=True, vision=False, reasoning=True, max_context_tokens=64000
-    ),
-    "llama3": ModelCapabilities(
-        streaming=True, tool_calling=True, structured_output=False, vision=False, reasoning=False, max_context_tokens=8192
-    ),
-}
-
-DEFAULT_CAPABILITIES = ModelCapabilities(
-    streaming=True, tool_calling=True, structured_output=False, vision=False, reasoning=False, max_context_tokens=8192
-)
-
-
 def get_model_capabilities(model_name: str) -> ModelCapabilities:
-    """Resolve ModelCapabilities for a given model name, falling back to default."""
-    model_lower = model_name.lower()
-    for key, cap in MODEL_CAPABILITIES_MAP.items():
-        if key in model_lower:
-            return cap
-    return DEFAULT_CAPABILITIES
+    """Retrieve capabilities for a given model name dynamically."""
+    if not model_name:
+        return ModelCapabilities(
+            streaming=True, tool_calling=True, structured_output=True, vision=False, reasoning=False, max_context_tokens=0
+        )
+    
+    id_l = model_name.lower()
+    vision = "vision" in id_l or "vl" in id_l or "4o" in id_l or "claude-3" in id_l or "gemini" in id_l
+    reasoning = "reason" in id_l or "r1" in id_l or "o1" in id_l or "o3" in id_l or "thinking" in id_l
+
+    return ModelCapabilities(
+        streaming=True,
+        tool_calling=True,
+        structured_output=True,
+        vision=vision,
+        reasoning=reasoning,
+        max_context_tokens=0  # 0 = Not hardcoded, retrieved from provider
+    )

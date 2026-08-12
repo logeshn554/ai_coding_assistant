@@ -882,17 +882,12 @@ class AgentSession:
 
         self.auto_apply = auto_apply
         if self.is_running:
-            # Safety valve: if the agent has been "running" for more than 90 seconds
-            # without completing, it is likely stuck (e.g. the previous WS disconnected
-            # mid-confirmation). Force-reset so the user can send a new message.
             import time
             _stuck_since = getattr(self, "_running_since", None)
             _now = time.monotonic()
             if _stuck_since is None or (_now - _stuck_since) > 90:
-                # Force-reset the stuck state
                 self.is_running = False
                 self.pending_confirmations.clear()
-                logger.warning("Agent was stuck in is_running state; auto-reset after 90 s grace period.")
             else:
                 await self.send_ws_message({
                     "type": "text_delta",
@@ -903,54 +898,6 @@ class AgentSession:
                     "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
                 })
                 return
-
-        # Check for Run Agent activation (precise patterns only)
-        RUN_PATTERNS = [
-            r'\b(run|start|launch|execute|serve|open|preview)\s+(the\s+)?(project|app|application|server|frontend|backend|api|html|site|page)\b',
-            r'\b(build\s+and\s+run|start\s+server|run\s+project|open\s+application|preview\s+(the\s+)?(app|page|html|site)|live\s*server|open\s+with\s+live\s*server)\b',
-            r'\bstart\s+(the\s+)?(dev\s+)?(server|live\s*server)\b',
-            r'\b(run|open|serve|preview)\s+.*\.html?\b',
-            r'\bnpm\s+(run|start)\b',
-            r'\buvicorn\b',
-            r'\bpython\s+-m\b',
-        ]
-        
-        is_run_command = False
-        text_lower = text.lower().strip()
-        # Avoid misclassifying long, multi-line coding instructions as run commands
-        if len(text_lower) < 250 and text_lower.count('\n') < 4:
-            is_run_command = any(re.search(p, text_lower) for p in RUN_PATTERNS)
-
-
-        if is_run_command:
-            self.is_running = True
-            try:
-                self.conversation_history.append({"role": "user", "content": text})
-                await self.run_agent_flow(text)
-            except Exception as e:
-                import traceback
-                error_type = type(e).__name__
-                error_msg = str(e) or "(no details)"
-                short_tb = "\n".join(traceback.format_exc().splitlines()[-6:])
-                logger.exception(f"Run Agent crashed [{error_type}]: {error_msg}")
-                crash_card = (
-                    f"\n\n[CRASH] **Agent Crashed**\n\n"
-                    f"**Error type:** `{error_type}`\n"
-                    f"**Details:** {error_msg}\n\n"
-                    f"[HINT] Try the command again or check the terminal for more details.\n\n"
-                    f"<details><summary>Stack trace</summary>\n\n"
-                    f"```\n{short_tb}\n```\n</details>"
-                )
-                await self.send_ws_message({"type": "text_delta", "content": crash_card})
-            finally:
-                self.is_running = False
-                await self.save_history_to_db()
-                await self.send_ws_message({
-                    "type": "session_done",
-                    "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
-                })
-                await self.broadcast_processes_state()
-            return
 
         # Store snapshot at the start of handle_user_message
         self._last_request_snapshot = {
@@ -983,7 +930,7 @@ class AgentSession:
 
             # Auto-route mode selection if set to 'Auto'
             if mode == "Auto":
-                if getattr(self, "last_mode", None) == "Agent" and len(text_lower) < 30:
+                if getattr(self, "last_mode", None) == "Agent" and len(text.strip()) < 30:
                     mode = "Agent"
                     logger.info(f"Auto-inherited Agent mode for short follow-up: '{text[:40]}'")
 
@@ -1074,9 +1021,9 @@ class AgentSession:
                 # to the direct tool-calling loop below — do NOT short-circuit.
                 pass  # pipeline runs below at the ── 14-Phase ── block
 
-            # Direct tool-calling loop for all other modes (Ask/Plan)
-            # The direct loop lets the LLM call any available tool itself.
-            adapter = self._get_adapter(is_agent=False)
+            # Unified tool-calling loop — runs for ALL modes (Ask, Plan, Agent, Goal).
+            # Mode-specific behaviour is controlled by tools list and system prompt, not the loop itself.
+            adapter = self._get_adapter(is_agent=(mode in ("Agent", "Goal")))
             system_prompt = self._get_system_prompt(mode)
             tools = self._get_tools_for_mode(mode)
 
@@ -1753,7 +1700,7 @@ class AgentSession:
         """
         Wraps adapter.stream_chat to capture usage chunks, calculate costs,
         and enforce cost circuit-breakers:
-        - Soft limit (COST_LIMIT_USD, default $5): pauses and asks user to confirm.
+        - Soft limit (COST_LIMIT_USD, default $5): sends advisory once per session.
         - Hard limit (DEVPILOT_HARD_COST_LIMIT, default $10): immediately terminates.
         """
         from ..config import settings
@@ -1771,536 +1718,65 @@ class AgentSession:
                     "turn_cost_usd": round(turn_cost, 6),
                 })
 
-                # Hard limit: unconditionally terminate the agent loop
+                # ── Cost circuit breakers ─────────────────────────────────
+                # Hard limit: immediately stop the agent to prevent runaway costs.
                 if self.total_cost_usd >= hard_limit:
                     logger.warning(
-                        f"Hard cost limit ${hard_limit:.2f} reached "
-                        f"(spent ${self.total_cost_usd:.4f}). Terminating agent."
+                        f"Hard cost limit reached (${self.total_cost_usd:.4f} >= ${hard_limit}). "
+                        "Terminating agent session."
                     )
                     await self.send_ws_message({
-                        "type": "error",
-                        "message": (
-                            f"⛔ Hard cost limit of ${hard_limit:.2f} reached "
-                            f"(${self.total_cost_usd:.4f} spent this session). "
-                            "Agent has been terminated. Increase DEVPILOT_HARD_COST_LIMIT in .env to override."
-                        )
+                        "type": "text_delta",
+                        "content": (
+                            f"\n\n[COST LIMIT] **Session terminated** — total cost "
+                            f"${self.total_cost_usd:.4f} exceeded hard limit ${hard_limit:.2f}. "
+                            "Increase `DEVPILOT_HARD_COST_LIMIT` in settings to allow higher spend."
+                        ),
                     })
-                    return  # stop yielding — caller's async-for loop will end
+                    return  # Stop yielding — caller's loop ends
 
-                # Soft limit: send advisory to frontend (handled by cost_limit_advisory in AIContext)
-                if soft_limit > 0 and self.total_cost_usd >= soft_limit and not getattr(self, "_cost_advisory_sent", False):
+                # Soft limit: warn once per session so the user is aware.
+                if self.total_cost_usd >= soft_limit and not self._cost_advisory_sent:
                     self._cost_advisory_sent = True
+                    logger.info(
+                        f"Soft cost advisory at ${self.total_cost_usd:.4f} (limit ${soft_limit})"
+                    )
                     await self.send_ws_message({
-                        "type": "cost_limit_advisory",
+                        "type": "cost_warning",
                         "total_cost_usd": round(self.total_cost_usd, 6),
-                        "cost_limit_usd": soft_limit,
+                        "soft_limit_usd": soft_limit,
+                        "hard_limit_usd": hard_limit,
                         "message": (
-                            f"💰 This session has used ${self.total_cost_usd:.3f} "
-                            f"(soft limit: ${soft_limit:.2f}). Continue?"
-                        )
+                            f"Cost advisory: session has spent ${self.total_cost_usd:.4f}. "
+                            f"Hard limit is ${hard_limit:.2f}."
+                        ),
                     })
 
             yield chunk
 
-
-
-
     async def _run_llm_query(self, system_prompt: str, user_content: str, agent_name: str = None) -> str:
         """
         Queries the LLM non-disruptively by accumulating stream_chat chunks.
-        Uses ModelRouter to support automatic local model fallbacks on connection/API failure.
         """
         from ..adapters.router import ModelRouter
         messages = [{"role": "user", "content": user_content}]
         try:
             router = ModelRouter()
-            adapter = router.get_adapter(self.profile, is_agent=True, task_type=agent_name)
+            adapter = router.get_adapter(
+                self.profile, is_agent=True, task_type=agent_name
+            )
             response_text = ""
-            async for chunk in self._stream_chat_wrapper(adapter, messages, [], system_prompt):
-                if chunk["type"] == "text":
-                    response_text += chunk["content"]
+            async for chunk in self._stream_chat_wrapper(
+                adapter, messages, [], system_prompt
+            ):
+                if chunk.get("type") == "text":
+                    response_text += chunk.get("content", "")
             return response_text
         except Exception as e:
-            logger.error(f"Error querying background LLM (including fallbacks): {str(e)}")
-            raise  # re-raise preserving original traceback
-
-    async def broadcast_processes_state(self):
-        from ..processes import global_process_manager
-        procs = global_process_manager.get_all_processes()
-        serialized = []
-        for p in procs:
-            serialized.append({
-                "id": p.id,
-                "name": p.name,
-                "command": p.command,
-                "status": p.status,
-                "port": p.port,
-                "localhost_url": p.localhost_url,
-                "network_url": p.network_url,
-                "pid": p.pid
-            })
-        await self.send_ws_message({
-            "type": "processes_update",
-            "processes": serialized
-        })
-
-    async def monitor_and_stream_events(self, proc):
-        await self.broadcast_processes_state()
-        last_index = 0
-        reported_events = set()
-        while proc.status in ("starting", "running"):
-            if last_index < len(proc.logs):
-                new_lines = proc.logs[last_index:]
-                last_index = len(proc.logs)
-                for line in new_lines:
-                    await self.send_ws_message({
-                        "type": "terminal_stream",
-                        "content": line
-                    })
-                    line_lower = line.lower()
-                    event_msg = None
-                    if "hmr update" in line_lower or "hot update" in line_lower:
-                        event_msg = "âœ“ Hot Reload completed"
-                    elif "compiled successfully" in line_lower:
-                        event_msg = "âœ“ Build completed successfully"
-                    elif "database connected" in line_lower or "db connected" in line_lower or "connected to database" in line_lower:
-                        event_msg = "âœ“ Connected to database"
-                    elif "api ready" in line_lower or "api server ready" in line_lower:
-                        event_msg = "âœ“ API server ready"
-                    elif "rebuilding" in line_lower or "rebuilt" in line_lower:
-                        event_msg = "âœ“ Server rebuild complete"
-
-                    if event_msg and event_msg not in reported_events:
-                        await self.send_ws_message({
-                            "type": "text_delta",
-                            "content": f"\n{event_msg}\n"
-                        })
-                        reported_events.add(event_msg)
-            await asyncio.sleep(0.1)
-        await self.broadcast_processes_state()
-
-    async def run_agent_flow(self, user_text: str):
-        await self.send_ws_message({
-            "type": "status",
-            "status": "thinking",
-            "message": "Run Agent: Detecting project type..."
-        })
-
-        files_list = []
-        try:
-            items = await async_list_workspace_dir(self.workspace_root, "")
-            for it in items:
-                files_list.append(it["name"])
-                if it.get("is_dir", it.get("isDir", False)) and it["name"] not in (".git", "node_modules", "venv", "__pycache__", ".devpilot"):
-                    try:
-                        sub_items = await async_list_workspace_dir(self.workspace_root, it["name"])
-                        for s_it in sub_items[:15]:
-                            files_list.append(f"{it['name']}/{s_it['name']}")
-                    except Exception:
-                        pass
-        except Exception as e:
-            logger.error(f"Error listing workspace files: {str(e)}")
-
-        pkg_scripts_summary = []
-        for pf in files_list:
-            if pf.endswith("package.json"):
-                try:
-                    full_p = safe_path(self.workspace_root, pf)
-                    if os.path.exists(full_p):
-                        with open(full_p, "r", encoding="utf-8") as f:
-                            pdata = json.load(f)
-                            pkg_scripts_summary.append(f"File '{pf}' scripts: {json.dumps(pdata.get('scripts', {}))}")
-                except Exception:
-                    pass
-
-        pkg_details_str = "\n".join(pkg_scripts_summary) if pkg_scripts_summary else "No package.json scripts detected."
-
-        # â”â” Deterministic Project Type & Command Detection â”â”
-        detected_framework = None
-        detected_command = None
-
-        def find_file_in_list(filename: str) -> str | None:
-            # Check root directory first
-            for f in files_list:
-                if f == filename:
-                    return f
-            # Check subdirectories next
-            for f in files_list:
-                if f.endswith("/" + filename):
-                    return f
-            return None
-
-        # Resolve files present
-        # Resolve files present
-        django_file = find_file_in_list("manage.py")
-        maven_file = find_file_in_list("pom.xml")
-        go_file = find_file_in_list("main.go")
-        index_js = find_file_in_list("index.js")
-        server_js = find_file_in_list("server.js")
-        pkg_json = find_file_in_list("package.json")
-        app_py = find_file_in_list("app.py")
-        main_py = find_file_in_list("main.py")
-        index_html = find_file_in_list("index.html")
-
-        # HTML file detection (match any .html file or index.html)
-        html_files = [f for f in files_list if f.endswith(".html") or f.endswith(".htm")]
-        target_html_file = None
-        for hf in html_files:
-            fname = hf.split("/")[-1]
-            if fname.lower() in user_text.lower():
-                target_html_file = hf
-                break
-        if not target_html_file:
-            if index_html:
-                target_html_file = index_html
-            elif html_files:
-                target_html_file = html_files[0]
-
-        if django_file:
-            detected_framework = "Django"
-            if "/" in django_file:
-                sub_dir = django_file.rsplit("/manage.py", 1)[0]
-                detected_command = f"cd {sub_dir} && python manage.py runserver"
-            else:
-                detected_command = "python manage.py runserver"
-
-        elif maven_file:
-            detected_framework = "Java Maven"
-            if "/" in maven_file:
-                sub_dir = maven_file.rsplit("/pom.xml", 1)[0]
-                detected_command = f"cd {sub_dir} && mvn spring-boot:run"
-            else:
-                detected_command = "mvn spring-boot:run"
-
-        elif go_file:
-            detected_framework = "Go"
-            if "/" in go_file:
-                sub_dir = go_file.rsplit("/main.go", 1)[0]
-                detected_command = f"cd {sub_dir} && go run main.go"
-            else:
-                detected_command = "go run main.go"
-
-        elif index_js or server_js:
-            detected_framework = "Node"
-            target_js = index_js if index_js else server_js
-            if "/" in target_js:
-                sub_dir = target_js.rsplit("/", 1)[0]
-                js_file = target_js.split("/")[-1]
-                detected_command = f"cd {sub_dir} && node {js_file}"
-            else:
-                detected_command = f"node {target_js}"
-
-        elif pkg_json:
-            has_start = False
-            has_dev = False
-            try:
-                full_p = safe_path(self.workspace_root, pkg_json)
-                if os.path.exists(full_p):
-                    with open(full_p, "r", encoding="utf-8") as f:
-                        pdata = json.load(f)
-                        scripts = pdata.get("scripts", {})
-                        has_start = "start" in scripts
-                        has_dev = "dev" in scripts
-            except Exception:
-                pass
-
-            detected_framework = "Node (package.json)"
-            if has_start:
-                if "/" in pkg_json:
-                    sub_dir = pkg_json.rsplit("/package.json", 1)[0]
-                    detected_command = f"cd {sub_dir} && npm start"
-                else:
-                    detected_command = "npm start"
-            elif has_dev:
-                if "/" in pkg_json:
-                    sub_dir = pkg_json.rsplit("/package.json", 1)[0]
-                    detected_command = f"cd {sub_dir} && npm run dev"
-                else:
-                    detected_command = "npm run dev"
-
-        elif app_py or main_py:
-            detected_framework = "Python App"
-            target_py = app_py if app_py else main_py
-            if "/" in target_py:
-                sub_dir = target_py.rsplit("/", 1)[0]
-                py_file = target_py.split("/")[-1]
-                detected_command = f"cd {sub_dir} && python {py_file}"
-            else:
-                detected_command = f"python {target_py}"
-
-        elif target_html_file:
-            detected_framework = "Live Server (Static HTML)"
-            detected_command = "python -m http.server 5500"
-
-        if detected_command:
-            framework = detected_framework
-            command = detected_command
-            logger.info(f"Rule-based detection matched: {framework} -> {command}")
-        else:
-            prompt = (
-                f"The user wants to run/start the project. User request: '{user_text}'\n"
-                f"Workspace files:\n{json.dumps(files_list, indent=2)}\n\n"
-                f"Detected Package Scripts:\n{pkg_details_str}\n\n"
-                "Analyze the workspace files, package scripts, and the user request to determine:\n"
-                "1. The project/service type or framework (e.g. 'React (Vite)', 'FastAPI', 'Python Flask', etc.).\n"
-                "2. The exact terminal command to run, start, or serve the requested service/project.\n"
-                "Ensure the command is correct for this project structure. If a package.json is in a subdirectory (like 'frontend'), include the prefix (e.g. 'npm run dev --prefix frontend') or correct relative command.\n"
-                "Only suggest 'npm run dev' or 'npm start' if that script actually exists in the package.json scripts!\n\n"
-                "Output your response strictly as a JSON object with two fields:\n"
-                "- 'framework': a string indicating the framework/language/service name (e.g. 'React (Vite)', 'FastAPI', 'Flask', 'Django', etc.)\n"
-                "- 'command': the exact command to run/start/serve the application (e.g. 'npm run dev', 'uvicorn main:app --reload', etc.)\n"
-                "Respond with ONLY the JSON object, no other text."
-            )
-            system_prompt = "You are a master developer assistant. Analyze the project structure and output the correct run command in JSON format."
-
-            response = await self._run_llm_query(system_prompt, prompt)
-
-            try:
-                clean_res = response.strip()
-                if clean_res.startswith("```json"):
-                    clean_res = clean_res[7:]
-                if clean_res.endswith("```"):
-                    clean_res = clean_res[:-3]
-                parsed = json.loads(clean_res.strip())
-                framework = parsed.get("framework") or "Unknown Framework"
-                command = parsed.get("command")
-                if not command or not isinstance(command, str) or not command.strip():
-                    raise ValueError("Command field is missing, empty, or not a string in LLM response.")
-            except Exception as e:
-                logger.error(f"Failed to parse LLM run command JSON: {str(e)}")
-                framework = "Unknown"
-                # Smart fallback based on package.json scripts
-                command = None
-                if pkg_scripts_summary:
-                    for line in pkg_scripts_summary:
-                        if '"dev"' in line:
-                            prefix = " --prefix " + line.split("File '")[1].split("/package.json")[0] if "/package.json" in line else ""
-                            command = f"npm run dev{prefix}"
-                            break
-                        elif '"start"' in line:
-                            prefix = " --prefix " + line.split("File '")[1].split("/package.json")[0] if "/package.json" in line else ""
-                            command = f"npm start{prefix}"
-                            break
-                if not command:
-                    if target_html_file:
-                        command = "python -m http.server 5500"
-                    elif "main.py" in files_list or any(f.endswith("/main.py") for f in files_list):
-                        command = "python main.py"
-                    else:
-                        command = "python -m http.server 5500"
-
-        # Auto-adjust npm command to include --prefix if root package.json does not exist
-        if command and command.startswith("npm ") and "--prefix" not in command:
-            root_pkg = safe_path(self.workspace_root, "package.json")
-            if not os.path.exists(root_pkg):
-                for pf in files_list:
-                    if pf.endswith("package.json") and "/" in pf:
-                        sub_folder = pf.rsplit("/package.json", 1)[0]
-                        command = f"{command} --prefix {sub_folder}"
-                        logger.info(f"Auto-adjusted npm command to include prefix: '{command}'")
-                        break
-
-        from ..tools.file_tools import find_free_port
-
-        # 1. Universal check: is ANY server process already running for this workspace?
-        running_procs = global_process_manager.get_running_processes()
-        for p in running_procs:
-            if p.cwd == self.workspace_root:
-                p_port = p.port or 8000
-                live_url = f"http://localhost:{p_port}/{target_html_file}" if target_html_file else (p.localhost_url or f"http://localhost:{p_port}")
-                run_response_text = (
-                    f"ðŸš **Server is already running for this workspace!**\n\n"
-                    f"ðŸ”— **Preview URL**: [{live_url}]({live_url})\n\n"
-                )
-                await self.send_ws_message({
-                    "type": "text_delta",
-                    "content": run_response_text
-                })
-                return
-
-        # 2. Resolve port and command for HTML vs dynamic non-static servers
-        if target_html_file or "Live Server" in framework or "http.server" in command:
-            port = find_free_port(5500)
-            command = f"python -m http.server {port}"
-        else:
-            port = 8000
-            cmd_lower = command.lower()
-            if "runserver" in cmd_lower:
-                port = 8000
-            elif "3000" in cmd_lower or "serve" in cmd_lower:
-                port = 3000
-            elif "5173" in cmd_lower or "vite" in cmd_lower:
-                port = 5173
-            elif "8080" in cmd_lower or "spring-boot" in cmd_lower or "go run" in cmd_lower:
-                port = 8080
-            elif "5000" in cmd_lower or "flask" in cmd_lower:
-                port = 5000
-            elif "npm" in cmd_lower:
-                port = 5173
-
-        # Formulate response
-        if target_html_file:
-            live_url = f"http://localhost:{port}/{target_html_file}"
-            run_response_text = (
-                f"ðŸš **Live Server Started!**\n\n"
-                f"ðŸ”— **Preview URL**: [{live_url}]({live_url})\n\n"
-                f"```run\n{command}\n```\n"
-            )
-        else:
-            live_url = f"http://localhost:{port}"
-            run_response_text = (
-                f"ðŸš **Server Started!** ({framework})\n\n"
-                f"ðŸ”— **Localhost URL**: [{live_url}]({live_url})\n\n"
-                f"```run\n{command}\n```\n"
-            )
-
-        await self.send_ws_message({
-            "type": "text_delta",
-            "content": run_response_text
-        })
+            logger.error(f"LLM query failed: {e}")
+            raise
 
 
-
-
-        # The user explicitly asked to run the project and we already showed them the
-        # command in the chat (```run block). No additional permission gate is needed.
-        logger.info(f"[run_agent_flow] auto-approved command: {command}")
-
-
-        await self.send_ws_message({
-            "type": "status",
-            "status": "tool_executing",
-            "message": f"Starting project with `{command}`..."
-        })
-
-        proc = await global_process_manager.start_process(command, self.workspace_root, name=framework)
-        # B6: Store task handle so cancel_all() can cancel it if the user cancels.
-        self._monitor_tasks.append(asyncio.create_task(self.monitor_and_stream_events(proc)))
-
-        for _ in range(40):
-            await asyncio.sleep(0.25)
-            if proc.startup_success_event.is_set():
-                break
-            if proc.status in ("stopped", "failed", "crashed"):
-                break
-
-        if proc.port_conflict:
-            await self.send_ws_message({
-                "type": "text_delta",
-                "content": f"âš ï¸ Port conflict detected: Port {proc.port} is already in use.\n"
-            })
-
-            conflict_pid, conflict_name = get_process_using_port(proc.port)
-            await self.send_ws_message({
-                "type": "text_delta",
-                "content": f"Process `{conflict_name}` (PID: {conflict_pid}) is using port {proc.port}.\n"
-            })
-
-            tc_id = f"port_{uuid.uuid4().hex[:6]}"
-            event = asyncio.Event()
-            self.pending_confirmations[tc_id] = {
-                "event": event,
-                "action": None
-            }
-
-            await self.send_ws_message({
-                "type": "port_conflict_request",
-                "tool_call_id": tc_id,
-                "port": proc.port,
-                "pid": conflict_pid,
-                "process_name": conflict_name
-            })
-
-            try:
-                await asyncio.wait_for(event.wait(), timeout=300)
-            except asyncio.TimeoutError:
-                self.pending_confirmations.pop(tc_id, None)
-                await self.send_ws_message({"type": "text_delta", "content": "*Port conflict resolution timed out.*\n"})
-                await global_process_manager.stop_process(proc.id)
-                return
-            action = self.pending_confirmations[tc_id].get("action")
-            del self.pending_confirmations[tc_id]
-
-            if action == "stop":
-                await self.send_ws_message({
-                    "type": "text_delta",
-                    "content": f"Stopping conflicting process `{conflict_name}` (PID: {conflict_pid})...\n"
-                })
-                kill_process_by_pid(conflict_pid)
-                await global_process_manager.stop_process(proc.id)
-                await self.send_ws_message({
-                    "type": "text_delta",
-                    "content": f"Retrying run command: `{command}`\n"
-                })
-                proc = await global_process_manager.start_process(command, self.workspace_root, name=framework)
-                # B6: Store task handle so cancel_all() can cancel it if the user cancels.
-                self._monitor_tasks.append(asyncio.create_task(self.monitor_and_stream_events(proc)))
-                for _ in range(40):
-                    await asyncio.sleep(0.25)
-                    if proc.startup_success_event.is_set():
-                        break
-                    if proc.status in ("stopped", "failed", "crashed"):
-                        break
-            elif action == "next_port":
-                next_port = proc.port + 1
-                await self.send_ws_message({
-                    "type": "text_delta",
-                    "content": f"Determining run command for next available port: {next_port}...\n"
-                })
-                rewrite_prompt = (
-                    f"The run command `{command}` failed because port {proc.port} is in use.\n"
-                    f"Please modify the command so it runs on port {next_port}.\n"
-                    "Respond with ONLY the modified command string, e.g. 'PORT=5174 npm run dev' or 'uvicorn main:app --port 8001'."
-                )
-                new_command = await self._run_llm_query("You are a devops engineer helper.", rewrite_prompt)
-                new_command = new_command.strip().strip("`").strip()
-
-                await self.send_ws_message({
-                    "type": "text_delta",
-                    "content": f"Retrying with command: `{new_command}`\n"
-                })
-                await global_process_manager.stop_process(proc.id)
-                proc = await global_process_manager.start_process(new_command, self.workspace_root, name=framework)
-                # B6: Store task handle so cancel_all() can cancel it if the user cancels.
-                self._monitor_tasks.append(asyncio.create_task(self.monitor_and_stream_events(proc)))
-                for _ in range(40):
-                    await asyncio.sleep(0.25)
-                    if proc.startup_success_event.is_set():
-                        break
-                    if proc.status in ("stopped", "failed", "crashed"):
-                        break
-            else:
-                await self.send_ws_message({
-                    "type": "text_delta",
-                    "content": "Startup cancelled by the user.\n"
-                })
-                await global_process_manager.stop_process(proc.id)
-                return
-
-        if proc.status == "running":
-            localhost_url = proc.localhost_url or f"http://localhost:{proc.port}"
-            network_url = proc.network_url or "N/A"
-            port_str = str(proc.port) if proc.port else "N/A"
-
-            content_summary = (
-                "**Application started successfully.**\n\n"
-                f"Framework: **{framework}**\n"
-                "Status: **Running**\n"
-                f"Local URL: [{localhost_url}]({localhost_url})\n"
-                f"Network URL: {network_url}\n"
-                f"Port: [{port_str}]({localhost_url})\n"
-                f"Process ID: **{proc.pid}**\n"
-            )
-            await self.send_ws_message({
-                "type": "text_delta",
-                "content": content_summary
-            })
-        else:
-            await self.send_ws_message({
-                "type": "text_delta",
-                "content": "âŒ Application failed to start.\n"
-            })
-            await self.handle_intelligent_recovery(proc, command, framework)
 
     async def handle_intelligent_recovery(self, proc, original_command: str, framework: str):
         await self.send_ws_message({

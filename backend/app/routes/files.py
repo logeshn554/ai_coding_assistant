@@ -6,6 +6,7 @@ import asyncio
 import logging
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from ..state import workspace_state, logger
 from ..files import (
     list_workspace_dir,
@@ -252,4 +253,20 @@ async def get_agent_task_diff(task_id: str):
     """Retrieves unified diffs for files changed during an agent task execution."""
     diffs = await asyncio.to_thread(transactional_fs.get_task_diff, task_id)
     return {"task_id": task_id, "diffs": diffs}
+
+
+@router.get("/api/files/raw")
+async def get_raw_file(path: str):
+    """Serve raw binary content of a file (e.g. uploaded image attachments or workspace assets)."""
+    try:
+        root = workspace_state.root or os.path.expanduser("~")
+        abs_path = path if os.path.isabs(path) else safe_path(root, path)
+        if not os.path.exists(abs_path):
+            raise HTTPException(status_code=404, detail=f"File not found: {path}")
+        return FileResponse(abs_path)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 

@@ -95,6 +95,21 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, onR
           hr: () => (
             <hr className="my-4.5 border-t border-zinc-800" />
           ),
+          img: ({ src, alt }) => {
+            const imgSrc = src?.startsWith('http') || src?.startsWith('data:') ? src : `/api/files/raw?path=${encodeURIComponent(src || '')}`;
+            return (
+              <span className="block my-3">
+                <a href={imgSrc} target="_blank" rel="noreferrer" className="inline-block">
+                  <img
+                    src={imgSrc}
+                    alt={alt || 'Image'}
+                    className="max-w-full max-h-[350px] object-contain rounded-lg border border-white/10 shadow-md hover:opacity-95 transition-opacity"
+                  />
+                </a>
+                {alt && <span className="block text-[11px] text-zinc-500 mt-1 italic">{alt}</span>}
+              </span>
+            );
+          },
           a: ({ href, children }) => {
             const isCodeFile = href?.toLowerCase().endsWith('.tsx') || href?.toLowerCase().endsWith('.ts') || href?.toLowerCase().endsWith('.js') || href?.toLowerCase().endsWith('.jsx');
             return (

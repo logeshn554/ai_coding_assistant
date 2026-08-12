@@ -751,7 +751,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
     setMessages((prev) => [
       ...prev,
-      { id: userMsgId, role: 'user', content: text, timestamp: Math.floor(Date.now() / 1000) },
+      { id: userMsgId, role: 'user', content: text, attachedFiles: attachedFiles && attachedFiles.length > 0 ? attachedFiles : undefined, timestamp: Math.floor(Date.now() / 1000) },
       { id: assistantMsgId, role: 'assistant', content: '', timestamp: Math.floor(Date.now() / 1000) }
     ]);
 

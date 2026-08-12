@@ -85,7 +85,7 @@ def _extract_ocr_fallback(path: str) -> VisionResult:
 
 
 async def analyze_image(path: str) -> VisionResult:
-    """Analyze an image file using configured vision_model or OCR fallback.
+    """Analyze an image file using configured image_analysis_mode, vision_model, or OCR.
 
     Args:
         path: Absolute or workspace-relative path to image file.
@@ -100,13 +100,23 @@ async def analyze_image(path: str) -> VisionResult:
             confidence=0.0,
         )
 
+    analysis_mode = config_manager.get_image_analysis_mode()
+
+    # Explicit OCR mode request
+    if analysis_mode == "ocr":
+        logger.info("Vision: Explicit OCR mode set for '%s'", path)
+        return _extract_ocr_fallback(path)
+
+    # Vision Model / Auto mode
     vision_model = config_manager.get_image_analysis_model().strip()
+    profile = config_manager.get_active_profile()
+    if not vision_model and profile:
+        vision_model = profile.get("model_name", "").strip()
 
     if vision_model:
         try:
             from .adapters.router import ModelRouter
             router = ModelRouter()
-            profile = config_manager.get_active_profile()
             profile_to_use = dict(profile)
             profile_to_use["model_name"] = vision_model
 
@@ -120,11 +130,21 @@ async def analyze_image(path: str) -> VisionResult:
             messages = [
                 {
                     "role": "user",
-                    "content": (
-                        f"Describe this image ({os.path.basename(path)}). "
-                        f"Analyze UI layout, text content, and visual components.\n\n"
-                        f"[ATTACHMENT_IMAGE: {data_uri[:100]}...]"
-                    ),
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                f"Describe this image ({os.path.basename(path)}). "
+                                f"Analyze UI layout, text content, and visual components in detail."
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": data_uri
+                            },
+                        },
+                    ],
                 }
             ]
 
@@ -142,7 +162,11 @@ async def analyze_image(path: str) -> VisionResult:
                     confidence=1.0,
                 )
         except Exception as exc:
-            logger.warning("Vision model '%s' failed for '%s': %s. Falling back to OCR.", vision_model, path, exc)
+            logger.warning("Vision model '%s' failed for '%s': %s.", vision_model, path, exc)
+            if analysis_mode == "model":
+                # User asked specifically for vision model analysis, return error with fallback info
+                logger.info("Vision: Model mode requested but failed; running fallback OCR for '%s'", path)
 
-    # Fallback to OCR path
+    # Fallback to OCR path (for auto mode or when vision model fails/unset)
     return _extract_ocr_fallback(path)
+

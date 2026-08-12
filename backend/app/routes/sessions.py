@@ -24,17 +24,25 @@ logger = logging.getLogger("devpilot.sessions")
 router = APIRouter()
 
 
+class TokenUsageDict(BaseModel):
+    input: int = 0
+    output: int = 0
+    total: int = 0
+
 class SessionSummary(BaseModel):
-    """Summary row for the Session History UI."""
+    """Summary row for the Session History UI matching Requirement 9."""
 
     id: str
     title: str
     workspace_root: str = ""
     mode: str = "Ask"
+    provider: str = ""
+    model: str = ""
     created_at: int
     updated_at: int
     message_count: int = 0
     first_user_message: str = ""
+    tokenUsage: TokenUsageDict = Field(default_factory=TokenUsageDict)
 
 
 class SessionListResponse(BaseModel):
@@ -83,15 +91,21 @@ def _session_to_summary(s: SessionModel) -> SessionSummary:
                 preview = first_user_preview(cached, 60)
         except (json.JSONDecodeError, TypeError):
             pass
+    inp = getattr(s, 'token_input', 0) or 0
+    outp = getattr(s, 'token_output', 0) or 0
+    tot = getattr(s, 'token_total', 0) or (inp + outp)
     return SessionSummary(
         id=s.id,
         title=s.title or "Conversation",
         workspace_root=s.workspace_root or "",
         mode=s.mode or "Ask",
+        provider=getattr(s, 'provider', '') or '',
+        model=getattr(s, 'model', '') or '',
         created_at=int(s.created_at.timestamp()) if s.created_at else 0,
         updated_at=int(s.updated_at.timestamp()) if s.updated_at else 0,
         message_count=len(msgs),
         first_user_message=preview,
+        tokenUsage=TokenUsageDict(input=inp, output=outp, total=tot)
     )
 
 
@@ -138,6 +152,19 @@ async def get_session_messages(session_id: str) -> SessionMessagesResponse:
         )
 
 
+@router.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """Delete a chat session from history."""
+    async with async_session() as db:
+        stmt = select(SessionModel).where(SessionModel.id == session_id)
+        res = await db.execute(stmt)
+        session = res.scalar()
+        if session:
+            await db.delete(session)
+            await db.commit()
+    return {"success": True, "session_id": session_id}
+
+
 async def touch_session_meta(
     session_id: str,
     *,
@@ -145,8 +172,12 @@ async def touch_session_meta(
     mode: Optional[str] = None,
     messages: Optional[list[dict[str, Any]]] = None,
     title: Optional[str] = None,
+    provider: Optional[str] = None,
+    model: Optional[str] = None,
+    token_input: Optional[int] = None,
+    token_output: Optional[int] = None,
 ) -> None:
-    """Update session metadata after a turn (workspace, mode, JSON snapshot)."""
+    """Update session metadata after a turn (workspace, mode, provider, model, tokens, JSON snapshot)."""
     async with async_session() as db:
         stmt = select(SessionModel).where(SessionModel.id == session_id)
         res = await db.execute(stmt)
@@ -157,6 +188,8 @@ async def touch_session_meta(
                 title=title or "Conversation",
                 workspace_root=workspace_root or "",
                 mode=mode or "Ask",
+                provider=provider or "",
+                model=model or "",
             )
             db.add(session)
 
@@ -166,7 +199,17 @@ async def touch_session_meta(
             session.mode = mode
         if title is not None:
             session.title = title
+        if provider is not None:
+            session.provider = provider
+        if model is not None:
+            session.model = model
+        if token_input is not None:
+            session.token_input = (getattr(session, 'token_input', 0) or 0) + token_input
+        if token_output is not None:
+            session.token_output = (getattr(session, 'token_output', 0) or 0) + token_output
+            session.token_total = (session.token_input or 0) + (session.token_output or 0)
         if messages is not None:
             session.messages_json = json.dumps(messages)
         session.updated_at = datetime.datetime.utcnow()
         await db.commit()
+

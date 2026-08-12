@@ -116,6 +116,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   const [agentModels, setAgentModels] = useState<Record<string, string>>({});
   const [agentProfiles, setAgentProfiles] = useState<Record<string, string>>({});
   const [imageAnalysisModel, setImageAnalysisModel] = useState<string>('');
+  const [imageAnalysisMode, setImageAnalysisMode] = useState<string>('auto');
+  const [secondaryAgentModel, setSecondaryAgentModel] = useState<string>('');
   const [devpilotRpm, setDevpilotRpm] = useState<number>(15);
   const [concurrencyMode, setConcurrencyMode] = useState<string>('parallel');
   const [temperature, setTemperature] = useState<number>(1.0);
@@ -173,9 +175,11 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         setExcludeList(Array.isArray(data?.exclude_list) ? data.exclude_list : []);
         setAutoBackupEnabled(data?.auto_backup_enabled ?? true);
         setAgentModelName(data?.agent_model_name || '');
+        setSecondaryAgentModel(data?.secondary_agent_model || '');
         setAgentModels(data?.agent_models && typeof data.agent_models === 'object' ? data.agent_models : {});
         setAgentProfiles(data?.agent_profiles && typeof data.agent_profiles === 'object' ? data.agent_profiles : {});
         setImageAnalysisModel(data?.image_analysis_model || '');
+        setImageAnalysisMode(data?.image_analysis_mode || 'auto');
         if (data?.devpilot_rpm !== undefined) setDevpilotRpm(data.devpilot_rpm);
         if (data?.concurrency_mode !== undefined) setConcurrencyMode(data.concurrency_mode);
         if (data?.temperature !== undefined) setTemperature(data.temperature);
@@ -223,7 +227,9 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     newSeed?: number,
     newStream?: boolean,
     newDecisionEngine?: string,
-    newDualLlmMode?: boolean
+    newDualLlmMode?: boolean,
+    newImgMode?: string,
+    newSecAgentModel?: string
   ) => {
     try {
       await fetch('/api/config/settings', {
@@ -233,9 +239,11 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           exclude_list: newExclusions,
           auto_backup_enabled: newBackup,
           agent_model_name: newAgentModel !== undefined ? newAgentModel : agentModelName,
+          secondary_agent_model: newSecAgentModel !== undefined ? newSecAgentModel : secondaryAgentModel,
           agent_models: newAgentModels !== undefined ? newAgentModels : agentModels,
           agent_profiles: newAgentProfiles !== undefined ? newAgentProfiles : agentProfiles,
           image_analysis_model: newImgModel !== undefined ? newImgModel : imageAnalysisModel,
+          image_analysis_mode: newImgMode !== undefined ? newImgMode : imageAnalysisMode,
           default_shell: defaultShell,
           terminal_font_size: termFontSize,
           terminal_scrollback: termScrollback,
@@ -261,6 +269,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
       console.error('Error saving preferences:', e);
     }
   };
+
 
   const saveTerminalPrefs = async (shell: string, fontSize: number, scrollback: number) => {
     try {
@@ -1160,57 +1169,111 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
               />
             </div>
 
-            {/* Agent Model Selection */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-400 block">
-                Global Agent Model Selection
-              </label>
-              <span className="text-[10px] text-gray-500 block">
-                Choose which model the step-by-step Multi-Agent Router uses by default for all tasks:
-              </span>
-              <select
-                value={agentModelName}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setAgentModelName(val);
-                  savePreferences(excludeList, autoBackupEnabled, val);
-                }}
-                className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
-              >
-                <option value="">Use Active Profile Model (Default)</option>
-                {getSelectableModels().map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
+            {/* Agent Models Selection (Primary & Secondary for Dual-LLM) */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-400 block">
+                  Primary Agent Model (Brain / Planner)
+                </label>
+                <span className="text-[10px] text-gray-500 block">
+                  Default model used for high-level reasoning and step-by-step task orchestration:
+                </span>
+                <select
+                  value={agentModelName}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setAgentModelName(val);
+                    savePreferences(excludeList, autoBackupEnabled, val);
+                  }}
+                  className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
+                >
+                  <option value="">Use Active Profile Model (Default)</option>
+                  {getSelectableModels().map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-400 block">
+                  Secondary Agent Model (Generator / Executor)
+                </label>
+                <span className="text-[10px] text-gray-500 block">
+                  Secondary model used for tool execution in Dual-LLM mode:
+                </span>
+                <select
+                  value={secondaryAgentModel}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSecondaryAgentModel(val);
+                    savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                  }}
+                  className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
+                >
+                  <option value="">Use Primary Model (Default)</option>
+                  {getSelectableModels().map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {/* Image & Visual Analysis Model Selection */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-400 block">
-                Image & Visual Analysis Model
+            {/* Image & Visual Analysis Settings */}
+            <div className="space-y-3 p-3.5 bg-white/[0.02] border border-white/5 rounded-xl">
+              <label className="text-xs font-semibold text-gray-300 block">
+                Image & Visual Analysis Settings
               </label>
-              <span className="text-[10px] text-gray-500 block">
-                Select vision-capable model for analyzing image attachments & screenshots (falls back to OCR if none selected):
-              </span>
-              <select
-                value={imageAnalysisModel}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setImageAnalysisModel(val);
-                  savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
-                }}
-                className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
-              >
-                <option value="">None / Automatic OCR Fallback</option>
-                {getSelectableModels().map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-semibold text-gray-400">Analysis Mode</span>
+                  <span className="text-[10px] text-gray-500 block">
+                    Choose whether to ask Vision AI model, use OCR to extract text, or auto fallback:
+                  </span>
+                  <select
+                    value={imageAnalysisMode}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setImageAnalysisMode(val);
+                      savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                    }}
+                    className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF]"
+                  >
+                    <option value="auto">Auto (Vision Model with OCR Fallback)</option>
+                    <option value="model">Ask Vision Model in Coding</option>
+                    <option value="ocr">Use OCR to Extract Text Only</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-semibold text-gray-400">Vision Model</span>
+                  <span className="text-[10px] text-gray-500 block">
+                    Specific model for analyzing image attachments & screenshots:
+                  </span>
+                  <select
+                    value={imageAnalysisModel}
+                    disabled={imageAnalysisMode === 'ocr'}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setImageAnalysisModel(val);
+                      savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
+                    }}
+                    className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] font-mono disabled:opacity-40"
+                  >
+                    <option value="">Active Profile Model (Default)</option>
+                    {getSelectableModels().map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
+
 
             {/* Per-Agent Model Configurations */}
             <div className="space-y-2">

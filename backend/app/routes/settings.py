@@ -17,6 +17,8 @@ class SettingsUpdateRequest(BaseModel):
     agent_models: Optional[dict] = None
     agent_profiles: Optional[dict] = None
     image_analysis_model: Optional[str] = ""
+    image_analysis_mode: Optional[str] = "auto"
+    secondary_agent_model: Optional[str] = ""
     mcp_servers: Optional[list] = None
     # Web Search Fallback settings
     web_search_fallback_enabled: Optional[bool] = False
@@ -51,9 +53,11 @@ def get_settings():
         "auto_backup_enabled": config_manager.get_auto_backup_enabled(),
         "auto_inspect_on_server_start": config_manager.get_auto_inspect_on_server_start(),
         "agent_model_name": config_manager.get_agent_model_name(),
+        "secondary_agent_model": config_manager.get_secondary_agent_model(),
         "agent_models": config_manager.get_agent_models(),
         "agent_profiles": config_manager.get_agent_profiles(),
         "image_analysis_model": config_manager.get_image_analysis_model(),
+        "image_analysis_mode": config_manager.get_image_analysis_mode(),
         "mcp_servers": config_manager.get_mcp_servers(),
         "web_search_fallback_enabled": config_manager.get_web_search_fallback_enabled(),
         "repeat_error_threshold": config_manager.get_repeat_error_threshold(),
@@ -89,12 +93,17 @@ def save_settings(req: SettingsUpdateRequest):
         if req.auto_inspect_on_server_start is not None:
             config_manager.set_auto_inspect_on_server_start(req.auto_inspect_on_server_start)
         config_manager.set_agent_model_name(req.agent_model_name)
+        if req.secondary_agent_model is not None:
+            config_manager.set_secondary_agent_model(req.secondary_agent_model)
         if req.agent_models is not None:
             config_manager.set_agent_models(req.agent_models)
         if req.agent_profiles is not None:
             config_manager.set_agent_profiles(req.agent_profiles)
         if req.image_analysis_model is not None:
             config_manager.set_image_analysis_model(req.image_analysis_model)
+        if req.image_analysis_mode is not None:
+            config_manager.set_image_analysis_mode(req.image_analysis_mode)
+
         if req.mcp_servers is not None:
             config_manager.set_mcp_servers(req.mcp_servers)
         if req.web_search_fallback_enabled is not None:

@@ -34,6 +34,11 @@ class SessionModel(Base):
     title = Column(String(255), nullable=False)
     workspace_root = Column(String(1024), nullable=True, default="")
     mode = Column(String(32), nullable=True, default="Ask")
+    provider = Column(String(64), nullable=True, default="")
+    model = Column(String(128), nullable=True, default="")
+    token_input = Column(Integer, nullable=True, default=0)
+    token_output = Column(Integer, nullable=True, default=0)
+    token_total = Column(Integer, nullable=True, default=0)
     messages_json = Column(Text, nullable=True, default="[]")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(
@@ -102,7 +107,7 @@ class MemoryModel(Base):
 
 
 async def _ensure_session_columns(conn: Any) -> None:
-    """Add workspace_root / mode / messages_json if missing (SQLite ALTER)."""
+    """Add workspace_root / mode / messages_json / provider / model / token columns if missing (SQLite ALTER)."""
     result = await conn.execute(text("PRAGMA table_info(sessions)"))
     rows = result.fetchall()
     existing = {row[1] for row in rows}
@@ -111,6 +116,11 @@ async def _ensure_session_columns(conn: Any) -> None:
         ("workspace_root", "ALTER TABLE sessions ADD COLUMN workspace_root VARCHAR(1024) DEFAULT ''"),
         ("mode", "ALTER TABLE sessions ADD COLUMN mode VARCHAR(32) DEFAULT 'Ask'"),
         ("messages_json", "ALTER TABLE sessions ADD COLUMN messages_json TEXT DEFAULT '[]'"),
+        ("provider", "ALTER TABLE sessions ADD COLUMN provider VARCHAR(64) DEFAULT ''"),
+        ("model", "ALTER TABLE sessions ADD COLUMN model VARCHAR(128) DEFAULT ''"),
+        ("token_input", "ALTER TABLE sessions ADD COLUMN token_input INTEGER DEFAULT 0"),
+        ("token_output", "ALTER TABLE sessions ADD COLUMN token_output INTEGER DEFAULT 0"),
+        ("token_total", "ALTER TABLE sessions ADD COLUMN token_total INTEGER DEFAULT 0"),
     ]
     for col_name, ddl in alterations:
         if col_name not in existing:

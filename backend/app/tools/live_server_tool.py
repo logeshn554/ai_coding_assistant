@@ -85,12 +85,7 @@ async def open_with_live_server(session: Any, args: Dict[str, Any]) -> str:
         ):
             port = p.port or 5500
             live_url = f"http://localhost:{port}/{rel_path}".rstrip("/")
-            res_msg = (
-                f"🚀 **Live Server is already running!**\n\n"
-                f"🔗 **Preview URL**: [{live_url}]({live_url})\n\n"
-                f"Serving file: `{rel_path}` at `http://localhost:{port}/`"
-            )
-            await session.send_ws_message({"type": "text_delta", "content": f"\n{res_msg}\n"})
+            res_msg = f"Server process already active on port {port} ({live_url})"
             return res_msg
 
     # Find an available free port
@@ -108,11 +103,5 @@ async def open_with_live_server(session: Any, args: Dict[str, Any]) -> str:
         _tasks.append(_monitor_task)
 
     live_url = f"http://localhost:{port}/{rel_path}".rstrip("/")
-    res_msg = (
-        f"🚀 **Live Server Started!**\n\n"
-        f"🔗 **Preview URL**: [{live_url}]({live_url})\n\n"
-        f"Serving HTML file `{rel_path}` at `http://localhost:{port}/`"
-    )
-
-    await session.send_ws_message({"type": "text_delta", "content": f"\n{res_msg}\n"})
+    res_msg = f"Started server process on port {port} for file '{rel_path}' at {live_url}"
     return res_msg

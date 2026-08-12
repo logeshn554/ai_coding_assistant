@@ -487,6 +487,27 @@ class ConfigManager:
         config["image_analysis_model"] = str(name or "")
         self._save_raw_config(config)
 
+    def get_image_analysis_mode(self) -> str:
+        config = self._read_raw_config()
+        mode = config.get("image_analysis_mode", "auto")
+        return mode if mode in ("auto", "model", "ocr") else "auto"
+
+    def set_image_analysis_mode(self, mode: str):
+        config = self._read_raw_config()
+        if mode not in ("auto", "model", "ocr"):
+            mode = "auto"
+        config["image_analysis_mode"] = mode
+        self._save_raw_config(config)
+
+    def get_secondary_agent_model(self) -> str:
+        config = self._read_raw_config()
+        return config.get("secondary_agent_model", "")
+
+    def set_secondary_agent_model(self, name: str):
+        config = self._read_raw_config()
+        config["secondary_agent_model"] = str(name or "")
+        self._save_raw_config(config)
+
     def get_devpilot_rpm(self) -> int:
         config = self._read_raw_config()
         return config.get("devpilot_rpm", 15)

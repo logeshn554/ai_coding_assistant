@@ -111,6 +111,7 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
   content?: string | Record<string, unknown>;
+  attachedFiles?: string[];
   tool_calls?: ToolCall[];
   diff?: { filename: string; hunks: DiffHunk[] };
   cost_usd?: number;

@@ -97,61 +97,93 @@ def delete_profile(profile_id: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+from ..adapters.provider_adapter import OpenAICompatibleAdapter, DynamicModelProfile
+
 @router.post("/api/models/fetch")
-def fetch_models(req: ModelsFetchRequest):
+async def fetch_models(req: ModelsFetchRequest):
     api_key = _resolve_api_key(req.api_key, req.profile_id)
     logger.info(f"fetch_models: resolved key present={bool(api_key)}, url={req.base_url[:40] if req.base_url else ''}")
 
-    try:
-        url = req.base_url.strip()
-        url_l = url.lower()
-        
-        if "anthropic.com" in url_l:
-            if not url.endswith("/models"):
-                url = url.rstrip("/") + "/models"
-            headers = {
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0"
-            }
-        else:  # Generic OpenAI-compatible provider (OpenAI, Groq, Ollama, DeepSeek, Gemini, etc.)
-            if not url.endswith("/models"):
-                url = url.rstrip("/") + "/models"
-            headers = {
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0"
-            }
-            if api_key:
-                headers["Authorization"] = f"Bearer {api_key}"
+    provider_name = "AI Provider"
+    if req.profile_id:
+        stored = config_manager.get_profile(req.profile_id)
+        if stored and stored.get("name"):
+            provider_name = stored.get("name")
 
-        request = urllib.request.Request(url, headers=headers, method="GET")
-        try:
-            with urllib.request.urlopen(request, timeout=5) as response:
-                data = json.loads(response.read().decode("utf-8"))
-                models = []
-                if "data" in data and isinstance(data["data"], list):
-                    models = [m.get("id") for m in data["data"] if m.get("id")]
-                elif "models" in data and isinstance(data["models"], list):
-                    for m in data["models"]:
-                        if m.get("name"):
-                            name = m.get("name")
-                            if name.startswith("models/"):
-                                name = name.replace("models/", "", 1)
-                            models.append(name)
-                        elif m.get("id"):
-                            models.append(m.get("id"))
-                elif isinstance(data, list):
-                    models = data
-                
-                models = sorted(list(set(filter(None, models))))
-                return {"success": True, "models": models}
-        except Exception as e:
-            logger.warning(f"Failed to fetch models from API: {str(e)}")
-            return {"success": False, "models": [], "message": f"Offline presets: {e}"}
-    except Exception as e:
-        logger.warning(f"Error fetching models: {str(e)}")
-        return {"success": False, "models": [], "message": str(e)}
+    adapter = OpenAICompatibleAdapter(
+        provider_id=req.profile_id or "custom",
+        name=provider_name,
+        base_url=req.base_url,
+        api_key=api_key
+    )
+
+    discovered_profiles = await adapter.list_models()
+    model_ids = [m.model_id for m in discovered_profiles]
+    metadata_list = [m.model_dump() for m in discovered_profiles]
+
+    return {
+        "success": len(discovered_profiles) > 0,
+        "models": model_ids,
+        "metadata": metadata_list,
+        "message": "Discovered models dynamically from provider endpoint" if len(discovered_profiles) > 0 else "Not provided by provider"
+    }
+
+
+@router.get("/api/models/metadata")
+async def get_model_info(model_id: str, provider: Optional[str] = None):
+    adapter = OpenAICompatibleAdapter(
+        provider_id="temp",
+        name=provider or "AI Provider",
+        base_url="https://api.openai.com/v1"
+    )
+    meta = await adapter.get_model_metadata(model_id)
+    return meta.model_dump()
+
+
+@router.get("/api/providers/dashboard")
+async def get_providers_dashboard():
+    """Return configured providers, API connection status, discovered models, and observed usage stats."""
+    profiles = config_manager.list_profiles(mask_keys=True)
+    active_profile = config_manager.get_active_profile()
+    
+    dashboard_profiles = []
+    for p in profiles.get("profiles", []):
+        p_name = p.get("name", "Provider")
+        p_model = p.get("model_name") or "default"
+        p_url = p.get("base_url") or ""
+        real_key = _resolve_api_key(p.get("api_key", ""), p.get("id"))
+        
+        adapter = OpenAICompatibleAdapter(
+            provider_id=p.get("id", ""),
+            name=p_name,
+            base_url=p_url,
+            api_key=real_key
+        )
+
+        is_connected = await adapter.connect() if p_url else False
+        meta = await adapter.get_model_metadata(p_model)
+
+        dashboard_profiles.append({
+            "id": p.get("id"),
+            "name": p_name,
+            "base_url": p_url,
+            "api_format": p.get("api_format", "openai"),
+            "model_name": p_model,
+            "is_active": p.get("id") == active_profile.get("id") if active_profile else False,
+            "api_status": adapter.status if p_url else "Unconfigured",
+            "has_key": bool(real_key),
+            "model_metadata": meta.model_dump(),
+            "rpm_limit": meta.rpm_limit,
+            "tpm_limit": meta.tpm_limit,
+            "metadata_source": meta.metadata_source,
+        })
+        
+    return {
+        "success": True,
+        "providers": dashboard_profiles,
+        "active_provider_id": active_profile.get("id") if active_profile else None
+    }
+
 
 
 

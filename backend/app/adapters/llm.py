@@ -102,8 +102,9 @@ class LLMAdapter(ModelAdapter):
         if LLMAdapter._rpm_limiter is None:
             LLMAdapter._rpm_limiter = _RpmLimiter()
 
-        # Shared: auto-invoke scan_for_bugs and inject its report if requested.
-        messages = await self.maybe_inject_bug_scan(messages, tools)
+        # Bug scanning was previously auto-injected here on every LLM call.
+        # Removed: scanning is now only triggered when the scan_for_bugs tool
+        # is explicitly called by the model, avoiding context pollution.
 
         # Acquire rate limiter ticket before calling LLM providers
         await LLMAdapter._rpm_limiter.acquire()
@@ -169,7 +170,7 @@ class LLMAdapter(ModelAdapter):
                     kwargs["max_tokens"] = max(max_tokens_setting, 16000)
                     kwargs["thinking"] = {
                         "type": "enabled",
-                        "budget_tokens": min(8000, kwargs["max_tokens"] - 1000)
+                        "budget_tokens": min(16000, kwargs["max_tokens"] - 2000)
                     }
                     kwargs.pop("temperature", None)
                     kwargs.pop("top_p", None)
@@ -506,7 +507,29 @@ class LLMAdapter(ModelAdapter):
             elif role == "user":
                 content = msg["content"]
                 if isinstance(content, list):
-                    current_user_blocks.extend(content)
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "image_url":
+                            url = item.get("image_url", {}).get("url", "")
+                            if url.startswith("data:"):
+                                try:
+                                    header, b64_data = url.split(";base64,", 1)
+                                    media_type = header.replace("data:", "")
+                                    current_user_blocks.append({
+                                        "type": "image",
+                                        "source": {
+                                            "type": "base64",
+                                            "media_type": media_type,
+                                            "data": b64_data
+                                        }
+                                    })
+                                except Exception:
+                                    current_user_blocks.append({"type": "text", "text": f"[Image: {url[:60]}]"})
+                            else:
+                                current_user_blocks.append({"type": "text", "text": f"[Image URL: {url}]"})
+                        elif isinstance(item, dict):
+                            current_user_blocks.append(item)
+                        else:
+                            current_user_blocks.append({"type": "text", "text": str(item)})
                 else:
                     current_user_blocks.append({
                         "type": "text",
@@ -566,7 +589,26 @@ class LLMAdapter(ModelAdapter):
                 continue
             elif role == "user":
                 flush_pending_tools()
-                openai_msgs.append({"role": "user", "content": msg["content"]})
+                content = msg["content"]
+                if isinstance(content, list):
+                    formatted_user_content = []
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "image":
+                            source = item.get("source", {})
+                            b64_data = source.get("data", "")
+                            media_type = source.get("media_type", "image/png")
+                            formatted_user_content.append({
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{media_type};base64,{b64_data}"}
+                            })
+                        elif isinstance(item, dict):
+                            formatted_user_content.append(item)
+                        else:
+                            formatted_user_content.append({"type": "text", "text": str(item)})
+                    openai_msgs.append({"role": "user", "content": formatted_user_content})
+                else:
+                    openai_msgs.append({"role": "user", "content": content})
+
             elif role == "tool":
                 tc_id = msg.get("tool_call_id") or msg.get("id")
                 if (not tc_id or tc_id == "legacy_tool") and pending_tool_call_ids:
