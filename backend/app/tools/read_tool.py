@@ -27,4 +27,7 @@ async def read_file(session: Any, args: Dict[str, Any]) -> str:
         or args.get("filename")
         or ""
     )
+    from .write_tool import check_path_casing
+    canonical_path, _ = check_path_casing(session.workspace_root, path)
+    path = canonical_path
     return await async_read_workspace_file(session.workspace_root, path)

@@ -107,6 +107,74 @@ class VerificationEngine:
         # Default fallback
         return VerificationProfile(language="unknown", test_command=None)
 
+    def load_phase_state(self) -> Dict[str, Any]:
+        state_path = os.path.join(self.workspace_root, ".devpilot_phase_state.json")
+        if os.path.exists(state_path):
+            try:
+                with open(state_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {
+            "current_phase": "IMPLEMENTING",
+            "completed_phases": [],
+            "active_phase": "IMPLEMENTING",
+            "failed_validations": [],
+            "blocking_errors": [],
+            "files_changed": [],
+            "last_successful_validation": None,
+            "next_action": "implement"
+        }
+
+    def save_phase_state(self, state: Dict[str, Any]) -> None:
+        state_path = os.path.join(self.workspace_root, ".devpilot_phase_state.json")
+        try:
+            with open(state_path, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+        except Exception:
+            pass
+
+    async def run_phase_command(self, cmd: str) -> VerificationResult:
+        if not cmd:
+            return VerificationResult(
+                success=True,
+                command="none",
+                output="Skipped (not configured)",
+                duration_seconds=0.0,
+            )
+        clean_env = os.environ.copy()
+        for k in list(clean_env.keys()):
+            if k.startswith("PYTEST"):
+                clean_env.pop(k)
+        start_time = asyncio.get_event_loop().time()
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                cmd,
+                cwd=self.workspace_root,
+                env=clean_env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300.0)
+            end_time = asyncio.get_event_loop().time()
+            out_text = (stdout.decode("utf-8", errors="replace") + "\n" + stderr.decode("utf-8", errors="replace")).strip()
+            success = proc.returncode == 0
+            return VerificationResult(
+                success=success,
+                command=cmd,
+                output=out_text,
+                duration_seconds=round(end_time - start_time, 2),
+                error_summary=None if success else out_text[:500],
+            )
+        except Exception as e:
+            return VerificationResult(
+                success=False,
+                command=cmd,
+                output=str(e),
+                duration_seconds=0.0,
+                error_summary=str(e),
+            )
+
     async def run_scoped_verification(
         self,
         target_files: Optional[List[str]] = None,

@@ -11,17 +11,30 @@ from typing import Any, Dict
 
 # A2: Pattern-matched long-running command allowlist (seconds)
 _LONG_RUNNING_PATTERNS: list = [
-    (re.compile(r'\b(npm|yarn|pnpm)\s+(install|ci|i)\b'), 180),
-    (re.compile(r'\bpip\s+install\b'), 180),
-    (re.compile(r'\bcargo\s+build\b'), 180),
-    (re.compile(r'\bnpm\s+run\s+build\b'), 120),
-    (re.compile(r'\bnpm\s+(run\s+)?test\b'), 120),
-    (re.compile(r'\bpytest\b'), 120),
-    (re.compile(r'\bmvn\b'), 120),
-    (re.compile(r'\bgradle\b'), 120),
+    (re.compile(r'\b(npm|yarn|pnpm|pip|cargo)\s+(install|ci|i|build|test|migrate|db|prisma|deploy|run\s+build|run\s+test)\b', re.IGNORECASE), 300),
+    (re.compile(r'\b(pytest|mypy|flake8)\b', re.IGNORECASE), 300),
 ]
 _DEFAULT_TIMEOUT = 30
 _MAX_TIMEOUT = 300
+
+def is_server_start_command(command: str) -> bool:
+    cmd_lower = command.lower()
+    return any(p in cmd_lower for p in [
+        "npm run dev", "npm run start", "npm start", "yarn dev", "yarn start", "pnpm dev", "pnpm start",
+        "vite", "next dev", "next start", "uvicorn", "gunicorn", "flask run", "python main.py",
+        "python app.py", "python -m uvicorn", "node server.js", "node app.js", "launcher.py"
+    ])
+
+async def check_url_reachable(url: str) -> bool:
+    import httpx
+    for _ in range(5):
+        try:
+            async with httpx.AsyncClient(timeout=1.0) as client:
+                res = await client.get(url)
+                return True
+        except Exception:
+            await asyncio.sleep(1.0)
+    return False
 
 
 def _resolve_timeout(command: str, explicit_timeout: int | None = None) -> float:
@@ -107,6 +120,64 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
     """
     # Working directory lock (Bug 6: handle command chaining and absolute paths)
     current_dir = os.path.realpath(session.workspace_root)
+    
+    # Translate the command using TerminalCommandGenerator
+    from backend.app.agent.agent_runtime.command_generator import TerminalCommandGenerator
+    command = TerminalCommandGenerator.generate_command(command)
+
+    # Intercept dev server startup command
+    if is_server_start_command(command):
+        from backend.app.processes import global_process_manager
+        proc = await global_process_manager.start_process(command, session.workspace_root)
+        start_wait = time.time()
+        while time.time() - start_wait < 15.0:
+            if proc.status == "failed" or proc.port_conflict:
+                break
+            if proc.localhost_url:
+                break
+            await asyncio.sleep(0.5)
+            
+        # Handle port conflict
+        if proc.port_conflict and proc.port:
+            from backend.app.processes import get_process_using_port, kill_process_by_pid
+            pid, name = get_process_using_port(proc.port)
+            if pid:
+                kill_process_by_pid(pid)
+                await proc.stop()
+                proc = await global_process_manager.start_process(command, session.workspace_root)
+                start_wait = time.time()
+                while time.time() - start_wait < 15.0:
+                    if proc.localhost_url:
+                        break
+                    await asyncio.sleep(0.5)
+                    
+        if proc.localhost_url:
+            reachable = await check_url_reachable(proc.localhost_url)
+            if reachable:
+                if hasattr(session, "send_ws_message"):
+                    event_data = {
+                        "type": "server_started",
+                        "status": "running",
+                        "url": proc.localhost_url,
+                        "port": proc.port,
+                        "pid": proc.pid
+                    }
+                    await session.send_ws_message(event_data)
+                    await session.send_ws_message({
+                        "type": "terminal_status",
+                        "status": "completed",
+                        "exit_code": 0,
+                        "elapsed": round(time.time() - start_wait, 2)
+                    })
+                return f"Application is running:\n{proc.localhost_url}"
+            else:
+                await proc.stop()
+                return f"Error: Application started at {proc.localhost_url} but the port was not reachable."
+        else:
+            logs_tail = "\n".join(proc.logs[-10:])
+            await proc.stop()
+            return f"Error: Dev server failed to start or did not listen on a local port in time.\nLogs:\n{logs_tail}"
+
     sub_commands = re.split(r'[;&|]+', command)
     for sub_cmd in sub_commands:
         sub_cmd = sub_cmd.strip()

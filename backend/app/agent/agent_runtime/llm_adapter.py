@@ -87,9 +87,33 @@ class ModelResponseNormalizer:
                 except Exception as e:
                     logger.warning(f"Failed to normalize native tool call {tc}: {e}")
 
-        # Check raw_response object if passed directly
-        if raw_response and not tool_calls:
+        # Handle canonical dict responses from AgentSession.
+        if isinstance(raw_response, dict):
+            if text_content is None:
+                text_content = raw_response.get("content")
+                if text_content is None:
+                    text_content = raw_response.get("text")
+
+            if finish_reason is None:
+                finish_reason = raw_response.get("finish_reason")
+
+            if not tool_calls:
+                r_tool_calls = raw_response.get("tool_calls")
+                if isinstance(r_tool_calls, (list, tuple)):
+                    for tc in r_tool_calls:
+                        try:
+                            normalized = self.normalize_tool_call(tc)
+                            if normalized.name:
+                                tool_calls.append(normalized)
+                        except Exception as e:
+                            logger.warning(
+                                f"Failed to normalize dict tool call {tc}: {e}"
+                            )
+
+        # Handle provider response objects.
+        elif raw_response and not tool_calls:
             r_tool_calls = getattr(raw_response, "tool_calls", None)
+
             if isinstance(r_tool_calls, list):
                 for tc in r_tool_calls:
                     try:
@@ -97,12 +121,17 @@ class ModelResponseNormalizer:
                         if normalized.name:
                             tool_calls.append(normalized)
                     except Exception as e:
-                        logger.warning(f"Failed to normalize raw_response tool call {tc}: {e}")
+                        logger.warning(
+                            f"Failed to normalize raw_response tool call {tc}: {e}"
+                        )
 
-            if not text_content:
-                text_content = getattr(raw_response, "content", None) or getattr(raw_response, "text", None)
+            if text_content is None:
+                text_content = (
+                    getattr(raw_response, "content", None)
+                    or getattr(raw_response, "text", None)
+                )
 
-            if not finish_reason:
+            if finish_reason is None:
                 finish_reason = getattr(raw_response, "finish_reason", None)
 
         # Fallback: Textual/regex parsing ONLY if no native tool calls were present

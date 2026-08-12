@@ -111,6 +111,107 @@ class ToolExecutor:
         auto_apply: bool = True,
     ) -> ToolResult:
         """Execute a normalized tool call with bounded execution and logging."""
+        # Strict tool argument validation
+        TOOL_ALIASES = {
+            "list_files": "list_directory",
+            "list_dir": "list_directory",
+            "dir": "list_directory",
+            "ls": "list_directory",
+            "get_files": "list_directory",
+            "show_files": "list_directory",
+            "view_files": "list_directory",
+            "see_files": "list_directory",
+            "workspace_files": "list_directory",
+            "view_file": "read_file",
+            "get_file": "read_file",
+            "read_workspace_file": "read_file",
+            "open_file": "read_file",
+            "cat_file": "read_file",
+            "find_files": "search_codebase",
+            "search_files": "search_codebase",
+            "search_code": "search_codebase",
+            "grep": "search_codebase",
+            "execute_command": "run_terminal_command",
+            "run_command": "run_terminal_command",
+            "terminal": "run_terminal_command",
+            "shell_command": "run_terminal_command",
+            "live_server": "open_with_live_server",
+            "start_live_server": "open_with_live_server",
+            "open_live_server": "open_with_live_server",
+            "serve_html": "open_with_live_server",
+            "run_html": "open_with_live_server",
+            "preview_html": "open_with_live_server",
+            "glob_search": "glob",
+            "find_pattern": "glob",
+            "glob_files": "glob",
+            "fetch_url": "web_fetch",
+            "fetch": "web_fetch",
+            "http_get": "web_fetch",
+            "get_url": "web_fetch",
+            "read_url": "web_fetch",
+            "patch": "apply_patch",
+            "apply_diff": "apply_patch",
+            "apply_git_diff": "apply_patch",
+            "write_todo": "todo_write",
+            "update_todo": "todo_write",
+            "set_todos": "todo_write",
+            "read_todo": "todo_read",
+            "get_todos": "todo_read",
+            "list_todos": "todo_read",
+            "create_file": "write_file",
+            "write_to_file": "write_file",
+            "save_file": "write_file",
+            "make_file": "write_file",
+            "new_file": "write_file",
+            "delegate_agent": "delegate_to_agent",
+            "delegate": "delegate_to_agent",
+            "run_agent": "delegate_to_agent",
+            "call_agent": "delegate_to_agent",
+            "agent_delegate": "delegate_to_agent",
+            "agent": "delegate_to_agent",
+            "ask_user": "question",
+            "ask_question": "question",
+            "clarify": "question",
+            "prompt_user": "question",
+            "delete": "delete_file",
+            "delete_path": "delete_file",
+            "remove_file": "delete_file",
+            "remove": "delete_file",
+            "rm": "delete_file",
+        }
+        REQUIRED_ARGS = {
+            "write_file": ["path", "content"],
+            "edit_file": ["path", "target", "replacement"],
+            "read_file": ["path"],
+            "delete_file": ["path"],
+            "run_terminal_command": ["command"],
+            "search_codebase": ["query"],
+            "spawn_subagent": ["prompt"],
+            "delegate_to_agent": ["agent_name", "task_description"],
+            "glob": ["pattern"],
+            "web_fetch": ["url"],
+            "apply_patch": ["patch"],
+            "todo_write": ["todos"],
+            "question": ["question"],
+        }
+        
+        canonical_name = TOOL_ALIASES.get(tool_name.lower().strip(), tool_name.lower().strip())
+        req_fields = REQUIRED_ARGS.get(canonical_name)
+        if req_fields:
+            for field_name in req_fields:
+                if field_name not in arguments or arguments[field_name] is None:
+                    err_payload = {
+                        "error": f"Missing required argument: {field_name}",
+                        "tool": tool_name,
+                        "retryable": True
+                    }
+                    import json
+                    return ToolResult(
+                        success=False,
+                        output=err_payload,
+                        error=json.dumps(err_payload),
+                    )
+
         start_ts = time.time()
         start_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
 

@@ -47,7 +47,9 @@ class SecretRedactor:
     def is_secret_file(cls, relative_path: str) -> bool:
         """Check if a file path is a protected secret file."""
         filename = os.path.basename(relative_path.replace("\\", "/")).strip("/")
-        if filename in PROTECTED_SECRET_FILES or filename.startswith(".env"):
+        if filename in (".env.example", "env.example"):
+            return False
+        if filename in {".env", ".env.local", ".env.development", ".env.production", ".env.test"} or (filename.startswith(".env") and not filename.endswith(".example")):
             return True
         ext = os.path.splitext(filename)[1].lower()
         if ext in (".pem", ".key", ".p12", ".pkcs12"):

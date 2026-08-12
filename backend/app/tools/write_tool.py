@@ -17,7 +17,10 @@ import difflib
 import json
 import os
 import re
+import logging
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger("devpilot.tools.write_tool")
 
 from ..async_files import (
     async_read_workspace_file,
@@ -46,12 +49,16 @@ def _extract_bare_specifiers(content: str) -> set:
     names: set = set()
     for m in _FROM_RE.finditer(content):
         spec = m.group(1)
+        if spec.startswith("@/"):
+            continue
         parts = spec.split("/")
         pkg = "/".join(parts[:2]) if spec.startswith("@") and len(parts) >= 2 else parts[0]
         if pkg not in _NODE_BUILTINS:
             names.add(pkg)
     for m in _REQ_RE.finditer(content):
         spec = m.group(1)
+        if spec.startswith("@/"):
+            continue
         parts = spec.split("/")
         pkg = "/".join(parts[:2]) if spec.startswith("@") and len(parts) >= 2 else parts[0]
         if pkg not in _NODE_BUILTINS:
@@ -181,6 +188,49 @@ def _whitespace_near_match(target: str, content: str) -> tuple[int, int] | None:
     return None
 
 
+def check_path_casing(workspace_root: str, relative_path: str) -> tuple[str, bool]:
+    """
+    Checks the casing of a path.
+    Returns (canonical_relative_path, collision_detected).
+    - If the exact path exists (matching case): returns (exact_path, False)
+    - If a path exists matching case-insensitively but NOT case-sensitively: returns (canonical_path, True)
+    - If no match exists: returns (relative_path, False)
+    """
+    parts = relative_path.replace("\\", "/").split("/")
+    current_abs = os.path.realpath(workspace_root)
+    resolved_parts = []
+    collision = False
+    
+    for part in parts:
+        if not part:
+            continue
+        if os.path.isdir(current_abs):
+            try:
+                entries = os.listdir(current_abs)
+            except Exception:
+                entries = []
+            part_lower = part.lower()
+            match = None
+            for entry in entries:
+                if entry.lower() == part_lower:
+                    match = entry
+                    break
+            
+            if match is not None:
+                if match != part:
+                    collision = True
+                resolved_parts.append(match)
+                current_abs = os.path.join(current_abs, match)
+            else:
+                resolved_parts.append(part)
+                current_abs = os.path.join(current_abs, part)
+        else:
+            resolved_parts.append(part)
+            current_abs = os.path.join(current_abs, part)
+            
+    return "/".join(resolved_parts), collision
+
+
 def validate_file_content(path: str, content: str) -> Optional[str]:
     """Validate content is not empty, is valid JSON for .json, and is syntactically valid Python for .py."""
     if not content.strip():
@@ -200,6 +250,17 @@ def validate_file_content(path: str, content: str) -> Optional[str]:
             return f"Python syntax error: {e.msg} (line {e.lineno})"
         except Exception as e:
             return f"Python compilation failed: {str(e)}"
+            
+    # Next.js App Router Client Component validation rule
+    norm_path = path.replace("\\", "/").lower()
+    if ("src/app/" in norm_path or "app/" in norm_path) and (norm_path.endswith(".tsx") or norm_path.endswith(".jsx")):
+        client_hooks = ["useState", "useEffect", "useReducer", "useRef", "useContext", "useRouter", "usePathname", "useSearchParams"]
+        has_hook = any(re.search(rf"\b{hook}\b", content) for hook in client_hooks)
+        if has_hook:
+            clean_content = re.sub(r'/\*[\s\S]*?\*/|//.*', '', content).strip()
+            if not (clean_content.startswith('"use client"') or clean_content.startswith("'use client'")):
+                return "Missing 'use client' directive in Next.js component containing client hooks."
+                
     return None
 
 
@@ -223,6 +284,16 @@ async def write_or_edit_file(
         Human-readable success, cancellation, or timeout message.
     """
     path = args.get("path")
+
+    # Check casing and collisions
+    canonical_path, collision = check_path_casing(session.workspace_root, path)
+    if collision:
+        abs_canonical = safe_path(session.workspace_root, canonical_path)
+        if os.path.exists(abs_canonical):
+            return f"Path conflict: case-insensitive collision detected. Trying to access/create '{path}' but '{canonical_path}' already exists."
+
+    path = canonical_path
+    args["path"] = canonical_path
 
     original_content = ""
     proposed_content = ""
@@ -264,7 +335,51 @@ async def write_or_edit_file(
             if near is not None:
                 target_range = near
             else:
-                return _build_edit_error_hint(target, norm_original, path)
+                # Stale-content recovery sequence
+                logger.info(f"[EditRecovery] Stale-content mismatch in '{path}'. Attempting automated regeneration.")
+                if hasattr(session, "_run_llm_query"):
+                    rec_sys_prompt = "You are an expert developer. Update a search-and-replace target block to match a file's content exactly."
+                    rec_prompt = (
+                        f"We are trying to edit a file at path '{path}' but the target block was not found.\n"
+                        f"Here is the requested Target block to search for:\n"
+                        f"```\n{target}\n```\n\n"
+                        f"Here is the requested Replacement block:\n"
+                        f"```\n{replacement}\n```\n\n"
+                        f"Here is the actual file content:\n"
+                        f"```\n{norm_original}\n```\n\n"
+                        "Find the segment in the actual file content that matches the intent of the target block. "
+                        "Output a JSON object with: \n"
+                        "{\n"
+                        "  \"target\": \"the exact target block as it appears in the actual file content, matching all spaces/newlines\"\n"
+                        "}\n"
+                        "Output ONLY the JSON object, nothing else."
+                    )
+                    try:
+                        rec_res = await session._run_llm_query(rec_sys_prompt, rec_prompt)
+                        clean_json = rec_res.strip()
+                        if clean_json.startswith("```"):
+                            clean_json = clean_json.strip("`").strip()
+                            if clean_json.startswith("json"):
+                                clean_json = clean_json[4:].strip()
+                        import json
+                        parsed = json.loads(clean_json)
+                        new_target = parsed.get("target")
+                        if new_target and new_target in norm_original:
+                            if norm_original.count(new_target) == 1:
+                                logger.info(f"[EditRecovery] Successfully regenerated target matching uniquely in '{path}'.")
+                                start = norm_original.find(new_target)
+                                target_range = (start, start + len(new_target))
+                                target = new_target
+                                args["target"] = target
+                            else:
+                                logger.warning(f"[EditRecovery] Regenerated target block matches multiple times in '{path}'.")
+                        else:
+                            logger.warning(f"[EditRecovery] Regenerated target block not found in '{path}'.")
+                    except Exception as ex:
+                        logger.error(f"[EditRecovery] Stale-content recovery query failed: {ex}")
+
+                if target_range is None:
+                    return _build_edit_error_hint(target, norm_original, path)
 
         start, end = target_range
         proposed_content = norm_original[:start] + replacement + norm_original[end:]

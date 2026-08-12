@@ -29,6 +29,10 @@ async def delete_file(
     if not path:
         return "Error: Path parameter is required."
 
+    from .write_tool import check_path_casing
+    canonical_path, _ = check_path_casing(session.workspace_root, path)
+    path = canonical_path
+
     try:
         abs_path = safe_path(session.workspace_root, path)
     except Exception as e:

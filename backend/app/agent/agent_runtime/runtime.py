@@ -89,6 +89,7 @@ VALID_TRANSITIONS: Dict[AgentState, Set[AgentState]] = {
     },
     AgentState.WAITING_FOR_TOOL: {AgentState.EXECUTING, AgentState.FAILED, AgentState.CANCELLED, AgentState.BLOCKED},
     AgentState.VERIFYING: {
+        AgentState.VERIFYING,
         AgentState.COMPLETED,
         AgentState.COMPLETED_VERIFIED,
         AgentState.COMPLETED_WITH_WARNINGS,
@@ -98,6 +99,7 @@ VALID_TRANSITIONS: Dict[AgentState, Set[AgentState]] = {
         AgentState.BLOCKED,
     },
     AgentState.REPAIRING: {
+        AgentState.REPAIRING,
         AgentState.VERIFYING,
         AgentState.EXECUTING,
         AgentState.FAILED,
@@ -475,33 +477,95 @@ class AgentRuntime:
             _emit(AgentEvent(session_id, "agent.contract.created", {"contract": contract.to_dict()}))
 
             v_engine = VerificationEngine(session.workspace_root)
-            v_res = await v_engine.run_scoped_verification()
-
             repair_loop = SelfRepairLoop(contract)
 
-            # Self-repair loop if verification failed
-            while not v_res.success and repair_loop.can_attempt_repair():
-                failure = FailureAnalyzer.analyze_output(v_res.command, v_res.output)
-                _emit(AgentEvent(session_id, "agent.repair.started", {"round": repair_loop.current_round + 1, "failure": failure.to_dict()}))
-
-                # Loop detection check
-                if repair_loop.detect_failure_loop(failure):
-                    _emit(AgentEvent(session_id, "agent.repair.loop_detected", {"failure": failure.to_dict()}))
-                    self.transition_state(session, AgentState.BLOCKED, _emit)
-                    session.errors.append("Repeated failure loop detected in self-repair.")
-                    break
-
-                self.transition_state(session, AgentState.REPAIRING, _emit)
-                repair_loop.record_repair_attempt(failure, "Attempted self-repair patch", False)
-
-                # Re-run verification
+            # Load persistent phase state
+            phase_state = v_engine.load_phase_state()
+            if "IMPLEMENTING" not in phase_state["completed_phases"]:
+                phase_state["completed_phases"].append("IMPLEMENTING")
+            
+            # Keep track of the final verification result
+            v_res = None
+            
+            # Sequential validation phases
+            PHASE_COMMANDS = {
+                "STATIC CHECK": v_engine.profile.lint_command,
+                "TYPECHECK": v_engine.profile.typecheck_command,
+                "TEST": v_engine.profile.test_command,
+                "BUILD": v_engine.profile.build_command,
+                "RUN": None,
+                "VERIFY": None
+            }
+            
+            all_phases_passed = True
+            for phase, cmd in PHASE_COMMANDS.items():
+                phase_state["current_phase"] = phase
+                phase_state["active_phase"] = phase
+                phase_state["next_action"] = f"run_{phase.lower().replace(' ', '_')}"
+                v_engine.save_phase_state(phase_state)
+                
+                # Execute the check
                 self.transition_state(session, AgentState.VERIFYING, _emit)
-                v_res = await v_engine.run_scoped_verification()
+                v_res = await v_engine.run_phase_command(cmd)
+                
+                while not v_res.success and repair_loop.can_attempt_repair():
+                    # Record failure in state
+                    if phase not in phase_state["failed_validations"]:
+                        phase_state["failed_validations"].append(phase)
+                    err_msg = f"{phase} failed: {v_res.output[:200]}"
+                    if err_msg not in phase_state["blocking_errors"]:
+                        phase_state["blocking_errors"].append(err_msg)
+                    phase_state["next_action"] = f"repair_{phase.lower().replace(' ', '_')}"
+                    v_engine.save_phase_state(phase_state)
 
-            if v_res.success:
+                    failure = FailureAnalyzer.analyze_output(v_res.command, v_res.output)
+                    _emit(AgentEvent(session_id, "agent.repair.started", {"round": repair_loop.current_round + 1, "failure": failure.to_dict()}))
+
+                    if repair_loop.detect_failure_loop(failure):
+                        _emit(AgentEvent(session_id, "agent.repair.loop_detected", {"failure": failure.to_dict()}))
+                        self.transition_state(session, AgentState.BLOCKED, _emit)
+                        session.errors.append("Repeated failure loop detected in self-repair.")
+                        all_phases_passed = False
+                        break
+
+                    self.transition_state(session, AgentState.REPAIRING, _emit)
+                    repair_loop.record_repair_attempt(failure, f"Attempted self-repair patch for {phase}", False)
+
+                    # Re-run phase verification
+                    self.transition_state(session, AgentState.VERIFYING, _emit)
+                    v_res = await v_engine.run_phase_command(cmd)
+                    
+                if not v_res.success:
+                    all_phases_passed = False
+                    break
+                else:
+                    # Phase passed
+                    if phase not in phase_state["completed_phases"]:
+                        phase_state["completed_phases"].append(phase)
+                    phase_state["last_successful_validation"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    # Clean errors for this phase if resolved
+                    phase_state["blocking_errors"] = [e for e in phase_state["blocking_errors"] if not e.startswith(phase)]
+                    v_engine.save_phase_state(phase_state)
+
+            if all_phases_passed:
                 session.verification_status = VerificationStatus.PASSED
+                phase_state["current_phase"] = "COMPLETED"
+                phase_state["active_phase"] = "COMPLETED"
+                phase_state["next_action"] = "done"
+                if "COMPLETED" not in phase_state["completed_phases"]:
+                    phase_state["completed_phases"].append("COMPLETED")
+                v_engine.save_phase_state(phase_state)
             else:
                 session.verification_status = VerificationStatus.FAILED
+                
+            if v_res is None:
+                from backend.app.agent.autonomous.verification_engine import VerificationResult
+                v_res = VerificationResult(
+                    success=all_phases_passed,
+                    command="none",
+                    output="No checks run.",
+                    duration_seconds=0.0
+                )
 
             _emit(AgentEvent(session_id, EVENT_VERIFICATION_COMPLETED, {"status": session.verification_status.value, "command": v_res.command}))
 

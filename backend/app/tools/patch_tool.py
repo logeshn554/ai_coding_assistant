@@ -205,6 +205,15 @@ async def apply_patch(
             results.append(f"  SKIPPED {fp['path']}: path traversal detected.")
             continue
 
+        from .write_tool import check_path_casing
+        canonical_path, collision = check_path_casing(str(workspace_root), rel_path)
+        if collision:
+            abs_canonical = workspace_root / canonical_path
+            if abs_canonical.exists():
+                results.append(f"  SKIPPED {fp['path']}: case-insensitive collision detected with '{canonical_path}'.")
+                continue
+        rel_path = canonical_path
+
         abs_path = (workspace_root / rel_path).resolve()
         try:
             abs_path.relative_to(workspace_root)
