@@ -185,7 +185,7 @@ app.add_middleware(
 )
 
 import time
-from app.state import request_latencies
+from .state import request_latencies
 
 @app.middleware("http")
 async def record_request_latency(request, call_next):

@@ -10,6 +10,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from ..db import (
     MessageModel,
@@ -118,7 +119,7 @@ async def list_sessions(
     """List chat sessions, newest first, optionally filtered by workspace."""
     root = (workspace or workspace_state.root or "").strip()
     async with async_session() as db:
-        stmt = select(SessionModel).order_by(SessionModel.updated_at.desc())
+        stmt = select(SessionModel).options(selectinload(SessionModel.messages)).order_by(SessionModel.updated_at.desc())
         res = await db.execute(stmt)
         sessions = list(res.scalars().all())
 
@@ -139,7 +140,7 @@ async def list_sessions(
 async def get_session_messages(session_id: str) -> SessionMessagesResponse:
     """Return all messages for a session."""
     async with async_session() as db:
-        stmt = select(SessionModel).where(SessionModel.id == session_id)
+        stmt = select(SessionModel).options(selectinload(SessionModel.messages)).where(SessionModel.id == session_id)
         res = await db.execute(stmt)
         session = res.scalar()
         if not session:

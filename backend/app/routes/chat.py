@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, delete
+from sqlalchemy.orm import selectinload
 from ..state import workspace_state, config_manager, get_permission_manager, SESSION_TOKEN, logger
 from ..db import async_session, SessionModel, MessageModel, get_fallback_session_id
 from fastapi import Request
@@ -211,7 +212,7 @@ async def tokenize_chat_context(req: TokenizeRequest):
 async def get_chat_history(request: Request, session_id: Optional[str] = None):
     active_id = await resolve_session_id(request, session_id)
     async with async_session() as db:
-        stmt = select(SessionModel).where(SessionModel.id == active_id)
+        stmt = select(SessionModel).options(selectinload(SessionModel.messages)).where(SessionModel.id == active_id)
         res = await db.execute(stmt)
         session = res.scalar()
         if not session:
@@ -283,7 +284,7 @@ async def save_chat_history(req: ChatHistoryRequest, request: Request, session_i
 async def get_chat_sessions(request: Request):
     from ..db import first_user_preview
     async with async_session() as db:
-        stmt = select(SessionModel).order_by(SessionModel.updated_at.desc())
+        stmt = select(SessionModel).options(selectinload(SessionModel.messages)).order_by(SessionModel.updated_at.desc())
         res = await db.execute(stmt)
         sessions = res.scalars().all()
 
@@ -355,7 +356,7 @@ async def create_chat_session(req: ChatSessionCreateRequest):
 @router.get("/api/chat/sessions/{session_id}")
 async def get_chat_session_details(session_id: str):
     async with async_session() as db:
-        stmt = select(SessionModel).where(SessionModel.id == session_id)
+        stmt = select(SessionModel).options(selectinload(SessionModel.messages)).where(SessionModel.id == session_id)
         res = await db.execute(stmt)
         session = res.scalar()
         if not session:
