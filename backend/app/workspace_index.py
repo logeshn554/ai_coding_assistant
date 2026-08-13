@@ -205,6 +205,22 @@ class WorkspaceIndex:
             return []
 
         symbols = []
+        if lang == "python":
+            try:
+                import ast
+                with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
+                    tree = ast.parse(f.read(), filename=str(abs_path))
+                ast_symbols = []
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.ClassDef):
+                        ast_symbols.append({"name": node.name, "kind": KIND_CLASS, "kindName": "class", "line": node.lineno, "col": node.col_offset + 1})
+                    elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        ast_symbols.append({"name": node.name, "kind": KIND_FUNCTION, "kindName": "function", "line": node.lineno, "col": node.col_offset + 1})
+                if ast_symbols:
+                    return ast_symbols
+            except Exception:
+                pass
+
         try:
             with open(abs_path, "r", encoding="utf-8", errors="ignore") as f:
                 for line_no, line in enumerate(f, start=1):

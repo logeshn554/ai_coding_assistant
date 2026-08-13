@@ -1,57 +1,58 @@
 """
-Symbol Merge — Performs AST-aware merging of python symbols to prevent syntactic breakage.
+Symbol Merge — AST-aware merging for Python source files to avoid duplicate definitions.
 """
+
 from __future__ import annotations
 
 import ast
 import logging
-from typing import Dict, List
 
 logger = logging.getLogger("devpilot.merge.symbol_merge")
 
 
-class SymbolMerge:
-    """AST symbol-based merge tool that prevents textual collisions on formatting changes."""
+class SymbolMerger:
+    """AST-aware code merger."""
 
-    def merge_class_definition(self, original_code: str, proposed_code: str, target_class: str) -> str:
-        """Merge a specific class definition from proposed_code into original_code using AST substitution."""
+    @staticmethod
+    def merge_python_sources(base_code: str, patch_code: str) -> str:
+        """Merge new/updated AST top-level function/class definitions into base code."""
         try:
-            orig_tree = ast.parse(original_code)
-            prop_tree = ast.parse(proposed_code)
-
-            # Heuristic parser extraction
-            orig_lines = original_code.splitlines()
-            prop_lines = proposed_code.splitlines()
-
-            # Find line ranges
-            orig_range = self._find_class_range(orig_tree, target_class)
-            prop_range = self._find_class_range(prop_tree, target_class)
-
-            if orig_range and prop_range:
-                o_start, o_end = orig_range
-                p_start, p_end = prop_range
-
-                # Replace class definition
-                merged_lines = orig_lines[:o_start] + prop_lines[p_start:p_end] + orig_lines[o_end:]
-                logger.info(f"Successfully merged AST node class '{target_class}' using structural ranges.")
-                return "\n".join(merged_lines)
-
+            base_tree = ast.parse(base_code)
+            patch_tree = ast.parse(patch_code)
         except Exception as e:
-            logger.error(f"Failed to merge AST for class '{target_class}': {e}")
-        
-        # Textual fallback
-        return proposed_code
+            logger.warning(f"AST parse failed during symbol merge: {e}. Falling back to string append.")
+            return base_code.strip() + "\n\n" + patch_code.strip()
 
-    def _find_class_range(self, tree: ast.AST, class_name: str) -> Optional[Tuple[int, int]]:
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef) and node.name == class_name:
-                # 1-indexed to 0-indexed adjustment
-                start = node.lineno - 1
-                end = node.end_lineno if hasattr(node, "end_lineno") else node.lineno
-                return (start, end)
-        return None
+        patch_funcs = {
+            node.name: node
+            for node in patch_tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        }
+
+        if not patch_funcs:
+            return base_code.strip() + "\n\n" + patch_code.strip()
+
+        # Re-build base body by replacing definitions that exist in patch
+        new_body = []
+        replaced_names = set()
+
+        for node in base_tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in patch_funcs:
+                new_body.append(patch_funcs[node.name])
+                replaced_names.add(node.name)
+            else:
+                new_body.append(node)
+
+        # Append new patch functions not found in base
+        for name, node in patch_funcs.items():
+            if name not in replaced_names:
+                new_body.append(node)
+
+        base_tree.body = new_body
+        try:
+            return ast.unparse(base_tree)
+        except Exception:
+            return base_code.strip() + "\n\n" + patch_code.strip()
 
 
-# ── Singleton ───────────────────────────────────────────────────────────────
-
-symbol_merge = SymbolMerge()
+symbol_merger = SymbolMerger()
