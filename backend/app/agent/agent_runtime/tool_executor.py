@@ -94,6 +94,8 @@ class _SessionBridge:
                 pass
 
 
+from backend.app.infrastructure.tool_registry import ToolRegistry
+
 class ToolExecutor:
     """One canonical tool executor handling workspace and terminal tools."""
 
@@ -111,106 +113,37 @@ class ToolExecutor:
         auto_apply: bool = True,
     ) -> ToolResult:
         """Execute a normalized tool call with bounded execution and logging."""
-        # Strict tool argument validation
-        TOOL_ALIASES = {
-            "list_files": "list_directory",
-            "list_dir": "list_directory",
-            "dir": "list_directory",
-            "ls": "list_directory",
-            "get_files": "list_directory",
-            "show_files": "list_directory",
-            "view_files": "list_directory",
-            "see_files": "list_directory",
-            "workspace_files": "list_directory",
-            "view_file": "read_file",
-            "get_file": "read_file",
-            "read_workspace_file": "read_file",
-            "open_file": "read_file",
-            "cat_file": "read_file",
-            "find_files": "search_codebase",
-            "search_files": "search_codebase",
-            "search_code": "search_codebase",
-            "grep": "search_codebase",
-            "execute_command": "run_terminal_command",
-            "run_command": "run_terminal_command",
-            "terminal": "run_terminal_command",
-            "shell_command": "run_terminal_command",
-            "live_server": "open_with_live_server",
-            "start_live_server": "open_with_live_server",
-            "open_live_server": "open_with_live_server",
-            "serve_html": "open_with_live_server",
-            "run_html": "open_with_live_server",
-            "preview_html": "open_with_live_server",
-            "glob_search": "glob",
-            "find_pattern": "glob",
-            "glob_files": "glob",
-            "fetch_url": "web_fetch",
-            "fetch": "web_fetch",
-            "http_get": "web_fetch",
-            "get_url": "web_fetch",
-            "read_url": "web_fetch",
-            "patch": "apply_patch",
-            "apply_diff": "apply_patch",
-            "apply_git_diff": "apply_patch",
-            "write_todo": "todo_write",
-            "update_todo": "todo_write",
-            "set_todos": "todo_write",
-            "read_todo": "todo_read",
-            "get_todos": "todo_read",
-            "list_todos": "todo_read",
-            "create_file": "write_file",
-            "write_to_file": "write_file",
-            "save_file": "write_file",
-            "make_file": "write_file",
-            "new_file": "write_file",
-            "delegate_agent": "delegate_to_agent",
-            "delegate": "delegate_to_agent",
-            "run_agent": "delegate_to_agent",
-            "call_agent": "delegate_to_agent",
-            "agent_delegate": "delegate_to_agent",
-            "agent": "delegate_to_agent",
-            "ask_user": "question",
-            "ask_question": "question",
-            "clarify": "question",
-            "prompt_user": "question",
-            "delete": "delete_file",
-            "delete_path": "delete_file",
-            "remove_file": "delete_file",
-            "remove": "delete_file",
-            "rm": "delete_file",
-        }
-        REQUIRED_ARGS = {
-            "write_file": ["path", "content"],
-            "edit_file": ["path", "target", "replacement"],
-            "read_file": ["path"],
-            "delete_file": ["path"],
-            "run_terminal_command": ["command"],
-            "search_codebase": ["query"],
-            "spawn_subagent": ["prompt"],
-            "delegate_to_agent": ["agent_name", "task_description"],
-            "glob": ["pattern"],
-            "web_fetch": ["url"],
-            "apply_patch": ["patch"],
-            "todo_write": ["todos"],
-            "question": ["question"],
-        }
-        
-        canonical_name = TOOL_ALIASES.get(tool_name.lower().strip(), tool_name.lower().strip())
-        req_fields = REQUIRED_ARGS.get(canonical_name)
-        if req_fields:
-            for field_name in req_fields:
-                if field_name not in arguments or arguments[field_name] is None:
-                    err_payload = {
-                        "error": f"Missing required argument: {field_name}",
-                        "tool": tool_name,
-                        "retryable": True
-                    }
-                    import json
-                    return ToolResult(
-                        success=False,
-                        output=err_payload,
-                        error=json.dumps(err_payload),
-                    )
+        tool_def = ToolRegistry.get_tool(tool_name)
+        if not tool_def:
+            err_payload = {
+                "error": f"Tool '{tool_name}' is not supported.",
+                "tool": tool_name,
+                "retryable": False
+            }
+            import json
+            return ToolResult(
+                success=False,
+                output=err_payload,
+                error=json.dumps(err_payload),
+            )
+
+        # Validate arguments using pydantic schema
+        try:
+            validated_args = tool_def.input_schema(**arguments).model_dump()
+        except Exception as pydantic_err:
+            err_payload = {
+                "error": f"Schema validation error: {str(pydantic_err)}",
+                "tool": tool_name,
+                "retryable": True
+            }
+            import json
+            return ToolResult(
+                success=False,
+                output=err_payload,
+                error=json.dumps(err_payload),
+            )
+
+        from backend.app.infrastructure.observability.telemetry import TelemetryManager
 
         start_ts = time.time()
         start_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -220,46 +153,91 @@ class ToolExecutor:
         p_engine = PermissionEngine.get_instance(self.workspace_root)
         decision = p_engine.evaluate_tool_call(
             session_id=str(getattr(self.session, "session_id", "active_session")),
-            tool_name=tool_name,
-            arguments=arguments,
+            tool_name=tool_def.name,
+            arguments=validated_args,
         )
 
-        if not decision.allowed:
-            return ToolResult(success=False, output=None, error=f"Security Policy Denied: {decision.reason}")
-
-        if decision.requires_approval and not auto_apply:
-            from backend.app.agent.agent_runtime.runtime import AgentState
-            if hasattr(self.session, "state"):
-                self.session.state = AgentState.WAITING_FOR_APPROVAL
-
-        try:
-            res = await asyncio.wait_for(
-                self._dispatch(tool_call_id, tool_name, arguments, auto_apply=auto_apply),
-                timeout=timeout,
-            )
-            # Redact secrets from output string if text result
-            if res.success and isinstance(res.output, str):
-                res.output = SecretRedactor.redact_secrets(res.output)
-        except asyncio.TimeoutError:
-            res = ToolResult(
-                success=False,
-                output=None,
-                error=f"Tool execution '{tool_name}' timed out after {timeout} seconds.",
-            )
-        except Exception as e:
-            res = ToolResult(
-                success=False,
-                output=None,
-                error=f"Tool execution '{tool_name}' failed: {type(e).__name__}: {str(e)}",
+        tracer = TelemetryManager.get_tracer()
+        with tracer.start_as_current_span(
+            f"tool.{tool_def.name}",
+            attributes={
+                "tool_call_id": tool_call_id,
+                "tool_name": tool_def.name,
+                "risk_level": tool_def.risk_level,
+                "idempotent": tool_def.idempotent,
+                "allowed": decision.allowed,
+            }
+        ) as span:
+            TelemetryManager.increment_counter(
+                "tool_calls_total",
+                attributes={"tool_name": tool_def.name}
             )
 
-        end_ts = time.time()
+            if not decision.allowed:
+                TelemetryManager.increment_counter(
+                    "tool_policy_denied_total",
+                    attributes={"tool_name": tool_def.name}
+                )
+                return ToolResult(success=False, output=None, error=f"Security Policy Denied: {decision.reason}")
+
+            if decision.requires_approval and not auto_apply:
+                from backend.app.agent.agent_runtime.runtime import AgentState
+                if hasattr(self.session, "state"):
+                    self.session.state = AgentState.WAITING_FOR_APPROVAL
+
+            # Apply default timeouts if requested is higher than platform allowed max
+            run_timeout = min(timeout, tool_def.timeout)
+
+            try:
+                res = await asyncio.wait_for(
+                    self._dispatch(tool_call_id, tool_def.name, validated_args, auto_apply=auto_apply),
+                    timeout=run_timeout,
+                )
+                # Redact secrets from output string if text result
+                if res.success and isinstance(res.output, str):
+                    res.output = SecretRedactor.redact_secrets(res.output)
+                
+                status_lbl = "success" if res.success else "failure"
+                TelemetryManager.increment_counter(
+                    f"tool_{status_lbl}_total",
+                    attributes={"tool_name": tool_def.name}
+                )
+            except asyncio.TimeoutError:
+                TelemetryManager.increment_counter(
+                    "tool_timeout_total",
+                    attributes={"tool_name": tool_def.name}
+                )
+                res = ToolResult(
+                    success=False,
+                    output=None,
+                    error=f"Tool execution '{tool_name}' timed out after {run_timeout} seconds.",
+                )
+            except Exception as e:
+                TelemetryManager.increment_counter(
+                    "tool_failure_total",
+                    attributes={"tool_name": tool_def.name, "error": type(e).__name__}
+                )
+                res = ToolResult(
+                    success=False,
+                    output=None,
+                    error=f"Tool execution '{tool_name}' failed: {type(e).__name__}: {str(e)}",
+                )
+
+            end_ts = time.time()
+            duration_ms = (end_ts - start_ts) * 1000.0
+            TelemetryManager.record_histogram(
+                "tool_duration_ms",
+                duration_ms,
+                attributes={"tool_name": tool_def.name}
+            )
+            span.set_attribute("success", res.success)
+            span.set_attribute("duration_ms", duration_ms)
         end_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         record = ToolExecutionRecord(
             tool_call_id=tool_call_id,
-            tool_name=tool_name,
-            arguments=arguments,
+            tool_name=tool_def.name,
+            arguments=validated_args,
             start_time=start_str,
             end_time=end_str,
             duration_seconds=round(end_ts - start_ts, 4),
@@ -312,11 +290,26 @@ class ToolExecutor:
                 related = ctx_engine.dependency_graph.find_related_files(sym_query)
                 return ToolResult(success=True, output={"file": sym_query, "related_files": related})
 
-        from backend.app.tools.dispatcher import dispatch_tool
+        # Resolve through ToolRegistry handler
+        try:
+            handler = ToolRegistry.get_handler(name)
+        except NotImplementedError:
+            raise NotImplementedError(f"Tool '{name}' is not supported.")
+
         bridge = _SessionBridge(self.workspace_root, self.session)
 
         try:
-            out = await dispatch_tool(bridge, tc_id, name, args, auto_apply)
+            import inspect
+            sig = inspect.signature(handler)
+            params = list(sig.parameters.keys())
+            
+            if "tc_id" in params and "auto_apply" in params:
+                out = await handler(bridge, tc_id, args, auto_apply)
+            elif "tc_id" in params:
+                out = await handler(bridge, tc_id, args)
+            else:
+                out = await handler(bridge, args)
+
             is_err = isinstance(out, str) and (out.lower().startswith("error") or "failed" in out.lower()[:30])
             return ToolResult(
                 success=not is_err,

@@ -128,7 +128,7 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
     # Intercept dev server startup command
     if is_server_start_command(command):
         from backend.app.processes import global_process_manager
-        proc = await global_process_manager.start_process(command, session.workspace_root)
+        proc = await global_process_manager.start_process(command, session.workspace_root, session=session)
         start_wait = time.time()
         while time.time() - start_wait < 15.0:
             if proc.status == "failed" or proc.port_conflict:
@@ -144,7 +144,7 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
             if pid:
                 kill_process_by_pid(pid)
                 await proc.stop()
-                proc = await global_process_manager.start_process(command, session.workspace_root)
+                proc = await global_process_manager.start_process(command, session.workspace_root, session=session)
                 start_wait = time.time()
                 while time.time() - start_wait < 15.0:
                     if proc.localhost_url:
@@ -196,36 +196,43 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
         elif "cd .." in sub_cmd or "cd/" in sub_cmd or re.search(r'\bcd\b.*\.\.', sub_cmd):
             return "Failed to execute command: Access denied: changing directory outside the workspace root is locked."
 
-    from ..config import settings
-    use_sandbox = settings.USE_SANDBOX and _is_docker_available()
-
-    if use_sandbox:
-        exec_args = _wrap_command_in_sandbox(session, command, current_dir)
-        cmd_executable = exec_args[0]
-        cmd_params = exec_args[1:]
-    else:
-        from ..shell_adapter import ShellAdapter
-        shell_executable = ShellAdapter.get_shell_executable(interactive=False)
-        cmd_executable = shell_executable[0]
-        cmd_params = shell_executable[1:] + [command]
+    from backend.app.agent.security import ExecutionPolicy, global_sandbox_manager, ExecutionStatus, NetworkMode
+    import logging
+    logger = logging.getLogger(__name__)
 
     # A2: resolve dynamic timeout
     timeout = _resolve_timeout(command, timeout_seconds)
 
-    # A3: build environment with CI flags so scaffolding tools skip prompts
-    env = os.environ.copy()
-    env["CI"] = "true"
-    env["npm_config_yes"] = "true"
+    # Determine network mode from session settings
+    net_mode = getattr(session, "network_mode", "NO_NETWORK")
+    if isinstance(net_mode, NetworkMode):
+        net_mode = net_mode.value
 
-    kwargs: Dict[str, Any] = {
-        "stdin": asyncio.subprocess.DEVNULL,  # A3: never read from parent stdin
-        "env": env,
-    }
-    if sys.platform == "win32":
-        import subprocess
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-    else:
-        kwargs["start_new_session"] = True
+    # Build execution policy for the sandbox
+    policy = ExecutionPolicy(
+        workspace_root=session.workspace_root,
+        network_mode=net_mode,
+        max_runtime_seconds=timeout,
+        allow_network=(net_mode in ("ALLOWLIST", "FULL", "FULL_NETWORK"))
+    )
+
+    # Tenancy / session ownership
+    run_id = getattr(session, "run_id", "default_run")
+    workspace_id = getattr(session, "workspace_id", "default_ws")
+    if not run_id:
+        run_id = "default_run"
+    if not workspace_id:
+        workspace_id = "default_ws"
+
+    try:
+        sandbox = await global_sandbox_manager.get_or_create(
+            workspace_id=workspace_id,
+            run_id=run_id,
+            policy=policy
+        )
+    except Exception as e:
+        logger.error(f"Sandbox creation failure: {e}")
+        return f"Failed to execute command: Sandbox failed to initialize: {e}"
 
     start_time = time.time()
 
@@ -239,113 +246,26 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
         "content": f"\r\n\x1b[35m[DevPilot Agent]\x1b[0m $ {command}\r\n"
     })
 
+    # Output streaming callback
+    def on_stream(content: str):
+        clean = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', content).replace('\x03', '')
+        try:
+            from .server_watcher import global_server_watcher
+            global_server_watcher.check_log_line(clean, session)
+        except Exception:
+            pass
+        asyncio.create_task(session.send_ws_message({
+            "type": "terminal_stream",
+            "content": clean
+        }))
+
     try:
-        process = await asyncio.create_subprocess_exec(
-            cmd_executable,
-            *cmd_params,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            cwd=session.workspace_root,
-            **kwargs
+        res = await sandbox.execute(
+            command=command,
+            timeout=timeout,
+            cwd=current_dir,
+            on_output_stream=on_stream
         )
-
-        from ..processes import confine_subprocess
-        try:
-            confine_subprocess(process.pid)
-        except Exception:
-            pass
-
-        output_chunks = []
-        while True:
-            elapsed = time.time() - start_time
-            remaining = timeout - elapsed
-            if remaining <= 0:
-                raise asyncio.TimeoutError()
-
-            try:
-                line_bytes = await asyncio.wait_for(process.stdout.readline(), timeout=remaining)
-            except asyncio.TimeoutError:
-                raise
-
-            if not line_bytes:
-                break
-            line = line_bytes.decode("utf-8", errors="replace")
-            clean_line = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', line).replace('\x03', '')
-            output_chunks.append(clean_line)
-
-            try:
-                from .server_watcher import global_server_watcher
-                global_server_watcher.check_log_line(clean_line, session)
-            except Exception:
-                pass
-
-            await session.send_ws_message({
-                "type": "terminal_stream",
-                "content": clean_line
-            })
-
-        try:
-            exit_code = await asyncio.wait_for(process.wait(), timeout=max(1.0, timeout - (time.time() - start_time)))
-        except asyncio.TimeoutError:
-            raise
-        elapsed_time = round(time.time() - start_time, 2)
-
-        await session.send_ws_message({
-            "type": "terminal_status",
-            "status": "completed",
-            "exit_code": exit_code,
-            "elapsed": elapsed_time
-        })
-        try:
-            session.last_exit_code = exit_code
-        except Exception:
-            pass
-
-        output = "".join(output_chunks)
-        return output if output.strip() else "[Command executed with no output]"
-
-    except asyncio.TimeoutError:
-        elapsed_time = round(time.time() - start_time, 2)
-        # A2: collect any partial output already buffered
-        partial = "".join(output_chunks).strip()
-        # P0-03: kill the entire process group on Unix so child processes
-        # spawned by the shell (e.g. node, python) are also terminated.
-        try:
-            if sys.platform == "win32":
-                import subprocess as _sub
-                _sub.call(["taskkill", "/F", "/T", "/PID", str(process.pid)],
-                          stdout=_sub.DEVNULL, stderr=_sub.DEVNULL)
-            else:
-                import signal
-                try:
-                    os.killpg(process.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-                try:
-                    await asyncio.wait_for(process.wait(), timeout=2.0)
-                except asyncio.TimeoutError:
-                    try:
-                        os.killpg(process.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-            await asyncio.shield(process.wait())
-        except Exception:
-            pass
-        await session.send_ws_message({
-            "type": "terminal_status",
-            "status": "failed",
-            "exit_code": -1,
-            "elapsed": elapsed_time
-        })
-        try:
-            session.last_exit_code = -1
-        except Exception:
-            pass
-        timeout_msg = f"Failed to execute command: Command timed out after {timeout:.0f} seconds."
-        if partial:
-            return f"{timeout_msg}\n\nPartial output before timeout:\n{partial}"
-        return timeout_msg
-
     except Exception as e:
         elapsed_time = round(time.time() - start_time, 2)
         await session.send_ws_message({
@@ -359,6 +279,62 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
         except Exception:
             pass
         return f"Failed to execute command: {str(e)}"
+
+    elapsed_time = round(time.time() - start_time, 2)
+
+    # Translate status to session response
+    if res.status == ExecutionStatus.TIMEOUT:
+        await session.send_ws_message({
+            "type": "terminal_status",
+            "status": "failed",
+            "exit_code": -1,
+            "elapsed": elapsed_time
+        })
+        try:
+            session.last_exit_code = -1
+        except Exception:
+            pass
+        return f"Failed to execute command: Command timed out after {timeout:.0f} seconds."
+
+    elif res.status == ExecutionStatus.OUTPUT_LIMIT_EXCEEDED:
+        await session.send_ws_message({
+            "type": "terminal_status",
+            "status": "failed",
+            "exit_code": -1,
+            "elapsed": elapsed_time
+        })
+        try:
+            session.last_exit_code = -1
+        except Exception:
+            pass
+        return f"Failed to execute command: Command execution exceeded maximum output byte limits (OUTPUT_LIMIT_EXCEEDED)."
+
+    elif res.status == ExecutionStatus.POLICY_DENIED:
+        await session.send_ws_message({
+            "type": "terminal_status",
+            "status": "failed",
+            "exit_code": 126,
+            "elapsed": elapsed_time
+        })
+        try:
+            session.last_exit_code = 126
+        except Exception:
+            pass
+        return f"Failed to execute command: {res.stderr}"
+
+    exit_code = res.exit_code
+    await session.send_ws_message({
+        "type": "terminal_status",
+        "status": "completed",
+        "exit_code": exit_code,
+        "elapsed": elapsed_time
+    })
+    try:
+        session.last_exit_code = exit_code
+    except Exception:
+        pass
+
+    return res.combined_output if res.combined_output.strip() else "[Command executed with no output]"
 
 
 async def run_terminal_command(

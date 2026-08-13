@@ -22,13 +22,16 @@ class SecurityScanner:
             return True
 
         cmd = ["bandit", "-r"] + files
+        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        env = EnvironmentIsolation.get_isolated_env()
         try:
             logger.info(f"Running security scan: {cmd}")
             res = subprocess.run(
                 cmd,
                 cwd=self.workspace_root or None,
                 capture_output=True,
-                check=False
+                check=False,
+                env=env
             )
             # Bandit returns 0 if no issues found, or 1 if low/medium/high issues
             return (res.returncode == 0)

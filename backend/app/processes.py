@@ -6,7 +6,7 @@ import logging
 import subprocess
 import uuid
 import ctypes
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 logger = logging.getLogger("devpilot.processes")
 
@@ -60,7 +60,7 @@ def kill_process_tree(pid: int) -> None:
         logger.warning(f"Error killing process tree for PID {pid}: {e}")
 
 class ActiveProcess:
-    def __init__(self, command: str, cwd: str, name: str = None):
+    def __init__(self, command: str, cwd: str, name: str = None, session: Any = None):
         self.id = str(uuid.uuid4())
         self.command = command
         self.cwd = cwd
@@ -70,6 +70,9 @@ class ActiveProcess:
         self.localhost_url: Optional[str] = None
         self.network_url: Optional[str] = None
         self.pid: Optional[int] = None
+        self.container_pid: Optional[int] = None
+        self.sandbox_id: Optional[str] = None
+        self.session = session
         self.logs: List[str] = []
         self.process: Optional[asyncio.subprocess.Process] = None
         self.read_task: Optional[asyncio.Task] = None
@@ -81,53 +84,170 @@ class ActiveProcess:
     async def start(self):
         logger.info(f"Starting process '{self.name}' with command: {self.command}")
         self.logs.append(f"Starting: {self.command}\n")
-        
-        import shlex
-        import shutil
 
-        if isinstance(self.command, list):
-            cmd_args = self.command
-        else:
-            cmd_args = shlex.split(self.command)
+        # Determine sandbox mode
+        use_docker = False
+        from backend.app.config import settings
+        from backend.app.tools.terminal_tool import _is_docker_available
+        if (settings.USE_SANDBOX or settings.ENVIRONMENT == "production") and _is_docker_available():
+            use_docker = True
 
-        if not cmd_args:
-            raise ValueError("Empty command list")
-
-        if sys.platform == "win32" and cmd_args:
-            resolved = shutil.which(cmd_args[0])
-            if resolved:
-                cmd_args[0] = resolved
-
-        kwargs = {}
-        if sys.platform == "win32":
-            import subprocess
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-        else:
-            kwargs["start_new_session"] = True
-
-        try:
-            self.process = await asyncio.create_subprocess_exec(
-                *cmd_args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                cwd=self.cwd,
-                env=os.environ.copy(),
-                **kwargs
-            )
-            self.pid = self.process.pid
-            self.status = "running"
-            if sys.platform == "win32":
-                job = confine_subprocess(self.pid)
-                if job:
-                    self.win32_job_object = job
+        if use_docker:
+            # Docker isolated execution
+            from backend.app.agent.security import ExecutionPolicy, global_sandbox_manager, NetworkMode
+            
+            # Extract policy values from session or defaults
+            net_mode = "NO_NETWORK"
+            run_id = "default_run"
+            workspace_id = "default_ws"
+            workspace_root = self.cwd
+            if self.session:
+                if isinstance(self.session, str):
+                    workspace_root = self.session
                 else:
-                    raise OSError("Failed to assign process to Windows Job Object for confinement.")
-            self.startup_success_event.set()
-            self.read_task = asyncio.create_task(self._read_output())
+                    workspace_root = getattr(self.session, "workspace_root", self.cwd)
+                    net_mode = getattr(self.session, "network_mode", "NO_NETWORK")
+                    if isinstance(net_mode, NetworkMode):
+                        net_mode = net_mode.value
+                    run_id = getattr(self.session, "run_id", "default_run")
+                    workspace_id = getattr(self.session, "workspace_id", "default_ws")
+            
+            policy = ExecutionPolicy(
+                workspace_root=workspace_root,
+                network_mode=net_mode,
+                max_runtime_seconds=3600.0,
+                allow_network=(net_mode in ("ALLOWLIST", "FULL", "FULL_NETWORK"))
+            )
+            
+            try:
+                sandbox = await global_sandbox_manager.get_or_create(
+                    workspace_id=workspace_id,
+                    run_id=run_id,
+                    policy=policy
+                )
+                
+                log_file_name = f".devpilot_logs_{self.id}.txt"
+                log_file_path = os.path.join(workspace_root, log_file_name)
+                # Create empty file on host
+                with open(log_file_path, "w", encoding="utf-8") as f:
+                    f.write("")
+                    
+                # Run the background command inside container
+                res = await sandbox.execute(
+                    command=f"nohup {self.command} > /workspace/{log_file_name} 2>&1 & echo $!",
+                    timeout=15.0,
+                    cwd=self.cwd
+                )
+                
+                output_pid = res.combined_output.strip()
+                if res.success and output_pid.isdigit():
+                    self.container_pid = int(output_pid)
+                    self.sandbox_id = sandbox.sandbox_id
+                    self.status = "running"
+                    self.startup_success_event.set()
+                    self.read_task = asyncio.create_task(self._read_container_logs(log_file_path))
+                    logger.info(f"Background dev server started inside Docker sandbox {self.sandbox_id} with container PID {self.container_pid}")
+                else:
+                    raise RuntimeError(f"Failed to retrieve background process ID from sandbox: {res.stderr or res.combined_output}")
+            except Exception as e:
+                self.status = "failed"
+                self.logs.append(f"Failed to spawn process in Docker sandbox: {str(e)}\n")
+                logger.error(f"Sandbox background process spawn failed: {str(e)}")
+                self.startup_success_event.set()
+
+        else:
+            # Local host execution
+            import shlex
+            import shutil
+
+            if isinstance(self.command, list):
+                cmd_args = self.command
+            else:
+                cmd_args = shlex.split(self.command)
+
+            if not cmd_args:
+                raise ValueError("Empty command list")
+
+            if sys.platform == "win32" and cmd_args:
+                resolved = shutil.which(cmd_args[0])
+                if resolved:
+                    cmd_args[0] = resolved
+
+            kwargs = {}
+            if sys.platform == "win32":
+                import subprocess
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            else:
+                kwargs["start_new_session"] = True
+
+            # Use isolated environment
+            from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+            env = EnvironmentIsolation.get_isolated_env()
+            env["CI"] = "true"
+            env["npm_config_yes"] = "true"
+
+            try:
+                self.process = await asyncio.create_subprocess_exec(
+                    *cmd_args,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    cwd=self.cwd,
+                    env=env,
+                    **kwargs
+                )
+                self.pid = self.process.pid
+                self.status = "running"
+                if sys.platform == "win32":
+                    job = confine_subprocess(self.pid)
+                    if job:
+                        self.win32_job_object = job
+                    else:
+                        raise OSError("Failed to assign process to Windows Job Object for confinement.")
+                self.startup_success_event.set()
+                self.read_task = asyncio.create_task(self._read_output())
+            except Exception as e:
+                self.status = "failed"
+                self.logs.append(f"Failed to spawn process: {str(e)}\n")
+                logger.error(f"Process spawn failed: {str(e)}")
+                self.startup_success_event.set()
+
+    async def _read_container_logs(self, log_file_path: str):
+        try:
+            # Wait for file to exist
+            while not os.path.exists(log_file_path):
+                await asyncio.sleep(0.1)
+
+            # Open and read logs
+            with open(log_file_path, "r", encoding="utf-8", errors="replace") as f:
+                while self.status == "running":
+                    line = f.readline()
+                    if not line:
+                        await asyncio.sleep(0.5)
+                        # Check container process liveness
+                        inspect_proc = await asyncio.create_subprocess_exec(
+                            "docker", "exec", self.sandbox_id, "kill", "-0", str(self.container_pid),
+                            stdout=asyncio.subprocess.DEVNULL,
+                            stderr=asyncio.subprocess.DEVNULL
+                        )
+                        exit_code = await inspect_proc.wait()
+                        if exit_code != 0:
+                            self.status = "stopped"
+                            self.logs.append("\nProcess exited inside sandbox.\n")
+                            break
+                        continue
+
+                    self.logs.append(line)
+                    # Truncate
+                    total_bytes = sum(len(l) for l in self.logs)
+                    while total_bytes > 5 * 1024 * 1024 and len(self.logs) > 1:
+                        removed = self.logs.pop(0)
+                        total_bytes -= len(removed)
+
+                    self._parse_line(line)
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
-            self.status = "failed"
-            self.logs.append(f"Failed to spawn process: {str(e)}\n")
-            logger.error(f"Process spawn failed: {str(e)}")
+            self.logs.append(f"\nError reading sandbox output logs: {str(e)}\n")
 
     async def _read_output(self):
         try:
@@ -169,11 +289,9 @@ class ActiveProcess:
         # 1. Parse URLs
         urls = re.findall(r'https?://[^\s/$,;?#()]+(?::\d+)?', line)
         for url in urls:
-            # Strip trailing slashes or characters
             url = url.rstrip("/")
             if "localhost" in url or "127.0.0.1" in url or "0.0.0.0" in url:
                 self.localhost_url = url
-                # Extract port
                 port_match = re.search(r':(\d+)', url)
                 if port_match:
                     self.port = int(port_match.group(1))
@@ -182,7 +300,6 @@ class ActiveProcess:
                     self.startup_success_event.set()
             else:
                 self.network_url = url
-                # Extract port if not already set
                 if not self.port:
                     port_match = re.search(r':(\d+)', url)
                     if port_match:
@@ -191,7 +308,6 @@ class ActiveProcess:
                     self.status = "running"
                     self.startup_success_event.set()
 
-        # 2. Check for port listening indicators (e.g. listening on port 3000, Listening on 8080, Tomcat started on port(s): 8080)
         port_match = re.search(r'\b(?:port|Port|listening on|listening on port|Tomcat started on port\(s\):?)\s*:?\s*(\d{4,5})\b', line)
         if port_match:
             detected_port = int(port_match.group(1))
@@ -202,18 +318,15 @@ class ActiveProcess:
                 self.status = "running"
                 self.startup_success_event.set()
 
-        # 3. Check for port conflicts (EADDRINUSE, Address already in use, Port already in use)
         if any(pat in line.lower() for pat in ["eaddrinuse", "address already in use", "port already in use", "could not bind"]):
             self.port_conflict = True
             self.status = "failed"
-            # Try to parse the port in conflict
             conf_port_match = re.search(r'\b(?:port|Port|listening on|EADDRINUSE:?)\s*:?\s*(\d{4,5})\b', line)
             if conf_port_match:
                 self.port = int(conf_port_match.group(1))
             self.startup_success_event.set()
 
     async def check_tcp_readiness(self, host: str = "127.0.0.1", port: Optional[int] = None) -> bool:
-        """Probe actual TCP socket connection readiness instead of relying solely on log regex."""
         target_port = port or self.port
         if not target_port:
             return False
@@ -245,6 +358,17 @@ class ActiveProcess:
                     os.killpg(self.process.pid, signal.SIGTERM)
             except Exception:
                 pass
+
+        if hasattr(self, "container_pid") and self.container_pid:
+            try:
+                stop_proc = await asyncio.create_subprocess_exec(
+                    "docker", "exec", self.sandbox_id, "kill", "-9", str(self.container_pid),
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL
+                )
+                await stop_proc.wait()
+            except Exception as e:
+                logger.warning(f"Error stopping container process {self.container_pid}: {e}")
 
         if self.win32_job_object:
             self.cleanup()
@@ -278,7 +402,7 @@ class ProcessManager:
     def __init__(self):
         self.processes: Dict[str, ActiveProcess] = {}
 
-    async def start_process(self, command: str, cwd: str, name: str = None) -> ActiveProcess:
+    async def start_process(self, command: str, cwd: str, name: str = None, session: Any = None) -> ActiveProcess:
         # Enforce history limit of 100 non-running processes
         non_running = [p_id for p_id, p in self.processes.items() if p.status not in ("starting", "running")]
         if len(non_running) >= 100:
@@ -288,7 +412,7 @@ class ProcessManager:
                     p.cleanup()
 
         # Create and start active process
-        proc = ActiveProcess(command, cwd, name)
+        proc = ActiveProcess(command, cwd, name, session)
         self.processes[proc.id] = proc
         await proc.start()
         return proc

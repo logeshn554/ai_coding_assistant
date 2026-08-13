@@ -29,6 +29,7 @@ from .agents import router as agents_router
 from .terminal import router as terminal_router
 from .deploy_route import router as deploy_router
 from .database_route import router as database_router
+from .event_replay import router as event_replay_router
 
 all_routers = [
     auth_router,
@@ -62,6 +63,7 @@ all_routers = [
     terminal_router,
     deploy_router,
     database_router,
+    event_replay_router,
 ]
 
 

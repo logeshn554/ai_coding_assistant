@@ -16,7 +16,7 @@ services:
       # - CORS_ORIGINS=http://localhost:8000
     volumes:
       # Persists configurations and API keys (e.g. Anthropic, OpenAI, etc.)
-      - devpilot-config:/root/.devpilot
+      - devpilot-config:/home/devpilot/.devpilot
       # Cross-platform workspace root mount
       - ${WORKSPACE_ROOT:-./workspace}:/workspace
       # Windows users: uncomment the lines below to mount host drives for local filesystem access

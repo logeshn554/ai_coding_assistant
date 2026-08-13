@@ -196,13 +196,17 @@ class DAGExecutor:
             """Execute a single task with semaphore."""
             async with semaphore:
                 try:
-                    # Skip if dependency failed
-                    if any(dep in failed_tasks for dep in task.depends_on):
+                    # Skip if dependency failed or was skipped
+                    parent_skipped_or_failed = any(
+                        dep in failed_tasks or (dep in task_results and task_results[dep].get("status") == "skipped")
+                        for dep in task.depends_on
+                    )
+                    if parent_skipped_or_failed:
                         async with lock:
                             task_results[task.task_id] = {
                                 "status": "skipped",
                                 "result": None,
-                                "error": f"Dependency failed: {[d for d in task.depends_on if d in failed_tasks]}",
+                                "error": f"Dependency failed or skipped",
                             }
                         return
 

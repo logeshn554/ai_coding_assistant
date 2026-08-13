@@ -68,12 +68,18 @@ class Settings(BaseSettings):
     def __init__(self, **values):
         super().__init__(**values)
         if self.ENVIRONMENT == "production":
-            jwt_env = os.getenv("DEVPILOT_JWT_SECRET") or os.getenv("JWT_SECRET")
+            jwt_env = os.getenv("DEVPILOT_JWT_SECRET") or os.getenv("JWT_SECRET") or self.JWT_SECRET
             if not jwt_env:
                 raise RuntimeError("JWT_SECRET must be explicitly set via environment variable in production mode.")
             self.JWT_SECRET = jwt_env
-            if self.MODE == "server" and "sqlite" in self.DATABASE_URL.lower():
-                logger.warning("Production server mode detected with SQLite database URL. PostgreSQL is recommended.")
+            if "sqlite" in self.DATABASE_URL.lower() or not self.DATABASE_URL:
+                raise RuntimeError("PostgreSQL is required in production mode. SQLite is not allowed. Failing fast.")
+            if self.DEBUG:
+                raise RuntimeError("DEBUG mode is forbidden in production mode. Failing fast.")
+            if not self.USE_SANDBOX:
+                raise RuntimeError("Sandbox environment is mandatory in production mode. Failing fast.")
+            if "*" in self.CORS_ORIGINS:
+                raise RuntimeError("Wildcard CORS origins are forbidden in production mode. Failing fast.")
         else:
             try:
                 # Load or auto-generate JWT_SECRET on first run and store in encrypted keyring

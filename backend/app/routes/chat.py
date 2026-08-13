@@ -622,6 +622,110 @@ async def websocket_chat(
                 break
 
     hb_task = asyncio.create_task(heartbeat())
+
+    async def local_event_cb(run_id, data):
+        try:
+            from backend.app.infrastructure.database.connection import async_session_factory
+            from backend.app.infrastructure.database.models import AgentRun
+            import sqlalchemy
+            async with async_session_factory() as db:
+                res = await db.execute(
+                    sqlalchemy.select(AgentRun.conversation_id)
+                    .where(AgentRun.id == run_id)
+                )
+                conv_id = res.scalar()
+                if conv_id == resolved_session_id or run_id == resolved_session_id:
+                    await send_to_client(data)
+        except Exception:
+            pass
+
+    from backend.app.infrastructure.events import EventPublisher
+    
+    async def pubsub_listener():
+        from backend.app.state import redis_client
+        if not redis_client.use_fallback:
+            pubsub = None
+            try:
+                client = await redis_client._ensure_client()
+                pubsub = client.pubsub()
+                await pubsub.psubscribe("channel:run-events:*")
+                async for msg in pubsub.listen():
+                    if msg["type"] == "pmessage":
+                        try:
+                            channel_str = msg["channel"]
+                            run_id = channel_str.split(":")[-1]
+                            data = json.loads(msg["data"])
+                            await local_event_cb(run_id, data)
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.error(f"Redis Pub/Sub psubscribe listener failed: {e}")
+            finally:
+                if pubsub:
+                    await pubsub.punsubscribe()
+        else:
+            EventPublisher.subscribe_local(local_event_cb)
+
+    listener_task = asyncio.create_task(pubsub_listener())
+
+    async def enqueue_chat_run(text: str, mode: str):
+        from backend.app.infrastructure.database.connection import async_session_factory
+        from backend.app.infrastructure.database.repositories import (
+            OrganizationRepository, UserRepository, WorkspaceRepository,
+            ConversationRepository, MessageRepository, AgentRunRepository
+        )
+        from backend.app.infrastructure.queue import AgentQueue
+        import sqlalchemy
+
+        async with async_session_factory() as db:
+            org_repo = OrganizationRepository(db)
+            user_repo = UserRepository(db)
+            ws_repo = WorkspaceRepository(db)
+            conv_repo = ConversationRepository(db)
+            msg_repo = MessageRepository(db)
+            run_repo = AgentRunRepository(db)
+
+            ws = await ws_repo.get_by_root("default-org", session_workspace_root)
+            if not ws:
+                from backend.app.infrastructure.database.models import Project
+                proj_res = await db.execute(sqlalchemy.select(Project).where(Project.name == "Default Project"))
+                proj = proj_res.scalars().first()
+                if not proj:
+                    proj = Project(organization_id="default-org", name="Default Project")
+                    db.add(proj)
+                    await db.flush()
+                ws = await ws_repo.create("default-org", proj.id, "Workspace", session_workspace_root)
+                await db.flush()
+
+            conv = await conv_repo.get_conversation("default-org", resolved_session_id)
+            if not conv:
+                conv = await conv_repo.create("default-org", "default-user", ws.id, "Conversation", id=resolved_session_id)
+                await db.flush()
+
+            msgs = await msg_repo.get_by_conversation(conv.id)
+            seq = len(msgs)
+            await msg_repo.create(conv.id, "user", text, seq)
+
+            run = await run_repo.create(
+                org_id="default-org",
+                user_id="default-user",
+                project_id=ws.project_id,
+                workspace_id=ws.id,
+                conversation_id=conv.id,
+                task_description=text,
+                mode=mode
+            )
+            run.state = "QUEUED"
+            await db.commit()
+
+            await AgentQueue.enqueue(
+                run_id=run.id,
+                organization_id="default-org",
+                user_id="default-user",
+                project_id=ws.project_id,
+                workspace_id=ws.id
+            )
+
     try:
         from ..processes import global_process_manager
         while True:
@@ -666,7 +770,7 @@ async def websocket_chat(
                 # Do NOT update session.workspace_root from the global workspace_state here.
                 # The session workspace was locked at connection open to prevent cross-session bleed.
                 # Enqueue instead of cancel+replace — preserves in-flight work
-                await session.enqueue_message(text, mode, auto_apply)
+                await enqueue_chat_run(text, mode)
 
             elif msg_type == "change_workspace":
                 # Explicit per-session workspace change from the UI
@@ -711,20 +815,17 @@ async def websocket_chat(
                     session._failed_request = None
                     text = snapshot["text"]
                     mode = snapshot["mode"]
-                    auto_apply = snapshot["auto_apply"]
-                    await session.enqueue_message(text, mode, auto_apply)
+                    await enqueue_chat_run(text, mode)
                 else:
                     logger.warning("No failed request snapshot available to retry.")
 
             elif msg_type == "continue":
                 mode = getattr(session, "last_mode", "Agent")
-                auto_apply = getattr(session, "auto_apply", False)
-                await session.enqueue_message("Continue.", mode, auto_apply)
+                await enqueue_chat_run("Continue.", mode)
 
             elif msg_type == "resume":
                 mode = getattr(session, "last_mode", "Agent")
-                auto_apply = getattr(session, "auto_apply", False)
-                await session.enqueue_message("Resume and continue the previous task.", mode, auto_apply)
+                await enqueue_chat_run("Resume and continue the previous task.", mode)
                 
     except WebSocketDisconnect:
         logger.info("Chat WebSocket disconnected")
@@ -735,5 +836,7 @@ async def websocket_chat(
     except Exception as e:
         logger.error(f"Chat WebSocket error: {str(e)}")
     finally:
+        EventPublisher.unsubscribe_local(local_event_cb)
+        listener_task.cancel()
         hb_task.cancel()
 

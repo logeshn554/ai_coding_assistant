@@ -208,7 +208,7 @@ class AgentRuntime:
         logger.info(f"AgentRuntime session started: {sid}")
         return session
 
-    def transition_state(
+    async def transition_state(
         self,
         session: AgentSessionState,
         new_state: AgentState,
@@ -217,7 +217,6 @@ class AgentRuntime:
         """Enforce explicit state machine transition rules."""
         curr = session.state
         if new_state not in VALID_TRANSITIONS.get(curr, set()):
-            # Special bypass for emergency cancellation from any active state
             if new_state == AgentState.CANCELLED:
                 pass
             else:
@@ -227,6 +226,20 @@ class AgentRuntime:
 
         session.state = new_state
         logger.info(f"Session {session.session_id} state transition: {curr.value} -> {new_state.value}")
+
+        from backend.app.infrastructure.database.connection import async_session_factory
+        from backend.app.infrastructure.database.models import AgentRun
+        from sqlalchemy import update
+        try:
+            async with async_session_factory() as db:
+                await db.execute(
+                    update(AgentRun)
+                    .where(AgentRun.id == session.session_id)
+                    .values(state=new_state.value if isinstance(new_state, AgentState) else str(new_state))
+                )
+                await db.commit()
+        except Exception as e:
+            logger.error(f"Failed to update AgentRun state in database: {e}")
 
         ev = AgentEvent(
             session_id=session.session_id,
@@ -238,7 +251,71 @@ class AgentRuntime:
             },
         )
         if event_callback:
-            event_callback(ev)
+            if asyncio.iscoroutinefunction(event_callback):
+                await event_callback(ev)
+            else:
+                event_callback(ev)
+
+    async def save_checkpoint(self, session: AgentSessionState, checkpoint_type: str) -> None:
+        from backend.app.infrastructure.database.connection import async_session_factory
+        from backend.app.infrastructure.database.models import AgentCheckpoint
+        import json
+        
+        state_data = {
+            "current_step": session.current_step,
+            "state": session.state.value if isinstance(session.state, AgentState) else str(session.state),
+            "active_task_id": session.active_task_id,
+            "verification_status": session.verification_status.value if isinstance(session.verification_status, VerificationStatus) else str(session.verification_status),
+            "changed_files": session.changed_files,
+            "errors": session.errors,
+            "tool_calls_count": len(session.tool_calls),
+            "started_at": session.started_at,
+        }
+        
+        try:
+            async with async_session_factory() as db:
+                checkpoint = AgentCheckpoint(
+                    run_id=session.session_id,
+                    checkpoint_name=checkpoint_type,
+                    state_json=json.dumps(state_data)
+                )
+                db.add(checkpoint)
+                await db.commit()
+                logger.info(f"Saved runtime checkpoint '{checkpoint_type}' for run {session.session_id}")
+        except Exception as e:
+            logger.error(f"Failed to save runtime checkpoint: {e}")
+
+    async def load_checkpoint(self, session: AgentSessionState) -> bool:
+        from backend.app.infrastructure.database.connection import async_session_factory
+        from backend.app.infrastructure.database.models import AgentCheckpoint
+        from sqlalchemy import select
+        import json
+        
+        try:
+            async with async_session_factory() as db:
+                stmt = (
+                    select(AgentCheckpoint)
+                    .where(AgentCheckpoint.run_id == session.session_id)
+                    .order_by(AgentCheckpoint.created_at.desc())
+                )
+                res = await db.execute(stmt)
+                cp = res.scalars().first()
+                if not cp:
+                    return False
+                    
+                data = json.loads(cp.state_json)
+                session.current_step = data.get("current_step", 0)
+                session.state = AgentState(data.get("state", "IDLE"))
+                session.active_task_id = data.get("active_task_id")
+                session.verification_status = VerificationStatus(data.get("verification_status", "NOT_RUN"))
+                session.changed_files = data.get("changed_files", {})
+                session.errors = data.get("errors", [])
+                session.started_at = data.get("started_at")
+                logger.info(f"Successfully loaded checkpoint '{cp.checkpoint_name}' for run {session.session_id}. Resuming at step {session.current_step}.")
+                return True
+        except Exception as e:
+            logger.error(f"Failed to load runtime checkpoint: {e}")
+            return False
 
     async def run(
         self,
@@ -259,11 +336,13 @@ class AgentRuntime:
         cancel_event = self._cancellation_events.setdefault(session_id, asyncio.Event())
         cancel_event.clear()
 
+        has_checkpoint = await self.load_checkpoint(session)
+        
         task_obj: AgentTask
         if isinstance(task, str):
             import uuid
             task_obj = AgentTask(
-                id=f"task_{uuid.uuid4().hex[:8]}",
+                id=session.active_task_id or f"task_{uuid.uuid4().hex[:8]}",
                 description=task,
                 mode=mode,
                 auto_apply=auto_apply,
@@ -271,10 +350,11 @@ class AgentRuntime:
         else:
             task_obj = task
 
-        session.active_task_id = task_obj.id
-        session.started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        session.errors.clear()
-        session.tool_calls.clear()
+        if not has_checkpoint:
+            session.active_task_id = task_obj.id
+            session.started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            session.errors.clear()
+            session.tool_calls.clear()
 
         events_collected: List[AgentEvent] = []
 
@@ -289,32 +369,33 @@ class AgentRuntime:
                 except Exception as ex:
                     logger.warning(f"Event callback error: {ex}")
 
-        _emit(AgentEvent(session_id, EVENT_AGENT_STARTED, {"task_id": task_obj.id, "description": task_obj.description}))
+        if not has_checkpoint:
+            _emit(AgentEvent(session_id, EVENT_AGENT_STARTED, {"task_id": task_obj.id, "description": task_obj.description}))
 
-        # Build canonical repository context via ContextEngine
-        from backend.app.agent.context_engine import ContextEngine, WorkspaceContext
-        ctx_engine = ContextEngine.get_instance(session.workspace_root)
-        agent_context = await ctx_engine.build_context(
-            task_description=task_obj.description,
-            workspace=WorkspaceContext(workspace_root=session.workspace_root),
-        )
+            # Build canonical repository context via ContextEngine
+            from backend.app.agent.context_engine import ContextEngine, WorkspaceContext
+            ctx_engine = ContextEngine.get_instance(session.workspace_root)
+            agent_context = await ctx_engine.build_context(
+                task_description=task_obj.description,
+                workspace=WorkspaceContext(workspace_root=session.workspace_root),
+            )
 
-        # 1. State transition -> PLANNING
-        self.transition_state(session, AgentState.PLANNING, _emit)
-        _emit(AgentEvent(session_id, EVENT_AGENT_PLAN_CREATED, {
-            "task": task_obj.description,
-            "plan": "Analyzing workspace and context.",
-            "tokens_estimate": agent_context.total_tokens_estimate,
-            "context_files": [item.file for item in agent_context.items],
-        }))
+            # 1. State transition -> PLANNING
+            await self.transition_state(session, AgentState.PLANNING, _emit)
+            _emit(AgentEvent(session_id, EVENT_AGENT_PLAN_CREATED, {
+                "task": task_obj.description,
+                "plan": "Analyzing workspace and context.",
+                "tokens_estimate": agent_context.total_tokens_estimate,
+                "context_files": [item.file for item in agent_context.items],
+            }))
+
+            # 2. State transition -> EXECUTING
+            await self.transition_state(session, AgentState.EXECUTING, _emit)
 
         tool_executor = ToolExecutor(session.workspace_root, session=agent_session)
         tx_workspace = TransactionalWorkspace(session.workspace_root)
 
-        # 2. State transition -> EXECUTING
-        self.transition_state(session, AgentState.EXECUTING, _emit)
-
-        step = 0
+        step = session.current_step if has_checkpoint else 0
         final_output = ""
 
         try:
@@ -323,7 +404,7 @@ class AgentRuntime:
                 session.current_step = step
 
                 if cancel_event.is_set():
-                    self.transition_state(session, AgentState.CANCELLED, _emit)
+                    await self.transition_state(session, AgentState.CANCELLED, _emit)
                     _emit(AgentEvent(session_id, EVENT_AGENT_CANCELLED, {"step": step}))
                     return AgentResult(
                         session_id=session_id,
@@ -369,7 +450,7 @@ class AgentRuntime:
                     if cancel_event.is_set():
                         break
 
-                    self.transition_state(session, AgentState.WAITING_FOR_TOOL, _emit)
+                    await self.transition_state(session, AgentState.WAITING_FOR_TOOL, _emit)
                     _emit(AgentEvent(session_id, EVENT_TOOL_STARTED, {"tool_call_id": tc.id, "name": tc.name, "arguments": tc.arguments}))
 
                     # Capture pre-modification file snapshot if write/edit tool
@@ -444,11 +525,12 @@ class AgentRuntime:
                     if not tool_res.success:
                         session.errors.append(f"Tool {tc.name} failed: {tool_res.error}")
 
-                    self.transition_state(session, AgentState.EXECUTING, _emit)
+                    await self.transition_state(session, AgentState.EXECUTING, _emit)
+                    await self.save_checkpoint(session, f"after_tool_{tc.name}")
 
             if session.state == AgentState.CANCELLED or cancel_event.is_set():
                 if session.state != AgentState.CANCELLED:
-                    self.transition_state(session, AgentState.CANCELLED, _emit)
+                    await self.transition_state(session, AgentState.CANCELLED, _emit)
                 _emit(AgentEvent(session_id, EVENT_AGENT_CANCELLED, {"step": step}))
                 return AgentResult(
                     session_id=session_id,
@@ -463,7 +545,7 @@ class AgentRuntime:
                 )
 
             # 3. State transition -> VERIFYING & AUTONOMOUS SELF-REPAIR
-            self.transition_state(session, AgentState.VERIFYING, _emit)
+            await self.transition_state(session, AgentState.VERIFYING, _emit)
             session.verification_status = VerificationStatus.RUNNING
             _emit(AgentEvent(session_id, EVENT_VERIFICATION_STARTED, {"status": session.verification_status.value}))
 
@@ -509,7 +591,7 @@ class AgentRuntime:
                 v_engine.save_phase_state(phase_state)
                 
                 # Execute the check
-                self.transition_state(session, AgentState.VERIFYING, _emit)
+                await self.transition_state(session, AgentState.VERIFYING, _emit)
                 v_res = await v_engine.run_phase_command(cmd)
                 
                 while not v_res.success and repair_loop.can_attempt_repair():
@@ -527,16 +609,16 @@ class AgentRuntime:
 
                     if repair_loop.detect_failure_loop(failure):
                         _emit(AgentEvent(session_id, "agent.repair.loop_detected", {"failure": failure.to_dict()}))
-                        self.transition_state(session, AgentState.BLOCKED, _emit)
+                        await self.transition_state(session, AgentState.BLOCKED, _emit)
                         session.errors.append("Repeated failure loop detected in self-repair.")
                         all_phases_passed = False
                         break
 
-                    self.transition_state(session, AgentState.REPAIRING, _emit)
+                    await self.transition_state(session, AgentState.REPAIRING, _emit)
                     repair_loop.record_repair_attempt(failure, f"Attempted self-repair patch for {phase}", False)
 
                     # Re-run phase verification
-                    self.transition_state(session, AgentState.VERIFYING, _emit)
+                    await self.transition_state(session, AgentState.VERIFYING, _emit)
                     v_res = await v_engine.run_phase_command(cmd)
                     
                 if not v_res.success:
@@ -572,6 +654,7 @@ class AgentRuntime:
                 )
 
             _emit(AgentEvent(session_id, EVENT_VERIFICATION_COMPLETED, {"status": session.verification_status.value, "command": v_res.command}))
+            await self.save_checkpoint(session, "after_verification")
 
             # 4. Acceptance Criteria & Agent Reviewer
             changed_files_list = list(tx_workspace.change_set.modified_files | tx_workspace.change_set.created_files)
@@ -582,13 +665,13 @@ class AgentRuntime:
             if session.state == AgentState.BLOCKED:
                 _emit(AgentEvent(session_id, EVENT_AGENT_ERROR, {"errors": session.errors}))
             elif session.verification_status == VerificationStatus.PASSED and review_res.approved:
-                self.transition_state(session, AgentState.COMPLETED_VERIFIED, _emit)
+                await self.transition_state(session, AgentState.COMPLETED_VERIFIED, _emit)
                 _emit(AgentEvent(session_id, EVENT_AGENT_COMPLETED, {"output": final_output.strip(), "verified": True}))
             elif session.verification_status == VerificationStatus.PASSED:
-                self.transition_state(session, AgentState.COMPLETED_WITH_WARNINGS, _emit)
+                await self.transition_state(session, AgentState.COMPLETED_WITH_WARNINGS, _emit)
                 _emit(AgentEvent(session_id, EVENT_AGENT_COMPLETED, {"output": final_output.strip(), "verified": False}))
             else:
-                self.transition_state(session, AgentState.FAILED, _emit)
+                await self.transition_state(session, AgentState.FAILED, _emit)
                 _emit(AgentEvent(session_id, EVENT_AGENT_ERROR, {"errors": session.errors or ["Verification failed"]}))
 
             session.completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -625,7 +708,7 @@ class AgentRuntime:
 
             logger.exception(f"AgentRuntime session {session_id} failed with exception: {e}")
             session.errors.append(str(e))
-            self.transition_state(session, AgentState.FAILED, _emit)
+            await self.transition_state(session, AgentState.FAILED, _emit)
             _emit(AgentEvent(session_id, EVENT_AGENT_ERROR, {"error": str(e)}))
             return AgentResult(
                 session_id=session_id,

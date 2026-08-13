@@ -24,20 +24,24 @@ class GitCommitter:
             logger.warning("No workspace root configured. Skipping git commit.")
             return False
 
+        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        env = EnvironmentIsolation.get_isolated_env()
         try:
             # 1. Stage changes
             subprocess.run(
                 ["git", "add"] + files,
                 cwd=self.workspace_root,
                 capture_output=True,
-                check=True
+                check=True,
+                env=env
             )
             # 2. Commit changes
             subprocess.run(
                 ["git", "commit", "-m", commit_message],
                 cwd=self.workspace_root,
                 capture_output=True,
-                check=True
+                check=True,
+                env=env
             )
             logger.info(f"Successfully committed {len(files)} files: '{commit_message}'")
             return True

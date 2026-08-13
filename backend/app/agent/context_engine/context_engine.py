@@ -41,8 +41,17 @@ class ContextEngine:
 
     _instances: Dict[str, "ContextEngine"] = {}
 
-    def __init__(self, workspace_root: str) -> None:
+    def __init__(
+        self,
+        workspace_root: str,
+        organization_id: str = "default-org",
+        project_id: str = "default-project",
+        workspace_id: str = "default-workspace",
+    ) -> None:
         self.workspace_root = os.path.abspath(workspace_root)
+        self.organization_id = organization_id
+        self.project_id = project_id
+        self.workspace_id = workspace_id
         self.security_filter = SecurityFilter(self.workspace_root)
         self.symbol_index = SymbolIndex(self.workspace_root)
         self.dependency_graph = DependencyGraph()
@@ -54,12 +63,19 @@ class ContextEngine:
         self._background_task: Optional[asyncio.Task] = None
 
     @classmethod
-    def get_instance(cls, workspace_root: str) -> "ContextEngine":
+    def get_instance(
+        cls,
+        workspace_root: str,
+        organization_id: str = "default-org",
+        project_id: str = "default-project",
+        workspace_id: str = "default-workspace",
+    ) -> "ContextEngine":
         """Get or initialize singleton ContextEngine for a workspace."""
         root = os.path.abspath(workspace_root)
-        if root not in cls._instances:
-            cls._instances[root] = cls(root)
-        return cls._instances[root]
+        key = f"{organization_id}:{project_id}:{workspace_id}:{root}"
+        if key not in cls._instances:
+            cls._instances[key] = cls(root, organization_id, project_id, workspace_id)
+        return cls._instances[key]
 
     def start_background_indexing(self) -> None:
         """Start non-blocking repository symbol and graph indexing."""

@@ -30,6 +30,8 @@ class TestRunner:
             return TestResult(success=True, output="No tests to run.", exit_code=0)
 
         cmd = ["venv/Scripts/pytest"] + test_files
+        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        env = EnvironmentIsolation.get_isolated_env()
         try:
             logger.info(f"Running verification tests: {cmd}")
             res = subprocess.run(
@@ -37,7 +39,8 @@ class TestRunner:
                 cwd=self.workspace_root or None,
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                env=env
             )
             success = (res.returncode == 0)
             return TestResult(success=success, output=res.stdout + "\n" + res.stderr, exit_code=res.returncode)

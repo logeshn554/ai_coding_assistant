@@ -1883,7 +1883,8 @@ class AgentSession:
         soft_limit = float(getattr(settings, "COST_LIMIT_USD", 5.0))
         hard_limit = float(getattr(settings, "DEVPILOT_HARD_COST_LIMIT", 10.0))
 
-        async for chunk in adapter.stream_chat(cleaned_messages, tools, system_prompt):
+        from backend.app.infrastructure.model_gateway import ModelGateway
+        async for chunk in ModelGateway.generate_stream(self.profile, cleaned_messages, tools, system_prompt):
             if chunk.get("type") == "usage":
                 turn_cost = float(chunk.get("cost_usd", 0.0))
                 self.total_cost_usd = self.total_cost_usd + turn_cost
@@ -2077,8 +2078,7 @@ class AgentSession:
                 "content": f"Retrying run command: `{original_command}`\n"
             })
 
-            await global_process_manager.stop_process(proc.id)
-            proc = await global_process_manager.start_process(original_command, self.workspace_root, name=framework)
+            proc = await global_process_manager.start_process(original_command, self.workspace_root, name=framework, session=self)
             # B6: Store task handle so cancel_all() can cancel it if the user cancels.
             self._monitor_tasks.append(asyncio.create_task(self.monitor_and_stream_events(proc)))
 

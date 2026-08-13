@@ -11,9 +11,9 @@ import re
 from typing import List, Tuple
 
 INJECTION_PATTERNS: List[re.Pattern] = [
-    re.compile(r"ignore\s+(?:previous|all)\s+instructions", re.IGNORECASE),
+    re.compile(r"ignore\s+(?:previous|all)\s+(?:instructions|policies|rules|directives|guidelines)", re.IGNORECASE),
     re.compile(r"system\s+prompt\s+override", re.IGNORECASE),
-    re.compile(r"upload\s+\.env", re.IGNORECASE),
+    re.compile(r"(?:read|upload|leak|show|exfiltrate)\s+\.env", re.IGNORECASE),
     re.compile(r"send\s+secrets?\s+to", re.IGNORECASE),
     re.compile(r"curl\s+https?://", re.IGNORECASE),
 ]

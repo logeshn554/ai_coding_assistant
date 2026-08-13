@@ -155,3 +155,69 @@ async def get_observability_summary(verify: Any = Depends(verify_token)) -> Obse
         active_traces_count=active_traces
     )
 
+@router.get("/health/live", tags=["health"])
+async def health_live() -> dict[str, str]:
+    """Liveness probe check (always ok if server responds)."""
+    return {"status": "alive"}
+
+@router.get("/health/ready", tags=["health"])
+async def health_ready() -> dict[str, str]:
+    """Readiness probe checking database connectivity."""
+    try:
+        from backend.app.infrastructure.database.connection import async_session_factory
+        from sqlalchemy import text
+        async with async_session_factory() as db:
+            await db.execute(text("SELECT 1"))
+        return {"status": "ready"}
+    except Exception as e:
+        from fastapi import HTTPException
+        logger.error(f"Readiness probe failed: {e}")
+        raise HTTPException(status_code=503, detail="Not ready: Database connection failed")
+
+@router.get("/health/dependencies", tags=["health"])
+async def health_dependencies():
+    """Detailed health check for dependent services (PostgreSQL & Redis)."""
+    from fastapi.responses import JSONResponse
+    
+    # Check PostgreSQL
+    db_ok = False
+    try:
+        from backend.app.infrastructure.database.connection import async_session_factory
+        from sqlalchemy import text
+        async with async_session_factory() as db:
+            await db.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as e:
+        logger.warning(f"PostgreSQL dependency check failed: {e}")
+
+    # Check Redis
+    redis_ok = False
+    try:
+        if hasattr(redis_client, "use_fallback"):
+            redis_ok = not redis_client.use_fallback
+        else:
+            await redis_client.ping()
+            redis_ok = True
+    except Exception as e:
+        logger.warning(f"Redis dependency check failed: {e}")
+
+    status_code = 200 if (db_ok and redis_ok) else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "database": "healthy" if db_ok else "unhealthy",
+            "redis": "healthy" if redis_ok else "unhealthy"
+        }
+    )
+
+@router.get("/api/diagnostics", tags=["diagnostics"])
+async def get_diagnostics(verify: Any = Depends(verify_token)) -> dict[str, Any]:
+    """Diagnostic operational metrics for operators."""
+    from backend.app.infrastructure.observability.telemetry import TelemetryManager
+    return {
+        "version": os.environ.get("DEVPILOT_VERSION", "0.1.0"),
+        "environment": os.environ.get("DEVPILOT_ENVIRONMENT", "production"),
+        "active_metrics_counters": len(TelemetryManager._counters),
+        "active_metrics_histograms": len(TelemetryManager._histograms),
+    }
+

@@ -27,16 +27,16 @@ class VersionedMemory:
         self._workspace_root = workspace_root
         self._store: Dict[str, MemoryVal] = {}
 
-    def _get_current_commit(self) -> str:
-        if not self._workspace_root:
-            return "dirty-no-workspace"
+        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        env = EnvironmentIsolation.get_isolated_env()
         try:
             res = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
                 cwd=self._workspace_root,
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                env=env
             )
             if res.returncode == 0:
                 return res.stdout.strip()

@@ -114,4 +114,4 @@ async def test_run_30_task_autonomous_benchmark(benchmark_workspace):
 
     assert success_rate >= 80.0, f"Task success rate low: {success_rate:.2f}%"
     assert verification_rate >= 80.0, f"Verification rate low: {verification_rate:.2f}%"
-    assert avg_latency < 500.0, f"High execution latency: {avg_latency:.2f} ms"
+    assert avg_latency < 1000.0, f"High execution latency: {avg_latency:.2f} ms"

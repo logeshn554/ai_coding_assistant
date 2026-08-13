@@ -95,7 +95,7 @@ async def open_with_live_server(session: Any, args: Dict[str, Any]) -> str:
     command = [sys.executable, "-m", "http.server", str(port)]
 
     proc = await global_process_manager.start_process(
-        command, session.workspace_root, name="Live Server (Static HTML)"
+        command, session.workspace_root, name="Live Server (Static HTML)", session=session
     )
     _monitor_task = asyncio.create_task(session.monitor_and_stream_events(proc))
     _tasks = getattr(session, "_monitor_tasks", None)

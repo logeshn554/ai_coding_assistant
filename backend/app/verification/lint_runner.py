@@ -22,13 +22,16 @@ class LintRunner:
             return True
 
         cmd = ["ruff", "check"] + files
+        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        env = EnvironmentIsolation.get_isolated_env()
         try:
             logger.info(f"Running linter check: {cmd}")
             res = subprocess.run(
                 cmd,
                 cwd=self.workspace_root or None,
                 capture_output=True,
-                check=False
+                check=False,
+                env=env
             )
             return (res.returncode == 0)
         except Exception as e:

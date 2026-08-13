@@ -102,61 +102,28 @@ class TerminalSandbox:
         if analysis.risk == RiskLevel.CRITICAL:
             return False, f"Command blocked by security policy: critical risk command '{command}'", 126
 
+        from backend.app.agent.security.sandbox import ExecutionPolicy, global_sandbox_manager, ExecutionStatus
         t_limit = timeout or self.timeout
-        env = EnvironmentIsolation.get_isolated_env(env_vars)
-
-        start_ts = asyncio.get_event_loop().time()
-        proc = None
-
+        policy = ExecutionPolicy(
+            workspace_root=self.workspace_root,
+            max_runtime_seconds=t_limit,
+            environment_policy=env_vars or {}
+        )
+        
         try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
-                cwd=self.workspace_root,
-                env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            sandbox = await global_sandbox_manager.get_or_create(
+                workspace_id="sandbox_terminal",
+                run_id="run_terminal",
+                policy=policy
             )
-
-            stdout_data, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=t_limit)
-
-            raw_output = (stdout_data.decode("utf-8", errors="replace") + "\n" + stderr_data.decode("utf-8", errors="replace")).strip()
-            redacted_output = SecretRedactor.redact_secrets(raw_output[: self.max_output_bytes])
-
-            success = proc.returncode == 0
-            return success, redacted_output, proc.returncode or 0
-
-        except asyncio.TimeoutError:
-            logger.warning(f"Command timed out after {t_limit}s: {command}")
-            if proc:
-                await self.kill_process_tree(proc.pid)
-            return False, f"Error: Command timed out after {t_limit} seconds.", -1
+            res = await sandbox.execute(command, timeout=t_limit, environment=env_vars)
+            success = (res.status == ExecutionStatus.SUCCESS)
+            return success, res.combined_output, res.exit_code
         except Exception as e:
-            if proc:
-                await self.kill_process_tree(proc.pid)
             return False, f"Error executing command: {e}", -1
 
     @classmethod
     async def kill_process_tree(cls, pid: int) -> None:
         """Kill process and all child processes recursively (Step 16 requirement)."""
-        if not pid:
-            return
-
-        try:
-            import psutil
-            parent = psutil.Process(pid)
-            children = parent.children(recursive=True)
-            for child in children:
-                try:
-                    child.kill()
-                except Exception:
-                    pass
-            parent.kill()
-        except ImportError:
-            # Fallback signal kill if psutil not installed
-            try:
-                if sys.platform == "win32":
-                    os.system(f"taskkill /F /T /PID {pid} >nul 2>&1")
-                else:
-                    os.killpg(os.getpgid(pid), signal.SIGKILL)
-            except Exception:
-                pass
+        from backend.app.processes import kill_process_tree
+        kill_process_tree(pid)

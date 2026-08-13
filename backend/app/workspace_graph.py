@@ -200,6 +200,8 @@ def parse_js_ts_imports_batch(workspace_root: str, js_ts_files: List[str]) -> Di
         return {}
 
     payload = json.dumps({"workspace_root": workspace_root, "files": js_ts_files})
+    from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+    env = EnvironmentIsolation.get_isolated_env()
     try:
         proc = subprocess.Popen(
             ["node", js_parser_script],
@@ -207,7 +209,8 @@ def parse_js_ts_imports_batch(workspace_root: str, js_ts_files: List[str]) -> Di
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            cwd=workspace_root
+            cwd=workspace_root,
+            env=env
         )
         stdout, stderr = proc.communicate(input=payload, timeout=10)
         if proc.returncode == 0 and stdout:

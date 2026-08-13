@@ -20,13 +20,16 @@ class RollbackEngine:
         """Record the current Git commit hash to use as a rollback target."""
         if not self.workspace_root:
             return None
+        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        env = EnvironmentIsolation.get_isolated_env()
         try:
             res = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
                 cwd=self.workspace_root,
                 capture_output=True,
                 text=True,
-                check=False
+                check=False,
+                env=env
             )
             if res.returncode == 0:
                 commit = res.stdout.strip()
@@ -40,20 +43,24 @@ class RollbackEngine:
         """Execute a git checkout or reset to return codebase to savepoint commit."""
         if not self.workspace_root or not savepoint:
             return False
+        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        env = EnvironmentIsolation.get_isolated_env()
         try:
             # First discard local uncommitted changes
             subprocess.run(
                 ["git", "reset", "--hard", savepoint],
                 cwd=self.workspace_root,
                 capture_output=True,
-                check=True
+                check=True,
+                env=env
             )
             # Remove untracked files
             subprocess.run(
                 ["git", "clean", "-fd"],
                 cwd=self.workspace_root,
                 capture_output=True,
-                check=True
+                check=True,
+                env=env
             )
             logger.warning(f"Rollback Engine: Codebase reset back to savepoint: {savepoint[:8]}")
             return True

@@ -49,6 +49,26 @@ class VerificationResult:
     error_summary: Optional[str] = None
 
 
+@dataclass
+class VerificationPhaseReport:
+    """Task-scoped phase-specific verification report."""
+    phase: str
+    status: str
+    started_at: str
+    completed_at: str
+    command: str
+    exit_code: int
+    output_reference: str
+
+
+@dataclass
+class VerificationReport:
+    """Formal unified Verification Report."""
+    success: bool
+    duration_seconds: float
+    phases: List[VerificationPhaseReport] = field(default_factory=list)
+
+
 class VerificationEngine:
     """Canonical Verification Engine detecting profiles and running scoped checks."""
 
@@ -151,11 +171,42 @@ class VerificationEngine:
                 output=f"Skipped: tool '{first_tool}' is not installed",
                 duration_seconds=0.0,
             )
+
+        start_time = asyncio.get_event_loop().time()
+
+        from backend.app.agent.security.sandbox import global_sandbox_manager, ExecutionStatus
+        active_sandbox = None
+        for sb in list(global_sandbox_manager.active_sandboxes.values()):
+            if os.path.realpath(sb.policy.workspace_root) == os.path.realpath(self.workspace_root):
+                active_sandbox = sb
+                break
+
+        if active_sandbox:
+            try:
+                res = await active_sandbox.execute(cmd, timeout=300.0, cwd=self.workspace_root)
+                end_time = asyncio.get_event_loop().time()
+                success = (res.status == ExecutionStatus.SUCCESS)
+                return VerificationResult(
+                    success=success,
+                    command=cmd,
+                    output=res.combined_output,
+                    duration_seconds=round(end_time - start_time, 2),
+                    error_summary=None if success else res.combined_output[:500],
+                )
+            except Exception as e:
+                return VerificationResult(
+                    success=False,
+                    command=cmd,
+                    output=str(e),
+                    duration_seconds=0.0,
+                    error_summary=str(e),
+                )
+
+        # Fallback to local subprocess execution
         clean_env = os.environ.copy()
         for k in list(clean_env.keys()):
             if k.startswith("PYTEST"):
                 clean_env.pop(k)
-        start_time = asyncio.get_event_loop().time()
         try:
             proc = await asyncio.create_subprocess_shell(
                 cmd,
@@ -205,12 +256,41 @@ class VerificationEngine:
         elif test_files and self.profile.language == "typescript":
             cmd = f"{self.profile.package_manager} test -- {' '.join(test_files)}"
 
-        # Clean environment to prevent nested pytest process inheriting parent test configurations
+        start_time = asyncio.get_event_loop().time()
+
+        from backend.app.agent.security.sandbox import global_sandbox_manager, ExecutionStatus
+        active_sandbox = None
+        for sb in list(global_sandbox_manager.active_sandboxes.values()):
+            if os.path.realpath(sb.policy.workspace_root) == os.path.realpath(self.workspace_root):
+                active_sandbox = sb
+                break
+
+        if active_sandbox:
+            try:
+                res = await active_sandbox.execute(cmd, timeout=60.0, cwd=self.workspace_root)
+                end_time = asyncio.get_event_loop().time()
+                success = (res.status == ExecutionStatus.SUCCESS)
+                return VerificationResult(
+                    success=success,
+                    command=cmd,
+                    output=res.combined_output,
+                    duration_seconds=round(end_time - start_time, 2),
+                    error_summary=None if success else res.combined_output[:500],
+                )
+            except Exception as e:
+                return VerificationResult(
+                    success=False,
+                    command=cmd,
+                    output=str(e),
+                    duration_seconds=0.0,
+                    error_summary=str(e),
+                )
+
+        # Local fallback
         clean_env = os.environ.copy()
         for k in list(clean_env.keys()):
             if k.startswith("PYTEST"):
                 clean_env.pop(k)
-        start_time = asyncio.get_event_loop().time()
 
         try:
             proc = await asyncio.create_subprocess_shell(
@@ -241,3 +321,89 @@ class VerificationEngine:
                 duration_seconds=0.0,
                 error_summary=str(e),
             )
+
+    _verification_cache: Dict[str, VerificationReport] = {}
+
+    def _calculate_workspace_hash(self) -> str:
+        """Calculate a quick hash representing current workspace files state."""
+        import hashlib
+        hasher = hashlib.sha256()
+        for root, dirs, files in os.walk(self.workspace_root):
+            dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__", "venv", ".venv", "dist", "build")]
+            for file in sorted(files):
+                filepath = os.path.join(root, file)
+                try:
+                    hasher.update(filepath.encode())
+                    hasher.update(str(os.path.getmtime(filepath)).encode())
+                except OSError:
+                    pass
+        return hasher.hexdigest()
+
+    async def run_full_verification(self) -> VerificationReport:
+        """Run all verification phases sequentially and return aggregated VerificationReport."""
+        import datetime
+        import time
+
+        try:
+            ws_hash = self._calculate_workspace_hash()
+            if ws_hash in self._verification_cache:
+                logger.info("VerificationEngine: Returning cached verification report.")
+                return self._verification_cache[ws_hash]
+        except Exception as e:
+            ws_hash = None
+            logger.warning(f"Could not compute workspace hash: {e}")
+
+        start_ts = time.time()
+        phases_to_run = [
+            ("lint", self.profile.lint_command),
+            ("typecheck", self.profile.typecheck_command),
+            ("test", self.profile.test_command),
+            ("build", self.profile.build_command),
+        ]
+
+        phase_reports = []
+        overall_success = True
+
+        for phase_name, cmd in phases_to_run:
+            if not cmd:
+                now_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                phase_reports.append(VerificationPhaseReport(
+                    phase=phase_name,
+                    status="SKIPPED",
+                    started_at=now_str,
+                    completed_at=now_str,
+                    command="none",
+                    exit_code=0,
+                    output_reference="Not configured",
+                ))
+                continue
+
+            start_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            res = await self.run_phase_command(cmd)
+            end_str = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+            status = "PASSED" if res.success else "FAILED"
+            if not res.success:
+                overall_success = False
+
+            phase_reports.append(VerificationPhaseReport(
+                phase=phase_name,
+                status=status,
+                started_at=start_str,
+                completed_at=end_str,
+                command=cmd,
+                exit_code=0 if res.success else 1,
+                output_reference=res.output[:2000],  # Bound raw output
+            ))
+
+        end_ts = time.time()
+        report = VerificationReport(
+            success=overall_success,
+            duration_seconds=round(end_ts - start_ts, 2),
+            phases=phase_reports,
+        )
+
+        if ws_hash and overall_success:
+            self._verification_cache[ws_hash] = report
+
+        return report

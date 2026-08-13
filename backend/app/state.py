@@ -1,6 +1,7 @@
 import os
 import secrets
 import logging
+from typing import Optional
 from fastapi import Request, HTTPException
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -289,6 +290,89 @@ class InMemoryFallbackRedis:
             self._enter_fallback("ping", exc)
             return False
 
+    async def rpush(self, name: str, value: str) -> int:
+        """Push a value to the tail of a list, with in-memory fallback."""
+        if not await self._maybe_recover():
+            bucket = self._fallback_hashes.setdefault(f"list:{name}", [])
+            if not isinstance(bucket, list):
+                bucket = []
+                self._fallback_hashes[f"list:{name}"] = bucket
+            bucket.append(value)
+            return len(bucket)
+        try:
+            client = await self._ensure_client()
+            return await client.rpush(name, value)
+        except Exception as exc:
+            self._enter_fallback("rpush", exc)
+            bucket = self._fallback_hashes.setdefault(f"list:{name}", [])
+            if not isinstance(bucket, list):
+                bucket = []
+                self._fallback_hashes[f"list:{name}"] = bucket
+            bucket.append(value)
+            return len(bucket)
+
+    async def rpoplpush(self, source: str, destination: str) -> Optional[str]:
+        """Atomically pop from source and push to destination list, with in-memory fallback."""
+        if not await self._maybe_recover():
+            src_bucket = self._fallback_hashes.setdefault(f"list:{source}", [])
+            if not src_bucket:
+                return None
+            val = src_bucket.pop()
+            dst_bucket = self._fallback_hashes.setdefault(f"list:{destination}", [])
+            if not isinstance(dst_bucket, list):
+                dst_bucket = []
+                self._fallback_hashes[f"list:{destination}"] = dst_bucket
+            dst_bucket.insert(0, val)
+            return val
+        try:
+            client = await self._ensure_client()
+            return await client.rpoplpush(source, destination)
+        except Exception as exc:
+            self._enter_fallback("rpoplpush", exc)
+            src_bucket = self._fallback_hashes.setdefault(f"list:{source}", [])
+            if not src_bucket:
+                return None
+            val = src_bucket.pop()
+            dst_bucket = self._fallback_hashes.setdefault(f"list:{destination}", [])
+            if not isinstance(dst_bucket, list):
+                dst_bucket = []
+                self._fallback_hashes[f"list:{destination}"] = dst_bucket
+            dst_bucket.insert(0, val)
+            return val
+
+    async def lrem(self, name: str, count: int, value: str) -> int:
+        """Remove occurrences of value in list, with in-memory fallback."""
+        if not await self._maybe_recover():
+            bucket = self._fallback_hashes.get(f"list:{name}", [])
+            if not isinstance(bucket, list) or not bucket:
+                return 0
+            removed = 0
+            new_list = []
+            for item in bucket:
+                if item == value and (count == 0 or removed < abs(count)):
+                    removed += 1
+                else:
+                    new_list.append(item)
+            self._fallback_hashes[f"list:{name}"] = new_list
+            return removed
+        try:
+            client = await self._ensure_client()
+            return await client.lrem(name, count, value)
+        except Exception as exc:
+            self._enter_fallback("lrem", exc)
+            bucket = self._fallback_hashes.get(f"list:{name}", [])
+            if not isinstance(bucket, list) or not bucket:
+                return 0
+            removed = 0
+            new_list = []
+            for item in bucket:
+                if item == value and (count == 0 or removed < abs(count)):
+                    removed += 1
+                else:
+                    new_list.append(item)
+            self._fallback_hashes[f"list:{name}"] = new_list
+            return removed
+
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 redis_client = InMemoryFallbackRedis(REDIS_URL)
@@ -427,7 +511,7 @@ async def verify_token(request: Request = None):
         return
 
     path = request.url.path
-    if path == "/" or path.startswith("/assets/") or path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico", ".ttf", ".woff", ".woff2", ".html")) or path in ("/auth/token", "/api/auth/token", "/docs", "/openapi.json", "/redoc", "/api/health"):
+    if path == "/" or path.startswith("/assets/") or path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico", ".ttf", ".woff", ".woff2", ".html")) or path in ("/auth/token", "/api/auth/token", "/docs", "/openapi.json", "/redoc", "/api/health") or path.startswith("/health/"):
         return
 
     # Extract token from Bearer header, X-Session-Token header, or query param
