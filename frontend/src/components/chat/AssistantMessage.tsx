@@ -22,7 +22,7 @@ export interface AiTurn {
 }
 
 interface TimelineBlock {
-  type: 'thinking' | 'tool' | 'text' | 'confirm' | 'running_tool';
+  type: 'thinking' | 'tool' | 'text' | 'confirm' | 'running_tool' | 'grouped_tools';
   id: string;
   message?: ChatMessage;
   thinkingContent?: string;
@@ -36,6 +36,7 @@ interface TimelineBlock {
     status: 'running' | 'success' | 'error';
     name: string;
   };
+  tools?: TimelineBlock[];
 }
 
 interface AssistantMessageProps {
@@ -75,7 +76,65 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   const [activeDiffPath, setActiveDiffPath] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<'liked' | 'disliked' | null>(null);
 
-  const { liveToolCalls } = useAI();
+  const { liveToolCalls, taskMemory } = useAI();
+
+  interface FileDiff {
+    file: string;
+    add: number;
+    del: number;
+  }
+
+  const diffsList: FileDiff[] = [];
+  const seenFiles = new Set<string>();
+
+  if (taskMemory && taskMemory.files_written) {
+    taskMemory.files_written.forEach((file) => {
+      const filename = file.split('/').pop() || file;
+      if (!seenFiles.has(filename)) {
+        seenFiles.add(filename);
+        const edits = taskMemory.file_edits?.[file];
+        diffsList.push({
+          file: filename,
+          add: edits?.added ?? 0,
+          del: edits?.removed ?? 0,
+        });
+      }
+    });
+  }
+
+  (turn.allMessages || []).forEach((m) => {
+    const diffData = m.confirmDiff || m.diff;
+    if (diffData) {
+      let path = '';
+      if (m.confirmDiff) {
+        path = m.confirmDiff.path;
+      } else if (m.diff) {
+        path = m.diff.filename;
+      }
+
+      if (path) {
+        const filename = path.split(/[/\\]/).pop() || path;
+        if (!seenFiles.has(filename)) {
+          seenFiles.add(filename);
+          let add = 0;
+          let del = 0;
+          if (diffData.hunks) {
+            diffData.hunks.forEach((h: DiffHunk) => {
+              if (h.type === 'add') add++;
+              else if (h.type === 'remove') del++;
+              else if (h.content) {
+                h.content.split('\n').forEach((line: string) => {
+                  if (line.startsWith('+')) add++;
+                  else if (line.startsWith('-')) del++;
+                });
+              }
+            });
+          }
+          diffsList.push({ file: filename, add, del });
+        }
+      }
+    }
+  });
 
   // Build the chronological sequence of blocks
   const blocks: TimelineBlock[] = [];
@@ -194,7 +253,34 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     });
   }
 
+  // Post-process blocks to merge consecutive tool and running_tool blocks
+  const groupedBlocks: TimelineBlock[] = [];
+  let currentToolGroup: TimelineBlock[] = [];
 
+  const flushToolGroup = () => {
+    if (currentToolGroup.length > 0) {
+      if (currentToolGroup.length === 1) {
+        groupedBlocks.push(currentToolGroup[0]);
+      } else {
+        groupedBlocks.push({
+          type: 'grouped_tools',
+          id: `grouped_tools_${currentToolGroup[0].id}`,
+          tools: [...currentToolGroup],
+        });
+      }
+      currentToolGroup = [];
+    }
+  };
+
+  blocks.forEach((block) => {
+    if (block.type === 'tool' || block.type === 'running_tool') {
+      currentToolGroup.push(block);
+    } else {
+      flushToolGroup();
+      groupedBlocks.push(block);
+    }
+  });
+  flushToolGroup();
 
   // Extract metadata / elapsed
   const textMessage = turn.assistantMessages.find((m: ChatMessage) => m.content && !m.isConfirmPending) || turn.assistantMessages[0];
@@ -393,7 +479,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       {/* Chronological Steps Flow Timeline */}
       <div className="flex-1 min-w-0">
         <div className="space-y-1 py-1">
-          {blocks.map((block) => (
+          {groupedBlocks.map((block) => (
             <div key={block.id} className="relative group">
               {/* Block Contents */}
               <div className="min-w-0">
@@ -422,12 +508,25 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                   </div>
                 )}
 
+                {/* Grouped tools block */}
+                {block.type === 'grouped_tools' && (
+                  <div className="select-none animate-[fadeIn_120ms_ease-out] my-1">
+                    <ToolChips
+                      customRows={block.tools!.map(t => mapBlockToToolRow(t))}
+                      customDiffs={diffsList}
+                      messagesCount={block.tools!.length}
+                      initialExpanded={false}
+                    />
+                    {block.tools!.map(t => renderInlineFileChangeCard(t))}
+                  </div>
+                )}
+
                 {/* 2. Tool block */}
                 {block.type === 'tool' && (
                   <div className="select-none animate-[fadeIn_120ms_ease-out] my-1">
                     <ToolChips
                       customRows={[mapBlockToToolRow(block)]}
-                      customDiffs={[]}
+                      customDiffs={diffsList}
                       headerLabel={`1 tool call: ${mapBlockToToolRow(block).label}`}
                       messagesCount={1}
                       initialExpanded={false}
@@ -441,7 +540,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
                   <div className="select-none animate-[fadeIn_120ms_ease-out] my-1">
                     <ToolChips
                       customRows={[mapBlockToToolRow(block)]}
-                      customDiffs={[]}
+                      customDiffs={diffsList}
                       headerLabel={`Running: ${mapBlockToToolRow(block).label}`}
                       messagesCount={1}
                       initialExpanded={true}

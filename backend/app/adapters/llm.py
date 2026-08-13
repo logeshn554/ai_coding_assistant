@@ -350,7 +350,13 @@ class LLMAdapter(ModelAdapter):
                 "max_tokens": max_tokens_setting,
             }
             if seed_setting is not None:
-                kwargs["seed"] = seed_setting
+                # Only send 'seed' to providers that support it (native OpenAI).
+                # NVIDIA, Google, and other third-party OpenAI-compatible endpoints
+                # reject unknown fields with a 400 "Cannot find field" error.
+                _provider_url = (base_url or "").lower()
+                _seed_supported = not _provider_url or "openai.com" in _provider_url
+                if _seed_supported:
+                    kwargs["seed"] = seed_setting
             if openai_tools:
                 kwargs["tools"] = openai_tools
 

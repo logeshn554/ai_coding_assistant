@@ -287,7 +287,7 @@ export default function ToolChips({
           {/* file-diff chips */}
           {step >= total && diffs.length > 0 && (
             <div className="mt-2.5 flex max-w-full flex-wrap gap-1.5 border-t border-line pt-2.5">
-              {diffs.map((d, i) => (
+              {diffs.slice(0, 3).map((d, i) => (
                 <span
                   key={d.file}
                   className="inline-flex h-7 max-w-full cursor-pointer items-center gap-1.5 rounded-chip bg-surface px-2 font-mono text-[11.5px] text-ink shadow-btn transition-colors duration-100 hover:bg-hover"
@@ -310,17 +310,19 @@ export default function ToolChips({
                   )}
                 </span>
               ))}
-              <button
-                type="button"
-                className="inline-flex h-7 items-center rounded-chip px-1.5 font-mono text-[11.5px] text-ink-3 underline decoration-transparent underline-offset-2 transition-colors duration-100 hover:text-ink-2 hover:decoration-current cursor-pointer focus:outline-none"
-                style={{
-                  animation: `fade-in 300ms ease-out ${
-                    diffs.length * 80
-                  }ms both`,
-                }}
-              >
-                +2 more
-              </button>
+              {diffs.length > 3 && (
+                <button
+                  type="button"
+                  className="inline-flex h-7 items-center rounded-chip px-1.5 font-mono text-[11.5px] text-ink-3 underline decoration-transparent underline-offset-2 transition-colors duration-100 hover:text-ink-2 hover:decoration-current cursor-pointer focus:outline-none"
+                  style={{
+                    animation: `fade-in 300ms ease-out ${
+                      3 * 80
+                    }ms both`,
+                  }}
+                >
+                  +{diffs.length - 3} more
+                </button>
+              )}
             </div>
           )}
         </div>

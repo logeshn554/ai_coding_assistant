@@ -151,7 +151,11 @@ class OpenAIProvider(LLMProvider):
             "top_p": top_p,
         }
         if seed is not None:
-            body["seed"] = seed
+            # Only send 'seed' to native OpenAI; third-party endpoints (NVIDIA, Google, etc.)
+            # reject it with 400 "Cannot find field".
+            _provider_url = self.base_url.lower()
+            if not _provider_url or "openai.com" in _provider_url:
+                body["seed"] = seed
 
         if tools:
             body["tools"] = _tools_to_openai(tools)

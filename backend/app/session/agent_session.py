@@ -1137,6 +1137,23 @@ class AgentSession:
                     set(run_res.changed_files.get("created_files", [])) |
                     set(run_res.changed_files.get("modified_files", []))
                 )
+                
+                # Parse diffs for file edits count (+adds -removes)
+                diffs = run_res.changed_files.get("diffs", {})
+                file_edits = {}
+                for fpath, diff_content in diffs.items():
+                    added = 0
+                    removed = 0
+                    if diff_content:
+                        for line in diff_content.splitlines():
+                            if line.startswith("+++") or line.startswith("---"):
+                                continue
+                            if line.startswith("+"):
+                                added += 1
+                            elif line.startswith("-"):
+                                removed += 1
+                    file_edits[fpath] = {"added": added, "removed": removed}
+                self.task_memory.file_edits = file_edits
 
                 # Verification results
                 _verification_evidence = None

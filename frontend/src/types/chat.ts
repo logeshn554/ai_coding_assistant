@@ -206,6 +206,7 @@ export interface TaskMemoryData {
   steps: TaskStep[];
   files_read: string[];
   files_written: string[];
+  file_edits?: Record<string, { added: number; removed: number }>;
   errors: string[];
   is_complete: boolean;
   completion_reason?: string;

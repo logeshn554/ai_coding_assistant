@@ -76,6 +76,7 @@ class TaskMemory:
     steps: list[TaskStep] = field(default_factory=list)
     files_read: list[str] = field(default_factory=list)
     files_written: list[str] = field(default_factory=list)
+    file_edits: dict[str, dict[str, int]] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.monotonic)
     last_updated: float = field(default_factory=time.monotonic)
@@ -188,6 +189,7 @@ class TaskMemory:
         self.steps = []
         self.files_read = []
         self.files_written = []
+        self.file_edits = {}
         self.errors = []
         self.is_complete = False
         self.completion_reason = ""
@@ -216,6 +218,7 @@ class TaskMemory:
             ],
             "files_read": self.files_read,
             "files_written": self.files_written,
+            "file_edits": self.file_edits,
             "errors": self.errors[-10:],
             "is_complete": self.is_complete,
             "completion_reason": self.completion_reason,

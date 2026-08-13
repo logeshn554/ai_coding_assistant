@@ -19,7 +19,7 @@ export const TaskProgressPanel: React.FC<TaskProgressPanelProps> = ({
     return null;
   }
 
-  const { steps, goal, intent, pending_steps, completed_steps, files_written } = taskMemory;
+  const { steps, goal, intent, pending_steps, completed_steps } = taskMemory;
   const progressPercent = Math.round((completed_steps / steps.length) * 100);
 
   const getStepIcon = (status: TaskStep['status']) => {
@@ -139,23 +139,6 @@ export const TaskProgressPanel: React.FC<TaskProgressPanelProps> = ({
               ))}
             </div>
           </div>
-
-          {/* Files Written */}
-          {files_written && files_written.length > 0 && (
-            <div className="pt-2 border-t border-zinc-800/60">
-              <span className="text-[10px] font-bold text-zinc-500 uppercase block mb-1.5">Modified Files</span>
-              <div className="flex flex-wrap gap-1.5">
-                {files_written.map((file) => (
-                  <span
-                    key={file}
-                    className="text-[10px] px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700/60 text-zinc-400 font-mono"
-                  >
-                    {file.split('/').pop()}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
