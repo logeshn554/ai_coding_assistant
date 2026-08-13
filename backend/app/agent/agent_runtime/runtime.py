@@ -327,8 +327,14 @@ class AgentRuntime:
         max_turns: int = 25,
         llm_provider_func: Optional[Callable] = None,
         agent_session: Optional[Any] = None,  # added actual AgentSession reference
+        conversation_messages: Optional[List[Dict[str, Any]]] = None,
+        tool_schemas: Optional[List[Dict[str, Any]]] = None,
     ) -> AgentResult:
-        """Execute a canonical agent coding session."""
+        """
+        Execute a canonical agent coding session.
+        llm_provider_func signature: async (messages: list, tools: list) -> ModelResponse
+        It must be provided. Missing provider raises RuntimeError immediately.
+        """
         if session_id not in self._sessions:
             await self.start_session(self.workspace_root, session_id=session_id)
 
@@ -392,6 +398,27 @@ class AgentRuntime:
             # 2. State transition -> EXECUTING
             await self.transition_state(session, AgentState.EXECUTING, _emit)
 
+        # Initialize mutable conversation message list for multi-turn LLM dialogue
+        if conversation_messages is None:
+            conversation_messages = [
+                {"role": "user", "content": task_obj.description}
+            ]
+        else:
+            # Make a mutable copy so we don't mutate the caller's list
+            conversation_messages = list(conversation_messages)
+
+        # Build tool schemas list from ToolRegistry if not provided
+        if tool_schemas is None:
+            from backend.app.infrastructure.tool_registry import ToolRegistry
+            tool_schemas = [
+                {
+                    "name": td.name,
+                    "description": td.description,
+                    "input_schema": td.input_schema.model_json_schema() if hasattr(td.input_schema, "model_json_schema") else {},
+                }
+                for td in ToolRegistry.get_all_tools()
+            ]
+
         tool_executor = ToolExecutor(session.workspace_root, session=agent_session)
         tx_workspace = TransactionalWorkspace(session.workspace_root)
 
@@ -420,23 +447,34 @@ class AgentRuntime:
 
                 # LLM Generation Step
                 model_resp: ModelResponse
-                if llm_provider_func:
-                    import os as _os
-                    _llm_turn_timeout = float(
-                        _os.environ.get("DEVPILOT_LLM_TURN_TIMEOUT") or "600.0"
+                if not llm_provider_func:
+                    raise RuntimeError(
+                        "AgentRuntime requires a configured LLM provider. "
+                        "Pass llm_provider_func to runtime.run()."
                     )
-                    raw_res = await asyncio.wait_for(
-                        llm_provider_func(task_obj.description, step),
-                        timeout=_llm_turn_timeout,
-                    )
-                    model_resp = ModelResponseNormalizer.normalize_response(raw_res)
-                else:
-                    # Fallback internal mock / default adapter response if none supplied
-                    model_resp = ModelResponse(
-                        text=f"Completed action step {step} for: {task_obj.description}",
-                        tool_calls=[],
-                        finish_reason="end_turn",
-                    )
+
+                import os as _os
+                _llm_turn_timeout = float(
+                    _os.environ.get("DEVPILOT_LLM_TURN_TIMEOUT") or "600.0"
+                )
+                raw_res = await asyncio.wait_for(
+                    llm_provider_func(list(conversation_messages), list(tool_schemas)),
+                    timeout=_llm_turn_timeout,
+                )
+                model_resp = ModelResponseNormalizer.normalize_response(raw_res)
+
+                # Append assistant message to conversation history for next turn
+                asst_msg: Dict[str, Any] = {"role": "assistant", "content": model_resp.text or ""}
+                if model_resp.tool_calls:
+                    asst_msg["tool_calls"] = [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+                        }
+                        for tc in model_resp.tool_calls
+                    ]
+                conversation_messages.append(asst_msg)
 
                 if model_resp.text:
                     final_output += model_resp.text + "\n"
@@ -524,6 +562,15 @@ class AgentRuntime:
 
                     if not tool_res.success:
                         session.errors.append(f"Tool {tc.name} failed: {tool_res.error}")
+
+                    # Append tool result to conversation history for next LLM turn
+                    tool_result_content = str(tool_res.output) if tool_res.success else (tool_res.error or "Tool execution failed")
+                    conversation_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "name": tc.name,
+                        "content": tool_result_content[:8192],  # truncate large outputs
+                    })
 
                     await self.transition_state(session, AgentState.EXECUTING, _emit)
                     await self.save_checkpoint(session, f"after_tool_{tc.name}")
@@ -615,7 +662,73 @@ class AgentRuntime:
                         break
 
                     await self.transition_state(session, AgentState.REPAIRING, _emit)
-                    repair_loop.record_repair_attempt(failure, f"Attempted self-repair patch for {phase}", False)
+
+                    # Build repair prompt and invoke LLM to produce actual repair tool calls
+                    repair_prompt = (
+                        f"The {phase} check failed. Error output:\n{v_res.output[:2000]}\n\n"
+                        f"Please analyze the failure and use the available tools to fix the issue."
+                    )
+                    repair_messages = list(conversation_messages) + [
+                        {"role": "user", "content": repair_prompt}
+                    ]
+
+                    try:
+                        import os as _os
+                        _repair_timeout = float(_os.environ.get("DEVPILOT_LLM_TURN_TIMEOUT") or "600.0")
+                        raw_repair_res = await asyncio.wait_for(
+                            llm_provider_func(repair_messages, list(tool_schemas)),
+                            timeout=_repair_timeout,
+                        )
+                        repair_model_resp = ModelResponseNormalizer.normalize_response(raw_repair_res)
+
+                        # Append assistant repair message to history
+                        repair_asst_msg: Dict[str, Any] = {"role": "assistant", "content": repair_model_resp.text or ""}
+                        if repair_model_resp.tool_calls:
+                            repair_asst_msg["tool_calls"] = [
+                                {
+                                    "id": tc.id,
+                                    "type": "function",
+                                    "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+                                }
+                                for tc in repair_model_resp.tool_calls
+                            ]
+                        conversation_messages.append(repair_asst_msg)
+
+                        # Execute any repair tool calls from LLM
+                        for r_tc in repair_model_resp.tool_calls:
+                            _emit(AgentEvent(session_id, EVENT_TOOL_STARTED, {"tool_call_id": r_tc.id, "name": r_tc.name, "arguments": r_tc.arguments}))
+                            r_target_file = r_tc.arguments.get("path") or r_tc.arguments.get("TargetFile") or r_tc.arguments.get("file_path")
+                            r_pre_snap = None
+                            if r_target_file and r_tc.name in ("write_file", "edit_file", "delete_file", "apply_patch"):
+                                r_pre_snap = tx_workspace.capture_pre_state(r_target_file)
+
+                            r_tool_res = await tool_executor.execute(
+                                tool_call_id=r_tc.id,
+                                tool_name=r_tc.name,
+                                arguments=r_tc.arguments,
+                                timeout=60.0,
+                                auto_apply=task_obj.auto_apply,
+                            )
+
+                            _emit(AgentEvent(session_id, EVENT_TOOL_COMPLETED, {"tool_call_id": r_tc.id, "name": r_tc.name, "success": r_tool_res.success, "error": r_tool_res.error}))
+
+                            if r_target_file and r_tc.name in ("write_file", "edit_file", "delete_file", "apply_patch"):
+                                r_diff = tx_workspace.capture_post_state(r_target_file, r_pre_snap)
+                                if r_diff:
+                                    _emit(AgentEvent(session_id, EVENT_FILE_CHANGED, {"file": r_target_file, "diff": r_diff}))
+
+                            r_tool_content = str(r_tool_res.output) if r_tool_res.success else (r_tool_res.error or "Tool execution failed")
+                            conversation_messages.append({
+                                "role": "tool",
+                                "tool_call_id": r_tc.id,
+                                "name": r_tc.name,
+                                "content": r_tool_content[:8192],
+                            })
+
+                        repair_loop.record_repair_attempt(failure, repair_model_resp.text or "LLM repair turn", len(repair_model_resp.tool_calls) > 0)
+                    except Exception as repair_err:
+                        logger.error(f"Repair LLM call failed: {repair_err}")
+                        repair_loop.record_repair_attempt(failure, f"Repair failed: {repair_err}", False)
 
                     # Re-run phase verification
                     await self.transition_state(session, AgentState.VERIFYING, _emit)

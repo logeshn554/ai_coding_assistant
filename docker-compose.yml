@@ -12,6 +12,7 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - INITIAL_WORKSPACE_ROOT=${WORKSPACE_ROOT:-/workspace}
+      - ENVIRONMENT=production
       # Override config/profile key-value settings if needed
       # - CORS_ORIGINS=http://localhost:8000
     volumes:
@@ -23,6 +24,40 @@ services:
       # - C:/:/host/c
       # - D:/:/host/d
       # - E:/:/host/e
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  # ── Dedicated agent worker service ──────────────────────────────────────
+  # Runs continuously in production to consume the agent job queue.
+  # Decoupled from the API server so the API stays responsive under load.
+  devpilot-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: devpilot-worker
+    command: python -m backend.app.infrastructure.worker
+    environment:
+      - DOCKER_MODE=true
+      - ENVIRONMENT=production
+      - INITIAL_WORKSPACE_ROOT=${WORKSPACE_ROOT:-/workspace}
+    volumes:
+      - devpilot-config:/home/devpilot/.devpilot
+      - ${WORKSPACE_ROOT:-./workspace}:/workspace
+      # Windows users: uncomment to mount host drives
+      # - C:/:/host/c
+      # - D:/:/host/d
+      # - E:/:/host/e
+    depends_on:
+      - redis
+      - devpilot
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: devpilot-redis
+    ports:
+      - "6379:6379"
     restart: unless-stopped
 
 volumes:

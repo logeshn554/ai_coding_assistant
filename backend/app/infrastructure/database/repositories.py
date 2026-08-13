@@ -203,7 +203,9 @@ class AgentRunRepository(BaseRepository):
         conversation_id: str,
         task_description: str,
         mode: str,
-        id: Optional[str] = None
+        id: Optional[str] = None,
+        workspace_root: Optional[str] = None,
+        profile_name: Optional[str] = None,
     ) -> AgentRun:
         run = AgentRun(
             organization_id=org_id,
@@ -213,6 +215,8 @@ class AgentRunRepository(BaseRepository):
             conversation_id=conversation_id,
             task_description=task_description,
             mode=mode,
+            workspace_root=workspace_root,
+            profile_name=profile_name,
             state="RUNNING"
         )
         if id:
@@ -222,8 +226,11 @@ class AgentRunRepository(BaseRepository):
         return run
 
     async def get_run(self, org_id: str, run_id: str) -> Optional[AgentRun]:
+        from sqlalchemy.orm import selectinload
         res = await self.db.execute(
-            select(AgentRun).where(
+            select(AgentRun)
+            .options(selectinload(AgentRun.workspace), selectinload(AgentRun.conversation))
+            .where(
                 AgentRun.organization_id == org_id,
                 AgentRun.id == run_id
             )

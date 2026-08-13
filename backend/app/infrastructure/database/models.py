@@ -190,6 +190,8 @@ class AgentRun(Base):
     conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
     task_description: Mapped[str] = mapped_column(Text, nullable=False)
     mode: Mapped[str] = mapped_column(String(50), nullable=False)
+    workspace_root: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)  # denormalized for worker
+    profile_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)   # model profile at run time
     state: Mapped[str] = mapped_column(String(50), default="RUNNING")
     status: Mapped[str] = mapped_column(String(255), nullable=True)
     worker_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

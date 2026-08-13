@@ -302,8 +302,10 @@ class ToolExecutor:
             import inspect
             sig = inspect.signature(handler)
             params = list(sig.parameters.keys())
-            
-            if "tc_id" in params and "auto_apply" in params:
+
+            if "name" in params and "tc_id" in params and "auto_apply" in params:
+                out = await handler(bridge, tc_id, tool_name, args, auto_apply)
+            elif "tc_id" in params and "auto_apply" in params:
                 out = await handler(bridge, tc_id, args, auto_apply)
             elif "tc_id" in params:
                 out = await handler(bridge, tc_id, args)

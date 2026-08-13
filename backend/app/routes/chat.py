@@ -707,6 +707,10 @@ async def websocket_chat(
             seq = len(msgs)
             await msg_repo.create(conv.id, "user", text, seq)
 
+            # Capture the active model profile name so the worker can recover it
+            active_profile = config_manager.get_active_profile() or {}
+            active_profile_name = active_profile.get("name") or active_profile.get("id") or None
+
             run = await run_repo.create(
                 org_id="default-org",
                 user_id="default-user",
@@ -714,7 +718,9 @@ async def websocket_chat(
                 workspace_id=ws.id,
                 conversation_id=conv.id,
                 task_description=text,
-                mode=mode
+                mode=mode,
+                workspace_root=session_workspace_root,
+                profile_name=active_profile_name,
             )
             run.state = "QUEUED"
             await db.commit()

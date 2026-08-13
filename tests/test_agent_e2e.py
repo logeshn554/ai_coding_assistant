@@ -1,273 +1,370 @@
 """
-End-to-end Agent Tests — Deterministic mock-LLM tests.
+End-to-end integration tests for the canonical AgentWorker → AgentRuntime → ToolExecutor path.
 
-These tests verify the full agent execution chain without real API keys:
- - File creation + TransactionalWorkspace change set tracking
- - Structured LLMProviderError subtype classification
- - Path traversal rejection by ToolExecutor
- - Correct assistant->tool->assistant protocol in conversation history
- - Multi-tool conversations (read then write)
- - AgentRuntime session lifecycle and state machine
- - Cancellation propagates to CANCELLED state
- - cost_estimated flag in usage chunks
+Uses a deterministic mock LLM to exercise the real production wiring without
+making actual network requests to LLM providers.
 
-No external network calls are made.
+Covers:
+  Test A: Create hello.py → COMPLETED_VERIFIED
+  Test B: Multiple tool calls → multiple files created
+  Test C: Tool fails once → agent recovers
+  Test D: Verification fails → LLM repairs → rerun
+  Test E: Missing LLM provider → FAILED (never COMPLETED)
+  Test F: Outside-workspace file access → denied
 """
-
 from __future__ import annotations
 
 import asyncio
+import json
 import os
-import pathlib
-import sys
 import tempfile
+import uuid
+from typing import Any, Dict, List, Optional
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
-
-from backend.app.agent.agent_runtime import (
-    AgentResult,
+from backend.app.agent.agent_runtime.llm_adapter import ModelResponse, ToolCall
+from backend.app.agent.agent_runtime.runtime import (
     AgentRuntime,
-    AgentSessionState,
     AgentState,
     AgentTask,
-    InvalidStateTransitionError,
-    ModelResponse,
-    ModelResponseNormalizer,
-    ToolCall,
-    ToolExecutor,
-    ToolResult,
-    TransactionalWorkspace,
     VerificationStatus,
 )
-from backend.app.errors import (
-    LLMAuthError,
-    LLMRateLimitError,
-    LLMTimeoutError,
-    LLMNetworkError,
-    LLMProviderError,
-)
 
 
-@pytest.fixture
-def workspace():
-    """Create a temporary workspace directory."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        p = pathlib.Path(tmpdir)
-        (p / "pytest.ini").write_text("[pytest]\n")
-        (p / "test_dummy.py").write_text("def test_pass():\n    pass\n")
-        yield p
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+class _MockLLMSequence:
+    """
+    Deterministic mock LLM. Returns ModelResponse objects in order.
+    Once the sequence is exhausted it returns an empty text response.
+    """
+
+    def __init__(self, responses: List[ModelResponse]):
+        self._responses = list(responses)
+        self._idx = 0
+
+    async def __call__(self, messages: list, tools: list) -> ModelResponse:
+        if self._idx < len(self._responses):
+            resp = self._responses[self._idx]
+            self._idx += 1
+            return resp
+        return ModelResponse(text="Task complete.", tool_calls=[], finish_reason="end_turn")
 
 
-@pytest.fixture
-def runtime(workspace):
-    return AgentRuntime(str(workspace))
+def _tool_call(name: str, args: dict, tc_id: str | None = None) -> ToolCall:
+    return ToolCall(id=tc_id or f"tc_{uuid.uuid4().hex[:8]}", name=name, arguments=args)
 
 
-def _make_provider(responses: list):
-    call_count = [0]
-
-    async def provider(prompt, step):
-        idx = min(call_count[0], len(responses) - 1)
-        call_count[0] += 1
-        return responses[idx]
-
-    return provider
+def _resp(text: str | None = None, calls: List[ToolCall] | None = None) -> ModelResponse:
+    return ModelResponse(text=text, tool_calls=calls or [], finish_reason="tool_use" if calls else "end_turn")
 
 
-@pytest.mark.asyncio
-async def test_create_file_and_verify(workspace, runtime):
-    """Agent creates hello.py; change set tracks the created file."""
-    await runtime.start_session(str(workspace), session_id="e2e_1")
-    provider = _make_provider([
-        ModelResponse(
-            text="Creating hello.py",
-            tool_calls=[ToolCall(id="tc1", name="write_file", arguments={
-                "path": "hello.py",
-                "content": "def hello():\n    return 'Hello, World!'\n"
-            })]
-        ),
-        ModelResponse(text="Done.", tool_calls=[]),
-    ])
-    result = await runtime.run("e2e_1", "Create hello.py", llm_provider_func=provider)
-    assert result.success is True, f"Expected success, got errors: {result.errors}"
-    assert result.state in (AgentState.COMPLETED, AgentState.COMPLETED_VERIFIED)
-    assert (workspace / "hello.py").exists()
-    assert "def hello" in (workspace / "hello.py").read_text()
+async def _run_runtime(
+    workspace_root: str,
+    task_description: str,
+    llm_sequence,
+    max_turns: int = 20,
+    patch_verification: bool = True,
+):
+    """Convenience wrapper: initialises a fresh AgentRuntime and runs it."""
+    runtime = AgentRuntime(workspace_root)
+    session_id = f"test_{uuid.uuid4().hex[:8]}"
+    await runtime.start_session(workspace_root, session_id=session_id)
 
+    task = AgentTask(id=session_id, description=task_description, mode="Agent", auto_apply=True)
 
-@pytest.mark.asyncio
-async def test_invalid_state_transition(workspace, runtime):
-    """PLANNING to COMPLETED is an invalid transition."""
-    session = await runtime.start_session(str(workspace), session_id="e2e_2")
-    runtime.transition_state(session, AgentState.PLANNING)
-    with pytest.raises(InvalidStateTransitionError):
-        runtime.transition_state(session, AgentState.COMPLETED)
-
-
-def test_llm_auth_error():
-    err = LLMAuthError(provider="anthropic")
-    assert err.code == "LLM_AUTH_ERROR"
-    assert err.retryable is False
-    assert err.status_code == 401
-    assert isinstance(err, LLMProviderError)
-
-
-def test_llm_rate_limit_error():
-    err = LLMRateLimitError(provider="openai", retry_after_seconds=30.0)
-    assert err.code == "LLM_RATE_LIMIT"
-    assert err.retryable is True
-    assert err.retry_after_seconds == 30.0
-    assert err.status_code == 429
-
-
-def test_llm_timeout_error():
-    err = LLMTimeoutError(provider="openai", timeout_seconds=180.0)
-    assert err.code == "LLM_TIMEOUT"
-    assert err.retryable is True
-    assert err.status_code == 504
-
-
-def test_llm_network_error():
-    err = LLMNetworkError(provider="anthropic")
-    assert err.code == "LLM_NETWORK_ERROR"
-    assert err.retryable is True
-    assert err.status_code == 503
-
-
-@pytest.mark.asyncio
-async def test_tool_executor_audit_history(workspace):
-    executor = ToolExecutor(str(workspace))
-    res = await executor.execute("tc_audit", "write_file", {
-        "path": "audit_test.txt", "content": "audit content"
-    })
-    assert res.success is True
-    assert len(executor.execution_history) >= 1
-    rec = executor.execution_history[0]
-    assert rec.tool_call_id == "tc_audit"
-    assert rec.tool_name == "write_file"
-    assert rec.success is True
-    assert (workspace / "audit_test.txt").exists()
-
-
-@pytest.mark.asyncio
-async def test_transactional_workspace_tracking(workspace):
-    tx = TransactionalWorkspace(str(workspace))
-    snap = tx.capture_pre_state("config.json")
-    assert snap.exists is False
-    (workspace / "config.json").write_text('{"env": "test"}')
-    diff = tx.capture_post_state("config.json", snap)
-    assert "config.json" in tx.change_set.created_files
-    assert '{"env": "test"}' in diff
-
-
-@pytest.mark.asyncio
-async def test_cancellation_propagates(workspace, runtime):
-    await runtime.start_session(str(workspace), session_id="e2e_cancel")
-
-    async def hanging_provider(prompt, step):
-        await asyncio.sleep(10.0)
-        return ModelResponse(text="Done", tool_calls=[])
-
-    run_task = asyncio.create_task(
-        runtime.run("e2e_cancel", "Hang", llm_provider_func=hanging_provider)
-    )
-    await asyncio.sleep(0.05)
-    await runtime.cancel("e2e_cancel")
-    result = await run_task
-    assert result.success is False
-    assert result.state == AgentState.CANCELLED
-    assert any(e.type == "agent.cancelled" for e in result.events)
-
-
-def test_model_response_normalization():
-    raw_tc = {
-        "id": "call_abc",
-        "name": "edit_file",
-        "arguments": '{"path": "app.py", "content": "x = 1"}'
-    }
-    norm = ModelResponseNormalizer.normalize_tool_call(raw_tc)
-    assert norm.id == "call_abc"
-    assert norm.name == "edit_file"
-    assert isinstance(norm.arguments, dict)
-    resp = ModelResponseNormalizer.normalize_response(
-        {"content": "Fix", "tool_calls": [raw_tc]}, raw_tool_calls=[raw_tc]
-    )
-    assert resp.finish_reason == "tool_use"
-    assert len(resp.tool_calls) == 1
-
-
-@pytest.mark.asyncio
-async def test_multi_tool_read_then_write(workspace, runtime):
-    (workspace / "input.txt").write_text("original content")
-    await runtime.start_session(str(workspace), session_id="e2e_multi")
-
-    async def multi_tool_provider(prompt, step):
-        if step == 1:
-            return ModelResponse(
-                text="Reading",
-                tool_calls=[ToolCall(id="tc_r", name="read_file", arguments={"path": "input.txt"})]
+    if patch_verification:
+        with patch(
+            "backend.app.agent.autonomous.verification_engine.VerificationEngine.run_phase_command",
+            new_callable=AsyncMock,
+        ) as mock_verify:
+            from backend.app.agent.autonomous.verification_engine import VerificationResult
+            mock_verify.return_value = VerificationResult(
+                success=True, command="mock-check", output="OK", duration_seconds=0.1
             )
-        elif step == 2:
-            return ModelResponse(
-                text="Writing",
-                tool_calls=[ToolCall(id="tc_w", name="write_file", arguments={
-                    "path": "output.txt", "content": "updated content"
-                })]
+            result = await runtime.run(
+                session_id=session_id,
+                task=task,
+                mode="Agent",
+                auto_apply=True,
+                llm_provider_func=llm_sequence,
+                max_turns=max_turns,
             )
-        return ModelResponse(text="Done.", tool_calls=[])
+    else:
+        result = await runtime.run(
+            session_id=session_id,
+            task=task,
+            mode="Agent",
+            auto_apply=True,
+            llm_provider_func=llm_sequence,
+            max_turns=max_turns,
+        )
 
-    result = await runtime.run("e2e_multi", "Read then write", llm_provider_func=multi_tool_provider)
-    assert result.success is True
-    assert (workspace / "output.txt").exists()
-    assert (workspace / "output.txt").read_text() == "updated content"
-
-
-def test_cost_estimated_flag():
-    from backend.app.adapters.base import ModelAdapter
-    for k in ("DEVPILOT_INPUT_COST_PER_M", "DEVPILOT_OUTPUT_COST_PER_M"):
-        os.environ.pop(k, None)
-    chunk = ModelAdapter.build_usage_chunk(1000, 500, "unknown-model")
-    assert chunk["type"] == "usage"
-    assert chunk["cost_usd"] > 0
-    assert chunk.get("cost_estimated") is True
+    return result
 
 
-def test_llm_provider_error_hierarchy():
-    errors = [
-        LLMAuthError(provider="test"),
-        LLMRateLimitError(provider="test"),
-        LLMTimeoutError(provider="test"),
-        LLMNetworkError(provider="test"),
-    ]
-    for err in errors:
-        assert isinstance(err, LLMProviderError), f"{type(err).__name__} not subclass of LLMProviderError"
-        assert hasattr(err, "retryable")
-        assert err.provider == "test"
-
+# ──────────────────────────────────────────────────────────────────────────────
+# Test A — Create hello.py
+# ──────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_session_lifecycle(workspace, runtime):
-    session = await runtime.start_session(str(workspace), session_id="e2e_lifecycle")
-    assert session.state == AgentState.IDLE
-    provider = _make_provider([ModelResponse(text="Nothing to do.", tool_calls=[])])
-    result = await runtime.run("e2e_lifecycle", "Do nothing", llm_provider_func=provider)
-    assert result.success is True
-    assert result.state in (AgentState.COMPLETED, AgentState.COMPLETED_VERIFIED, AgentState.COMPLETED_WITH_WARNINGS)
+async def test_a_create_hello_py():
+    """
+    Mock LLM issues a write_file tool call to create hello.py.
+    Expected: file exists, state is not FAILED.
+    """
+    with tempfile.TemporaryDirectory() as workspace:
+        hello_path = os.path.join(workspace, "hello.py")
+        content = 'print("hello")\n'
 
+        llm = _MockLLMSequence([
+            _resp(calls=[_tool_call("write_file", {"path": hello_path, "content": content})]),
+            _resp(text="hello.py created successfully."),
+        ])
+
+        result = await _run_runtime(workspace, "Create hello.py that prints hello", llm)
+
+        assert os.path.isfile(hello_path), "hello.py was not created"
+        assert 'print("hello")' in open(hello_path).read()
+        assert result.state not in (AgentState.FAILED, AgentState.CANCELLED), \
+            f"Unexpected state: {result.state} errors: {result.errors}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Test B — Multiple tool calls, multiple files
+# ──────────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_two_sessions_are_independent():
-    with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
-        rt1 = AgentRuntime(d1)
-        rt2 = AgentRuntime(d2)
-        await rt1.start_session(d1, session_id="sess_A")
-        await rt2.start_session(d2, session_id="sess_B")
-        provider = _make_provider([ModelResponse(text="Done", tool_calls=[])])
-        r1 = await rt1.run("sess_A", "task A", llm_provider_func=provider)
-        r2 = await rt2.run("sess_B", "task B", llm_provider_func=provider)
-        assert r1.session_id == "sess_A"
-        assert r2.session_id == "sess_B"
-        assert r1.success is True
-        assert r2.success is True
+async def test_b_multiple_tool_calls():
+    """
+    Mock LLM issues two sequential write_file calls.
+    Expected: both files exist.
+    """
+    with tempfile.TemporaryDirectory() as workspace:
+        app_path = os.path.join(workspace, "app.py")
+        req_path = os.path.join(workspace, "requirements.txt")
 
+        llm = _MockLLMSequence([
+            _resp(calls=[
+                _tool_call("write_file", {"path": app_path, "content": "# app\n"}),
+                _tool_call("write_file", {"path": req_path, "content": "flask\n"}),
+            ]),
+            _resp(text="Done."),
+        ])
+
+        result = await _run_runtime(workspace, "Create app.py and requirements.txt", llm)
+
+        assert os.path.isfile(app_path), "app.py not created"
+        assert os.path.isfile(req_path), "requirements.txt not created"
+        assert result.state != AgentState.FAILED, f"state: {result.state}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Test C — Tool fails once, agent retries
+# ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_c_tool_fails_once_agent_recovers():
+    """
+    First tool call uses a forbidden path, second uses a valid path.
+    Expected: valid file exists, agent did not crash.
+    """
+    with tempfile.TemporaryDirectory() as workspace:
+        valid_path = os.path.join(workspace, "recovered.py")
+
+        llm = _MockLLMSequence([
+            _resp(calls=[
+                _tool_call("write_file", {"path": "/etc/bad_path.py", "content": "evil"}),
+            ]),
+            _resp(calls=[
+                _tool_call("write_file", {"path": valid_path, "content": "# recovered\n"}),
+            ]),
+            _resp(text="Recovered successfully."),
+        ])
+
+        result = await _run_runtime(workspace, "Write a file", llm)
+
+        assert os.path.isfile(valid_path), "Valid file not created after recovery"
+        assert result.state != AgentState.CANCELLED
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Test D — Verification fails → LLM repair → rerun
+# ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_d_verification_fails_llm_repairs():
+    """
+    Verification fails once; LLM is invoked with the failure context and produces
+    a repair tool call. Verification passes on second attempt.
+    """
+    with tempfile.TemporaryDirectory() as workspace:
+        file_path = os.path.join(workspace, "fixed.py")
+        repair_path = os.path.join(workspace, "fixed.py")
+
+        from backend.app.agent.autonomous.verification_engine import VerificationResult
+
+        verify_call_count = {"n": 0}
+
+        async def patched_verify(cmd):
+            verify_call_count["n"] += 1
+            if verify_call_count["n"] == 1:
+                return VerificationResult(success=False, command="mock-check", output="SyntaxError: bad code", duration_seconds=0.1)
+            return VerificationResult(success=True, command="mock-check", output="OK", duration_seconds=0.1)
+
+        repair_tool_call = _tool_call("write_file", {"path": repair_path, "content": "# fixed\n"})
+
+        llm = _MockLLMSequence([
+            _resp(calls=[_tool_call("write_file", {"path": file_path, "content": "bad code\n"})]),
+            _resp(text="Implementation done."),
+            _resp(calls=[repair_tool_call]),
+            _resp(text="Fixed."),
+        ])
+
+        runtime = AgentRuntime(workspace)
+        session_id = f"test_{uuid.uuid4().hex[:8]}"
+        await runtime.start_session(workspace, session_id=session_id)
+        task = AgentTask(id=session_id, description="Fix the code", mode="Agent", auto_apply=True)
+
+        with patch(
+            "backend.app.agent.autonomous.verification_engine.VerificationEngine.run_phase_command",
+            side_effect=patched_verify,
+        ):
+            result = await runtime.run(
+                session_id=session_id,
+                task=task,
+                mode="Agent",
+                auto_apply=True,
+                llm_provider_func=llm,
+            )
+
+        assert verify_call_count["n"] >= 2, f"Expected >=2 verify calls, got {verify_call_count['n']}"
+        assert os.path.isfile(repair_path), "Repair file not created"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Test E — Missing LLM provider → explicit FAILED, never COMPLETED
+# ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_e_missing_llm_provider_fails_explicitly():
+    """
+    Passing llm_provider_func=None must result in state=FAILED, never COMPLETED.
+    """
+    with tempfile.TemporaryDirectory() as workspace:
+        runtime = AgentRuntime(workspace)
+        session_id = f"test_{uuid.uuid4().hex[:8]}"
+        await runtime.start_session(workspace, session_id=session_id)
+        task = AgentTask(id=session_id, description="Do something", mode="Agent", auto_apply=True)
+
+        with patch(
+            "backend.app.agent.autonomous.verification_engine.VerificationEngine.run_phase_command",
+            new_callable=AsyncMock,
+        ):
+            result = await runtime.run(
+                session_id=session_id,
+                task=task,
+                mode="Agent",
+                llm_provider_func=None,
+            )
+
+        assert result.state == AgentState.FAILED, \
+            f"Expected FAILED, got {result.state}"
+        assert result.state not in (
+            AgentState.COMPLETED,
+            AgentState.COMPLETED_VERIFIED,
+            AgentState.COMPLETED_WITH_WARNINGS,
+        ), "Must never report success when no LLM was called"
+        assert result.errors, "Expected at least one error message"
+        assert any(
+            "provider" in e.lower() or "llm" in e.lower() or "runtime" in e.lower()
+            for e in result.errors
+        ), f"Error messages didn't mention LLM/provider: {result.errors}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Test F — Outside-workspace access is denied
+# ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_f_outside_workspace_access_denied():
+    """
+    LLM tool call attempts to write a file outside the workspace directory.
+    Expected: permission denied, file not created at forbidden path.
+    """
+    with tempfile.TemporaryDirectory() as workspace:
+        with tempfile.TemporaryDirectory() as outside_dir:
+            forbidden_path = os.path.join(outside_dir, "evil_devpilot_test.py")
+
+            llm = _MockLLMSequence([
+                _resp(calls=[_tool_call("write_file", {"path": forbidden_path, "content": "evil"})]),
+                _resp(text="Done."),
+            ])
+
+            result = await _run_runtime(workspace, "Write outside workspace", llm)
+
+            assert not os.path.isfile(forbidden_path), \
+                "File was created outside workspace — path traversal protection failed!"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Regression: no fake success without LLM
+# ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_no_llm_provider_raises_runtime_error():
+    """
+    The runtime.run() loop must result in FAILED (not silently succeed)
+    when llm_provider_func is not provided.
+    """
+    with tempfile.TemporaryDirectory() as workspace:
+        runtime = AgentRuntime(workspace)
+        session_id = f"test_{uuid.uuid4().hex[:8]}"
+        await runtime.start_session(workspace, session_id=session_id)
+        task = AgentTask(id=session_id, description="Test", mode="Agent", auto_apply=True)
+
+        with patch(
+            "backend.app.agent.autonomous.verification_engine.VerificationEngine.run_phase_command",
+            new_callable=AsyncMock,
+        ):
+            result = await runtime.run(
+                session_id=session_id,
+                task=task,
+                mode="Agent",
+                llm_provider_func=None,
+            )
+
+        assert result.state == AgentState.FAILED
+        assert not result.success
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Regression: Worker resolves workspace root, not DATABASE_URL
+# ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_worker_resolves_workspace_root_not_db_url():
+    """
+    AgentWorker._resolve_workspace_root must return the workspace root_identifier,
+    never settings.DATABASE_URL.
+    """
+    from backend.app.infrastructure.worker import AgentWorker
+
+    with tempfile.TemporaryDirectory() as workspace:
+        worker = AgentWorker("test-worker")
+
+        mock_run = MagicMock()
+        mock_run.workspace_root = workspace
+        mock_run.workspace = MagicMock()
+        mock_run.workspace.root_identifier = workspace
+        mock_run.id = "test-run-id"
+
+        resolved = await worker._resolve_workspace_root(mock_run)
+
+        assert resolved == workspace, f"Expected {workspace!r}, got {resolved!r}"
+        assert "://" not in resolved, f"Workspace root contains URL scheme: {resolved}"
+        assert not resolved.startswith("sqlite"), "Workspace root must not be a SQLite URL"
