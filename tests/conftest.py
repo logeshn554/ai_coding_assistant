@@ -57,3 +57,20 @@ def _run_schema_migration():
 
 # Run once at import time — before any test collection
 _run_schema_migration()
+def pytest_sessionstart(session):
+    import os
+    import asyncio
+    from backend.app.infrastructure.database.models import Base
+    from backend.app.infrastructure.database.connection import engine
+    
+    if os.path.exists("devpilot.db"):
+        try:
+            os.remove("devpilot.db")
+        except Exception:
+            pass
+        
+    async def init_tables():
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            
+    asyncio.run(init_tables())
