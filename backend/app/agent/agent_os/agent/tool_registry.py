@@ -177,29 +177,22 @@ class TerminalTools:
     async def run_terminal_command(command: str, cwd: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]:
         """Execute a terminal command."""
         try:
-            process = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-            )
+            from backend.app.tools.terminal_tool import run_shell_command
+            class DummySession:
+                def __init__(self, root: Optional[str]):
+                    self.workspace_root = os.path.abspath(root or ".")
+                async def send_ws_message(self, msg: dict):
+                    pass
 
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=timeout,
-                )
-
-                return {
-                    "exit_code": process.returncode,
-                    "stdout": stdout.decode("utf-8", errors="replace"),
-                    "stderr": stderr.decode("utf-8", errors="replace"),
-                    "success": process.returncode == 0,
-                }
-            except asyncio.TimeoutError:
-                process.kill()
-                raise Exception(f"Command timed out after {timeout}s")
-
+            session = DummySession(cwd)
+            output = await run_shell_command(session, command, timeout_seconds=timeout)
+            is_failed = "Failed to execute command:" in output or "Command timed out" in output
+            return {
+                "exit_code": -1 if is_failed else 0,
+                "stdout": output,
+                "stderr": "",
+                "success": not is_failed,
+            }
         except Exception as e:
             raise Exception(f"Command execution failed: {str(e)}")
 
@@ -499,6 +492,24 @@ class ToolRegistry:
         self.register(
             "run_terminal_command",
             "Execute a shell command",
+            {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string"},
+                    "cwd": {"type": "string"},
+                    "timeout": {"type": "integer"},
+                },
+                "required": ["command"],
+            },
+            TerminalTools.run_terminal_command,
+            timeout_seconds=60,
+            risk_level="high",
+            requires_approval=False,
+        )
+
+        self.register(
+            "run_command",
+            "Execute a shell command (alias for run_terminal_command)",
             {
                 "type": "object",
                 "properties": {

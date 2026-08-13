@@ -227,6 +227,11 @@ class ToolExecutor:
         if not decision.allowed:
             return ToolResult(success=False, output=None, error=f"Security Policy Denied: {decision.reason}")
 
+        if decision.requires_approval and not auto_apply:
+            from backend.app.agent.agent_runtime.runtime import AgentState
+            if hasattr(self.session, "state"):
+                self.session.state = AgentState.WAITING_FOR_APPROVAL
+
         try:
             res = await asyncio.wait_for(
                 self._dispatch(tool_call_id, tool_name, arguments, auto_apply=auto_apply),

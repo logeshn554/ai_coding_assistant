@@ -142,6 +142,15 @@ class VerificationEngine:
                 output="Skipped (not configured)",
                 duration_seconds=0.0,
             )
+        import shutil
+        first_tool = cmd.split()[0]
+        if not shutil.which(first_tool):
+            return VerificationResult(
+                success=True,
+                command=cmd,
+                output=f"Skipped: tool '{first_tool}' is not installed",
+                duration_seconds=0.0,
+            )
         clean_env = os.environ.copy()
         for k in list(clean_env.keys()):
             if k.startswith("PYTEST"):

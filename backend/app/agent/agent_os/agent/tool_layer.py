@@ -77,10 +77,11 @@ class PathValidator:
                     resolved_allowed = allowed
 
                 # Handle wildcards like "tests/*.py" or "src/**/*.py"
-                if "*" in allowed or "*" in resolved_allowed:
-                    # Simple glob pattern matching
-                    pattern = resolved_allowed.replace(".", r"\.").replace("*", ".*").replace("**", ".*")
-                    if re.match(pattern, normalized_file):
+                if "*" in allowed or "?" in allowed or "*" in resolved_allowed:
+                    import fnmatch
+                    norm_rel = file_path.replace("\\", "/")
+                    norm_allowed = allowed.replace("\\", "/")
+                    if fnmatch.fnmatch(norm_rel, norm_allowed) or fnmatch.fnmatch(normalized_file.replace("\\", "/"), resolved_allowed.replace("\\", "/")):
                         return True, None
                 else:
                     # Direct path check

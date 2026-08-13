@@ -48,52 +48,24 @@ async def _run_command(
             )
 
     try:
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=workspace_root,
-        )
+        from backend.app.processes import kill_process_tree
+        from backend.app.tools.terminal_tool import run_shell_command
 
-        try:
-            stdout_bytes, stderr_bytes = await asyncio.wait_for(
-                proc.communicate(),
-                timeout=timeout,
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            return ToolResult(
-                success=False,
-                output="",
-                error=f"Command timed out after {timeout}s: {command}",
-            )
+        class DummySession:
+            def __init__(self, root: str):
+                self.workspace_root = os.path.abspath(root)
+            async def send_ws_message(self, msg: dict):
+                pass
 
-        stdout = stdout_bytes.decode("utf-8", errors="replace")[:_MAX_OUTPUT_BYTES]
-        stderr = stderr_bytes.decode("utf-8", errors="replace")[:_MAX_OUTPUT_BYTES]
-
-        # Combine stdout and stderr for the agent to see
-        output_parts = []
-        if stdout.strip():
-            output_parts.append(stdout.strip())
-        if stderr.strip():
-            output_parts.append(f"[stderr]\n{stderr.strip()}")
-
-        output = "\n".join(output_parts) if output_parts else "(no output)"
-        exit_code = proc.returncode or 0
-
+        session = DummySession(workspace_root)
+        out = await run_shell_command(session, command, timeout_seconds=int(timeout))
+        is_error = "Failed to execute command:" in out or "Command timed out" in out
         return ToolResult(
-            success=exit_code == 0,
-            output=output,
-            error=f"Command exited with code {exit_code}" if exit_code != 0 else None,
-            metadata={
-                "command": command,
-                "exit_code": exit_code,
-                "stdout_bytes": len(stdout_bytes),
-                "stderr_bytes": len(stderr_bytes),
-            },
+            success=not is_error,
+            output=out,
+            error=out if is_error else None,
+            metadata={"command": command},
         )
-
     except Exception as e:
         logger.error("Failed to execute command '%s': %s", command, e)
         return ToolResult(

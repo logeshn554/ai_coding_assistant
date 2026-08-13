@@ -262,7 +262,7 @@ CRITICAL INSTRUCTIONS:
             print(f"   ✓ Deleted file: {path}")
             return f"Successfully deleted file: {path}"
 
-    def run(self, request: str):
+    def run(self, request: str, max_turns: int = 25):
         print(f"🤖 Agent received: {request}\n")
         print("🔧 Executing operations...")
         
@@ -271,7 +271,7 @@ CRITICAL INSTRUCTIONS:
             "content": request
         })
         
-        while True:
+        for turn in range(max_turns):
             try:
                 response = self.client.messages.create(
                     model=self.model,

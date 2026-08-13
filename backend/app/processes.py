@@ -32,6 +32,30 @@ def confine_subprocess(pid: int) -> Optional[int]:
             pass
     return None
 
+def kill_process_tree(pid: int) -> None:
+    """Kill complete process tree for a given pid across Windows and Unix."""
+    if not pid:
+        return
+    try:
+        if sys.platform == "win32":
+            subprocess.call(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        else:
+            import signal
+            try:
+                os.killpg(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+    except Exception as e:
+        logger.warning(f"Error killing process tree for PID {pid}: {e}")
+
 class ActiveProcess:
     def __init__(self, command: str, cwd: str, name: str = None):
         self.id = str(uuid.uuid4())

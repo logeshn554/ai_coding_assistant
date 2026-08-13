@@ -308,12 +308,26 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
         elapsed_time = round(time.time() - start_time, 2)
         # A2: collect any partial output already buffered
         partial = "".join(output_chunks).strip()
+        # P0-03: kill the entire process group on Unix so child processes
+        # spawned by the shell (e.g. node, python) are also terminated.
         try:
             if sys.platform == "win32":
-                import subprocess
-                subprocess.call(["taskkill", "/F", "/T", "/PID", str(process.pid)])
+                import subprocess as _sub
+                _sub.call(["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                          stdout=_sub.DEVNULL, stderr=_sub.DEVNULL)
             else:
-                process.kill()
+                import signal
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    await asyncio.wait_for(process.wait(), timeout=2.0)
+                except asyncio.TimeoutError:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
             await asyncio.shield(process.wait())
         except Exception:
             pass

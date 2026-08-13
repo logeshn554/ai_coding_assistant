@@ -644,6 +644,15 @@ class AgentRuntime:
         if session_id in self._cancellation_events:
             self._cancellation_events[session_id].set()
 
+        # Stop active process supervisor / global processes on cancellation
+        try:
+            from backend.app.processes import global_process_manager
+            procs = global_process_manager.get_running_processes()
+            for p in procs:
+                asyncio.create_task(p.stop())
+        except Exception as e:
+            logger.warning(f"Error terminating processes on session cancellation: {e}")
+
         session = self._sessions.get(session_id)
         if session and session.state not in (AgentState.COMPLETED, AgentState.FAILED, AgentState.CANCELLED):
             session.state = AgentState.CANCELLED

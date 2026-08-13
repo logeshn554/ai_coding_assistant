@@ -30,7 +30,6 @@ DESTRUCTIVE_COMMAND_PATTERNS: List[re.Pattern] = [
     re.compile(r"\bgit\s+push\s+.*--force\b", re.IGNORECASE),
     re.compile(r"\bdrop\s+database\b", re.IGNORECASE),
     re.compile(r"\bformat\s+[c-z]:", re.IGNORECASE),
-    re.compile(r"/etc/(?:passwd|shadow|hosts)", re.IGNORECASE),
 ]
 
 SHELL_INJECTION_PATTERNS: List[re.Pattern] = [
@@ -40,6 +39,7 @@ SHELL_INJECTION_PATTERNS: List[re.Pattern] = [
     re.compile(r"\|\|"),      # Logical OR chaining
     re.compile(r"&&"),        # Logical AND chaining
     re.compile(r">\s*/"),     # Outbound redirect to root file
+    re.compile(r"/etc/(?:passwd|shadow|hosts)", re.IGNORECASE),
 ]
 
 

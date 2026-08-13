@@ -506,14 +506,19 @@ from ..state import limiter
 @router.websocket("/ws/chat")
 async def websocket_chat(
     request: WebSocket,
+    ticket: Optional[str] = Query(None),
     token: Optional[str] = Query(None),
     session_id: Optional[str] = Query(None)
 ):
     await request.accept()
-    # S1: Validate bearer token before doing anything else.
-    # SESSION_TOKEN is generated at startup and stored in ~/.devpilot/session_token.txt.
-    # Use secrets.compare_digest to prevent timing-based token guessing.
-    if not token or not secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+    from ..state import verify_ws_ticket, SESSION_TOKEN
+    is_authenticated = False
+    if ticket and verify_ws_ticket(ticket):
+        is_authenticated = True
+    elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+        is_authenticated = True
+
+    if not is_authenticated:
         await request.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid or missing token."}))
         await request.close(code=4401)
         return

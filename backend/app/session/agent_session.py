@@ -1119,7 +1119,7 @@ class AgentSession:
                         "tool_calls": raw_tool_calls
                     }
 
-                effective_max_turns = min(self.max_turns * 4, 200)
+                effective_max_turns = self.max_turns
                 self._agent_tool_call_count = 0
 
                 run_res = await self.agent_runtime.run(
@@ -1191,7 +1191,7 @@ class AgentSession:
                 })
 
             else:
-                effective_max_turns = min(self.max_turns * 4, 200) if mode in ("Agent", "Goal") else self.max_turns
+                effective_max_turns = self.max_turns
                 # B1: Previously 10000 in Agent mode, which could run API costs into
                 # hundreds of dollars silently. Now capped at max_turns*4 (ceiling 200).
                 turn = 0
@@ -1891,6 +1891,12 @@ class AgentSession:
                             "Increase `DEVPILOT_HARD_COST_LIMIT` in settings to allow higher spend."
                         ),
                     })
+                    from backend.app.agent.agent_runtime.runtime import AgentState
+                    if hasattr(self, "agent_runtime") and hasattr(self.agent_runtime, "transition_state"):
+                        try:
+                            self.agent_runtime.transition_state(self, AgentState.BLOCKED)
+                        except Exception:
+                            pass
                     return  # Stop yielding — caller's loop ends
 
                 # Soft limit: warn once per session so the user is aware.
