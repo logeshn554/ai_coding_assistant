@@ -10,6 +10,7 @@ import { useAI } from '../../core/ai/AIContext';
 import { parseToolEvent } from './ReasoningTimeline';
 import ThinkingState from './ThinkingState';
 import ToolChips, { type ToolRow } from './ToolChips';
+import { FileDiffBadges } from './FileDiffBadges';
 
 export interface AiTurn {
   kind: 'ai';
@@ -579,6 +580,9 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
             </div>
           ))}
         </div>
+
+        {/* File Diff Badges Summary */}
+        <FileDiffBadges diffs={diffsList} />
 
         {/* Feedback and Timestamp Footer */}
         {!isExecuting && (

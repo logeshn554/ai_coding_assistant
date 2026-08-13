@@ -285,44 +285,31 @@ export default function ToolChips({
           </div>
 
           {/* file-diff chips */}
-          {step >= total && diffs.length > 0 && (
-            <div className="mt-2.5 flex max-w-full flex-wrap gap-1.5 border-t border-line pt-2.5">
-              {diffs.slice(0, 3).map((d, i) => (
+          {diffs.length > 0 && (
+            <div className="mt-2.5 flex max-w-full flex-wrap gap-2 border-t border-line/40 pt-2.5">
+              {diffs.map((d, i) => (
                 <span
                   key={d.file}
-                  className="inline-flex h-7 max-w-full cursor-pointer items-center gap-1.5 rounded-chip bg-surface px-2 font-mono text-[11.5px] text-ink shadow-btn transition-colors duration-100 hover:bg-hover"
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#1f2024] border border-zinc-800/80 px-3 py-1.5 font-mono text-[12px] text-zinc-200 shadow-sm transition-all hover:border-zinc-700/80 hover:bg-[#25262c]"
                   style={{
                     animation: `pop-in 250ms cubic-bezier(0.23,1,0.32,1) ${
                       i * 80
                     }ms both`,
                   }}
                 >
-                  <span className="min-w-0 truncate">{d.file}</span>
+                  <span className="min-w-0 truncate font-medium text-zinc-200">{d.file}</span>
                   {d.add > 0 && (
-                    <span className="shrink-0 text-green tabular-nums">
+                    <span className="shrink-0 font-semibold text-emerald-400 tabular-nums">
                       +{d.add}
                     </span>
                   )}
                   {d.del > 0 && (
-                    <span className="shrink-0 text-red tabular-nums">
-                      −{d.del}
+                    <span className="shrink-0 font-semibold text-rose-400 tabular-nums">
+                      -{d.del}
                     </span>
                   )}
                 </span>
               ))}
-              {diffs.length > 3 && (
-                <button
-                  type="button"
-                  className="inline-flex h-7 items-center rounded-chip px-1.5 font-mono text-[11.5px] text-ink-3 underline decoration-transparent underline-offset-2 transition-colors duration-100 hover:text-ink-2 hover:decoration-current cursor-pointer focus:outline-none"
-                  style={{
-                    animation: `fade-in 300ms ease-out ${
-                      3 * 80
-                    }ms both`,
-                  }}
-                >
-                  +{diffs.length - 3} more
-                </button>
-              )}
             </div>
           )}
         </div>
