@@ -103,6 +103,38 @@ ipcMain.handle('dialog:openFolder', async () => {
   return { path: result.filePaths[0] };
 });
 
+ipcMain.handle('agentos:rollbackTask', async (_event, taskId) => {
+  try {
+    const http = require('http');
+    return new Promise((resolve) => {
+      const req = http.request(`${DEVPILOT_URL}/api/files/rollback-task?task_id=${encodeURIComponent(taskId)}`, { method: 'POST' }, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => resolve(JSON.parse(body || '{}')));
+      });
+      req.on('error', () => resolve({ success: false, reason: 'Failed to connect to backend' }));
+      req.end();
+    });
+  } catch (err) {
+    return { success: false, reason: err.message };
+  }
+});
+
+ipcMain.handle('agentos:getTaskDiff', async (_event, taskId) => {
+  try {
+    const http = require('http');
+    return new Promise((resolve) => {
+      http.get(`${DEVPILOT_URL}/api/files/task-diff?task_id=${encodeURIComponent(taskId)}`, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => resolve(JSON.parse(body || '{}')));
+      }).on('error', () => resolve({ diffs: {} }));
+    });
+  } catch (err) {
+    return { diffs: {} };
+  }
+});
+
 // ─── Window Creation ─────────────────────────────────────────────────────────
 
 function createWindow() {

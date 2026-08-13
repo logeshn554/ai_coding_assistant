@@ -45,6 +45,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelTask: (taskId) => ipcRenderer.invoke('agentos:cancelTask', taskId),
 
   /**
+   * Rolls back file modifications made by a task ID.
+   * @param {string} taskId
+   */
+  rollbackTask: (taskId) => ipcRenderer.invoke('agentos:rollbackTask', taskId),
+
+  /**
+   * Retrieves task file diffs.
+   * @param {string} taskId
+   */
+  getTaskDiff: (taskId) => ipcRenderer.invoke('agentos:getTaskDiff', taskId),
+
+  /**
    * Subscribes to agent state change events (agent switching, task completion).
    * @param {(event: Electron.IpcRendererEvent, data: object) => void} callback
    * @returns {() => void} Unsubscribe function
