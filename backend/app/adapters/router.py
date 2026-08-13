@@ -71,18 +71,18 @@ class ModelRouter:
         # Parse provider prefix if formatted as provider/model_name
         if "/" in model and not model.startswith("models/"):
             parts = model.split("/", 1)
-            provider = parts[0].lower()
+            prefix_provider = parts[0].lower()
             model_name = parts[1]
-            logger.info(f"ModelRouter: Detected provider prefix '{provider}' for model '{model_name}'")
+            logger.info(f"ModelRouter: Detected provider prefix '{prefix_provider}' for model '{model_name}'")
             
-            if provider == "anthropic" or "claude" in model_name.lower():
+            if prefix_provider == "anthropic" or "claude" in model_name.lower():
                 return LLMAdapter(key, url, model_name, provider="anthropic")
-            elif provider in ("google", "models") or "gemini" in model.lower():
+            elif prefix_provider in ("google", "models") or "gemini" in model.lower():
                 if not url or "openai" not in url_l:
                     url = "https://generativelanguage.googleapis.com/v1beta/openai/"
                 return LLMAdapter(key, url, model, provider="openai")
             else:
-                return LLMAdapter(key, url, model, provider="openai")
+                return LLMAdapter(key, url, model_name, provider="openai")
 
         # Standard routing based on api_format, base_url or model name
         fmt = (profile.get("api_format") or "").lower()

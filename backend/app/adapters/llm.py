@@ -91,6 +91,8 @@ class LLMAdapter(ModelAdapter):
     def __init__(self, api_key: str, base_url: str, model_name: str, provider: str):
         super().__init__(api_key, base_url, model_name)
         self.provider = provider
+        from .provider_capabilities import get_provider_capabilities
+        self.capabilities = get_provider_capabilities(self.provider, self.base_url, self.model_name)
 
     async def stream_chat(
         self, 
@@ -102,9 +104,15 @@ class LLMAdapter(ModelAdapter):
         if LLMAdapter._rpm_limiter is None:
             LLMAdapter._rpm_limiter = _RpmLimiter()
 
-        # Bug scanning was previously auto-injected here on every LLM call.
-        # Removed: scanning is now only triggered when the scan_for_bugs tool
-        # is explicitly called by the model, avoiding context pollution.
+        from .tool_history import validate_tool_history
+        validate_tool_history(messages)
+
+        # Opt-in sanitized debug logging of LLM payload
+        if os.environ.get("DEVPILOT_DEBUG_LLM_PAYLOADS", "").lower() in ("1", "true", "yes"):
+            logger.info(
+                "LLM Payload Debug: provider=%s model=%s base_url=%s msg_count=%d tool_count=%d",
+                self.provider, self.model_name, self.base_url, len(messages), len(tools)
+            )
 
         # Acquire rate limiter ticket before calling LLM providers
         await LLMAdapter._rpm_limiter.acquire()
@@ -335,31 +343,34 @@ class LLMAdapter(ModelAdapter):
 
         openai_messages = self._to_openai_messages(messages, system_prompt)
         from ..state import config_manager
+        from .tool_history import has_tool_results
         temp_setting = config_manager.get_temperature()
         top_p_setting = config_manager.get_top_p()
         max_tokens_setting = config_manager.get_max_tokens()
         seed_setting = config_manager.get_seed()
         stream_setting = config_manager.get_stream()
 
-        try:
-            kwargs = {
-                "model": self.model_name,
-                "messages": openai_messages,
-                "temperature": temp_setting,
-                "top_p": top_p_setting,
-                "max_tokens": max_tokens_setting,
-            }
-            if seed_setting is not None:
-                # Only send 'seed' to providers that support it (native OpenAI).
-                # NVIDIA, Google, and other third-party OpenAI-compatible endpoints
-                # reject unknown fields with a 400 "Cannot find field" error.
-                _provider_url = (base_url or "").lower()
-                _seed_supported = not _provider_url or "openai.com" in _provider_url
-                if _seed_supported:
-                    kwargs["seed"] = seed_setting
-            if openai_tools:
-                kwargs["tools"] = openai_tools
+        is_continuation = has_tool_results(messages)
+        if is_continuation and not self.capabilities.supports_streaming_tool_continuation:
+            logger.info("Provider capability policy: tool continuation requires non-streaming mode for provider %s", self.provider)
+            stream_setting = False
 
+        kwargs = {
+            "model": self.model_name,
+            "messages": openai_messages,
+            "temperature": temp_setting,
+            "top_p": top_p_setting,
+            "max_tokens": max_tokens_setting,
+        }
+        if seed_setting is not None:
+            _provider_url = (base_url or "").lower()
+            _seed_supported = not _provider_url or "openai.com" in _provider_url
+            if _seed_supported:
+                kwargs["seed"] = seed_setting
+        if openai_tools:
+            kwargs["tools"] = openai_tools
+
+        try:
             if not stream_setting:
                 kwargs["stream"] = False
                 response = await client.chat.completions.create(**kwargs)
@@ -447,16 +458,41 @@ class LLMAdapter(ModelAdapter):
                     )
                 stop_reason = "tool_use" if tool_calls_accum else "stop"
                 yield self.build_done_chunk(stop_reason)
-            except asyncio.CancelledError:
-                # asyncio.wait_for() cancelled this coroutine — treat as a turn timeout
-                logger.error(
-                    "LLM streaming coroutine was cancelled (likely due to a turn timeout). "
-                    "Increase DEVPILOT_LLM_TURN_TIMEOUT if the model needs more time."
-                )
-                raise TimeoutError(
-                    f"LLM turn timed out for provider ({base_url or 'OpenAI API'}). "
-                    "The request was cancelled. Try increasing DEVPILOT_LLM_TURN_TIMEOUT."
-                )
+            except (asyncio.CancelledError, asyncio.TimeoutError, httpx.TimeoutException, Exception) as stream_err:
+                if is_continuation:
+                    logger.warning(
+                        "LLM continuation failure: provider=%s model=%s operation=tool_continuation stream=true http_status=200 failure=read_timeout attempt=1 provider_response_started_but_stream_stalled. Falling back to non-streaming.",
+                        self.provider, self.model_name
+                    )
+                    # Non-streaming fallback for tool continuation
+                    kwargs["stream"] = False
+                    kwargs.pop("stream_options", None)
+                    fb_response = await client.chat.completions.create(**kwargs)
+                    if hasattr(fb_response, "usage") and fb_response.usage:
+                        yield self.build_usage_chunk(
+                            getattr(fb_response.usage, "prompt_tokens", 0),
+                            getattr(fb_response.usage, "completion_tokens", 0),
+                            self.model_name
+                        )
+                    if fb_response.choices:
+                        choice = fb_response.choices[0]
+                        if getattr(choice.message, "content", None) is not None:
+                            yield self.build_text_chunk(choice.message.content)
+                        tcs = getattr(choice.message, "tool_calls", None)
+                        if tcs:
+                            for idx, tc in enumerate(tcs):
+                                tc_id = tc.id or f"call_{idx}"
+                                parsed_input, error_msg = self.parse_tool_arguments(
+                                    tc.function.name, tc.function.arguments
+                                )
+                                yield self.build_tool_call_chunk(tc_id, tc.function.name, parsed_input, error_msg)
+                            yield self.build_done_chunk("tool_use")
+                        else:
+                            yield self.build_done_chunk(choice.finish_reason or "stop")
+                    else:
+                        yield self.build_done_chunk("stop")
+                    return
+                raise stream_err
             except Exception as stream_err:
                 err_str = str(stream_err).lower()
                 is_timeout = False
@@ -707,22 +743,11 @@ class LLMAdapter(ModelAdapter):
         openai_msgs = []
         if system_prompt:
             openai_msgs.append({"role": "system", "content": system_prompt})
-        pending_tool_call_ids = []
-        def flush_pending_tools():
-            nonlocal pending_tool_call_ids
-            while pending_tool_call_ids:
-                tc_id = pending_tool_call_ids.pop(0)
-                openai_msgs.append({
-                    "role": "tool",
-                    "tool_call_id": tc_id,
-                    "content": "Tool execution completed."
-                })
         for msg in internal_messages:
             role = msg["role"]
             if role == "system":
                 continue
             elif role == "user":
-                flush_pending_tools()
                 content = msg["content"]
                 if isinstance(content, list):
                     formatted_user_content = []
@@ -744,20 +769,13 @@ class LLMAdapter(ModelAdapter):
                     openai_msgs.append({"role": "user", "content": content})
 
             elif role == "tool":
-                tc_id = msg.get("tool_call_id") or msg.get("id")
-                if (not tc_id or tc_id == "legacy_tool") and pending_tool_call_ids:
-                    tc_id = pending_tool_call_ids.pop(0)
-                elif tc_id and tc_id in pending_tool_call_ids:
-                    pending_tool_call_ids.remove(tc_id)
-                elif not tc_id:
-                    tc_id = "legacy_tool"
+                tc_id = msg.get("tool_call_id") or msg.get("id") or ""
                 openai_msgs.append({
                     "role": "tool",
                     "tool_call_id": tc_id,
                     "content": str(msg.get("content", ""))
                 })
             elif role == "assistant":
-                flush_pending_tools()
                 content = msg.get("content")
                 tool_calls = msg.get("tool_calls")
                 if content is None:
@@ -772,15 +790,20 @@ class LLMAdapter(ModelAdapter):
                 }
                 if tool_calls:
                     tcs = []
-                    for tc in tool_calls:
-                        tc_id = tc.get("id", f"call_{len(tcs)}")
-                        pending_tool_call_ids.append(tc_id)
+                    for idx, tc in enumerate(tool_calls):
+                        tc_id = tc.get("id") or f"call_{idx}"
+                        func_name = tc.get("name") or (tc.get("function", {}).get("name") if isinstance(tc.get("function"), dict) else "unknown")
+                        raw_args = tc.get("input") if "input" in tc else (tc.get("function", {}).get("arguments") if isinstance(tc.get("function"), dict) else {})
+                        if isinstance(raw_args, dict):
+                            args_str = json.dumps(raw_args)
+                        else:
+                            args_str = str(raw_args) if raw_args is not None else "{}"
                         tc_item = {
                             "id": tc_id,
                             "type": "function",
                             "function": {
-                                "name": tc.get("name", "unknown"),
-                                "arguments": json.dumps(tc.get("input", {})) if isinstance(tc.get("input"), dict) else str(tc.get("input", ""))
+                                "name": func_name,
+                                "arguments": args_str
                             }
                         }
                         if tc.get("thought_signature"):
@@ -792,5 +815,4 @@ class LLMAdapter(ModelAdapter):
                         tcs.append(tc_item)
                     item["tool_calls"] = tcs
                 openai_msgs.append(item)
-        flush_pending_tools()
         return openai_msgs

@@ -160,7 +160,7 @@ class WorkspaceIndex:
             self.update()
             self._dirty = False
         if not self.cache:
-            return ""
+            return "\n=== Workspace Context ===\nGreenfield workspace. No application source files exist yet. Proceed with scaffolding and implementation.\n"
             
         max_chars = max_tokens * 4
         parts = ["\n=== Workspace Context (First 50 lines of project files) ==="]
