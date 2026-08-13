@@ -121,7 +121,7 @@ def _build_edit_error_hint(target: str, original_content: str, path: str) -> str
     target_lines = target.splitlines()
     orig_lines = original_content.splitlines()
     if not target_lines:
-        return f"Target block not found in file '{path}'."
+        return f"Error: Target block not found in file '{path}'."
 
     first_target_line = target_lines[0].strip()
     best_line_no = None
@@ -158,10 +158,10 @@ def _build_edit_error_hint(target: str, original_content: str, path: str) -> str
             expected = ""
             actual = ""
 
-        return f"differs starting at line {divergence_line}: expected '{expected}' but file has '{actual}'"
+        return f"Error: Mismatch at line {divergence_line}: expected '{expected}' but file has '{actual}'"
 
     file_first = orig_lines[0].strip() if orig_lines else ""
-    return f"differs starting at line 1: expected '{first_target_line}' but file has '{file_first}'"
+    return f"Error: Mismatch at line 1: expected '{first_target_line}' but file has '{file_first}'"
 
 
 def _whitespace_near_match(target: str, content: str) -> tuple[int, int] | None:

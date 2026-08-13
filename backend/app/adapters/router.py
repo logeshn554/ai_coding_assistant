@@ -5,14 +5,45 @@ from ..tools.scan_for_bugs import generate_bug_report_async
 
 logger = logging.getLogger("devpilot.router")
 
+
+class MockLLMAdapter:
+    """A lightweight mock LLM adapter that returns deterministic responses for testing."""
+
+    async def stream_chat(self, messages, tools=None, system_prompt=None):
+        """Yield a single text chunk with a mock response."""
+        last_user = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                last_user = m.get("content", "")[:200]
+                break
+        mock_response = f"[mock] Responded to: {last_user}" if last_user else "[mock] OK"
+        yield {"type": "text", "content": mock_response}
+
+
 def get_model_capabilities(model_name: str) -> Dict[str, Any]:
     """Dynamically construct capabilities for any model name without hardcoded lists."""
     if not model_name:
-        return {"context_window": None, "vision": False, "tool_calling": True}
+        return {"context_window": 8192, "vision": False, "tool_calling": True}
 
     model_name_lower = model_name.lower()
     vision = "vision" in model_name_lower or "vl" in model_name_lower or "4o" in model_name_lower or "claude-3" in model_name_lower or "gemini" in model_name_lower
-    return {"context_window": None, "vision": vision, "tool_calling": True}
+
+    # Infer context window from well-known model name patterns
+    if "gemini" in model_name_lower:
+        context_window = 1_000_000
+    elif "claude" in model_name_lower:
+        context_window = 200_000
+    elif "gpt-4o" in model_name_lower or "o1" in model_name_lower or "o3" in model_name_lower:
+        context_window = 128_000
+    elif "gpt-4" in model_name_lower:
+        context_window = 32_000
+    elif "llama" in model_name_lower or "qwen" in model_name_lower or "mistral" in model_name_lower or "deepseek" in model_name_lower:
+        context_window = 32_000
+    else:
+        # Default safe fallback — avoids NoneType comparison errors
+        context_window = 8192
+
+    return {"context_window": context_window, "vision": vision, "tool_calling": True}
 
 
 class ModelRouter:
@@ -61,12 +92,16 @@ class ModelRouter:
         Returns the appropriate LLM adapter based on the active profile and task category.
         """
         profile = self._resolve_profile(profile, is_agent, task_type)
+        # Return mock adapter if profile specifies mock provider/model (used in tests)
+        provider_flag = (profile.get("provider") or "").lower()
         key = profile.get("api_key", "")
         url = profile.get("base_url", "")
         model = profile.get("model_name", "") or profile.get("model") or ""
+        if provider_flag == "mock" or model.lower() == "mock":
+            return MockLLMAdapter()
 
-        url_l = (url or "").lower()
         model_l = (model or "").lower()
+        url_l = (url or "").lower()
 
         # Parse provider prefix if formatted as provider/model_name
         if "/" in model and not model.startswith("models/"):
@@ -82,7 +117,8 @@ class ModelRouter:
                     url = "https://generativelanguage.googleapis.com/v1beta/openai/"
                 return LLMAdapter(key, url, model, provider="openai")
             else:
-                return LLMAdapter(key, url, model_name, provider="openai")
+                # Return the full model name containing the slash/prefix (necessary for OpenRouter, custom NIM gateways, etc.)
+                return LLMAdapter(key, url, model, provider="openai")
 
         # Standard routing based on api_format, base_url or model name
         fmt = (profile.get("api_format") or "").lower()

@@ -229,7 +229,7 @@ class IntentRouter:
                 referenced_symbols=symbol_refs,
                 spec_file=None,
                 needs_context=True,
-                needs_plan=True,
+                needs_plan=False,
                 explanation="User wants to fix a bug or error.",
             )
 
@@ -242,7 +242,7 @@ class IntentRouter:
                 referenced_symbols=symbol_refs,
                 spec_file=spec_file,
                 needs_context=True,
-                needs_plan=True,
+                needs_plan=False,
                 explanation=f"User wants to implement the spec file '{spec_file}'.",
             )
 
@@ -255,7 +255,7 @@ class IntentRouter:
                 referenced_symbols=symbol_refs,
                 spec_file=None,
                 needs_context=True,  # Check if workspace is empty first
-                needs_plan=True,
+                needs_plan=False,
                 explanation="User wants to create a new project from scratch.",
             )
 
@@ -268,14 +268,14 @@ class IntentRouter:
                 referenced_symbols=symbol_refs,
                 spec_file=None,
                 needs_context=True,
-                needs_plan=True,
+                needs_plan=False,
                 explanation="User wants to refactor or restructure code.",
             )
 
         # ── 9. GENERAL (fallback) ────────────────────────────────────────
         confidence = 0.70
         needs_context = bool(file_refs or symbol_refs)
-        needs_plan = len(text_stripped) > 100  # Long requests likely need planning
+        needs_plan = False  # Disabled task planning
 
         return IntentResult(
             intent=IntentType.GENERAL,

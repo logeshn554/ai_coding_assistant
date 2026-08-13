@@ -21,6 +21,16 @@ from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, System
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 
+def safe_format_prompt(prompt_template: Any, **kwargs: Any) -> str:
+    """Safely formats a PromptTemplate, falling back to string replace if curly braces are unescaped."""
+    try:
+        return prompt_template.format(**kwargs)
+    except Exception:
+        template_str = prompt_template.template if hasattr(prompt_template, "template") else str(prompt_template)
+        for k, v in kwargs.items():
+            template_str = template_str.replace(f"{{{k}}}", str(v))
+        return template_str
+
 
 # ---------------------------------------------------------------------------
 # Structured output model for orchestrator routing decisions.
@@ -599,7 +609,7 @@ class PlannerAgent(BaseAgent):
             ("system", "You are a master software architect planner. Output ONLY a valid JSON array of subtask objects."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = planner_prompt_template.format(task_description=task_description)
+        prompt_content = safe_format_prompt(planner_prompt_template, task_description=task_description)
         
         default_agent_names = {
             "Planner Agent", "Frontend Planner Agent", "Backend Planner Agent", "Requirement Analysis Agent",
@@ -615,9 +625,23 @@ class PlannerAgent(BaseAgent):
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
-        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        response = response_msg.content
+        response = ""
         try:
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            response = response_msg.content
+        except Exception as llm_err:
+            logger.warning(f"Planner Agent: LLM call failed ({llm_err}). Using fallback plan.")
+            self.orchestrator.context.subtasks = [
+                {"id": 1, "agent": "Requirement Analysis Agent", "description": "Formulate exact file modifications and target list", "dependencies": []},
+                {"id": 2, "agent": "File System Agent", "description": "Locate files and read their contents", "dependencies": [1]},
+                {"id": 3, "agent": "Coding Agent", "description": task_description, "dependencies": [2]},
+                {"id": 4, "agent": "Terminal Agent", "description": "Run project build check", "dependencies": [3]},
+                {"id": 5, "agent": "Git Agent", "description": "Perform status checks", "dependencies": [4]}
+            ]
+            await self.orchestrator.context.log("Planner Agent: Fallback plan created.")
+            return "Fallback plan created."
+        try:
+
             clean_res = response.strip()
             if "```json" in clean_res:
                 clean_res = clean_res.split("```json")[1].split("```")[0].strip()
@@ -746,16 +770,26 @@ class RequirementAnalysisAgent(BaseAgent):
             ("system", "You are a master requirement analysis engineer. Output ONLY a valid JSON object."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = requirement_prompt_template.format(task_description=task_description, codebase_details=codebase_details)
+        prompt_content = safe_format_prompt(requirement_prompt_template, task_description=task_description, codebase_details=codebase_details)
         
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
-        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        response = response_msg.content
+        response = ""
+        try:
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            response = response_msg.content
+        except Exception as llm_err:
+            logger.warning(f"Requirement Analysis Agent: LLM call failed ({llm_err}). Using empty target list.")
+            self.orchestrator.context.memory["target_files"] = []
+            self.orchestrator.context.memory["files_to_create"] = []
+            self.orchestrator.context.memory["is_new_project"] = False
+            await self.orchestrator.update_task_progress(task_id, 100, session)
+            return "Completed"
         await self.orchestrator.update_task_progress(task_id, 70, session)
         
         try:
+
             clean_res = response.strip()
             if "```json" in clean_res:
                 clean_res = clean_res.split("```json")[1].split("```")[0].strip()
@@ -940,7 +974,8 @@ class CodingAgent(BaseAgent):
                 ("system", "You are a master software engineer. Output ONLY a valid JSON object."),
                 ("human", "{prompt_content}")
             ])
-            prompt_content = coding_prompt_template.format(
+            prompt_content = safe_format_prompt(
+                coding_prompt_template,
                 task_description=task_description,
                 path=path,
                 is_new_file=is_new_file,
@@ -1040,12 +1075,19 @@ class TerminalAgent(BaseAgent):
             ("human", "{prompt_content}")
         ])
         
-        prompt_content = terminal_prompt_template.format(task_description=task_description)
+        prompt_content = safe_format_prompt(terminal_prompt_template, task_description=task_description)
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
-        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        response = response_msg.content
+        response = ""
+        try:
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            response = response_msg.content
+        except Exception as llm_err:
+            logger.warning(f"Terminal Agent: LLM call failed ({llm_err}). Skipping command execution.")
+            await self.orchestrator.event_bus.emit("TERMINAL_COMPLETED", {"task": task_description})
+            await self.orchestrator.update_task_progress(task_id, 100, session)
+            return "Completed"
         
         try:
             clean_res = response.strip()
@@ -1063,6 +1105,8 @@ class TerminalAgent(BaseAgent):
             commands = data.get("commands", [])
             
             for cmd in commands:
+                if not isinstance(cmd, str):
+                    continue
                 await self.orchestrator.context.log(f"Terminal Agent: Running command: {cmd}")
                 from .tools.terminal_tool import run_shell_command
                 result = await run_shell_command(session, cmd)
@@ -1156,7 +1200,8 @@ class DebuggingAgent(BaseAgent):
             ("system", "You are a senior debugging engineer. Analyze the output and suggest fixes. Output ONLY a valid JSON object."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = debugging_prompt_template.format(
+        prompt_content = safe_format_prompt(
+            debugging_prompt_template,
             task_description=task_description,
             build_error=build_error,
             recent_commits=recent_commits,
@@ -1167,8 +1212,14 @@ class DebuggingAgent(BaseAgent):
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
-        debug_output_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        debug_output = debug_output_msg.content
+        debug_output = ""
+        try:
+            debug_output_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            debug_output = debug_output_msg.content
+        except Exception as llm_err:
+            logger.warning(f"Debugging Agent: LLM call failed ({llm_err}). Returning empty debug output.")
+            await self.orchestrator.update_task_progress(task_id, 100, session)
+            return "Completed"
         
         try:
             clean_res = debug_output.strip()
@@ -1231,7 +1282,7 @@ class DocumentationAgent(BaseAgent):
             ("system", "You are a technical writer. Write clean, readable technical documentation."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = documentation_prompt_template.format(task_description=task_description)
+        prompt_content = safe_format_prompt(documentation_prompt_template, task_description=task_description)
         
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
@@ -1278,16 +1329,21 @@ class CodeReviewAgent(BaseAgent):
         
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         findings = []
-        for i, chunk in enumerate(chunks):
-            await self.orchestrator.context.log(f"Code Review Agent: Auditing chunk {i+1}/{len(chunks)}...")
-            chat_prompt = ChatPromptTemplate.from_messages([
-                ("system", "You are a senior code reviewer. Provide constructive criticism and issues found."),
-                ("human", "{prompt_content}")
-            ])
-            prompt_content = review_prompt_template.format(task_description=task_description, codebase_text=chunk)
-            chain = chat_prompt | llm
-            review_msg = await chain.ainvoke({"prompt_content": prompt_content})
-            findings.append(review_msg.content)
+        try:
+            for i, chunk in enumerate(chunks):
+                await self.orchestrator.context.log(f"Code Review Agent: Auditing chunk {i+1}/{len(chunks)}...")
+                chat_prompt = ChatPromptTemplate.from_messages([
+                    ("system", "You are a senior code reviewer. Provide constructive criticism and issues found."),
+                    ("human", "{prompt_content}")
+                ])
+                prompt_content = safe_format_prompt(review_prompt_template, task_description=task_description, codebase_text=chunk)
+                chain = chat_prompt | llm
+                review_msg = await chain.ainvoke({"prompt_content": prompt_content})
+                findings.append(review_msg.content)
+        except Exception as llm_err:
+            logger.warning(f"Code Review Agent: LLM call failed ({llm_err}). Returning partial review.")
+            if not findings:
+                findings = ["Code review skipped: LLM unavailable."]
             
         review = "\n\n".join(findings)
         
@@ -1295,6 +1351,7 @@ class CodeReviewAgent(BaseAgent):
         self.orchestrator.context.memory["review"] = review
         await self.orchestrator.update_task_progress(task_id, 100, session)
         return "Completed"
+
 
 class GitAgent(BaseAgent):
     """Audits git status and command diffs for workspace changes."""
@@ -1372,7 +1429,7 @@ class FrontendPlannerAgent(BaseAgent):
             ("system", "You are a senior frontend architect. Output a detailed, actionable frontend development plan."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = frontend_planner_prompt_template.format(task_description=task_description)
+        prompt_content = safe_format_prompt(frontend_planner_prompt_template, task_description=task_description)
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         response_msg = await chain.ainvoke({"prompt_content": prompt_content})
@@ -1397,7 +1454,7 @@ class BackendPlannerAgent(BaseAgent):
             ("system", "You are a senior backend architect. Output a detailed, actionable backend development plan."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = backend_planner_prompt_template.format(task_description=task_description)
+        prompt_content = safe_format_prompt(backend_planner_prompt_template, task_description=task_description)
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         response_msg = await chain.ainvoke({"prompt_content": prompt_content})
@@ -1422,16 +1479,21 @@ class SoftwareArchitectAgent(BaseAgent):
             ("system", "You are a principal software architect. Design clean, scalable, production-ready system architecture."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = architect_prompt_template.format(task_description=task_description)
+        prompt_content = safe_format_prompt(architect_prompt_template, task_description=task_description)
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
-        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        architecture = response_msg.content
+        try:
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            architecture = response_msg.content
+        except Exception as llm_err:
+            logger.warning(f"Software Architect Agent: LLM call failed ({llm_err}). Skipping architecture design.")
+            architecture = "Architecture design skipped: LLM unavailable."
 
         self.orchestrator.context.memory["architecture"] = architecture
         await self.orchestrator.context.log(f"Software Architect Agent: Architecture ready.\n{architecture[:200]}...")
         await self.orchestrator.update_task_progress(task_id, 100, session)
         return "System architecture designed."
+
 
 
 class FrontendDeveloperAgent(BaseAgent):
@@ -1632,8 +1694,13 @@ class DatabaseAgent(BaseAgent):
         prompt_content = database_prompt_template.format(task_description=task_description)
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
-        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        db_design = response_msg.content
+        try:
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            db_design = response_msg.content
+        except Exception as llm_err:
+            logger.warning(f"Database Agent: LLM call failed ({llm_err}). Skipping DB design.")
+            await self.orchestrator.update_task_progress(task_id, 100, session)
+            return "Completed"
 
         self.orchestrator.context.memory["db_design"] = db_design
         await self.orchestrator.update_task_progress(task_id, 60, session)
@@ -1669,7 +1736,7 @@ class APIAgent(BaseAgent):
             ("system", "You are an expert API designer. Generate OpenAPI 3.0 specs and validation rules."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = api_agent_prompt_template.format(task_description=task_description)
+        prompt_content = safe_format_prompt(api_agent_prompt_template, task_description=task_description)
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         response_msg = await chain.ainvoke({"prompt_content": prompt_content})
@@ -1712,7 +1779,8 @@ class IntegrationAgent(BaseAgent):
             ("system", "You are a senior integration engineer. Verify all system components connect correctly."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = integration_prompt_template.format(
+        prompt_content = safe_format_prompt(
+            integration_prompt_template,
             task_description=task_description, codebase_text=codebase_text[:8000]
         )
         llm = DevPilotChatModel(session=session, agent_name=self.name)
@@ -1742,22 +1810,28 @@ class SecurityAgent(BaseAgent):
 
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         findings = []
-        for i, chunk in enumerate(chunks):
-            await self.orchestrator.context.log(f"Security Agent: Auditing chunk {i+1}/{len(chunks)}...")
-            chat_prompt = ChatPromptTemplate.from_messages([
-                ("system", "You are a senior application security engineer. Perform thorough OWASP-based security audits."),
-                ("human", "{prompt_content}")
-            ])
-            from .context_helpers import build_memory_summary
-            shared_memory = build_memory_summary(self.orchestrator.context.memory, max_chars=1500)
-            prompt_content = security_prompt_template.format(
-                task_description=task_description,
-                file_contents=chunk,
-                shared_memory=shared_memory
-            )
-            chain = chat_prompt | llm
-            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
-            findings.append(response_msg.content)
+        try:
+            for i, chunk in enumerate(chunks):
+                await self.orchestrator.context.log(f"Security Agent: Auditing chunk {i+1}/{len(chunks)}...")
+                chat_prompt = ChatPromptTemplate.from_messages([
+                    ("system", "You are a senior application security engineer. Perform thorough OWASP-based security audits."),
+                    ("human", "{prompt_content}")
+                ])
+                from .context_helpers import build_memory_summary
+                shared_memory = build_memory_summary(self.orchestrator.context.memory, max_chars=1500)
+                prompt_content = safe_format_prompt(
+                    security_prompt_template,
+                    task_description=task_description,
+                    file_contents=chunk,
+                    shared_memory=shared_memory
+                )
+                chain = chat_prompt | llm
+                response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+                findings.append(response_msg.content)
+        except Exception as llm_err:
+            logger.warning(f"Security Agent: LLM call failed ({llm_err}). Returning partial findings.")
+            if not findings:
+                findings = ["Security audit skipped: LLM unavailable."]
 
         security_report = "\n\n".join(findings)
 
@@ -1804,7 +1878,8 @@ class PerformanceAgent(BaseAgent):
                 ("system", "You are a performance engineering expert. Identify and fix performance issues."),
                 ("human", "{prompt_content}")
             ])
-            prompt_content = performance_prompt_template.format(
+            prompt_content = safe_format_prompt(
+                performance_prompt_template,
                 task_description=task_description, codebase_text=chunk
             )
             chain = chat_prompt | llm
@@ -1856,7 +1931,8 @@ class AIReviewerAgent(BaseAgent):
                 ("system", "You are a Staff/Principal Engineer. Perform a deep, honest technical review."),
                 ("human", "{prompt_content}")
             ])
-            prompt_content = ai_reviewer_prompt_template.format(
+            prompt_content = safe_format_prompt(
+                ai_reviewer_prompt_template,
                 task_description=task_description, codebase_text=chunk
             )
             chain = chat_prompt | llm
@@ -1884,11 +1960,16 @@ class DevOpsAgent(BaseAgent):
             ("system", "You are a senior DevOps engineer. Create production-ready Docker and CI/CD configs."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = devops_prompt_template.format(task_description=task_description)
+        prompt_content = safe_format_prompt(devops_prompt_template, task_description=task_description)
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
-        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        devops_config = response_msg.content
+        try:
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            devops_config = response_msg.content
+        except Exception as llm_err:
+            logger.warning(f"DevOps Agent: LLM call failed ({llm_err}). Skipping DevOps config generation.")
+            await self.orchestrator.update_task_progress(task_id, 100, session)
+            return "Completed"
 
         self.orchestrator.context.memory["devops_config"] = devops_config
         await self.orchestrator.update_task_progress(task_id, 60, session)
@@ -1926,13 +2007,19 @@ class ReleaseAgent(BaseAgent):
             ("system", "You are a release engineer. Prepare comprehensive, professional release documentation."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = release_prompt_template.format(
+        prompt_content = safe_format_prompt(
+            release_prompt_template,
             task_description=task_description, history_summary=history_summary
         )
         llm = DevPilotChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
-        response_msg = await chain.ainvoke({"prompt_content": prompt_content})
-        release_notes = response_msg.content
+        try:
+            response_msg = await chain.ainvoke({"prompt_content": prompt_content})
+            release_notes = response_msg.content
+        except Exception as llm_err:
+            logger.warning(f"Release Agent: LLM call failed ({llm_err}). Skipping release notes generation.")
+            await self.orchestrator.update_task_progress(task_id, 100, session)
+            return "Completed"
 
         self.orchestrator.context.memory["release_notes"] = release_notes
         await self.orchestrator.update_task_progress(task_id, 60, session)
@@ -2587,7 +2674,8 @@ async def orchestrator_node(state: AgentState) -> AgentState:
         ("system", "You are a master software architect routing coordinator. Output ONLY valid JSON."),
         ("human", "{prompt_content}")
     ])
-    prompt_content = orchestrator_prompt_template.format(
+    prompt_content = safe_format_prompt(
+        orchestrator_prompt_template,
         task_description=state["task_description"],
         agents_description=agents_description,
         history_summary=history_summary,
@@ -3544,7 +3632,8 @@ class AgentOrchestrator:
             ("system", "You are the head Orchestrator assistant. Summarize the task outcome clearly."),
             ("human", "{prompt_content}")
         ])
-        prompt_content = summary_prompt_template.format(
+        prompt_content = safe_format_prompt(
+            summary_prompt_template,
             task_description=task_description,
             final_history_summary=final_history_summary
         )

@@ -66,40 +66,8 @@ class PlanningEngine:
         spec_file: str | None,
         workspace_has_files: bool,
     ) -> Plan:
-        """Generate a task plan.
-
-        Args:
-            goal: The user's request.
-            intent: Classified intent type.
-            referenced_files: Files mentioned in the query.
-            spec_file: Spec document if IMPLEMENT_SPEC intent.
-            workspace_has_files: Whether the workspace is non-empty.
-
-        Returns:
-            A Plan with ordered steps (may be empty for trivial tasks).
-        """
-        steps: list[dict] = []
-
-        if intent == IntentType.IMPLEMENT_SPEC:
-            steps = self._plan_implement_spec(goal, spec_file, referenced_files)
-
-        elif intent == IntentType.BUG_FIX:
-            steps = self._plan_bug_fix(goal, referenced_files)
-
-        elif intent == IntentType.NEW_PROJECT:
-            steps = self._plan_new_project(goal, workspace_has_files)
-
-        elif intent == IntentType.REFACTOR:
-            steps = self._plan_refactor(goal, referenced_files)
-
-        elif intent == IntentType.REVIEW:
-            steps = self._plan_review(goal, referenced_files)
-
-        # EXPLAIN, SEARCH, CONTINUE, GENERAL: no plan needed — let agent run freely
-        else:
-            return Plan(goal=goal, steps=[])
-
-        return Plan(goal=goal, steps=steps)
+        """Generate a task plan (disabled - returns empty plan)."""
+        return Plan(goal=goal, steps=[])
 
     # ── Per-intent plan templates ────────────────────────────────────────
 

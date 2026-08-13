@@ -90,8 +90,9 @@ async def spawn_subagent(session: Any, prompt: str) -> str:
                     # Some adapters emit token usage; collect cost when present.
                     sub_cost_usd += float(chunk.get("cost_usd", 0.0))
         except Exception as exc:
-            logger.error("spawn_subagent: LLM call failed on turn %d: %s", _turn + 1, exc)
-            raise
+            logger.warning("spawn_subagent: LLM call failed on turn %d: %s. Returning fallback.", _turn + 1, exc)
+            final_text = f"Sub-agent could not complete (LLM unavailable: {exc})"
+            break
 
         # Append assistant turn to isolated history.
         asst_msg: dict = {"role": "assistant", "content": response_text}

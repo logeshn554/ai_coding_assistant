@@ -66,7 +66,7 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
       .catch(() => {});
   }, []);
 
-  const { onNewSession, taskMemory, isGenerating: isGeneratingContext, handleSendMessage } = useAI();
+  const { onNewSession, isGenerating: isGeneratingContext, handleSendMessage } = useAI();
 
   const handleToggleHunk = (msgId: string, hunkId: string, accepted: boolean) => {
     setHunkDecisions(prev => ({
@@ -138,8 +138,6 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
               onConfirmPermission={onConfirmPermission}
               hunkDecisions={hunkDecisions}
               onToggleHunk={handleToggleHunk}
-              taskMemory={taskMemory}
-              onContinue={() => handleSendMessage('continue', 'Agent', true)}
               isGenerating={isGeneratingContext}
               onSuggest={setInputText}
             />

@@ -1,10 +1,8 @@
 import React, { useRef, useEffect } from 'react';
-import type { ChatMessage, TaskMemoryData } from '../../types/chat';
+import type { ChatMessage } from '../../types/chat';
 import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
-import { TaskProgressPanel } from './TaskProgressPanel';
 import { useEditor } from '../../core/editor/EditorContext';
-
 interface MessageListProps {
   messages: ChatMessage[];
   onConfirmTool: (toolCallId: string, approved: boolean, hunkDecisions?: Record<string, boolean>) => void;
@@ -14,8 +12,6 @@ interface MessageListProps {
   onToggleHunk: (msgId: string, hunkId: string, accepted: boolean) => void;
   renderMessageContent?: (content: string) => React.ReactNode;
   onRunCommand?: (command: string) => void;
-  taskMemory?: TaskMemoryData | null;
-  onContinue?: () => void;
   isGenerating?: boolean;
   onSuggest?: (text: string) => void;
 }
@@ -123,8 +119,6 @@ export const MessageList: React.FC<MessageListProps> = ({
   hunkDecisions,
   onToggleHunk,
   onRunCommand,
-  taskMemory,
-  onContinue,
   isGenerating,
   onSuggest,
 }) => {
@@ -179,16 +173,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           );
         })}
 
-        {/* Task continuation board */}
-        {taskMemory && (
-          <div className="px-2 py-2">
-            <TaskProgressPanel
-              taskMemory={taskMemory}
-              onContinue={onContinue}
-              isGenerating={isGenerating}
-            />
-          </div>
-        )}
+
         
         <div ref={bottomRef} />
       </div>

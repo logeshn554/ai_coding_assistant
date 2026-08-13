@@ -14,7 +14,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-import type { ChatMessage, AgentState, Session, ProcessEntry, ChatMode, TaskMemoryData } from '../types/chat';
+import type { ChatMessage, AgentState, Session, ProcessEntry, ChatMode } from '../types/chat';
 import { MessageList } from './chat/MessageList';
 import { AgentStatusBar } from './chat/AgentStatusBar';
 import { useUI } from '../core/ui/UIContext';
@@ -57,9 +57,6 @@ interface ChatPanelProps {
   gitChangesList?: any[];
   onGitAction?: (action: any, files?: any) => any;
   onSelectFile?: (filePath: any) => any;
-
-  // 14-Phase Agent Intelligence
-  taskMemory?: TaskMemoryData | null;
   currentIntent?: string | null;
 }
 
@@ -106,7 +103,6 @@ export default function ChatPanel({
   onDeleteSession: _onDeleteSession,
   onNewSession,
   onRenameSession: _onRenameSession,
-  taskMemory = null,
   currentIntent = null
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
@@ -283,8 +279,6 @@ export default function ChatPanel({
           onConfirmPortConflict={onConfirmPortConflict}
           hunkDecisions={hunkDecisions}
           onToggleHunk={handleToggleHunk}
-          taskMemory={taskMemory}
-          onContinue={() => onSendMessage('continue', 'Agent', autoApply)}
           isGenerating={isGenerating}
         />
 

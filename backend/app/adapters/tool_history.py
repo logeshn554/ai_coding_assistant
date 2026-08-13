@@ -88,3 +88,56 @@ def validate_tool_history(messages: List[Dict[str, Any]]) -> None:
             f"Missing tool results for pending tool calls: {list(pending.keys())}",
             details={"pending": list(pending.keys())},
         )
+
+
+def clean_tool_history(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Clean legacy, duplicate, or orphaned tool calls/results in-place to prevent API errors."""
+    pending: Dict[str, Dict[str, Any]] = {}
+    cleaned_messages = []
+
+    for message in messages:
+        # copy message dict to avoid mutating original session history
+        msg_copy = dict(message)
+        role = msg_copy.get("role")
+
+        if role == "assistant":
+            tool_calls = msg_copy.get("tool_calls") or []
+            valid_calls = []
+            for tool_call in tool_calls:
+                call_id = tool_call.get("id")
+                if not call_id:
+                    continue
+                name = tool_call.get("name") or (tool_call.get("function", {}).get("name") if isinstance(tool_call.get("function"), dict) else "")
+                if not name:
+                    continue
+                if call_id in pending:
+                    continue
+                pending[call_id] = tool_call
+                valid_calls.append(tool_call)
+            if valid_calls:
+                msg_copy["tool_calls"] = valid_calls
+            else:
+                msg_copy.pop("tool_calls", None)
+
+        elif role == "tool":
+            call_id = msg_copy.get("tool_call_id") or msg_copy.get("id")
+            if not call_id or call_id not in pending:
+                # Skip orphaned tool result
+                continue
+            del pending[call_id]
+
+        elif role == "user":
+            pending.clear()
+
+        cleaned_messages.append(msg_copy)
+
+    # Filter out empty assistant calls with no text and no tool calls
+    final_messages = []
+    for msg in cleaned_messages:
+        if msg.get("role") == "assistant" and not (msg.get("content") or "").strip() and not msg.get("tool_calls"):
+            continue
+        final_messages.append(msg)
+
+    return final_messages
+
+

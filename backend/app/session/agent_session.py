@@ -279,12 +279,19 @@ class AgentSession:
                         raw_content = m.content  # May be None or string from DB
                         content = ""
                         tool_calls = None
+                        tool_call_id = None
+                        tool_name = None
                         try:
                             if raw_content:
                                 parsed = json.loads(raw_content)
                                 if isinstance(parsed, dict) and "tool_calls" in parsed:
                                     # New format: {"content": "...", "tool_calls": [...]}
                                     tool_calls = parsed["tool_calls"]
+                                    content = str(parsed.get("content") or "")
+                                elif isinstance(parsed, dict) and "tool_call_id" in parsed:
+                                    # Tool message metadata format
+                                    tool_call_id = parsed["tool_call_id"]
+                                    tool_name = parsed.get("name")
                                     content = str(parsed.get("content") or "")
                                 elif isinstance(parsed, str):
                                     content = parsed
@@ -305,6 +312,9 @@ class AgentSession:
                         entry: dict = {"role": m.role, "content": content}
                         if tool_calls:
                             entry["tool_calls"] = tool_calls
+                        if tool_call_id:
+                            entry["tool_call_id"] = tool_call_id
+                            entry["name"] = tool_name or "unknown"
                         # Restore tool_call_id for tool messages if saved in content
                         if m.role == "tool" and not entry.get("tool_call_id"):
                             entry["tool_call_id"] = "legacy_tool"
@@ -366,6 +376,12 @@ class AgentSession:
                             db_content = json.dumps({
                                 "content": content if content is not None else "",
                                 "tool_calls": tool_calls
+                            })
+                        elif role == "tool":
+                            db_content = json.dumps({
+                                "content": content if content is not None else "",
+                                "tool_call_id": m.get("tool_call_id") or "",
+                                "name": m.get("name") or ""
                             })
                         elif isinstance(content, (dict, list)):
                             db_content = json.dumps(content)
@@ -1862,10 +1878,12 @@ class AgentSession:
         - Hard limit (DEVPILOT_HARD_COST_LIMIT, default $10): immediately terminates.
         """
         from ..config import settings
+        from ..adapters.tool_history import clean_tool_history
+        cleaned_messages = clean_tool_history(messages)
         soft_limit = float(getattr(settings, "COST_LIMIT_USD", 5.0))
         hard_limit = float(getattr(settings, "DEVPILOT_HARD_COST_LIMIT", 10.0))
 
-        async for chunk in adapter.stream_chat(messages, tools, system_prompt):
+        async for chunk in adapter.stream_chat(cleaned_messages, tools, system_prompt):
             if chunk.get("type") == "usage":
                 turn_cost = float(chunk.get("cost_usd", 0.0))
                 self.total_cost_usd = self.total_cost_usd + turn_cost
