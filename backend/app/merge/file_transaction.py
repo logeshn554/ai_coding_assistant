@@ -5,9 +5,48 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, List, Tuple
+from enum import Enum
 
 logger = logging.getLogger("devpilot.merge.file_transaction")
+
+
+class TransactionState(str, Enum):
+    CREATED = "CREATED"
+    PLANNED = "PLANNED"
+    EXECUTING = "EXECUTING"
+    VERIFYING = "VERIFYING"
+    AWAITING_APPROVAL = "AWAITING_APPROVAL"
+    COMMITTED = "COMMITTED"
+    ROLLED_BACK = "ROLLED_BACK"
+    FAILED = "FAILED"
+
+
+class TaskTransaction:
+    """High-level transaction scope wrapping file operations and agent state."""
+
+    def __init__(self, transaction_id: str, task_description: str):
+        self.transaction_id = transaction_id
+        self.task_description = task_description
+        self.state = TransactionState.CREATED
+        self.file_txn = FileTransaction()
+
+    def begin(self) -> None:
+        self.state = TransactionState.PLANNED
+        self.file_txn.begin()
+
+    def execute(self) -> None:
+        self.state = TransactionState.EXECUTING
+
+    def verify(self) -> None:
+        self.state = TransactionState.VERIFYING
+
+    def commit(self) -> None:
+        self.file_txn.commit()
+        self.state = TransactionState.COMMITTED
+
+    def rollback(self) -> None:
+        self.file_txn.rollback()
+        self.state = TransactionState.ROLLED_BACK
 
 
 class FileTransaction:

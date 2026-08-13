@@ -11,6 +11,7 @@ from .prompt_injection_guard import PromptInjectionGuard
 from .secret_redactor import SecretRedactor
 from .terminal_sandbox import CommandAnalysisResult, TerminalSandbox
 from .workspace_guard import WorkspaceGuard
+from .workspace_policy import WorkspacePolicy, Capability, DEFAULT_EXCLUDE_DIRS
 
 __all__ = [
     "PermissionEngine",
@@ -29,4 +30,7 @@ __all__ = [
     "AuditLogger",
     "AuditRecord",
     "PromptInjectionGuard",
+    "WorkspacePolicy",
+    "Capability",
+    "DEFAULT_EXCLUDE_DIRS",
 ]

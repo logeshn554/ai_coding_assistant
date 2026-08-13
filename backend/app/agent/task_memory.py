@@ -225,3 +225,30 @@ class TaskMemory:
             "pending_steps": self.pending_count(),
             "completed_steps": self.completed_count(),
         }
+
+    def export_replay_log(self) -> dict[str, Any]:
+        """Export full execution log payload for task replay and auditing."""
+        return {
+            "goal": self.goal,
+            "intent": self.intent,
+            "is_complete": self.is_complete,
+            "completion_reason": self.completion_reason,
+            "steps": [
+                {
+                    "id": s.id,
+                    "task": s.task,
+                    "step_type": s.step_type,
+                    "status": s.status.value,
+                    "result": s.result,
+                    "error": s.error,
+                    "retry_count": s.retry_count,
+                    "deps": s.deps,
+                    "started_at": s.started_at,
+                    "completed_at": s.completed_at,
+                }
+                for s in self.steps
+            ],
+            "files_read": self.files_read,
+            "files_written": self.files_written,
+            "errors": self.errors,
+        }
