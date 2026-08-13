@@ -28,6 +28,27 @@ async def init_db() -> None:
         except Exception as e:
             logger.error(f"Failed to run programmatic Alembic migrations: {e}")
 
+    # 1b. Safe schema migration — add new columns if absent (SQLite compatible)
+    from sqlalchemy import text
+    from backend.app.infrastructure.database.connection import engine
+    _new_agent_run_cols = [
+        ("workspace_root", "VARCHAR(1024)"),
+        ("profile_name", "VARCHAR(255)"),
+    ]
+    async with engine.begin() as conn:
+        # Get existing columns via PRAGMA
+        result = await conn.execute(text("PRAGMA table_info(agent_runs)"))
+        existing_cols = {row[1] for row in result.fetchall()}
+        for col_name, col_type in _new_agent_run_cols:
+            if col_name not in existing_cols:
+                try:
+                    await conn.execute(
+                        text(f"ALTER TABLE agent_runs ADD COLUMN {col_name} {col_type}")
+                    )
+                    logger.info(f"Schema migration: added column agent_runs.{col_name}")
+                except Exception as e:
+                    logger.warning(f"Could not add column agent_runs.{col_name}: {e}")
+
     # 2. Run data migration helper
     from backend.app.infrastructure.database.migration_helper import import_legacy_data
     async with async_session() as db:
