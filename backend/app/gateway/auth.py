@@ -85,7 +85,12 @@ class JWTAuthProvider(AuthProvider):
     """JWT-based authentication using HMAC-SHA256 signature verification."""
 
     def __init__(self, secret: str = ""):
-        self._secret = secret or os.getenv("DEVPILOT_JWT_SECRET", "devpilot-dev-secret")
+        self._secret = secret or os.getenv("DEVPILOT_JWT_SECRET", "")
+        env_mode = os.getenv("ENVIRONMENT", os.getenv("NODE_ENV", "development")).lower()
+        if env_mode == "production" and not self._secret:
+            raise RuntimeError("JWT_SECRET must be configured before starting in production")
+        if not self._secret:
+            self._secret = "devpilot-dev-secret"
 
     def authenticate(self, credentials: Dict[str, Any]) -> Optional[AuthIdentity]:
         token = credentials.get("token", "")
@@ -277,10 +282,10 @@ class AuthGateway:
         self._ws_provider = WebSocketTokenProvider(self._jwt_provider)
         self._default_identity = AuthIdentity(
             user_id="local-user",
-            auth_method=AuthMethod.ANONYMOUS,
-            tenant=TenantContext(tenant_id="local", tier="enterprise"),
-            roles=["admin"],
-            permissions=["*"],
+            auth_method=AuthMethod.JWT,
+            tenant=TenantContext(tenant_id="local", tier="free"),
+            roles=["developer"],
+            permissions=["workspace:read", "workspace:write", "terminal:execute"],
         )
 
     @property
@@ -291,10 +296,10 @@ class AuthGateway:
     def ws_provider(self) -> WebSocketTokenProvider:
         return self._ws_provider
 
-    def authenticate(self, headers: Dict[str, str] = None, query_params: Dict[str, str] = None) -> AuthIdentity:
+    def authenticate(self, headers: Dict[str, str] = None, query_params: Dict[str, str] = None) -> Optional[AuthIdentity]:
         """Authenticate a request using available credentials.
 
-        Tries in order: Authorization header (JWT) → X-API-Key header → ws_token query param → anonymous.
+        Tries in order: Authorization header (JWT) → X-API-Key header → ws_token query param → default.
         """
         headers = headers or {}
         query_params = query_params or {}
@@ -324,8 +329,12 @@ class AuthGateway:
                 logger.debug(f"Authenticated via WS token: user={identity.user_id}")
                 return identity
 
-        # 4. Fall back to default (local dev mode)
-        logger.debug("No credentials found, using default local identity")
+        env_mode = os.getenv("ENVIRONMENT", os.getenv("NODE_ENV", "development")).lower()
+        if env_mode == "production":
+            return None
+
+        # 4. Fall back to default local user identity for local dev
+        logger.debug("No credentials found, using default local developer identity")
         return self._default_identity
 
 

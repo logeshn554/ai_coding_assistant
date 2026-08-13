@@ -10,6 +10,9 @@ from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger("devpilot.processes")
 
+PROCESS_MAX_HISTORY = 100
+PROCESS_MAX_LOG_BYTES = 5 * 1024 * 1024
+
 _job_objects = []
 
 def confine_subprocess(pid: int) -> Optional[int]:
@@ -208,6 +211,19 @@ class ActiveProcess:
             if conf_port_match:
                 self.port = int(conf_port_match.group(1))
             self.startup_success_event.set()
+
+    async def check_tcp_readiness(self, host: str = "127.0.0.1", port: Optional[int] = None) -> bool:
+        """Probe actual TCP socket connection readiness instead of relying solely on log regex."""
+        target_port = port or self.port
+        if not target_port:
+            return False
+        import socket
+        try:
+            sock = socket.create_connection((host, target_port), timeout=1.0)
+            sock.close()
+            return True
+        except Exception:
+            return False
 
     def cleanup(self):
         if sys.platform == "win32" and self.win32_job_object:

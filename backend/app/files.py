@@ -116,7 +116,7 @@ def create_backup(workspace_root: str, relative_path: str) -> bool:
             return False
             
         # Define backup folder locally in .devpilot
-        rel_hash = hashlib.md5(relative_path.encode("utf-8")).hexdigest()
+        rel_hash = hashlib.sha256(relative_path.encode("utf-8")).hexdigest()
         backup_dir = os.path.join(workspace_root, ".devpilot", "backups", rel_hash)
         os.makedirs(backup_dir, exist_ok=True)
         
@@ -158,7 +158,7 @@ def create_backup(workspace_root: str, relative_path: str) -> bool:
 
 def rollback_file(workspace_root: str, relative_path: str, timestamp: int = None) -> bool:
     try:
-        rel_hash = hashlib.md5(relative_path.encode("utf-8")).hexdigest()
+        rel_hash = hashlib.sha256(relative_path.encode("utf-8")).hexdigest()
         backup_dir = os.path.join(workspace_root, ".devpilot", "backups", rel_hash)
         if not os.path.exists(backup_dir):
             return False
@@ -346,8 +346,13 @@ def write_workspace_file(workspace_root: str, relative_path: str, content: str) 
             
         # Create parent directories if they don't exist
         os.makedirs(os.path.dirname(target_file), exist_ok=True)
-        with open(target_file, "w", encoding="utf-8") as f:
+        import uuid
+        tmp_file = f"{target_file}.tmp_{uuid.uuid4().hex[:8]}"
+        with open(tmp_file, "w", encoding="utf-8") as f:
             f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_file, target_file)
             
         # Invalidate cache keys for target_file
         keys_to_pop = [k for k in file_cache.cache if k[0] == target_file]

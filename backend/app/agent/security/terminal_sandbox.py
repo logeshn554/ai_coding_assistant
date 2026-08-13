@@ -96,6 +96,12 @@ class TerminalSandbox:
         env_vars: Optional[Dict[str, str]] = None,
     ) -> Tuple[bool, str, int]:
         """Execute command in isolated environment with process tree cleanup."""
+        analysis = self.analyze_command(command)
+        if analysis.is_injection:
+            return False, f"Command blocked by security policy: shell injection syntax detected in '{command}'", 126
+        if analysis.risk == RiskLevel.CRITICAL:
+            return False, f"Command blocked by security policy: critical risk command '{command}'", 126
+
         t_limit = timeout or self.timeout
         env = EnvironmentIsolation.get_isolated_env(env_vars)
 

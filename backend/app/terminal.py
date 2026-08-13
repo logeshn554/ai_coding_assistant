@@ -7,6 +7,12 @@ import json
 logger = logging.getLogger("devpilot.terminal")
 
 
+class TerminalDefaults:
+    DEFAULT_COLS = 120
+    DEFAULT_ROWS = 30
+    FALLBACK_SHELL_UNIX = "/bin/bash"
+
+
 class TerminalManager:
     """
     PTY-based terminal manager that provides a real terminal experience.
@@ -20,10 +26,10 @@ class TerminalManager:
         self._pty = None          # winpty.PtyProcess (Windows) or fd (Unix)
         self._process = None      # subprocess.Popen (Unix only)
         self._read_task = None
-        self._cols = 120
-        self._rows = 30
+        self._cols = TerminalDefaults.DEFAULT_COLS
+        self._rows = TerminalDefaults.DEFAULT_ROWS
 
-    async def start(self, cols: int = 120, rows: int = 30):
+    async def start(self, cols: int = TerminalDefaults.DEFAULT_COLS, rows: int = TerminalDefaults.DEFAULT_ROWS):
         """
         Starts a PTY-attached shell process and begins reading its output.
         """

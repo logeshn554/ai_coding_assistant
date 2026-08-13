@@ -355,6 +355,7 @@ class WorkspaceState:
             if len(self._session_roots) > 200:
                 oldest_sid = next(iter(self._session_roots))
                 self._session_roots.pop(oldest_sid, None)
+            return
         self._default_root = val
 
     @property
@@ -418,6 +419,9 @@ async def verify_token(request: Request = None):
     Set DEVPILOT_NO_AUTH=true to bypass for local development.
     """
     if os.environ.get("DEVPILOT_NO_AUTH", "").lower() in ("1", "true", "yes"):
+        env_mode = os.environ.get("ENVIRONMENT", os.environ.get("NODE_ENV", "development")).lower()
+        if env_mode == "production":
+            raise RuntimeError("DEVPILOT_NO_AUTH cannot be enabled in production environment")
         return
     if request is None:
         return

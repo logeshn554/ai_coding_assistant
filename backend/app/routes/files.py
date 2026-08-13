@@ -217,8 +217,10 @@ async def upload_attachment(file: UploadFile = File(...)):
         att_dir = os.path.join(root, "artifacts", "attachments")
         await asyncio.to_thread(os.makedirs, att_dir, exist_ok=True)
 
-        filename = os.path.basename(file.filename or "pasted_image.png")
-        safe_filename = f"{hashlib.md5(filename.encode()).hexdigest()[:8]}_{filename}"
+        orig_filename = os.path.basename(file.filename or "pasted_image.png")
+        file_id = uuid.uuid4().hex
+        ext = Path(orig_filename).suffix.lower() or ".png"
+        safe_filename = f"{file_id}{ext}"
         target_path = os.path.abspath(os.path.join(att_dir, safe_filename))
 
         # Defense-in-depth containment check
@@ -230,7 +232,7 @@ async def upload_attachment(file: UploadFile = File(...)):
         rel_path = os.path.relpath(target_path, workspace_state.root).replace("\\", "/") if workspace_state.root else target_path
         return {
             "success": True,
-            "filename": filename,
+            "filename": orig_filename,
             "path": target_path,
             "rel_path": rel_path
         }
@@ -259,8 +261,10 @@ async def get_agent_task_diff(task_id: str):
 async def get_raw_file(path: str):
     """Serve raw binary content of a file (e.g. uploaded image attachments or workspace assets)."""
     try:
+        if os.path.isabs(path):
+            raise HTTPException(status_code=400, detail="Absolute paths are not allowed.")
         root = workspace_state.root or os.path.expanduser("~")
-        abs_path = path if os.path.isabs(path) else safe_path(root, path)
+        abs_path = safe_path(root, path)
         if not os.path.exists(abs_path):
             raise HTTPException(status_code=404, detail=f"File not found: {path}")
         return FileResponse(abs_path)

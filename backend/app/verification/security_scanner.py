@@ -33,8 +33,8 @@ class SecurityScanner:
             # Bandit returns 0 if no issues found, or 1 if low/medium/high issues
             return (res.returncode == 0)
         except Exception as e:
-            logger.warning(f"Security scanner execution raised: {e}")
-            return True  # fallback if bandit not present
+            logger.error(f"Security scanner execution failed: {e}. Failing closed.")
+            return False
 
 
 # ── Singleton ───────────────────────────────────────────────────────────────

@@ -52,7 +52,8 @@ class Settings(BaseSettings):
 
     # Docker Sandbox settings
     USE_SANDBOX: bool = False
-    SANDBOX_IMAGE: str = "python:3.12-slim"
+    ENVIRONMENT: str = "development"
+    MODE: str = "desktop"  # desktop | server
 
     # Logging settings
     LOG_JSON: bool = False
@@ -66,18 +67,26 @@ class Settings(BaseSettings):
 
     def __init__(self, **values):
         super().__init__(**values)
-        try:
-            # Load or auto-generate JWT_SECRET on first run and store in encrypted keyring
-            secret = keyring.get_password("devpilot", "jwt_secret")
-            if not secret:
+        if self.ENVIRONMENT == "production":
+            jwt_env = os.getenv("DEVPILOT_JWT_SECRET") or os.getenv("JWT_SECRET")
+            if not jwt_env:
+                raise RuntimeError("JWT_SECRET must be explicitly set via environment variable in production mode.")
+            self.JWT_SECRET = jwt_env
+            if self.MODE == "server" and "sqlite" in self.DATABASE_URL.lower():
+                logger.warning("Production server mode detected with SQLite database URL. PostgreSQL is recommended.")
+        else:
+            try:
+                # Load or auto-generate JWT_SECRET on first run and store in encrypted keyring
+                secret = keyring.get_password("devpilot", "jwt_secret")
+                if not secret:
+                    import secrets
+                    secret = secrets.token_hex(32)
+                    keyring.set_password("devpilot", "jwt_secret", secret)
+                self.JWT_SECRET = secret
+            except Exception:
+                # Fallback to in-memory generation if keyring is inaccessible
                 import secrets
-                secret = secrets.token_hex(32)
-                keyring.set_password("devpilot", "jwt_secret", secret)
-            self.JWT_SECRET = secret
-        except Exception:
-            # Fallback to in-memory generation if keyring is inaccessible
-            import secrets
-            self.JWT_SECRET = secrets.token_hex(32)
+                self.JWT_SECRET = secrets.token_hex(32)
 
 settings = Settings()
 
