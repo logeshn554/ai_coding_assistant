@@ -581,14 +581,17 @@ async def websocket_chat(
 ):
     await request.accept()
     from ..state import verify_ws_ticket, SESSION_TOKEN
+    from ..config import settings
+    is_prod_server = (settings.ENVIRONMENT == "production" and settings.MODE == "server")
+
     is_authenticated = False
     if ticket and verify_ws_ticket(ticket):
         is_authenticated = True
-    elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+    elif token and not is_prod_server and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         is_authenticated = True
 
     if not is_authenticated:
-        await request.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid or missing token."}))
+        await request.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid, expired, or missing connection ticket."}))
         await request.close(code=4401)
         return
     active_profile = config_manager.get_active_profile()
@@ -602,6 +605,16 @@ async def websocket_chat(
     from ..state import session_id_var
     session_id_var.set(resolved_session_id)
     session_workspace_root = workspace_state.root
+
+    # Enforce tenant isolation for the session workspace root in production
+    if is_prod_server and session_workspace_root:
+        from .workspace import validate_workspace_path
+        try:
+            validate_workspace_path(session_workspace_root)
+        except HTTPException as auth_err:
+            await request.send_text(json.dumps({"type": "error", "message": f"Tenant boundary violation: {auth_err.detail}"}))
+            await request.close(code=4403)
+            return
 
     # ── Live chat logger ────────────────────────────────────────────────────
     chat_logger = ChatLogger(resolved_session_id or "unknown")

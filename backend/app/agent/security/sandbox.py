@@ -413,7 +413,12 @@ class DockerSandboxExecutor(SandboxExecutor):
         docker_args = [
             "docker", "run", "-d",
             "--name", self.sandbox_id,
-            "-v", f"{host_root}:/workspace",
+            "-v", f"{host_root}:/workspace:rw",
+            "--read-only",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+            "--tmpfs", "/run:rw,noexec,nosuid,size=16m",
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges:true",
             "-w", "/workspace",
         ]
 
@@ -431,7 +436,7 @@ class DockerSandboxExecutor(SandboxExecutor):
         if self.policy.network_mode == "NO_NETWORK" or not self.policy.allow_network:
             docker_args.extend(["--network", "none"])
         
-        # Add basic blocks to instances metadata service
+        # Add basic blocks to instance metadata services
         docker_args.extend(["--add-host", "metadata.google.internal:127.0.0.1"])
         docker_args.extend(["--add-host", "instance-data:127.0.0.1"])
 
