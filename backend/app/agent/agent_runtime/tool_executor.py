@@ -180,7 +180,7 @@ class ToolExecutor:
                 )
                 return ToolResult(success=False, output=None, error=f"Security Policy Denied: {decision.reason}")
 
-            if decision.requires_approval and not auto_apply:
+            if decision.requires_approval:
                 from backend.app.agent.agent_runtime.runtime import AgentState
                 if hasattr(self.session, "state"):
                     self.session.state = AgentState.WAITING_FOR_APPROVAL
@@ -206,16 +206,21 @@ class ToolExecutor:
                         )
                     if modified_args and isinstance(modified_args, dict):
                         validated_args = modified_args
-                elif hasattr(self.session, "permission_manager") and self.session.permission_manager:
-                    # In headless or non-interactive mode without confirmation callback, reject dangerous unapproved actions
                     if hasattr(self.session, "state"):
                         self.session.state = AgentState.RUNNING
-                    if getattr(self.session, "interactive", False) is False and not auto_apply:
-                        return ToolResult(
-                            success=False,
-                            output=None,
-                            error=f"Execution of high-risk tool '{tool_def.name}' requires explicit user approval."
-                        )
+                else:
+                    # In headless, automated, or non-interactive mode without confirmation callback, fail closed
+                    if hasattr(self.session, "state"):
+                        self.session.state = AgentState.RUNNING
+                    TelemetryManager.increment_counter(
+                        "tool_approval_denied_total",
+                        attributes={"tool_name": tool_def.name}
+                    )
+                    return ToolResult(
+                        success=False,
+                        output=None,
+                        error=f"Execution of high-risk tool '{tool_def.name}' requires explicit user approval but no interactive confirmation handler is available."
+                    )
 
             # Apply default timeouts if requested is higher than platform allowed max
             run_timeout = min(timeout, tool_def.timeout)

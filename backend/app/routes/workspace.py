@@ -83,6 +83,40 @@ async def get_shell_name():
     return {"name": ShellAdapter.get_shell_name()}
 
 
+from pathlib import Path
+
+def validate_workspace_path(path_str: str) -> str:
+    """
+    Canonical validator for workspace paths.
+    Enforces strict Path.is_relative_to containment in production server mode.
+    """
+    from backend.app.config import settings
+    candidate = Path(path_str).resolve()
+
+    env_mode = os.getenv("ENVIRONMENT", settings.ENVIRONMENT)
+    server_mode = os.getenv("MODE", settings.MODE)
+
+    if env_mode == "production" and server_mode == "server":
+        allowed_base = Path(os.getenv("TENANT_WORKSPACES_ROOT", "/srv/devpilot/workspaces")).resolve()
+        try:
+            if not candidate.is_relative_to(allowed_base):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Access Denied: In production multi-tenant mode, workspaces must reside within {allowed_base}"
+                )
+        except AttributeError:
+            # Fallback for Python < 3.9 if any
+            try:
+                candidate.relative_to(allowed_base)
+            except ValueError:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Access Denied: In production multi-tenant mode, workspaces must reside within {allowed_base}"
+                )
+
+    return str(candidate)
+
+
 @router.post("/api/workspace/change", response_model=WorkspaceChangeResponse)
 async def change_workspace(req: WorkspaceChangeRequest):
     try:
@@ -112,26 +146,17 @@ async def change_workspace(req: WorkspaceChangeRequest):
         else:
             path = os.path.abspath(path)
 
-        # Restrict paths in production server mode to tenant-isolated workspace root
-        from backend.app.config import settings
-        if settings.ENVIRONMENT == "production" and settings.MODE == "server":
-            allowed_base = os.path.realpath(os.getenv("TENANT_WORKSPACES_ROOT", "/srv/devpilot/workspaces"))
-            real_path = os.path.realpath(path)
-            if not real_path.startswith(allowed_base):
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Access Denied: In production multi-tenant mode, workspaces must reside within {allowed_base}"
-                )
+        validated_path = validate_workspace_path(path)
 
-        is_dir = await asyncio.to_thread(os.path.isdir, path)
+        is_dir = await asyncio.to_thread(os.path.isdir, validated_path)
         if not is_dir:
             raise HTTPException(
                 status_code=400,
-                detail=f"Directory does not exist: {path}"
+                detail=f"Directory does not exist: {validated_path}"
             )
 
-        workspace_state.root = path
-        get_permission_manager().workspace_root = path
+        workspace_state.root = validated_path
+        get_permission_manager().workspace_root = validated_path
         logger.info(f"Workspace changed to: {workspace_state.root}")
         config_manager.set_last_workspace(workspace_state.root)
         return {"success": True, "workspace": workspace_state.root}
@@ -174,12 +199,26 @@ def _list_dir(browse_path: str, parent, is_docker: bool):
 async def browse_workspace(path: str = ""):
     """
     Returns immediate subdirectories of the given path.
-    - No path → returns the list of mounted Windows drives (/host/c, /host/d, /host/e)
-    - With path → lists subdirectories inside that container path
+    - Server / Production Mode: Restricts root and navigation strictly to TENANT_WORKSPACES_ROOT.
+    - Desktop Mode: Lists available mounted drives or user home directory.
     """
+    from backend.app.config import settings
+    is_prod_server = (settings.ENVIRONMENT == "production" and settings.MODE == "server")
     is_docker = os.environ.get("DOCKER_MODE", "false").lower() == "true"
 
-    # Root: show available drives
+    if is_prod_server:
+        tenant_base = Path(os.getenv("TENANT_WORKSPACES_ROOT", "/srv/devpilot/workspaces")).resolve()
+        if not path:
+            browse_path = str(tenant_base)
+            parent = None
+        else:
+            validated_path = validate_workspace_path(path)
+            browse_path = validated_path
+            parent = str(Path(browse_path).parent) if Path(browse_path) != tenant_base else None
+
+        return await asyncio.to_thread(_list_dir, browse_path, parent=parent, is_docker=False)
+
+    # Desktop / local development mode
     if not path:
         if is_docker:
             drives = []
@@ -205,25 +244,13 @@ async def browse_workspace(path: str = ""):
             return await asyncio.to_thread(_list_dir, browse_path, parent=None, is_docker=False)
 
     browse_path = os.path.normpath(path)
-
-    # Restrict browsing in production server mode
-    from backend.app.config import settings
-    if settings.ENVIRONMENT == "production" and settings.MODE == "server":
-        allowed_base = os.path.realpath(os.getenv("TENANT_WORKSPACES_ROOT", "/srv/devpilot/workspaces"))
-        real_browse = os.path.realpath(browse_path)
-        if not real_browse.startswith(allowed_base):
-            raise HTTPException(status_code=403, detail=f"Access Denied: Cannot browse outside {allowed_base}")
-
     is_dir = await asyncio.to_thread(os.path.isdir, browse_path)
     if not is_dir:
         raise HTTPException(status_code=404, detail=f"Path not found: {browse_path}")
 
-    # Determine parent
     parent = os.path.dirname(browse_path)
-
-    # If going up from a drive root (/host/c → /host/c itself), go to drive list instead
     if is_docker and browse_path in [os.path.join(HOST_DRIVES_ROOT, l) for l in DRIVE_MAP]:
-        parent = None  # signals "go back to drive list"
+        parent = None
 
     return await asyncio.to_thread(_list_dir, browse_path, parent=parent, is_docker=is_docker)
 
@@ -369,11 +396,12 @@ async def get_workspace_roots():
 async def add_workspace_root(req: WorkspaceChangeRequest):
     """Adds a secondary root folder to the multi-root workspace."""
     path = os.path.normpath(req.path or "")
-    is_dir = await asyncio.to_thread(os.path.isdir, path)
+    validated_path = validate_workspace_path(path)
+    is_dir = await asyncio.to_thread(os.path.isdir, validated_path)
     if not is_dir:
         raise HTTPException(status_code=400, detail="Folder path does not exist")
-    if path not in _MULTI_ROOTS:
-        _MULTI_ROOTS.append(path)
+    if validated_path not in _MULTI_ROOTS:
+        _MULTI_ROOTS.append(validated_path)
     roots_info = await get_workspace_roots()
     return {"success": True, "roots": roots_info["roots"]}
 

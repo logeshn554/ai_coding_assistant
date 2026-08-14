@@ -53,21 +53,28 @@ async def lifespan(app: FastAPI):
             "fallback. Install ripgrep: https://github.com/BurntSushi/ripgrep#installation"
         )
     
-    # Start AgentWorker background task unless run as a dedicated external worker cluster
-    run_embedded_worker = os.getenv("RUN_EMBEDDED_WORKER", "true").lower() == "true"
-    if run_embedded_worker or settings.ENVIRONMENT != "production":
+    # Start AgentWorker background task based on deployment configuration
+    # In production server mode, default to dedicated external workers (RUN_EMBEDDED_WORKER=false)
+    # In desktop or development mode, run embedded worker automatically
+    is_prod_server = (settings.ENVIRONMENT == "production" and settings.MODE == "server")
+    default_embedded = "false" if is_prod_server else "true"
+    run_embedded_worker = os.getenv("RUN_EMBEDDED_WORKER", default_embedded).lower() == "true"
+
+    if run_embedded_worker:
         from .infrastructure.worker import AgentWorker
         worker = AgentWorker()
         app.state.worker_task = asyncio.create_task(worker.start())
         logger.info("Background AgentWorker started.")
         
     yield
-    # Shutdown: stop any processes we spawned (Live Server, dev servers started
-    # from the Run panel, etc.) so they don't leak as orphans after the backend exits.
-    if settings.ENVIRONMENT != "production":
-        if hasattr(app.state, "worker_task"):
-            app.state.worker_task.cancel()
-            logger.info("Background AgentWorker stopped.")
+    # Shutdown: stop worker and any processes we spawned so they don't leak as orphans
+    if hasattr(app.state, "worker_task") and app.state.worker_task:
+        app.state.worker_task.cancel()
+        try:
+            await app.state.worker_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        logger.info("Background AgentWorker stopped cleanly.")
             
     try:
         from .processes import global_process_manager
