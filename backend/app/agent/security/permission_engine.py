@@ -175,9 +175,17 @@ class PermissionEngine:
 
     def _mode_requires_approval(self, risk: RiskLevel) -> bool:
         if self.mode == "Strict":
+            # Strict: approval required for MEDIUM, HIGH, and CRITICAL operations
             return risk in (RiskLevel.MEDIUM, RiskLevel.HIGH, RiskLevel.CRITICAL)
         elif self.mode == "Assisted":
+            # Assisted: approval required for HIGH and CRITICAL operations
             return risk in (RiskLevel.HIGH, RiskLevel.CRITICAL)
         elif self.mode == "Autonomous":
-            return risk == RiskLevel.CRITICAL
+            # Autonomous: approval required for HIGH and CRITICAL operations.
+            # Changed from CRITICAL-only — terminal commands (HIGH) such as git push,
+            # npm install, and curl must still require explicit user approval in
+            # Autonomous mode. CRITICAL-only was too permissive for a multi-user server.
+            return risk in (RiskLevel.HIGH, RiskLevel.CRITICAL)
+        # Default (unknown mode): fail conservatively to HIGH+CRITICAL
         return risk in (RiskLevel.HIGH, RiskLevel.CRITICAL)
+

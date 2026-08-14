@@ -42,6 +42,40 @@ SHELL_INJECTION_PATTERNS: List[re.Pattern] = [
     re.compile(r"/etc/(?:passwd|shadow|hosts)", re.IGNORECASE),
 ]
 
+# Commands that attempt to access secret/credential files through the terminal.
+# These are CRITICAL risk regardless of execution mode — blocked before execution.
+# This closes the gap where file-API secret protection does not cover the shell.
+SECRET_FILE_ACCESS_PATTERNS: List[re.Pattern] = [
+    # Direct reads of secret files
+    re.compile(r"\bcat\b.*\.(env|key|pem|crt|cer|p12|pfx|jks|keystore|secret)\b", re.IGNORECASE),
+    re.compile(r"\btype\b.*\.(env|key|pem|crt|cer|p12|pfx|jks|keystore|secret)\b", re.IGNORECASE),
+    re.compile(r"\bless\b.*\.(env|key|pem|crt|cer|p12|pfx|jks|keystore|secret)\b", re.IGNORECASE),
+    re.compile(r"\bmore\b.*\.(env|key|pem|crt|cer|p12|pfx|jks|keystore|secret)\b", re.IGNORECASE),
+    re.compile(r"\bhead\b.*\.(env|key|pem|crt|cer|p12|pfx|jks|keystore|secret)\b", re.IGNORECASE),
+    re.compile(r"\btail\b.*\.(env|key|pem|crt|cer|p12|pfx|jks|keystore|secret)\b", re.IGNORECASE),
+    re.compile(r"\bnano\b.*\.(env|key|pem|crt)\b", re.IGNORECASE),
+    re.compile(r"\bvim?\b.*\.(env|key|pem|crt)\b", re.IGNORECASE),
+    # Explicit .env file reads (with or without extension)
+    re.compile(r"\bcat\b.*[/\\]\.env\b", re.IGNORECASE),
+    re.compile(r"\bcat\s+\.env\b", re.IGNORECASE),
+    # Environment variable dumps that expose secrets
+    re.compile(r"\bprintenv\b", re.IGNORECASE),
+    re.compile(r"\benv\b\s*$"),             # bare `env` command
+    re.compile(r"\bset\b\s*$"),             # bare `set` command
+    re.compile(r"\bexport\b\s+-p\b"),       # export -p dumps all vars
+    # /proc memory reads (linux credential theft)
+    re.compile(r"/proc/\d+/(mem|environ|maps)", re.IGNORECASE),
+    re.compile(r"/proc/self/(mem|environ|maps)", re.IGNORECASE),
+    # SSH key access
+    re.compile(r"\bcat\b.*\.ssh/", re.IGNORECASE),
+    re.compile(r"\bcat\b.*(id_rsa|id_ecdsa|id_ed25519|authorized_keys)", re.IGNORECASE),
+    # AWS/GCP/Azure credential files
+    re.compile(r"\bcat\b.*\.aws/(credentials|config)\b", re.IGNORECASE),
+    re.compile(r"\bcat\b.*\.config/gcloud/", re.IGNORECASE),
+    # History files that may contain secrets
+    re.compile(r"\bcat\b.*\.(bash_history|zsh_history|history)\b", re.IGNORECASE),
+]
+
 
 class CommandAnalysisResult:
 
@@ -67,6 +101,13 @@ class TerminalSandbox:
         risk = RiskLevel.LOW
         is_injection = False
 
+        # 0. Secret file access check — CRITICAL, blocked immediately.
+        # Must run before injection check so the risk level is set correctly.
+        for pat in SECRET_FILE_ACCESS_PATTERNS:
+            if pat.search(cmd_str):
+                logger.warning(f"Secret file access attempt blocked: '{cmd_str}'")
+                return CommandAnalysisResult(command=cmd_str, risk=RiskLevel.CRITICAL, is_injection=True)
+
         # 1. Shell Injection & Subshell Check
         for pat in SHELL_INJECTION_PATTERNS:
             if pat.search(cmd_str):
@@ -88,6 +129,7 @@ class TerminalSandbox:
                 risk = RiskLevel.HIGH
 
         return CommandAnalysisResult(command=cmd_str, risk=risk, is_injection=is_injection)
+
 
     async def execute_sandboxed_command(
         self,

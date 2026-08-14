@@ -1,0 +1,12 @@
+# Development & CI-only dependencies.
+# These are NOT installed in production deployments.
+-r requirements.txt
+
+pytest>=7.0.0,<9.0.0
+pytest-asyncio>=0.21.0,<1.0.0
+pytest-cov>=4.1.0,<6.0.0
+pytest-timeout>=2.1.0,<3.0.0
+mypy>=1.0.0,<2.0.0
+ruff>=0.1.0,<1.0.0
+pip-audit>=2.6.0,<3.0.0
+fakeredis[aioredis]>=2.0.0,<3.0.0

@@ -108,8 +108,14 @@ class InMemoryFallbackRedis:
         return _time.monotonic() - self._last_failure_time >= self.RECONNECT_COOLDOWN
 
     def _enter_fallback(self, operation: str, exc: Exception) -> None:
-        """Mark Redis as offline and log a WARNING."""
+        """Mark Redis as offline and log a WARNING or raise in production."""
         import time as _time
+        from .config import settings
+        is_prod = (getattr(settings, "ENVIRONMENT", "").lower() == "production" and getattr(settings, "MODE", "").lower() == "server")
+        if is_prod:
+            logger.critical("FATAL: Redis connection failed during %s in production server mode: %s. Failing closed to prevent split-brain state.", operation, exc)
+            raise RuntimeError(f"Redis connection failed during {operation} in production: {exc}")
+
         if self.use_fallback:
             self._last_failure_time = _time.monotonic()
             return
@@ -118,7 +124,7 @@ class InMemoryFallbackRedis:
         self.client = None  # Reset client connection pool
         logger.warning(
             "Redis is offline or not configured during %s (%s). "
-            "Using in-memory fallback for session context storage.",
+            "Using in-memory fallback for session context storage in non-production mode.",
             operation,
             exc,
         )
@@ -488,7 +494,19 @@ def get_permission_manager() -> PermissionManager:
     _permission_managers[sid].workspace_root = workspace_state.root
     return _permission_managers[sid]
 
+# Maximum number of pending one-time WebSocket tickets held in process memory.
+# Bounded to prevent memory exhaustion from unauthenticated ticket-flooding attacks.
+_MAX_WS_TICKETS = 10_000
+
 _ws_tickets: dict[str, dict] = {}
+"""
+Process-local one-time ticket store for WebSocket handshake authentication.
+
+WARNING: This is a single-worker-only data structure. In a multi-worker
+deployment you MUST replace this with Redis or another shared store, otherwise
+workers cannot share ticket state and connections will fail non-deterministically.
+"""
+
 
 def create_ws_ticket(
     user_id: str = "default-user",
@@ -496,6 +514,17 @@ def create_ws_ticket(
     workspace_id: str = ""
 ) -> str:
     import time
+    # Evict expired tickets before creating a new one
+    now = time.time()
+    expired = [t for t, data in list(_ws_tickets.items()) if isinstance(data, dict) and data.get("exp", 0) < now]
+    for t in expired:
+        _ws_tickets.pop(t, None)
+    # Enforce capacity limit to prevent memory exhaustion
+    if len(_ws_tickets) >= _MAX_WS_TICKETS:
+        # Evict oldest 10 % when at capacity
+        items = sorted(_ws_tickets.items(), key=lambda kv: kv[1].get("exp", 0) if isinstance(kv[1], dict) else 0)
+        for k, _ in items[: _MAX_WS_TICKETS // 10 + 1]:
+            _ws_tickets.pop(k, None)
     ticket = secrets.token_urlsafe(32)
     _ws_tickets[ticket] = {
         "exp": time.time() + 60.0,
@@ -521,8 +550,13 @@ def verify_ws_ticket(ticket: str) -> Optional[dict]:
 
 async def verify_token(request: Request = None):
     """
-    Validate the session token from Authorization header or ?token= query param.
-    Set DEVPILOT_NO_AUTH=true to bypass for local development.
+    Validate the session token from Authorization or X-Session-Token header only.
+
+    Query-parameter tokens (?token=) are no longer accepted. Tokens in URLs
+    leak through access logs, browser history, and reverse proxies.
+
+    Set DEVPILOT_NO_AUTH=true to bypass for local development ONLY.
+    This flag is blocked in production.
     """
     if os.environ.get("DEVPILOT_NO_AUTH", "").lower() in ("1", "true", "yes"):
         env_mode = os.environ.get("ENVIRONMENT", os.environ.get("NODE_ENV", "development")).lower()
@@ -533,19 +567,19 @@ async def verify_token(request: Request = None):
         return
 
     path = request.url.path
-    if path == "/" or path.startswith("/assets/") or path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico", ".ttf", ".woff", ".woff2", ".html")) or path in ("/auth/token", "/api/auth/token", "/docs", "/openapi.json", "/redoc", "/api/health") or path.startswith("/health/"):
+    if path == "/" or path.startswith("/assets/") or path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico", ".ttf", ".woff", ".woff2", ".html")) or path in ("/auth/token", "/api/auth/token", "/docs", "/openapi.json", "/api/health") or path.startswith("/health/"):
         return
 
-    # Extract token from Bearer header, X-Session-Token header, or query param
+    # Extract token from Bearer header or X-Session-Token header only.
+    # Query-parameter tokens (?token=) are explicitly NOT accepted.
     auth_header = request.headers.get("Authorization", "")
     token = ""
     if auth_header.startswith("Bearer "):
         token = auth_header[len("Bearer "):].strip()
     if not token:
         token = request.headers.get("X-Session-Token") or request.headers.get("x-session-token") or ""
-    if not token:
-        token = request.query_params.get("token", "")
 
     # Constant-time compare to prevent timing attacks
     if not token or not secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         raise HTTPException(status_code=401, detail="Unauthorized")
+

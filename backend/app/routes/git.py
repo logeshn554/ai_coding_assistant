@@ -16,6 +16,7 @@ class GitActionRequest(BaseModel):
     path: Optional[str] = None
     message: Optional[str] = None
     branch: Optional[str] = None
+    confirm: Optional[bool] = False
 
 class ResolveConflictRequest(BaseModel):
     path: str
@@ -355,6 +356,11 @@ async def perform_git_action(req: GitActionRequest):
                 await run_cmd_async(["git", "restore", "--staged", req.path], workspace_state.root)
                 await run_cmd_async(["git", "restore", req.path], workspace_state.root)
         elif req.action == "discard_all":
+            if not req.confirm:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Destructive action 'discard_all' requires explicit confirmation ('confirm': true)."
+                )
             await run_cmd_async(["git", "restore", "--staged", "."], workspace_state.root)
             await run_cmd_async(["git", "restore", "."], workspace_state.root)
             await run_cmd_async(["git", "clean", "-fd"], workspace_state.root)

@@ -21,6 +21,10 @@ from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger("agentos.gateway.auth")
 
+# Import centralized settings — single source of truth for JWT secret and environment
+# Imported lazily inside classes to avoid circular import at module load time.
+
+
 
 # ── Data Models ─────────────────────────────────────────────────────────────
 
@@ -82,15 +86,35 @@ class AuthProvider:
 
 
 class JWTAuthProvider(AuthProvider):
-    """JWT-based authentication using HMAC-SHA256 signature verification."""
+    """JWT-based authentication using HMAC-SHA256 signature verification.
 
-    def __init__(self, secret: str = ""):
-        self._secret = secret or os.getenv("DEVPILOT_JWT_SECRET", "")
-        env_mode = os.getenv("ENVIRONMENT", os.getenv("NODE_ENV", "development")).lower()
-        if env_mode == "production" and not self._secret:
-            raise RuntimeError("JWT_SECRET must be configured before starting in production")
+    The secret and environment are sourced exclusively from the centralized
+    ``settings`` object (pydantic-settings), which validates them at startup.
+    There is NO fallback to a hard-coded secret — if the secret is absent in
+    production the application will have already failed to start.
+    """
+
+    def __init__(self, secret: str = "", environment: str = ""):
+        # Use centralized settings as the single source of truth.
+        # A caller may supply overrides (e.g. in unit tests) but in normal
+        # operation settings is always the authority.
+        from backend.app.config import settings as _settings
+        self._secret = secret or _settings.JWT_SECRET
+        self._environment = environment or _settings.ENVIRONMENT
+
+        if self._environment.lower() == "production" and not self._secret:
+            raise RuntimeError(
+                "JWT_SECRET must be configured in settings before starting in production. "
+                "Set JWT_SECRET in your .env or environment variables."
+            )
         if not self._secret:
-            self._secret = "devpilot-dev-secret"
+            # Development mode: generate a stable in-process secret via settings
+            # (settings already calls keyring / secrets.token_hex for dev).
+            raise RuntimeError(
+                "JWT_SECRET is empty. Ensure settings loaded correctly before "
+                "constructing JWTAuthProvider."
+            )
+
 
     def authenticate(self, credentials: Dict[str, Any]) -> Optional[AuthIdentity]:
         token = credentials.get("token", "")
@@ -239,7 +263,16 @@ class APIKeyAuthProvider(AuthProvider):
 
 
 class WebSocketTokenProvider(AuthProvider):
-    """WebSocket connection token validation."""
+    """WebSocket connection token validation.
+
+    Tokens are strictly one-time: a token MUST have been pre-registered via
+    ``generate_ws_token()`` before it will be accepted.  Any JWT that was not
+    pre-registered is rejected immediately, even if its signature is valid.
+    This prevents regular long-lived JWTs from being used as WebSocket tokens.
+    """
+
+    # Maximum number of pending tickets held in memory — prevents exhaustion attacks.
+    _MAX_PENDING_TOKENS = 5_000
 
     def __init__(self, jwt_provider: JWTAuthProvider):
         self._jwt = jwt_provider
@@ -247,24 +280,43 @@ class WebSocketTokenProvider(AuthProvider):
 
     def generate_ws_token(self, identity: AuthIdentity) -> str:
         """Generate a short-lived one-time-use WebSocket token."""
+        # Evict expired tokens first to bound memory usage.
+        self._evict_expired()
+        if len(self._one_time_tokens) >= self._MAX_PENDING_TOKENS:
+            # Evict oldest 10 % when at capacity to prevent DoS.
+            items = sorted(self._one_time_tokens.items(), key=lambda kv: kv[1])
+            for k, _ in items[: len(items) // 10 + 1]:
+                del self._one_time_tokens[k]
         token = self._jwt.generate_token(identity, ttl_seconds=300)
         self._one_time_tokens[token] = time.time() + 300
         return token
+
+    def _evict_expired(self) -> None:
+        now = time.time()
+        expired = [k for k, exp in self._one_time_tokens.items() if exp <= now]
+        for k in expired:
+            del self._one_time_tokens[k]
 
     def authenticate(self, credentials: Dict[str, Any]) -> Optional[AuthIdentity]:
         token = credentials.get("ws_token", "")
         if not token:
             return None
 
-        # Check one-time token validity
-        if token in self._one_time_tokens:
-            if time.time() > self._one_time_tokens[token]:
-                del self._one_time_tokens[token]
-                logger.info("WebSocket token expired")
-                return None
-            del self._one_time_tokens[token]  # Consume the token
+        # Strictly one-time: reject tokens that were never pre-registered.
+        # This prevents long-lived JWTs from being used as WebSocket tokens.
+        if token not in self._one_time_tokens:
+            logger.warning("WebSocket token not in one-time registry — rejected")
+            return None
 
-        # Verify JWT signature
+        if time.time() > self._one_time_tokens[token]:
+            del self._one_time_tokens[token]
+            logger.info("WebSocket token expired")
+            return None
+
+        # Consume the token (one-time use enforced)
+        del self._one_time_tokens[token]
+
+        # Verify JWT signature after confirming pre-registration
         identity = self._jwt.authenticate({"token": token})
         if identity:
             identity.auth_method = AuthMethod.WEBSOCKET_TOKEN
@@ -299,12 +351,20 @@ class AuthGateway:
     def authenticate(self, headers: Dict[str, str] = None, query_params: Dict[str, str] = None) -> Optional[AuthIdentity]:
         """Authenticate a request using available credentials.
 
-        Tries in order: Authorization header (JWT) → X-API-Key header → ws_token query param → default.
-        """
-        headers = headers or {}
-        query_params = query_params or {}
+        Priority order:
+          1. Authorization: Bearer <JWT> header
+          2. X-API-Key header
+          3. Development fallback (non-production only)
 
-        # 1. Try JWT from Authorization header
+        Query-parameter tokens (?token=) are intentionally NOT supported.
+        Tokens in URLs leak through access logs, browser history, and reverse
+        proxies. WebSocket connections must use the one-time ticket system
+        (state.create_ws_ticket / state.verify_ws_ticket).
+        """
+        from backend.app.config import settings as _settings
+        headers = headers or {}
+
+        # 1. Try JWT from Authorization header (Bearer scheme only)
         auth_header = headers.get("authorization", headers.get("Authorization", ""))
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
@@ -313,7 +373,7 @@ class AuthGateway:
                 logger.debug(f"Authenticated via JWT: user={identity.user_id}")
                 return identity
 
-        # 2. Try API key
+        # 2. Try API key (X-API-Key header only)
         api_key = headers.get("x-api-key", headers.get("X-API-Key", ""))
         if api_key:
             identity = self._api_key_provider.authenticate({"api_key": api_key})
@@ -321,19 +381,12 @@ class AuthGateway:
                 logger.debug(f"Authenticated via API key: user={identity.user_id}")
                 return identity
 
-        # 3. Try WebSocket token
-        ws_token = query_params.get("token", "")
-        if ws_token:
-            identity = self._ws_provider.authenticate({"ws_token": ws_token})
-            if identity:
-                logger.debug(f"Authenticated via WS token: user={identity.user_id}")
-                return identity
-
-        env_mode = os.getenv("ENVIRONMENT", os.getenv("NODE_ENV", "development")).lower()
-        if env_mode == "production":
+        # 3. No valid credentials found
+        # Production: return None (caller must return 401)
+        # Development/desktop: fall back to local developer identity
+        if _settings.ENVIRONMENT.lower() == "production":
             return None
 
-        # 4. Fall back to default local user identity for local dev
         logger.debug("No credentials found, using default local developer identity")
         return self._default_identity
 

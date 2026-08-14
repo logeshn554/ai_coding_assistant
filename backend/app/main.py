@@ -93,12 +93,16 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Process cleanup during shutdown raised unexpectedly: {e}")
 
 # Instantiate FastAPI app with OpenAPI docs and global auth verification
+# Restrict docs to non-production deployments — API surface must not be
+# publicly discoverable in production.
+_is_production = (settings.ENVIRONMENT.lower() == "production")
 app = FastAPI(
     title=settings.APP_NAME,
     description="Multi-agent production-grade AI IDE Backend API",
     version=settings.APP_VERSION,
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
+    docs_url="/api/docs" if not _is_production else None,
+    openapi_url="/api/openapi.json" if not _is_production else None,
+    redoc_url="/redoc" if not _is_production else None,
     dependencies=[Depends(verify_token)],
     lifespan=lifespan,
 )
@@ -132,19 +136,34 @@ from .gateway.rate_limiter import rate_limiter, RateLimitResult
 @app.middleware("http")
 async def gateway_middleware(request: Request, call_next):
     path = request.url.path
-    # Skip static files, fallback, docs, health check
-    if path == "/" or path.startswith("/assets/") or path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico", ".ttf", ".woff", ".woff2", ".html")) or path in ("/auth/token", "/api/auth/token", "/api/docs", "/api/openapi.json", "/redoc", "/api/health"):
+    # Skip static files, fallback, and auth endpoints.
+    # NOTE: /api/docs, /api/openapi.json, /redoc are disabled in production
+    # via FastAPI constructor above, so they are only served in dev/debug mode.
+    skip_paths = {"/auth/token", "/api/auth/token", "/api/health"}
+    if (
+        path == "/"
+        or path.startswith("/assets/")
+        or path.endswith((".js", ".css", ".png", ".jpg", ".svg", ".ico", ".ttf", ".woff", ".woff2", ".html"))
+        or path in skip_paths
+    ):
         return await call_next(request)
 
-    # 1. Authenticate request via Gateway Auth
+    # 1. Authenticate request via Gateway Auth (headers only — no query params)
     headers = dict(request.headers)
-    query_params = dict(request.query_params)
-    identity = auth_gateway.authenticate(headers, query_params)
-    
+    identity = auth_gateway.authenticate(headers)
+
+    # C7: Guard against null identity before any attribute access.
+    # In production, unauthenticated requests return 401 (not a 500 crash).
+    if identity is None:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Unauthorized: valid Bearer token or API key required."},
+        )
+
     # Expose identity in request state
     request.state.identity = identity
 
-    # 2. Enforce Rate Limiting
+    # 2. Enforce Rate Limiting (production server only)
     if settings.ENVIRONMENT != "production":
         return await call_next(request)
 

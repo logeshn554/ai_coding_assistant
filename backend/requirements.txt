@@ -1,32 +1,33 @@
-fastapi>=0.100.0
-uvicorn>=0.22.0
-websockets>=11.0.3
-pydantic>=2.0
-pydantic-settings>=2.0.0
-openai>=1.0.0
-anthropic>=0.5.0
-cryptography>=41.0.0
-python-multipart>=0.0.6
-keyring>=24.0.0
-slowapi>=0.1.7
-aiosqlite>=0.19.0
-sqlalchemy[asyncio]>=2.0.0
-python-dotenv>=1.0.0
-filelock>=3.12.0
-httpx>=0.25.0
-pytest>=7.0.0
-pytest-asyncio>=0.21.0
-pytest-cov>=4.1.0
-pytest-timeout>=2.1.0
-anyio>=3.7.0
-langchain-core>=0.3.0
-langgraph>=0.2.0
-pywinpty>=2.0.0; sys_platform == "win32"
-redis>=5.0.0
-playwright>=1.40.0
-pytesseract>=0.3.10
-Pillow>=10.0.0
-chromadb>=0.4.0
-mcp>=1.0.0
-tavily-python>=0.3.0
-pywebview>=3.0
+# Production dependencies with pinned upper bounds for reproducible builds.
+# Lower bounds ensure minimum required features; upper bounds prevent
+# non-deterministic upgrades from silently breaking production deployments.
+# Run `pip-audit --desc on` in CI to catch known vulnerabilities.
+
+fastapi>=0.100.0,<1.0.0
+uvicorn>=0.22.0,<1.0.0
+websockets>=11.0.3,<14.0.0
+pydantic>=2.0,<3.0
+pydantic-settings>=2.0.0,<3.0.0
+openai>=1.0.0,<2.0.0
+anthropic>=0.5.0,<2.0.0
+cryptography>=41.0.0,<44.0.0
+python-multipart>=0.0.6,<1.0.0
+keyring>=24.0.0,<26.0.0
+slowapi>=0.1.7,<1.0.0
+aiosqlite>=0.19.0,<1.0.0
+sqlalchemy[asyncio]>=2.0.0,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
+filelock>=3.12.0,<4.0.0
+httpx>=0.25.0,<1.0.0
+anyio>=3.7.0,<5.0.0
+langchain-core>=0.3.0,<1.0.0
+langgraph>=0.2.0,<1.0.0
+pywinpty>=2.0.0,<3.0.0; sys_platform == "win32"
+redis>=5.0.0,<6.0.0
+playwright>=1.40.0,<2.0.0
+pytesseract>=0.3.10,<1.0.0
+Pillow>=10.0.0,<12.0.0
+chromadb>=0.4.0,<1.0.0
+mcp>=1.0.0,<2.0.0
+tavily-python>=0.3.0,<1.0.0
+pywebview>=3.0,<6.0

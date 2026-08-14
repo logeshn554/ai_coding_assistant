@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     USE_SANDBOX: bool = False
     ENVIRONMENT: str = "development"
     MODE: str = "desktop"  # desktop | server
+    # Docker image used for sandbox execution. Pin to a digest for reproducibility:
+    #   e.g. "python:3.12-slim@sha256:<digest>"
+    # Run `docker inspect python:3.12-slim --format '{{index .RepoDigests 0}}'`
+    # after pulling to get the current digest, then set SANDBOX_IMAGE in .env.
+    SANDBOX_IMAGE: str = "python:3.12-slim"
 
     # Logging settings
     LOG_JSON: bool = False

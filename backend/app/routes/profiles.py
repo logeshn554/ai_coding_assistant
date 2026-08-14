@@ -2,12 +2,57 @@ import logging
 import urllib.request
 import urllib.error
 import json
+import socket
+import ipaddress
+from urllib.parse import urlparse
 from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from ..state import config_manager, logger
+from ..config import settings
 
 router = APIRouter()
+
+def validate_provider_url(url: str) -> str:
+    """Validates outbound provider URL to prevent SSRF against internal/cloud-metadata services."""
+    if not url:
+        return url
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail=f"Invalid URL scheme '{parsed.scheme}'. Only http/https permitted.")
+    hostname = parsed.hostname
+    if not hostname:
+        raise HTTPException(status_code=400, detail="Invalid provider URL: missing host")
+
+    is_prod_server = (settings.ENVIRONMENT == "production" and settings.MODE == "server")
+    if is_prod_server:
+        # In production server mode, block local/private network ranges and cloud metadata IPs
+        try:
+            addr_info = socket.getaddrinfo(hostname, None)
+            for item in addr_info:
+                ip_str = item[4][0]
+                ip_obj = ipaddress.ip_address(ip_str)
+                # Block loopback, private RFC1918/ULA, link-local, and cloud metadata
+                if (
+                    ip_obj.is_private
+                    or ip_obj.is_loopback
+                    or ip_obj.is_link_local
+                    or ip_obj.is_multicast
+                    or ip_obj.is_unspecified
+                    or ip_str == "169.254.169.254"
+                    or (ip_obj.version == 4 and ip_str.startswith("10."))
+                    or (ip_obj.version == 4 and ip_str.startswith("192.168."))
+                    or (ip_obj.version == 4 and ip_str.startswith("127."))
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Outbound connection to private/internal IP address '{ip_str}' is forbidden."
+                    )
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to resolve provider hostname: {e}")
+    return url
 
 def _is_masked_key(key: str) -> bool:
     """Returns True if the API key string is a masked placeholder (contains dots/asterisks/bullets).
@@ -69,6 +114,8 @@ def get_profiles():
 @router.post("/api/profiles")
 def save_profile(profile: ProfileSaveRequest):
     try:
+        if profile.base_url:
+            validate_provider_url(profile.base_url)
         logger.info(f"save_profile: name={profile.name!r}, base_url={profile.base_url!r}, has_key={bool(profile.api_key)}, fmt={profile.api_format}")
         data = profile.model_dump()
         # Ensure model_name and api_key are never None
@@ -77,6 +124,8 @@ def save_profile(profile: ProfileSaveRequest):
         saved = config_manager.save_profile(data)
         logger.info(f"save_profile: OK, profile id={saved.get('id')}")
         return {"success": True, "profile": saved}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"save_profile FAILED: {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -96,6 +145,9 @@ def patch_profile(profile_id: str, patch_data: ProfilePatchRequest):
             raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
         
         updates = patch_data.model_dump(exclude_unset=True)
+        if "base_url" in updates and updates["base_url"]:
+            validate_provider_url(updates["base_url"])
+
         # If api_key is None, retain current stored key
         if "api_key" not in updates or updates["api_key"] is None:
             updates["api_key"] = stored.get("api_key", "")
@@ -129,6 +181,8 @@ from ..adapters.provider_adapter import OpenAICompatibleAdapter, DynamicModelPro
 
 @router.post("/api/models/fetch")
 async def fetch_models(req: ModelsFetchRequest):
+    if req.base_url:
+        validate_provider_url(req.base_url)
     api_key = _resolve_api_key(req.api_key, req.profile_id)
     logger.info(f"fetch_models: resolved key present={bool(api_key)}, url={req.base_url[:40] if req.base_url else ''}")
 
@@ -218,6 +272,8 @@ async def get_providers_dashboard():
 @router.post("/api/test-connection")
 async def test_connection(profile: ProfileSaveRequest):
     try:
+        if profile.base_url:
+            validate_provider_url(profile.base_url)
         key = _resolve_api_key(profile.api_key, profile.id)
         url = profile.base_url
         model = profile.model_name
@@ -249,7 +305,7 @@ async def test_connection(profile: ProfileSaveRequest):
                 "generationConfig": {"maxOutputTokens": 1}
             }).encode("utf-8")
             import ssl
-            ctx = ssl._create_unverified_context()
+            ctx = ssl.create_default_context()
             req_obj = urllib.request.Request(
                 test_url, data=payload,
                 headers={"Content-Type": "application/json"},

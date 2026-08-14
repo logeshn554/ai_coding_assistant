@@ -1,9 +1,6 @@
 import os
 import sys
 import time
-import shutil
-import tempfile
-import subprocess
 import logging
 from typing import Any, Dict, Optional
 from agent_os.execution.interfaces import ISandbox
@@ -18,136 +15,11 @@ def _import_docker():
         return None, False
 
 
-class LocalSandbox(ISandbox):
-    """Fallback local execution environment running commands in a temporary directory."""
-    def __init__(self, workspace_root: Optional[str] = None, registry: Optional[Any] = None) -> None:
-        self.workspace_root = workspace_root
-        self.registry = registry
-        self.sandbox_dir: Optional[str] = None
-
-    def start(self) -> None:
-        if self.workspace_root:
-            os.makedirs(self.workspace_root, exist_ok=True)
-            self.sandbox_dir = tempfile.mkdtemp(dir=self.workspace_root, prefix="sandbox_")
-        else:
-            self.sandbox_dir = tempfile.mkdtemp(prefix="sandbox_")
-        logger.info(f"LocalSandbox started at {self.sandbox_dir}")
-
-    def stop(self) -> None:
-        if self.sandbox_dir and os.path.exists(self.sandbox_dir):
-            shutil.rmtree(self.sandbox_dir, ignore_errors=True)
-            logger.info(f"LocalSandbox at {self.sandbox_dir} stopped and cleaned up")
-            self.sandbox_dir = None
-
-    def _vet_and_log_command(self, cmd: str) -> tuple[bool, Optional[Dict[str, Any]]]:
-        policy_engine = None
-        audit_store = None
-        if self.registry:
-            try:
-                from agent_os.kernel.policy_engine import PolicyEngine
-                policy_engine = self.registry.resolve(PolicyEngine)
-            except Exception:
-                pass
-            try:
-                from agent_os.infrastructure.audit_store import AuditStore
-                audit_store = self.registry.resolve(AuditStore)
-            except Exception:
-                pass
-
-        if policy_engine:
-            if not policy_engine.is_command_safe(cmd):
-                if audit_store:
-                    audit_store.log_action("run_command", "agent", cmd, "denied", {"reason": "Policy violation"})
-                return False, {
-                    "exit_code": -1,
-                    "stdout": "",
-                    "stderr": "Permission Denied: Command blocked by policy engine.",
-                    "time_taken_seconds": 0.0
-                }
-
-        if audit_store:
-            audit_store.log_action("run_command", "agent", cmd, "approved")
-
-        return True, None
-
-    def run_command(self, cmd: str) -> Dict[str, Any]:
-        if not self.sandbox_dir:
-            raise RuntimeError("LocalSandbox has not been started. Call start() first.")
-
-        # Intercept and validate command using policy engine
-        is_safe, err_res = self._vet_and_log_command(cmd)
-        if not is_safe:
-            return err_res
-
-        start_time = time.monotonic()
-        try:
-            # Use shell execution with a safety timeout of 30 seconds
-            res = subprocess.run(
-                cmd,
-                shell=True,
-                cwd=self.sandbox_dir,
-                capture_output=True,
-                text=True,
-                timeout=30.0
-            )
-            time_taken = time.monotonic() - start_time
-            
-            # Log execution result
-            audit_store = None
-            if self.registry:
-                try:
-                    from agent_os.infrastructure.audit_store import AuditStore
-                    audit_store = self.registry.resolve(AuditStore)
-                except Exception:
-                    pass
-            if audit_store:
-                status_str = "success" if res.returncode == 0 else "error"
-                audit_store.log_action("run_command", "agent", cmd, status_str, {"exit_code": res.returncode})
-
-            return {
-                "exit_code": res.returncode,
-                "stdout": res.stdout,
-                "stderr": res.stderr,
-                "time_taken_seconds": round(time_taken, 3)
-            }
-        except subprocess.TimeoutExpired as te:
-            time_taken = time.monotonic() - start_time
-            
-            audit_store = None
-            if self.registry:
-                try:
-                    from agent_os.infrastructure.audit_store import AuditStore
-                    audit_store = self.registry.resolve(AuditStore)
-                except Exception:
-                    pass
-            if audit_store:
-                audit_store.log_action("run_command", "agent", cmd, "error", {"reason": "Timeout"})
-
-            return {
-                "exit_code": -1,
-                "stdout": te.stdout or "",
-                "stderr": f"Command timed out after 30 seconds.\n{te.stderr or ''}",
-                "time_taken_seconds": round(time_taken, 3)
-            }
-        except Exception as e:
-            time_taken = time.monotonic() - start_time
-            
-            audit_store = None
-            if self.registry:
-                try:
-                    from agent_os.infrastructure.audit_store import AuditStore
-                    audit_store = self.registry.resolve(AuditStore)
-                except Exception:
-                    pass
-            if audit_store:
-                audit_store.log_action("run_command", "agent", cmd, "error", {"reason": str(e)})
-
-            return {
-                "exit_code": -1,
-                "stdout": "",
-                "stderr": f"Execution error: {e}",
-                "time_taken_seconds": round(time_taken, 3)
-            }
+# NOTE: LocalSandbox (host-execution via subprocess.run(shell=True)) has been
+# intentionally removed. It provided no real security boundary and silently ran
+# agent commands directly on the host OS. There is exactly one secure execution
+# path: DockerSandbox. If Docker is unavailable the factory raises RuntimeError
+# so the failure is loud and explicit rather than silently insecure.
 
 
 class DockerSandbox(ISandbox):
@@ -162,13 +34,16 @@ class DockerSandbox(ISandbox):
     def start(self) -> None:
         docker_mod, has_docker = _import_docker()
         if not has_docker:
-            raise RuntimeError("docker library is not installed.")
+            raise RuntimeError(
+                "Docker library is not installed. "
+                "Install it with: pip install docker"
+            )
 
         try:
             self.client = docker_mod.from_env()
             logger.info(f"DockerSandbox: Pulling image '{self.image}' if not present...")
             self.client.images.pull(self.image)
-            
+
             logger.info(f"DockerSandbox: Starting container '{self.container_name}'...")
             self.container = self.client.containers.run(
                 self.image,
@@ -237,13 +112,13 @@ class DockerSandbox(ISandbox):
         try:
             exec_res = self.container.exec_run(cmd, demux=True)
             time_taken = time.monotonic() - start_time
-            
+
             exit_code = exec_res.exit_code
             stdout_bytes, stderr_bytes = exec_res.output or (b"", b"")
-            
+
             stdout = stdout_bytes.decode("utf-8", errors="replace") if stdout_bytes else ""
             stderr = stderr_bytes.decode("utf-8", errors="replace") if stderr_bytes else ""
-            
+
             audit_store = None
             if self.registry:
                 try:
@@ -263,7 +138,7 @@ class DockerSandbox(ISandbox):
             }
         except Exception as e:
             time_taken = time.monotonic() - start_time
-            
+
             audit_store = None
             if self.registry:
                 try:
@@ -289,16 +164,29 @@ def create_sandbox(
     registry: Optional[Any] = None
 ) -> ISandbox:
     """
-    Factory function to initialize the sandbox container lifecycle.
-    Automatically probes Docker connectivity and falls back to LocalSandbox on failure.
+    Factory function that creates a Docker-based isolated sandbox.
+
+    LocalSandbox (host execution) has been removed permanently. The only
+    supported execution environment is DockerSandbox. If Docker is unavailable
+    this function raises RuntimeError with instructions rather than silently
+    falling back to host-OS execution.
+
+    Raises:
+        RuntimeError: When Docker is not available or explicitly disabled.
     """
     if use_docker is False:
-        return LocalSandbox(workspace_root=workspace_root, registry=registry)
+        raise RuntimeError(
+            "Sandbox creation with use_docker=False is not allowed. "
+            "Host execution (LocalSandbox) has been removed for security. "
+            "Ensure Docker is installed and the daemon is running."
+        )
 
     docker_mod, has_docker = _import_docker()
     if not has_docker:
-        logger.warning("Docker library not found. Falling back to LocalSandbox.")
-        return LocalSandbox(workspace_root=workspace_root, registry=registry)
+        raise RuntimeError(
+            "Docker library not found. Cannot create a secure execution sandbox. "
+            "Install Docker SDK: pip install docker"
+        )
 
     try:
         client = docker_mod.from_env()
@@ -306,5 +194,8 @@ def create_sandbox(
         logger.info("Docker daemon connectivity verified. Using DockerSandbox.")
         return DockerSandbox(image=image, registry=registry)
     except Exception as e:
-        logger.warning(f"Docker daemon not running or not accessible ({e}). Falling back to LocalSandbox.")
-        return LocalSandbox(workspace_root=workspace_root, registry=registry)
+        raise RuntimeError(
+            f"Docker daemon not running or not accessible: {e}. "
+            "Ensure the Docker daemon is running. "
+            "Host-level execution fallback has been removed for security."
+        ) from e

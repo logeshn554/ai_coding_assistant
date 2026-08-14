@@ -54,4 +54,11 @@ test.txt
 test_temp.txt
 testfile_from_agent.txt
 
+# Runtime databases — NEVER commit these
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
 

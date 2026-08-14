@@ -89,46 +89,46 @@ async def init_db() -> None:
 
         await db.commit()
 
-async def get_fallback_session_id(workspace_root: Optional[str] = None) -> str:
-    """Return the most recently updated session, optionally filtered by workspace."""
+async def get_fallback_session_id(workspace_root: Optional[str] = None, org_id: str = "default-org") -> str:
+    """Return the most recently updated session, optionally filtered by workspace and tenant organization."""
     async with async_session() as db:
         ws_repo = WorkspaceRepository(db)
         conv_repo = ConversationRepository(db)
 
         target_ws_id = "default-workspace"
         if workspace_root:
-            ws = await ws_repo.get_by_root("default-org", workspace_root)
+            ws = await ws_repo.get_by_root(org_id, workspace_root)
             if ws:
                 target_ws_id = ws.id
 
-        conv = await conv_repo.get_last_for_workspace("default-org", target_ws_id)
+        conv = await conv_repo.get_last_for_workspace(org_id, target_ws_id)
         if conv:
             return conv.id
         return "default-session"
 
-async def get_last_session_for_workspace(workspace_root: str) -> Optional[SessionModel]:
-    """Load the most recent session for a workspace root."""
+async def get_last_session_for_workspace(workspace_root: str, org_id: str = "default-org") -> Optional[SessionModel]:
+    """Load the most recent session for a workspace root and organization."""
     async with async_session() as db:
         ws_repo = WorkspaceRepository(db)
         conv_repo = ConversationRepository(db)
-        ws = await ws_repo.get_by_root("default-org", workspace_root)
+        ws = await ws_repo.get_by_root(org_id, workspace_root)
         if ws:
-            return await conv_repo.get_last_for_workspace("default-org", ws.id)
+            return await conv_repo.get_last_for_workspace(org_id, ws.id)
         return None
 
-async def get_or_create_workspace(db, workspace_root: str = "") -> str:
-    """Helper to get or create a workspace entity for a workspace root."""
+async def get_or_create_workspace(db, workspace_root: str = "", org_id: str = "default-org") -> str:
+    """Helper to get or create a workspace entity for a workspace root and organization."""
     ws_repo = WorkspaceRepository(db)
-    ws = await ws_repo.get_by_root("default-org", workspace_root or "")
+    ws = await ws_repo.get_by_root(org_id, workspace_root or "")
     if not ws:
         from backend.app.infrastructure.database.models import Project
-        proj_res = await db.execute(select(Project).where(Project.name == "Default Project"))
+        proj_res = await db.execute(select(Project).where(Project.organization_id == org_id))
         proj = proj_res.scalars().first()
         if not proj:
-            proj = Project(organization_id="default-org", name="Default Project")
+            proj = Project(organization_id=org_id, name="Default Project")
             db.add(proj)
             await db.flush()
-        ws = await ws_repo.create("default-org", proj.id, "Default Workspace", workspace_root or "")
+        ws = await ws_repo.create(org_id, proj.id, "Workspace", workspace_root or "")
         await db.flush()
     return ws.id
 
@@ -137,14 +137,16 @@ async def create_new_session_record(
     session_id: str,
     title: str = "New Chat",
     workspace_root: str = "",
-    mode: str = "Ask"
+    mode: str = "Ask",
+    org_id: str = "default-org",
+    user_id: str = "default-user"
 ) -> SessionModel:
-    """Safely create a new session record satisfying all database constraints."""
-    ws_id = await get_or_create_workspace(db, workspace_root)
+    """Safely create a new session record satisfying all database constraints for the tenant."""
+    ws_id = await get_or_create_workspace(db, workspace_root, org_id=org_id)
     conv = SessionModel(
         id=session_id,
-        organization_id="default-org",
-        user_id="default-user",
+        organization_id=org_id,
+        user_id=user_id,
         workspace_id=ws_id,
         title=title or "New Chat",
         workspace_root=workspace_root or "",

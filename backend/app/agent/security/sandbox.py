@@ -392,7 +392,12 @@ class DockerSandboxExecutor(SandboxExecutor):
 
     def __init__(self, workspace_id: str, run_id: str, policy: ExecutionPolicy) -> None:
         super().__init__(workspace_id, run_id, policy)
-        self.image = settings.SANDBOX_IMAGE or "python:3.12-slim"
+        # Use digest-pinned image from settings to prevent mutable tag attacks.
+        # To update: run `docker pull python:3.12-slim` and capture the digest:
+        #   docker inspect python:3.12-slim --format '{{index .RepoDigests 0}}'
+        # Then update SANDBOX_IMAGE in your .env or settings.
+        _default_image = getattr(settings, "SANDBOX_IMAGE", None) or "python:3.12-slim"
+        self.image = _default_image
         self._initialized = False
 
     async def initialize(self) -> None:

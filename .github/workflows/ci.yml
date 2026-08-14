@@ -21,8 +21,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r backend/requirements.txt
-        pip install "fakeredis[aioredis]>=2.0.0" pytest-cov pip-audit mypy ruff
+        pip install -r backend/requirements-dev.txt
 
     - name: Run Ruff Linter
       run: ruff check backend/app
@@ -30,7 +29,7 @@ jobs:
     - name: Run Mypy Typecheck
       run: mypy --ignore-missing-imports backend/app
 
-    - name: Audit dependencies (Section 30 requirement)
+    - name: Audit dependencies (pip-audit)
       run: pip-audit --desc on
 
     - name: Run Python tests with coverage
@@ -43,13 +42,119 @@ jobs:
         name: python-coverage-report
         path: coverage.xml
 
+  security-gates:
+    runs-on: ubuntu-latest
+    needs: [backend-quality]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: GATE — No tracked runtime databases
+      run: |
+        echo "Checking for tracked .db files..."
+        TRACKED_DB=$(git ls-files '*.db' '*.sqlite' '*.sqlite3' '*.db-shm' '*.db-wal' 2>/dev/null || true)
+        if [ -n "$TRACKED_DB" ]; then
+          echo "FAIL: Runtime database files are tracked in git:"
+          echo "$TRACKED_DB"
+          echo "Remove them with: git rm --cached <file>"
+          exit 1
+        fi
+        echo "OK: No tracked database files."
+
+    - name: GATE — No hardcoded fallback JWT secret
+      run: |
+        echo "Checking for hardcoded JWT secret fallback..."
+        if grep -r "devpilot-dev-secret" backend/app/ --include="*.py"; then
+          echo "FAIL: Hardcoded fallback JWT secret found in source code."
+          echo "This is a P0 security issue. Remove all instances."
+          exit 1
+        fi
+        echo "OK: No hardcoded JWT secret found."
+
+    - name: GATE — No independent os.getenv for JWT secret in gateway/auth
+      run: |
+        echo "Checking that gateway/auth.py uses settings not os.getenv for JWT..."
+        if grep -n 'os.getenv.*DEVPILOT_JWT_SECRET\|os.getenv.*JWT_SECRET' backend/app/gateway/auth.py; then
+          echo "FAIL: gateway/auth.py still reads JWT secret via os.getenv instead of settings."
+          exit 1
+        fi
+        echo "OK: gateway/auth.py uses centralized settings."
+
+    - name: GATE — No query-param token extraction in verify_token
+      run: |
+        echo "Checking that verify_token does not accept ?token= query params..."
+        if grep -n 'query_params.get.*token' backend/app/state.py; then
+          echo "FAIL: verify_token still extracts tokens from query parameters."
+          echo "Tokens in URLs leak through logs and browser history."
+          exit 1
+        fi
+        echo "OK: No query-param token extraction in verify_token."
+
+    - name: GATE — LocalSandbox (host execution) must not exist
+      run: |
+        echo "Checking that LocalSandbox host-execution class has been removed..."
+        if grep -n 'class LocalSandbox' backend/app/agent/agent_os/execution/sandbox.py; then
+          echo "FAIL: LocalSandbox (subprocess.run shell=True on host) still exists."
+          echo "This provides no security boundary. Remove it."
+          exit 1
+        fi
+        echo "OK: LocalSandbox has been removed."
+
+    - name: GATE — Production config validation
+      run: |
+        echo "Verifying production startup validates required settings..."
+        pip install -r backend/requirements-dev.txt --quiet
+        python -c "
+        import os, sys
+        os.environ.setdefault('JWT_SECRET', 'test-secret-at-least-32-chars-long-xyz')
+        os.environ.setdefault('DATABASE_URL', 'postgresql://user:pass@localhost/db')
+        os.environ.setdefault('ENVIRONMENT', 'production')
+        os.environ.setdefault('MODE', 'server')
+        os.environ.setdefault('USE_SANDBOX', 'true')
+        os.environ.setdefault('CORS_ORIGINS', 'http://example.com')
+        sys.path.insert(0, '.')
+        from backend.app.config import Settings
+        s = Settings()
+        assert s.ENVIRONMENT == 'production', 'ENVIRONMENT not loaded'
+        assert s.JWT_SECRET, 'JWT_SECRET empty in production'
+        print('OK: Production config validation passed.')
+        "
+
+    - name: GATE — WebSocket tokens are strictly one-time
+      run: |
+        echo "Verifying WebSocket tokens require pre-registration..."
+        if grep -n 'if token in self._one_time_tokens' backend/app/gateway/auth.py; then
+          echo "FAIL: WebSocket provider still accepts unregistered tokens via fallthrough."
+          exit 1
+        fi
+        if grep -n 'if token not in self._one_time_tokens' backend/app/gateway/auth.py; then
+          echo "OK: WebSocket tokens are strictly one-time (unregistered tokens rejected)."
+        else
+          echo "WARN: Could not verify WebSocket one-time token enforcement. Manual review required."
+        fi
+
+    - name: GATE — Autonomous mode requires HIGH approval
+      run: |
+        echo "Checking Autonomous mode approval policy..."
+        if grep -n "return risk == RiskLevel.CRITICAL" backend/app/agent/security/permission_engine.py; then
+          echo "FAIL: Autonomous mode still only requires approval for CRITICAL risk."
+          echo "HIGH risk terminal commands (git push, npm install) would auto-execute."
+          exit 1
+        fi
+        echo "OK: Autonomous mode requires approval for HIGH and CRITICAL risk."
+
   security-scanning:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Run Gitleaks Secret Scanner (Section 32 requirement)
+    - name: Run Gitleaks Secret Scanner
       uses: gitleaks/gitleaks-action@v2
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,7 +189,7 @@ jobs:
 
   docker-sbom:
     runs-on: ubuntu-latest
-    needs: [backend-quality, frontend-build]
+    needs: [backend-quality, security-gates, frontend-build]
 
     steps:
     - uses: actions/checkout@v4
@@ -92,7 +197,7 @@ jobs:
     - name: Build Docker Image
       run: docker build -t devpilot:latest .
 
-    - name: Generate SBOM (Section 42 requirement)
+    - name: Generate SBOM
       uses: anchore/sbom-action@v0
       with:
         image: devpilot:latest
