@@ -132,9 +132,12 @@ class TestPathValidator:
 
     def test_normalize_path_removes_dots(self):
         """Test path normalization."""
+        import os
         normalized = PathValidator.normalize_path("/workspace/./src/../src/./main.py")
         assert ".." not in normalized
-        assert "/src" in normalized
+        # Accept both Unix and Windows path separators
+        assert "src" in normalized
+        assert "main.py" in normalized
 
 
 class TestToolValidator:

@@ -125,6 +125,30 @@ class LLMTimeoutError(LLMProviderError):
         )
 
 
+class LLMBudgetExceededError(LLMProviderError):
+    """Raised when account balance, credits, or max_tokens budget is exceeded."""
+    def __init__(self, provider: str = "", message: Optional[str] = None):
+        super().__init__(
+            code="LLM_BUDGET_EXCEEDED",
+            message=message or f"Credit balance or token budget exceeded for provider '{provider}'.",
+            provider=provider,
+            retryable=False,
+            status_code=402,
+        )
+
+
+class LLMThoughtSignatureError(LLMProviderError):
+    """Raised when a thought_signature or tool reasoning format issue occurs."""
+    def __init__(self, provider: str = "", message: Optional[str] = None):
+        super().__init__(
+            code="LLM_THOUGHT_SIGNATURE_ERROR",
+            message=message or f"Missing or invalid thought signature for provider '{provider}'.",
+            provider=provider,
+            retryable=False,
+            status_code=400,
+        )
+
+
 class LLMNetworkError(LLMProviderError):
     """Raised for network/connectivity failures reaching the provider."""
     def __init__(self, provider: str = "", message: Optional[str] = None):

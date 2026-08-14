@@ -22,6 +22,12 @@ class ToolCall:
     id: str
     name: str
     arguments: dict[str, Any] = field(default_factory=dict)
+    thought_signature: Optional[str] = None
+
+    @property
+    def input(self) -> dict[str, Any]:
+        """Alias for arguments to prevent provider/model naming conflicts."""
+        return self.arguments
 
 
 @dataclass
@@ -30,6 +36,21 @@ class ModelResponse:
     text: Optional[str]
     tool_calls: List[ToolCall] = field(default_factory=list)
     finish_reason: Optional[str] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    @property
+    def content(self) -> Optional[str]:
+        """Alias for text to support content attribute access."""
+        return self.text
+
+    @property
+    def usage(self) -> dict[str, int]:
+        """Alias for input/output tokens dict representation."""
+        return {
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+        }
 
 
 class ModelResponseNormalizer:
@@ -45,6 +66,7 @@ class ModelResponseNormalizer:
             tc_id = raw.get("id") or raw.get("tool_call_id") or f"tc_{hash(str(raw))}"
             tc_name = raw.get("name") or raw.get("function", {}).get("name") or ""
             args = raw.get("arguments") or raw.get("input") or raw.get("function", {}).get("arguments") or {}
+            sig = raw.get("thought_signature") or (raw.get("extra_content", {}).get("google", {}).get("thought_signature") if isinstance(raw.get("extra_content"), dict) else None)
 
             if isinstance(args, str):
                 try:
@@ -52,12 +74,13 @@ class ModelResponseNormalizer:
                 except Exception:
                     args = {"raw": args}
 
-            return ToolCall(id=str(tc_id), name=str(tc_name), arguments=dict(args))
+            return ToolCall(id=str(tc_id), name=str(tc_name), arguments=dict(args), thought_signature=sig)
 
         # Handle object attributes (e.g. LangChain / OpenAI SDK objects)
         tc_id = getattr(raw, "id", None) or f"tc_{id(raw)}"
         tc_name = getattr(raw, "name", None) or getattr(getattr(raw, "function", None), "name", "")
         args = getattr(raw, "arguments", None) or getattr(raw, "input", None) or getattr(getattr(raw, "function", None), "arguments", {})
+        sig = getattr(raw, "thought_signature", None)
 
         if isinstance(args, str):
             try:
@@ -65,7 +88,7 @@ class ModelResponseNormalizer:
             except Exception:
                 args = {"raw": args}
 
-        return ToolCall(id=str(tc_id), name=str(tc_name), arguments=dict(args) if isinstance(args, dict) else {})
+        return ToolCall(id=str(tc_id), name=str(tc_name), arguments=dict(args) if isinstance(args, dict) else {}, thought_signature=sig)
 
     @classmethod
     def normalize_response(
@@ -87,6 +110,9 @@ class ModelResponseNormalizer:
                 except Exception as e:
                     logger.warning(f"Failed to normalize native tool call {tc}: {e}")
 
+        input_tokens = 0
+        output_tokens = 0
+
         # Handle canonical dict responses from AgentSession.
         if isinstance(raw_response, dict):
             if text_content is None:
@@ -96,6 +122,14 @@ class ModelResponseNormalizer:
 
             if finish_reason is None:
                 finish_reason = raw_response.get("finish_reason")
+
+            usage = raw_response.get("usage") or {}
+            if isinstance(usage, dict):
+                input_tokens = usage.get("input_tokens") or usage.get("prompt_tokens") or 0
+                output_tokens = usage.get("output_tokens") or usage.get("completion_tokens") or 0
+            else:
+                input_tokens = raw_response.get("input_tokens") or 0
+                output_tokens = raw_response.get("output_tokens") or 0
 
             if not tool_calls:
                 r_tool_calls = raw_response.get("tool_calls")
@@ -134,6 +168,14 @@ class ModelResponseNormalizer:
             if finish_reason is None:
                 finish_reason = getattr(raw_response, "finish_reason", None)
 
+            usage = getattr(raw_response, "usage", None)
+            if usage:
+                input_tokens = getattr(usage, "input_tokens", 0) or getattr(usage, "prompt_tokens", 0) or 0
+                output_tokens = getattr(usage, "output_tokens", 0) or getattr(usage, "completion_tokens", 0) or 0
+            else:
+                input_tokens = getattr(raw_response, "input_tokens", 0) or 0
+                output_tokens = getattr(raw_response, "output_tokens", 0) or 0
+
         # Fallback: Textual/regex parsing ONLY if no native tool calls were present
         if not tool_calls and text_content:
             fallback_tc = self._extract_fallback_tool_call(text_content)
@@ -144,6 +186,8 @@ class ModelResponseNormalizer:
             text=text_content,
             tool_calls=tool_calls,
             finish_reason=finish_reason or ("tool_use" if tool_calls else "end_turn"),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
         )
 
     @staticmethod

@@ -26,9 +26,24 @@ if "sqlite" not in db_url.lower():
         "pool_timeout": POOL_TIMEOUT,
         "pool_recycle": POOL_RECYCLE,
     })
+else:
+    engine_kwargs.update({
+        "connect_args": {"timeout": 30.0}
+    })
 
 logger.info(f"Initializing database engine with URL: {db_url}")
 engine = create_async_engine(db_url, echo=False, **engine_kwargs)
+
+from sqlalchemy import event
+
+@event.listens_for(engine.sync_engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    if "sqlite" in db_url.lower():
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.close()
 
 async_session_factory = async_sessionmaker(
     bind=engine,

@@ -24,7 +24,8 @@ async def init_db() -> None:
         import alembic.command
         try:
             alembic_cfg = alembic.config.Config("alembic.ini")
-            alembic.command.upgrade(alembic_cfg, "head")
+            import asyncio
+            await asyncio.to_thread(alembic.command.upgrade, alembic_cfg, "head")
         except Exception as e:
             logger.error(f"Failed to run programmatic Alembic migrations: {e}")
 
@@ -115,6 +116,44 @@ async def get_last_session_for_workspace(workspace_root: str) -> Optional[Sessio
             return await conv_repo.get_last_for_workspace("default-org", ws.id)
         return None
 
+async def get_or_create_workspace(db, workspace_root: str = "") -> str:
+    """Helper to get or create a workspace entity for a workspace root."""
+    ws_repo = WorkspaceRepository(db)
+    ws = await ws_repo.get_by_root("default-org", workspace_root or "")
+    if not ws:
+        from backend.app.infrastructure.database.models import Project
+        proj_res = await db.execute(select(Project).where(Project.name == "Default Project"))
+        proj = proj_res.scalars().first()
+        if not proj:
+            proj = Project(organization_id="default-org", name="Default Project")
+            db.add(proj)
+            await db.flush()
+        ws = await ws_repo.create("default-org", proj.id, "Default Workspace", workspace_root or "")
+        await db.flush()
+    return ws.id
+
+async def create_new_session_record(
+    db,
+    session_id: str,
+    title: str = "New Chat",
+    workspace_root: str = "",
+    mode: str = "Ask"
+) -> SessionModel:
+    """Safely create a new session record satisfying all database constraints."""
+    ws_id = await get_or_create_workspace(db, workspace_root)
+    conv = SessionModel(
+        id=session_id,
+        organization_id="default-org",
+        user_id="default-user",
+        workspace_id=ws_id,
+        title=title or "New Chat",
+        workspace_root=workspace_root or "",
+        mode=mode or "Ask",
+        messages_json="[]",
+    )
+    db.add(conv)
+    return conv
+
 def first_user_preview(messages: list[Any], max_len: int = 60) -> str:
     """Return a brief text preview of the first user message found."""
     for msg in messages:
@@ -130,3 +169,4 @@ def first_user_preview(messages: list[Any], max_len: int = 60) -> str:
         if role == "user" and content:
             return content[:max_len] + "..." if len(content) > max_len else content
     return ""
+

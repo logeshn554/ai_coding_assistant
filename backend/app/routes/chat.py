@@ -219,17 +219,51 @@ async def get_chat_history(request: Request, session_id: Optional[str] = None):
             return {"messages": []}
         
         messages_list = []
-        for m in session.messages:
-            content = m.content
+        if session.messages:
+            for m in session.messages:
+                content = m.content
+                try:
+                    content = json.loads(m.content)
+                except Exception:
+                    pass
+
+                msg_entry = {
+                    "role": m.role,
+                    "timestamp": int(m.created_at.timestamp()) if m.created_at else int(datetime.datetime.utcnow().timestamp())
+                }
+                if isinstance(content, dict) and ("content" in content or "tool_calls" in content or "thinking_blocks" in content or "tool_call_id" in content):
+                    msg_entry["content"] = content.get("content") or ""
+                    for k, v in content.items():
+                        if k != "content":
+                            msg_entry[k] = v
+                else:
+                    msg_entry["content"] = content
+
+                messages_list.append(msg_entry)
+
+        # Fallback to messages_json if relational messages list is empty or only contains user role
+        has_assistant_or_tool = any(m.get("role") in ("assistant", "tool") for m in messages_list)
+        if (not messages_list or not has_assistant_or_tool) and session.messages_json:
             try:
-                content = json.loads(m.content)
+                json_msgs = json.loads(session.messages_json)
+                if isinstance(json_msgs, list) and json_msgs:
+                    fallback_list = []
+                    for idx, jm in enumerate(json_msgs):
+                        fallback_list.append({
+                            "role": jm.get("role", "assistant"),
+                            "content": jm.get("content", ""),
+                            "tool_calls": jm.get("tool_calls"),
+                            "tool_call_id": jm.get("tool_call_id"),
+                            "name": jm.get("name"),
+                            "thinking_blocks": jm.get("thinking_blocks"),
+                            "thinkingSteps": jm.get("thinkingSteps"),
+                            "timestamp": jm.get("timestamp") or int(datetime.datetime.utcnow().timestamp()),
+                        })
+                    if len(fallback_list) >= len(messages_list):
+                        messages_list = fallback_list
             except Exception:
                 pass
-            messages_list.append({
-                "role": m.role,
-                "content": content,
-                "timestamp": int(m.timestamp.timestamp())
-            })
+
         return {"messages": messages_list}
 
 @router.post("/api/chat/history")
@@ -242,11 +276,16 @@ async def save_chat_history(req: ChatHistoryRequest, request: Request, session_i
                 res = await db.execute(stmt)
                 session = res.scalar()
                 if not session:
-                    session = SessionModel(id=active_id, title="Default Conversation")
-                    db.add(session)
+                    from ..db import create_new_session_record
+                    session = await create_new_session_record(
+                        db,
+                        session_id=active_id,
+                        title="Default Conversation",
+                        workspace_root=workspace_state.root or "",
+                    )
                     await db.flush()
                     
-                msg_stmt = select(MessageModel).where(MessageModel.session_id == active_id).order_by(MessageModel.id.asc())
+                msg_stmt = select(MessageModel).where(MessageModel.conversation_id == active_id).order_by(MessageModel.sequence.asc())
                 msg_res = await db.execute(msg_stmt)
                 existing_msgs = msg_res.scalars().all()
                 
@@ -268,16 +307,18 @@ async def save_chat_history(req: ChatHistoryRequest, request: Request, session_i
                         dt = datetime.datetime.utcnow()
                         
                     msg = MessageModel(
-                        session_id=active_id,
+                        conversation_id=active_id,
                         role=role,
-                        content=content,
-                        timestamp=dt
+                        content=content if content is not None else "",
+                        sequence=i + 1,
+                        created_at=dt,
                     )
                     db.add(msg)
                     
                 session.updated_at = datetime.datetime.utcnow()
         return {"success": True}
     except Exception as e:
+        logger.error(f"Failed to save chat history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/chat/sessions")
@@ -326,14 +367,14 @@ async def create_chat_session(req: ChatSessionCreateRequest):
     new_id = f"session_{uuid.uuid4().hex[:8]}"
     try:
         async with async_session() as db:
-            new_session = SessionModel(
-                id=new_id,
+            from ..db import create_new_session_record
+            new_session = await create_new_session_record(
+                db,
+                session_id=new_id,
                 title=req.title.strip() or "New Chat",
                 workspace_root=workspace_state.root or "",
                 mode="Ask",
-                messages_json="[]",
             )
-            db.add(new_session)
             await db.commit()
 
             return {
@@ -343,14 +384,15 @@ async def create_chat_session(req: ChatSessionCreateRequest):
                     "title": new_session.title,
                     "workspace_root": new_session.workspace_root or "",
                     "mode": new_session.mode or "Ask",
-                    "created_at": int(new_session.created_at.timestamp()),
-                    "updated_at": int(new_session.updated_at.timestamp()),
+                    "created_at": int(new_session.created_at.timestamp()) if new_session.created_at else int(datetime.datetime.utcnow().timestamp()),
+                    "updated_at": int(new_session.updated_at.timestamp()) if new_session.updated_at else int(datetime.datetime.utcnow().timestamp()),
                     "message_count": 0,
                     "first_user_message": "",
                     "messages": []
                 }
             }
     except Exception as e:
+        logger.error(f"Failed to create chat session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/chat/sessions/{session_id}")
@@ -363,33 +405,57 @@ async def get_chat_session_details(session_id: str):
             raise HTTPException(status_code=404, detail="Chat session not found")
         
         messages_list = []
-        for m in session.messages:
-            content = m.content
+        if session.messages:
+            for m in session.messages:
+                content = m.content
+                try:
+                    content = json.loads(m.content)
+                except Exception:
+                    pass
+                
+                msg_entry = {
+                    "role": m.role,
+                    "timestamp": int(m.created_at.timestamp()) if m.created_at else int(datetime.datetime.utcnow().timestamp())
+                }
+                if isinstance(content, dict) and ("content" in content or "tool_calls" in content or "thinking_blocks" in content or "tool_call_id" in content):
+                    msg_entry["content"] = content.get("content") or ""
+                    for k, v in content.items():
+                        if k != "content":
+                            msg_entry[k] = v
+                else:
+                    msg_entry["content"] = content
+                    
+                messages_list.append(msg_entry)
+
+        # Fallback to messages_json if relational messages list is empty or only contains user role
+        has_assistant_or_tool = any(m.get("role") in ("assistant", "tool") for m in messages_list)
+        if (not messages_list or not has_assistant_or_tool) and session.messages_json:
             try:
-                content = json.loads(m.content)
+                json_msgs = json.loads(session.messages_json)
+                if isinstance(json_msgs, list) and json_msgs:
+                    fallback_list = []
+                    for idx, jm in enumerate(json_msgs):
+                        fallback_list.append({
+                            "role": jm.get("role", "assistant"),
+                            "content": jm.get("content", ""),
+                            "tool_calls": jm.get("tool_calls"),
+                            "tool_call_id": jm.get("tool_call_id"),
+                            "name": jm.get("name"),
+                            "thinking_blocks": jm.get("thinking_blocks"),
+                            "thinkingSteps": jm.get("thinkingSteps"),
+                            "timestamp": jm.get("timestamp") or int(datetime.datetime.utcnow().timestamp()),
+                        })
+                    if len(fallback_list) >= len(messages_list):
+                        messages_list = fallback_list
             except Exception:
                 pass
-            
-            msg_entry = {
-                "role": m.role,
-                "timestamp": int(m.timestamp.timestamp())
-            }
-            if isinstance(content, dict) and ("content" in content or "tool_calls" in content or "thinking_blocks" in content):
-                msg_entry["content"] = content.get("content") or ""
-                for k, v in content.items():
-                    if k != "content":
-                        msg_entry[k] = v
-            else:
-                msg_entry["content"] = content
-                
-            messages_list.append(msg_entry)
             
         return {
             "session": {
                 "id": session.id,
                 "title": session.title,
-                "created_at": int(session.created_at.timestamp()),
-                "updated_at": int(session.updated_at.timestamp()),
+                "created_at": int(session.created_at.timestamp()) if session.created_at else int(datetime.datetime.utcnow().timestamp()),
+                "updated_at": int(session.updated_at.timestamp()) if session.updated_at else int(datetime.datetime.utcnow().timestamp()),
                 "messages": messages_list
             }
         }
@@ -454,12 +520,13 @@ async def delete_chat_session(session_id: str, request: Request):
                 exist_default = res_check.scalar()
                 
                 new_default_id = "default-session" if not exist_default else f"default-session-{uuid.uuid4().hex[:8]}"
-                default_session = SessionModel(
-                    id=new_default_id,
+                from ..db import create_new_session_record
+                await create_new_session_record(
+                    db,
+                    session_id=new_default_id,
                     title="Default Conversation",
-                    workspace_root=workspace_root_val
+                    workspace_root=workspace_root_val,
                 )
-                db.add(default_session)
                 await db.commit()
                     
         return {"success": True}
@@ -483,12 +550,13 @@ async def clear_all_sessions():
             exist_default = res_check.scalar()
             
             default_id = "default-session" if not exist_default else f"default-session-{uuid.uuid4().hex[:8]}"
-            default_session = SessionModel(
-                id=default_id,
+            from ..db import create_new_session_record
+            await create_new_session_record(
+                db,
+                session_id=default_id,
                 title="Default Conversation",
-                workspace_root=workspace_root_val
+                workspace_root=workspace_root_val,
             )
-            db.add(default_session)
             await db.commit()
 
         # Evict all memory sessions belonging to this workspace root to prevent leaks
@@ -542,8 +610,8 @@ async def websocket_chat(
         """Forward every message to the browser AND mirror it to the log file."""
         try:
             await request.send_text(json.dumps(data))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"WebSocket send_text failed: {e}")
 
         # ── Mirror to log file ──────────────────────────────────────────────
         evt = data.get("type", "")
@@ -624,32 +692,161 @@ async def websocket_chat(
 
     hb_task = asyncio.create_task(heartbeat())
 
+    run_to_conv_cache: dict[str, str] = {}
+
     async def local_event_cb(run_id, data):
         try:
-            from backend.app.infrastructure.database.connection import async_session_factory
-            from backend.app.infrastructure.database.models import AgentRun
-            import sqlalchemy
-            async with async_session_factory() as db:
-                res = await db.execute(
-                    sqlalchemy.select(AgentRun.conversation_id)
-                    .where(AgentRun.id == run_id)
-                )
-                conv_id = res.scalar()
-                if conv_id == resolved_session_id or run_id == resolved_session_id:
-                    await send_to_client(data)
-        except Exception:
-            pass
+            conv_id = run_to_conv_cache.get(run_id)
+            if not conv_id:
+                from backend.app.infrastructure.database.connection import async_session_factory
+                from backend.app.infrastructure.database.models import AgentRun
+                import sqlalchemy
+                async with async_session_factory() as db:
+                    res = await db.execute(
+                        sqlalchemy.select(AgentRun.conversation_id)
+                        .where(AgentRun.id == run_id)
+                    )
+                    conv_id = res.scalar()
+                    if conv_id:
+                        run_to_conv_cache[run_id] = conv_id
+
+            if conv_id == resolved_session_id or run_id == resolved_session_id:
+                # Forward original event
+                await send_to_client(data)
+
+                # Map event types to match frontend conventions and trigger state resets
+                evt_type = data.get("type")
+                if evt_type == "agent.started":
+                    await send_to_client({
+                        "type": "status",
+                        "status": "generating_code",
+                        "message": "Agent workflow started...",
+                    })
+                elif evt_type == "tool.started":
+                    tool_name = data.get("name") or "unknown"
+                    args = data.get("arguments") or {}
+                    msg = f"Executing tool: {tool_name}"
+                    
+                    if tool_name in ("view_file", "read_file"):
+                        path = args.get("AbsolutePath") or args.get("path") or args.get("file_path") or ""
+                        filename = os.path.basename(path) if path else "unknown file"
+                        start = args.get("StartLine") or args.get("start_line")
+                        end = args.get("EndLine") or args.get("end_line")
+                        if start is not None and end is not None:
+                            msg = f"Reading file: {filename} (Lines {start}-{end})"
+                        else:
+                            msg = f"Reading file: {filename}"
+                    elif tool_name in ("write_to_file", "write_file", "create_file", "replace_file_content", "multi_replace_file_content"):
+                        path = args.get("TargetFile") or args.get("path") or args.get("file_path") or ""
+                        filename = os.path.basename(path) if path else "unknown file"
+                        msg = f"Writing file: {filename}"
+                    elif tool_name in ("run_command", "execute_command", "terminal"):
+                        cmd = args.get("CommandLine") or args.get("cmd") or args.get("command") or ""
+                        msg = f"Running terminal command: `{cmd}`"
+                    
+                    await send_to_client({
+                        "type": "status",
+                        "status": "tool_executing",
+                        "message": msg,
+                        "tool_call": {
+                            "id": data.get("tool_call_id"),
+                            "name": tool_name,
+                            "args": args,
+                        }
+                    })
+                elif evt_type == "tool.completed":
+                    tool_name = data.get("name") or "unknown"
+                    success = data.get("success", True)
+                    status_text = "successfully" if success else "with errors"
+                    
+                    await send_to_client({
+                        "type": "status",
+                        "status": "generating_code",
+                        "message": f"Finished executing tool: {tool_name} {status_text}.",
+                    })
+                    await send_to_client({
+                        "type": "tool_result",
+                        "tool_call_id": data.get("tool_call_id"),
+                        "name": tool_name,
+                        "status": "success" if success else "error",
+                        "result": data.get("output") if success else data.get("error"),
+                    })
+                elif evt_type == "agent.completed":
+                    verified = data.get("verified", False)
+                    v_status = "Verification passed and task approved." if verified else "Execution complete (pending final approval)."
+                    await send_to_client({
+                        "type": "status",
+                        "status": "idle",
+                        "message": f"Agent workflow completed. {v_status}",
+                    })
+                    await send_to_client({
+                        "type": "session_done",
+                        "total_cost_usd": 0.0,
+                    })
+                elif evt_type == "agent.error":
+                    errors = data.get("errors") or [data.get("error")] or ["Unknown error occurred"]
+                    error_msg = "; ".join(str(e) for e in errors if e)
+                    
+                    # Generate a clean, user-friendly markdown banner for the chat UI
+                    if "402" in error_msg or "budget" in error_msg.lower() or "credit" in error_msg.lower() or "afford" in error_msg.lower():
+                        err_banner = (
+                            "> ⚠️ **Budget / Credits Exceeded (HTTP 402)**\n\n"
+                            "Your account balance on the provider (e.g., OpenRouter / OpenAI) has insufficient credits or the requested `max_tokens` exceeded your available balance.\n\n"
+                            "- **Action Required**: Add credits to your provider account or reduce `max_tokens` in Model Settings."
+                        )
+                    elif "403" in error_msg or "forbidden" in error_msg.lower() or "authorization failed" in error_msg.lower():
+                        err_banner = (
+                            "> 🔒 **Authentication Failed (HTTP 403 / 401)**\n\n"
+                            "The request was rejected by the provider due to invalid credentials or missing permissions.\n\n"
+                            "- **Action Required**: Verify your API key in **Settings → Model Configuration**."
+                        )
+                    elif "thought_signature" in error_msg.lower() or "400" in error_msg:
+                        err_banner = (
+                            "> 🧩 **Thought Signature / Model Error (HTTP 400)**\n\n"
+                            "The provider returned an invalid argument or requires specific thought signatures for tool execution.\n\n"
+                            "- **Action Required**: Start a new chat turn or switch to another model profile."
+                        )
+                    else:
+                        err_banner = f"> ❌ **Execution Error**\n\n`{error_msg}`"
+
+                    await send_to_client({
+                        "type": "text_delta",
+                        "content": f"\n\n{err_banner}\n\n",
+                    })
+                    await send_to_client({
+                        "type": "status",
+                        "status": "idle",
+                        "message": f"Agent workflow stopped: {error_msg[:120]}",
+                    })
+                    await send_to_client({
+                        "type": "session_done",
+                        "total_cost_usd": 0.0,
+                    })
+                elif evt_type == "agent.cancelled":
+                    await send_to_client({
+                        "type": "status",
+                        "status": "idle",
+                        "message": "Agent workflow cancelled by user.",
+                    })
+                    await send_to_client({
+                        "type": "session_done",
+                        "total_cost_usd": 0.0,
+                    })
+        except Exception as e:
+            logger.error(f"Error handling event callback: {e}")
 
     from backend.app.infrastructure.events import EventPublisher
     
     async def pubsub_listener():
         from backend.app.state import redis_client
+        use_redis = False
         if not redis_client.use_fallback:
             pubsub = None
             try:
                 client = await redis_client._ensure_client()
                 pubsub = client.pubsub()
                 await pubsub.psubscribe("channel:run-events:*")
+                use_redis = True
                 async for msg in pubsub.listen():
                     if msg["type"] == "pmessage":
                         try:
@@ -660,11 +857,15 @@ async def websocket_chat(
                         except Exception:
                             pass
             except Exception as e:
-                logger.error(f"Redis Pub/Sub psubscribe listener failed: {e}")
+                logger.error(f"Redis Pub/Sub psubscribe listener failed, falling back to local events: {e}")
+                redis_client.use_fallback = True
             finally:
                 if pubsub:
-                    await pubsub.punsubscribe()
-        else:
+                    try:
+                        await pubsub.punsubscribe()
+                    except Exception:
+                        pass
+        if not use_redis:
             EventPublisher.subscribe_local(local_event_cb)
 
     listener_task = asyncio.create_task(pubsub_listener())

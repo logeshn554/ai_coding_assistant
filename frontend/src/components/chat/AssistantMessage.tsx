@@ -179,9 +179,13 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
       
       let tagsText = '';
       if (typeof m.content === 'string') {
-        const match = m.content.match(/<thinking>([\s\S]*?)<\/thinking>/);
-        if (match) {
-          tagsText = match[1];
+        const matches = m.content.matchAll(/<thinking>([\s\S]*?)<\/thinking>/g);
+        const tagParts: string[] = [];
+        for (const match of matches) {
+          if (match[1]?.trim()) tagParts.push(match[1].trim());
+        }
+        if (tagParts.length > 0) {
+          tagsText = tagParts.join('\n');
         }
       }
 

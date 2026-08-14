@@ -114,7 +114,13 @@ VALID_TRANSITIONS: Dict[AgentState, Set[AgentState]] = {
     },
     AgentState.FAILED: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING, AgentState.CANCELLED},
     AgentState.CANCELLED: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
-    AgentState.BLOCKED: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING, AgentState.CANCELLED},
+    AgentState.BLOCKED: {
+        AgentState.IDLE,
+        AgentState.PLANNING,
+        AgentState.EXECUTING,
+        AgentState.CANCELLED,
+        AgentState.FAILED,
+    },
     AgentState.COMPLETED: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
     AgentState.COMPLETED_VERIFIED: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
     AgentState.COMPLETED_WITH_WARNINGS: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
@@ -414,7 +420,10 @@ class AgentRuntime:
                 {
                     "name": td.name,
                     "description": td.description,
-                    "input_schema": td.input_schema.model_json_schema() if hasattr(td.input_schema, "model_json_schema") else {},
+                    "input_schema": (
+                        td.input_schema.model_json_schema() if hasattr(td.input_schema, "model_json_schema")
+                        else (td.input_schema.schema() if hasattr(td.input_schema, "schema") else {})
+                    ),
                 }
                 for td in ToolRegistry.get_all_tools()
             ]
@@ -463,6 +472,11 @@ class AgentRuntime:
                 )
                 model_resp = ModelResponseNormalizer.normalize_response(raw_res)
 
+                # Assert LLM did not return an empty response with no tool calls
+                if not (model_resp.text or "").strip() and not model_resp.tool_calls:
+                    logger.warning("LLM turn produced no text content and no tool calls. Falling back to default acknowledgment.")
+                    model_resp.text = "I have reviewed the request and current status."
+
                 # Append assistant message to conversation history for next turn
                 asst_msg: Dict[str, Any] = {"role": "assistant", "content": model_resp.text or ""}
                 if model_resp.tool_calls:
@@ -471,10 +485,29 @@ class AgentRuntime:
                             "id": tc.id,
                             "type": "function",
                             "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+                            "thought_signature": getattr(tc, "thought_signature", None),
                         }
                         for tc in model_resp.tool_calls
                     ]
                 conversation_messages.append(asst_msg)
+
+                # Persist assistant message to session history if active
+                if agent_session is not None:
+                    session_asst_msg = {
+                        "role": "assistant",
+                        "content": model_resp.text or "",
+                    }
+                    if model_resp.tool_calls:
+                        session_asst_msg["tool_calls"] = [
+                            {
+                                "id": tc.id,
+                                "name": tc.name,
+                                "input": tc.arguments,
+                                "thought_signature": getattr(tc, "thought_signature", None),
+                            }
+                            for tc in model_resp.tool_calls
+                        ]
+                    agent_session.conversation_history.append(session_asst_msg)
 
                 if model_resp.text:
                     final_output += model_resp.text + "\n"
@@ -631,14 +664,18 @@ class AgentRuntime:
             }
             
             all_phases_passed = True
+            _loop_blocked = False  # Track if BLOCKED state was entered to exit outer loop
             for phase, cmd in PHASE_COMMANDS.items():
+                if _loop_blocked:
+                    break
                 phase_state["current_phase"] = phase
                 phase_state["active_phase"] = phase
                 phase_state["next_action"] = f"run_{phase.lower().replace(' ', '_')}"
                 v_engine.save_phase_state(phase_state)
-                
-                # Execute the check
-                await self.transition_state(session, AgentState.VERIFYING, _emit)
+
+                # Execute the check — only transition to VERIFYING if not already BLOCKED
+                if session.state != AgentState.BLOCKED:
+                    await self.transition_state(session, AgentState.VERIFYING, _emit)
                 v_res = await v_engine.run_phase_command(cmd)
                 
                 while not v_res.success and repair_loop.can_attempt_repair():
@@ -659,6 +696,7 @@ class AgentRuntime:
                         await self.transition_state(session, AgentState.BLOCKED, _emit)
                         session.errors.append("Repeated failure loop detected in self-repair.")
                         all_phases_passed = False
+                        _loop_blocked = True
                         break
 
                     await self.transition_state(session, AgentState.REPAIRING, _emit)
@@ -730,9 +768,11 @@ class AgentRuntime:
                         logger.error(f"Repair LLM call failed: {repair_err}")
                         repair_loop.record_repair_attempt(failure, f"Repair failed: {repair_err}", False)
 
-                    # Re-run phase verification
-                    await self.transition_state(session, AgentState.VERIFYING, _emit)
-                    v_res = await v_engine.run_phase_command(cmd)
+                    # Re-run phase verification — only if not blocked
+                    if not _loop_blocked:
+                        if session.state != AgentState.BLOCKED:
+                            await self.transition_state(session, AgentState.VERIFYING, _emit)
+                        v_res = await v_engine.run_phase_command(cmd)
                     
                 if not v_res.success:
                     all_phases_passed = False
@@ -784,7 +824,11 @@ class AgentRuntime:
                 await self.transition_state(session, AgentState.COMPLETED_WITH_WARNINGS, _emit)
                 _emit(AgentEvent(session_id, EVENT_AGENT_COMPLETED, {"output": final_output.strip(), "verified": False}))
             else:
-                await self.transition_state(session, AgentState.FAILED, _emit)
+                try:
+                    await self.transition_state(session, AgentState.FAILED, _emit)
+                except InvalidStateTransitionError:
+                    # Force FAILED if already in a terminal-adjacent state (e.g. BLOCKED)
+                    session.state = AgentState.FAILED
                 _emit(AgentEvent(session_id, EVENT_AGENT_ERROR, {"errors": session.errors or ["Verification failed"]}))
 
             session.completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -821,7 +865,15 @@ class AgentRuntime:
 
             logger.exception(f"AgentRuntime session {session_id} failed with exception: {e}")
             session.errors.append(str(e))
-            await self.transition_state(session, AgentState.FAILED, _emit)
+            try:
+                await self.transition_state(session, AgentState.FAILED, _emit)
+            except InvalidStateTransitionError:
+                # Force-set FAILED even if state machine would normally prevent it
+                # (e.g. BLOCKED → FAILED). This is intentional: exceptions always terminate.
+                logger.warning(
+                    f"Session {session_id}: forcing FAILED from state {session.state.value} after exception"
+                )
+                session.state = AgentState.FAILED
             _emit(AgentEvent(session_id, EVENT_AGENT_ERROR, {"error": str(e)}))
             return AgentResult(
                 session_id=session_id,

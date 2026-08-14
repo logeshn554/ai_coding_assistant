@@ -76,7 +76,13 @@ class InMemoryFallbackRedis:
         self.url = redis_url
         # Create the client once with a fixed pool; don't recreate on every request.
         try:
-            self.client = aioredis.from_url(self.url, decode_responses=True, max_connections=10)
+            self.client = aioredis.from_url(
+                self.url,
+                decode_responses=True,
+                max_connections=10,
+                socket_timeout=1.0,
+                socket_connect_timeout=1.0
+            )
         except Exception as exc:
             logger.warning("Failed to create Redis client at init: %s", exc)
             self.client = None
@@ -120,7 +126,13 @@ class InMemoryFallbackRedis:
     async def _ensure_client(self):
         """Lazily (re)create the underlying Redis client if needed."""
         if self.client is None:
-            self.client = aioredis.from_url(self.url, decode_responses=True, max_connections=10)
+            self.client = aioredis.from_url(
+                self.url,
+                decode_responses=True,
+                max_connections=10,
+                socket_timeout=1.0,
+                socket_connect_timeout=1.0
+            )
         return self.client
 
     async def _probe_redis(self) -> bool:

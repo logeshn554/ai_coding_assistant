@@ -444,7 +444,15 @@ class LLMAdapter(ModelAdapter):
                                         else:
                                             obj = getattr(obj, key, None)
                                     return obj
-                                sig = get_nested_val(tc_chunk, "extra_content", "google", "thought_signature")
+
+                                sig = (
+                                    get_nested_val(tc_chunk, "extra_content", "google", "thought_signature")
+                                    or get_nested_val(tc_chunk, "thought_signature")
+                                    or get_nested_val(tc_chunk, "function", "thought_signature")
+                                    or get_nested_val(delta, "extra_content", "google", "thought_signature")
+                                    or get_nested_val(delta, "thought_signature")
+                                    or get_nested_val(chunk, "extra_content", "google", "thought_signature")
+                                )
                                 if sig:
                                     tool_calls_accum[idx]["thought_signature"] = sig
                             except Exception as e:
@@ -485,7 +493,12 @@ class LLMAdapter(ModelAdapter):
                                 parsed_input, error_msg = self.parse_tool_arguments(
                                     tc.function.name, tc.function.arguments
                                 )
-                                yield self.build_tool_call_chunk(tc_id, tc.function.name, parsed_input, error_msg)
+                                tc_sig = (
+                                    getattr(tc, "thought_signature", None)
+                                    or getattr(getattr(tc, "extra_content", None), "get", lambda k, d=None: None)("google", {}).get("thought_signature")
+                                    if hasattr(getattr(tc, "extra_content", None), "get") else None
+                                )
+                                yield self.build_tool_call_chunk(tc_id, tc.function.name, parsed_input, error_msg, tc_sig)
                             yield self.build_done_chunk("tool_use")
                         else:
                             yield self.build_done_chunk(choice.finish_reason or "stop")
@@ -606,12 +619,26 @@ class LLMAdapter(ModelAdapter):
                 else:
                     raise stream_err
         except Exception as e:
-            from ..errors import LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMNetworkError, LLMProviderError
+            from ..errors import (
+                LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMNetworkError,
+                LLMBudgetExceededError, LLMThoughtSignatureError, LLMProviderError
+            )
             # Don't double-wrap already-structured errors
             if isinstance(e, LLMProviderError):
                 raise
             err_str = str(e).lower()
             provider = self.provider or "openai"
+
+            # Budget / Credits exceeded (402)
+            status_code = getattr(getattr(e, 'response', None), 'status_code', None) or getattr(e, 'status_code', None)
+            if status_code == 402 or any(kw in err_str for kw in ("credits", "afford", "budget", "requires more credits", "openrouter_credits")):
+                logger.error(f"OpenAI/OpenRouter budget exceeded error: {e}")
+                raise LLMBudgetExceededError(provider=provider, message=str(e)) from e
+
+            # Thought Signature / 400 validation error
+            if "thought_signature" in err_str or ("function call is missing" in err_str and "signature" in err_str):
+                logger.error(f"OpenAI/Gemini thought signature error: {e}")
+                raise LLMThoughtSignatureError(provider=provider, message=str(e)) from e
 
             # Timeout
             is_timeout = isinstance(e, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException))
@@ -621,10 +648,8 @@ class LLMAdapter(ModelAdapter):
                 logger.error(f"OpenAI/compatible API request timed out ({e})")
                 raise LLMTimeoutError(provider=provider) from e
 
-            status_code = getattr(getattr(e, 'response', None), 'status_code', None) or getattr(e, 'status_code', None)
-
             # Auth errors
-            if status_code in (401, 403) or any(kw in err_str for kw in ("authentication", "invalid api key", "unauthorized", "api key")):
+            if status_code in (401, 403) or any(kw in err_str for kw in ("authentication", "invalid api key", "unauthorized", "authorization failed", "api key")):
                 logger.error(f"OpenAI auth error: {e}")
                 raise LLMAuthError(provider=provider, message=str(e)) from e
 
@@ -724,11 +749,31 @@ class LLMAdapter(ModelAdapter):
                     content_blocks.append({"type": "text", "text": msg["content"]})
                 if msg.get("tool_calls"):
                     for tc in msg["tool_calls"]:
+                        # Normalize both runtime canonical form and Anthropic-native form
+                        tc_id = tc.get("id") or ""
+                        # Name: runtime stores in tc["name"] or tc["function"]["name"]
+                        tc_name = (
+                            tc.get("name")
+                            or (tc.get("function") or {}).get("name")
+                            or ""
+                        )
+                        # Input: runtime stores as tc["function"]["arguments"] (JSON string) or tc["input"] (dict)
+                        raw_input = tc.get("input")
+                        if raw_input is None:
+                            func = tc.get("function") or {}
+                            raw_args = func.get("arguments") or {}
+                            if isinstance(raw_args, str):
+                                try:
+                                    raw_input = json.loads(raw_args)
+                                except Exception:
+                                    raw_input = {"raw": raw_args}
+                            else:
+                                raw_input = raw_args if isinstance(raw_args, dict) else {}
                         content_blocks.append({
                             "type": "tool_use",
-                            "id": tc["id"],
-                            "name": tc["name"],
-                            "input": tc["input"]
+                            "id": tc_id,
+                            "name": tc_name,
+                            "input": raw_input,
                         })
                 if content_blocks:
                     if anthropic_msgs and anthropic_msgs[-1]["role"] == "assistant":
@@ -798,6 +843,10 @@ class LLMAdapter(ModelAdapter):
                             args_str = json.dumps(raw_args)
                         else:
                             args_str = str(raw_args) if raw_args is not None else "{}"
+                        sig = (
+                            tc.get("thought_signature")
+                            or (tc.get("extra_content", {}).get("google", {}).get("thought_signature") if isinstance(tc.get("extra_content"), dict) else None)
+                        )
                         tc_item = {
                             "id": tc_id,
                             "type": "function",
@@ -806,10 +855,11 @@ class LLMAdapter(ModelAdapter):
                                 "arguments": args_str
                             }
                         }
-                        if tc.get("thought_signature"):
+                        if sig:
+                            tc_item["thought_signature"] = sig
                             tc_item["extra_content"] = {
                                 "google": {
-                                    "thought_signature": tc["thought_signature"]
+                                    "thought_signature": sig
                                 }
                             }
                         tcs.append(tc_item)

@@ -290,16 +290,16 @@ class ConfigManager:
             "profiles": profiles
         }
 
-    def get_profile(self, profile_id: str) -> dict:
+    def get_profile(self, profile_id_or_name: str) -> dict:
         """
-        Gets a single profile by ID with decrypted API key.
+        Gets a single profile by ID or name with decrypted API key.
         """
         config = self._read_raw_config()
         for p in config.get("profiles", []):
-            if p["id"] == profile_id:
+            if p["id"] == profile_id_or_name or p.get("name") == profile_id_or_name:
                 api_key = p.get("api_key", "")
                 try:
-                    k_key = keyring.get_password("devpilot", profile_id)
+                    k_key = keyring.get_password("devpilot", p["id"])
                     if k_key:
                         api_key = k_key
                 except Exception:

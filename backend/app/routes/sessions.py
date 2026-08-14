@@ -77,7 +77,7 @@ def _message_payload(m: MessageModel) -> dict[str, Any]:
     return {
         "role": m.role,
         "content": content,
-        "timestamp": int(m.timestamp.timestamp()) if m.timestamp else 0,
+        "timestamp": int(m.created_at.timestamp()) if m.created_at else 0,
     }
 
 

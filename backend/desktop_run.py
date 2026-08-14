@@ -42,6 +42,14 @@ class DesktopAPI:
 
 
 def get_free_port():
+    for preferred_port in [62746, 8000, 8080]:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind(('127.0.0.1', preferred_port))
+            s.close()
+            return preferred_port
+        except Exception:
+            continue
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(('127.0.0.1', 0))
     port = s.getsockname()[1]

@@ -590,7 +590,9 @@ class TestSelfRepairLoop:
         broken_file.write_text("def broken syntax here !!!")
 
         runtime = AgentRuntime(str(workspace))
-        session = await runtime.start_session(str(workspace), session_id="repair_sess_d418b4d0")
+        import uuid
+        sess_id = f"repair_sess_{uuid.uuid4().hex[:8]}"
+        session = await runtime.start_session(str(workspace), session_id=sess_id)
 
         call_count = 0
 
@@ -613,7 +615,7 @@ class TestSelfRepairLoop:
             return ModelResponse(text="All done", tool_calls=[])
 
         result = await runtime.run(
-            "repair_sess_d418b4d0",
+            sess_id,
             "Fix hello.py",
             auto_apply=True,
             llm_provider_func=mock_llm_provider,
@@ -668,7 +670,9 @@ class TestCancellation:
 
         workspace = tmp_path
         runtime = AgentRuntime(str(workspace))
-        await runtime.start_session(str(workspace), session_id="cancel_sess_f80a30f1")
+        import uuid
+        sess_id = f"cancel_sess_{uuid.uuid4().hex[:8]}"
+        await runtime.start_session(str(workspace), session_id=sess_id)
 
         turn_count = 0
 
@@ -679,13 +683,13 @@ class TestCancellation:
             if turn_count == 1:
                 # Return a non-empty response (causes a second turn)
                 # and cancel concurrently so the cancel check fires on the next iteration
-                asyncio.create_task(runtime.cancel("cancel_sess_f80a30f1"))
+                asyncio.create_task(runtime.cancel(sess_id))
                 return ModelResponse(text="Working...", tool_calls=[ToolCall("tc1", "read_file", {"path": "dummy.py"})])
             # This should never be reached if cancel propagates correctly
             return ModelResponse(text="Done.", tool_calls=[])
 
         result = await runtime.run(
-            "cancel_sess_f80a30f1",
+            sess_id,
             "Do something",
             auto_apply=True,
             llm_provider_func=cancelling_provider,
@@ -838,7 +842,7 @@ class TestProviderContracts:
 
 
 # ===========================================================================
-# End-to-End Scenario Tests
+# End-toEnd Scenario Tests
 # ===========================================================================
 
 class TestEndToEndScenarios:
@@ -849,10 +853,12 @@ class TestEndToEndScenarios:
         """Test 1: Create hello.py — real tool call, real file creation."""
         from backend.app.agent.agent_runtime.runtime import AgentRuntime, AgentState
         from backend.app.agent.agent_runtime.llm_adapter import ModelResponse, ToolCall
+        import uuid
 
         workspace = tmp_path
         runtime = AgentRuntime(str(workspace))
-        await runtime.start_session(str(workspace), session_id="e2e_1_e511827c")
+        sess_id = f"e2e_1_{uuid.uuid4().hex[:8]}"
+        await runtime.start_session(str(workspace), session_id=sess_id)
 
         call_count = 0
 
@@ -873,7 +879,7 @@ class TestEndToEndScenarios:
                 )
             return ModelResponse(text="Done.", tool_calls=[])
 
-        result = await runtime.run("e2e_1_e511827c", "Create hello.py that prints hello", auto_apply=True, llm_provider_func=mock_llm)
+        result = await runtime.run(sess_id, "Create hello.py that prints hello", auto_apply=True, llm_provider_func=mock_llm)
 
         assert (workspace / "hello.py").exists()
         assert "hello.py" in result.changed_files.get("created_files", [])
@@ -884,10 +890,12 @@ class TestEndToEndScenarios:
         """Test 2: Create app.py and requirements.txt — multiple tool calls."""
         from backend.app.agent.agent_runtime.runtime import AgentRuntime, AgentState
         from backend.app.agent.agent_runtime.llm_adapter import ModelResponse, ToolCall
+        import uuid
 
         workspace = tmp_path
         runtime = AgentRuntime(str(workspace))
-        await runtime.start_session(str(workspace), session_id="e2e_2_29ade1a4")
+        sess_id = f"e2e_2_{uuid.uuid4().hex[:8]}"
+        await runtime.start_session(str(workspace), session_id=sess_id)
 
         call_count = 0
 
@@ -904,7 +912,7 @@ class TestEndToEndScenarios:
                 )
             return ModelResponse(text="Done.", tool_calls=[])
 
-        result = await runtime.run("e2e_2_29ade1a4", "Create app.py and requirements.txt", auto_apply=True, llm_provider_func=mock_llm)
+        result = await runtime.run(sess_id, "Create app.py and requirements.txt", auto_apply=True, llm_provider_func=mock_llm)
 
         assert (workspace / "app.py").exists()
         assert (workspace / "requirements.txt").exists()
@@ -916,14 +924,16 @@ class TestEndToEndScenarios:
     async def test_e2e_missing_llm_provider_fails(self, tmp_path):
         """Test 5: Missing LLM provider — explicit FAILED state, no fake output."""
         from backend.app.agent.agent_runtime.runtime import AgentRuntime, AgentState
+        import uuid
 
         workspace = tmp_path
         runtime = AgentRuntime(str(workspace))
-        await runtime.start_session(str(workspace), session_id="e2e_5_bb89feb9")
+        sess_id = f"e2e_5_{uuid.uuid4().hex[:8]}"
+        await runtime.start_session(str(workspace), session_id=sess_id)
 
         # No llm_provider_func provided
         result = await runtime.run(
-            "e2e_5_bb89feb9",
+            sess_id,
             "Do something",
             auto_apply=True,
             llm_provider_func=None,
@@ -938,10 +948,12 @@ class TestEndToEndScenarios:
         """Test 3: Tool fails once, model recovers and completes."""
         from backend.app.agent.agent_runtime.runtime import AgentRuntime, AgentState
         from backend.app.agent.agent_runtime.llm_adapter import ModelResponse, ToolCall
+        import uuid
 
         workspace = tmp_path
         runtime = AgentRuntime(str(workspace))
-        await runtime.start_session(str(workspace), session_id="e2e_3_9d4834fa")
+        sess_id = f"e2e_3_{uuid.uuid4().hex[:8]}"
+        await runtime.start_session(str(workspace), session_id=sess_id)
 
         call_count = 0
 
@@ -959,7 +971,7 @@ class TestEndToEndScenarios:
             # Second turn: LLM sees the tool result and says done
             return ModelResponse(text="Created valid.py successfully.", tool_calls=[])
 
-        result = await runtime.run("e2e_3_9d4834fa", "Create valid.py", auto_apply=True, llm_provider_func=mock_llm)
+        result = await runtime.run(sess_id, "Create valid.py", auto_apply=True, llm_provider_func=mock_llm)
 
         # File should have been created
         assert (workspace / "valid.py").exists()

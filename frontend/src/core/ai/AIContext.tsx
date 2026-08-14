@@ -184,16 +184,44 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     }
   };
 
+  const normalizeMessage = (msg: any, idx: number): ChatMessage => {
+    let content = msg.content;
+    let toolCalls = msg.tool_calls;
+    let toolCallId = msg.tool_call_id;
+    let thinkingBlocks = msg.thinking_blocks;
+    let thinkingSteps = msg.thinkingSteps;
+
+    if (typeof content === 'string' && content.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed && typeof parsed === 'object') {
+          if ('content' in parsed) content = parsed.content;
+          if ('tool_calls' in parsed) toolCalls = parsed.tool_calls;
+          if ('tool_call_id' in parsed) toolCallId = parsed.tool_call_id;
+          if ('thinking_blocks' in parsed) thinkingBlocks = parsed.thinking_blocks;
+          if ('thinkingSteps' in parsed) thinkingSteps = parsed.thinkingSteps;
+        }
+      } catch {}
+    }
+
+    return {
+      ...msg,
+      id: msg.id || `hist_${idx}_${Date.now()}`,
+      content: content !== undefined ? content : '',
+      tool_calls: toolCalls,
+      tool_call_id: toolCallId,
+      thinking_blocks: thinkingBlocks,
+      thinkingSteps: thinkingSteps,
+    };
+  };
+
   const fetchChatHistory = async () => {
     try {
       const url = activeSessionId ? `/api/chat/history?session_id=${activeSessionId}` : '/api/chat/history';
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        const msgs = (data.messages || []).map((msg: any, idx: number) => ({
-          ...msg,
-          id: msg.id || `hist_${idx}_${Date.now()}`
-        }));
+        const msgs = (data.messages || []).map(normalizeMessage);
         setMessages(msgs);
       }
       await fetchSessions(false);
@@ -208,10 +236,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       if (res.ok) {
         const data = await res.json();
         setActiveSessionId(sessionId);
-        const msgs = (data.session?.messages || []).map((msg: any, idx: number) => ({
-          ...msg,
-          id: msg.id || `hist_${idx}_${Date.now()}`
-        }));
+        const msgs = (data.session?.messages || []).map(normalizeMessage);
         setMessages(msgs);
         await fetchSessions(false);
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

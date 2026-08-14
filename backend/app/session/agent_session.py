@@ -353,11 +353,17 @@ class AgentSession:
                     res = await db.execute(stmt)
                     session_obj = res.scalar()
                     if not session_obj:
-                        session_obj = SessionModel(id=self.session_id, title="Default Conversation")
-                        db.add(session_obj)
+                        from ..db import create_new_session_record
+                        session_obj = await create_new_session_record(
+                            db,
+                            session_id=self.session_id,
+                            title="Default Conversation",
+                            workspace_root=self.workspace_root or "",
+                            mode=self.last_mode or "Ask",
+                        )
                         await db.flush()
 
-                    msg_stmt = select(MessageModel).where(MessageModel.session_id == self.session_id).order_by(MessageModel.id.asc())
+                    msg_stmt = select(MessageModel).where(MessageModel.conversation_id == self.session_id).order_by(MessageModel.sequence.asc())
                     msg_res = await db.execute(msg_stmt)
                     existing_msgs = msg_res.scalars().all()
 
@@ -389,10 +395,11 @@ class AgentSession:
                             db_content = content if content is not None else ""
 
                         msg = MessageModel(
-                            session_id=self.session_id,
+                            conversation_id=self.session_id,
                             role=role,
                             content=db_content,
-                            timestamp=datetime.datetime.utcnow()
+                            sequence=i + 1,
+                            created_at=datetime.datetime.utcnow()
                         )
                         db.add(msg)
 
@@ -1045,11 +1052,14 @@ class AgentSession:
 
             # ── 14-Phase Agent Intelligence Layer (Agent mode only) ───────
             if mode == "Agent":
-                async def agent_llm_provider(task_desc: str, step_num: int):
+                async def agent_llm_provider(messages: list, tools_schema: list):
                     sys_prompt = self._get_system_prompt("Agent")
                     sys_prompt = await self._run_agent_intelligence_pipeline(
-                        task_desc, sys_prompt
+                        text, sys_prompt
                     )
+
+                    # Determine step number from messages list length
+                    step_num = len(messages) // 2 + 1
 
                     # Send status update
                     await self.send_ws_message({
@@ -1064,7 +1074,7 @@ class AgentSession:
                     thinking_blocks_current_turn = []
 
                     trimmed_history = self._trim_history_for_context(
-                        self.conversation_history, sys_prompt, tools
+                        messages, sys_prompt, tools
                     )
                     async for chunk in self._stream_chat_wrapper(adapter, trimmed_history, tools, sys_prompt):
                         if chunk["type"] == "text":
@@ -1129,6 +1139,10 @@ class AgentSession:
                     if self._exec_logger:
                         self._exec_logger.increment_turns()
                     self._agent_tool_call_count += len(tool_calls_to_run)
+
+                    if not response_text.strip() and not tool_calls_to_run:
+                        logger.error("LLM returned an empty response with no content and no tool calls.")
+                        raise RuntimeError("LLM returned an empty response with no content and no tool calls.")
 
                     return {
                         "content": response_text,
@@ -1713,27 +1727,46 @@ class AgentSession:
             logger.exception(f"Agent crashed [{error_type}]: {error_msg}")
 
             # Determine a user-friendly hint based on error type
-            if "api" in error_msg.lower() or "key" in error_msg.lower() or "auth" in error_msg.lower():
+            if "402" in error_msg or "budget" in error_msg.lower() or "credit" in error_msg.lower() or "afford" in error_msg.lower() or error_type == "LLMBudgetExceededError":
+                error_title = "Budget / Credits Exceeded"
+                hint = (
+                    "**[BUDGET EXCEEDED]** Your LLM account has insufficient credits or requested too many `max_tokens`.\n\n"
+                    "- Add credits to your provider account (e.g. OpenRouter/OpenAI).\n"
+                    "- Or lower the `max_tokens` in Model Settings / Model Configuration."
+                )
+            elif "403" in error_msg or "forbidden" in error_msg.lower() or "authorization failed" in error_msg.lower() or error_type == "LLMAuthError":
+                error_title = "Authentication / Access Denied"
+                hint = "**[AUTH ERROR]** Authorization failed (HTTP 403 / 401). Please check your API key and permissions in Settings -> Model Configuration."
+            elif "thought_signature" in error_msg.lower() or "400" in error_msg or error_type == "LLMThoughtSignatureError":
+                error_title = "Tool / Thought Signature Error"
+                hint = "**[MODEL ERROR]** The provider model requires a valid thought signature for tool calls. Please start a new session or switch to another model profile."
+            elif "api" in error_msg.lower() or "key" in error_msg.lower() or "auth" in error_msg.lower():
+                error_title = "Authentication Error"
                 hint = "[HINT] Check your API key in Settings -> Model Configuration."
             elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower() or error_type == "TimeoutError" or isinstance(e, (TimeoutError, asyncio.TimeoutError, httpx.TimeoutException)):
+                error_title = "Request Timed Out"
                 hint = "[HINT] The model provider timed out. Try again or switch to a faster model."
             elif "rate" in error_msg.lower() or "429" in error_msg:
+                error_title = "Rate Limit Reached"
                 hint = "[HINT] Rate limit hit. Wait a moment then try again."
             elif "context" in error_msg.lower() or "token" in error_msg.lower() or "413" in error_msg:
+                error_title = "Context Window Exceeded"
                 hint = "[HINT] Context too large. Start a new session or reduce the number of files."
             elif "NotImplementedError" in error_type:
+                error_title = "Feature Not Implemented"
                 hint = f"[HINT] Tool '{error_msg}' is not yet supported in this mode."
             elif "connection" in error_msg.lower() or "network" in error_msg.lower():
+                error_title = "Network Connection Error"
                 hint = "[HINT] Network error. Check your internet connection and try again."
             else:
+                error_title = "Agent Error"
                 hint = "[HINT] Try rephrasing your request or starting a new session."
 
             crash_card = (
-                f"\n\n[CRASH] **Agent Crashed**\n\n"
-                f"**Error type:** `{error_type}`\n"
-                f"**Details:** {error_msg}\n\n"
+                f"\n\n> ⚠️ **{error_title}**\n\n"
                 f"{hint}\n\n"
-                f"<details><summary>Stack trace</summary>\n\n"
+                f"**Details:** `{error_msg}`\n\n"
+                f"<details><summary>Technical Stack Trace</summary>\n\n"
                 f"```\n{short_tb}\n```\n</details>"
             )
 

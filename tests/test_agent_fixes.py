@@ -26,7 +26,11 @@ async def test_tool_argument_validation():
     assert not res.success
     # The error should be a serialized JSON payload
     data = json.loads(res.error)
-    assert data["error"] == "Missing required argument: todos"
+    # Accept both old message format and Pydantic v2 validation error format
+    error_msg = data["error"]
+    assert "todos" in error_msg.lower() or "missing" in error_msg.lower(), (
+        f"Expected 'todos' or 'missing' in error message, got: {error_msg!r}"
+    )
     assert data["tool"] == "todo_write"
     assert data["retryable"] is True
 

@@ -131,6 +131,9 @@ async def gateway_middleware(request: Request, call_next):
     request.state.identity = identity
 
     # 2. Enforce Rate Limiting
+    if settings.ENVIRONMENT != "production":
+        return await call_next(request)
+
     rate_limit_resp = rate_limiter.check(
         tenant_id=identity.tenant.tenant_id,
         user_id=identity.user_id,

@@ -141,6 +141,18 @@ class ModelGateway:
                         raise e
 
                     delay = base_delay * (2 ** attempt) + random.uniform(0.1, 0.5)
+                    # Extract explicit retry-after if provided by Gemini / OpenAI rate limits
+                    import re
+                    retry_sec_match = re.search(r"retry in ([\d\.]+)s", str(e), re.IGNORECASE) or re.search(r"retryDelay': '(\d+)s", str(e))
+                    if retry_sec_match:
+                        try:
+                            parsed_delay = float(retry_sec_match.group(1)) + 1.0
+                            delay = min(parsed_delay, 45.0)
+                        except Exception:
+                            pass
+                    elif hasattr(e, "retry_after_seconds") and getattr(e, "retry_after_seconds", 0) > 0:
+                        delay = min(getattr(e, "retry_after_seconds") + 1.0, 45.0)
+
                     logger.warning(f"Transient error: '{e}'. Retrying attempt {attempt}/{max_retries} in {delay:.2f}s...")
                     TelemetryManager.increment_counter(
                         "model_retry_total",

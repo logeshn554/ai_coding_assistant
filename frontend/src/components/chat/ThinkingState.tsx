@@ -129,11 +129,12 @@ export default function ThinkingState({
     rows: customRows ?? preset.rows,
   };
 
-  const autoExpanded = stage >= 1 && stage < 4;
-  const expanded = manualExpanded ?? autoExpanded;
-  const working = isWorking !== undefined ? isWorking : stage < 3;
-  const visible = customRows
-    ? customRows.length
+  const hasCustom = Boolean(customRows && customRows.length > 0);
+  const working = isWorking !== undefined ? isWorking : (hasCustom ? false : stage < 3);
+  const autoExpanded = hasCustom ? Boolean(working) : (stage >= 1 && stage < 4);
+  const expanded = manualExpanded !== null ? manualExpanded : (hasCustom ? true : autoExpanded);
+  const visible = hasCustom
+    ? customRows!.length
     : stage < 2
     ? 0
     : stage === 2
@@ -160,7 +161,7 @@ export default function ThinkingState({
   };
 
   return (
-    <div key={currentVariant} className="flex min-h-[176px] w-full max-w-md flex-col font-sans select-none">
+    <div key={currentVariant} className="flex w-full max-w-full flex-col font-sans select-none">
       {/* Optional Variant Tabs for Redesign Showcase */}
       {showVariantTabs && (
         <div className="flex items-center gap-1 mb-2.5 p-1 bg-[#1E1F22]/60 border border-zinc-800 rounded-lg w-fit">
