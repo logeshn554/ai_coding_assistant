@@ -81,6 +81,34 @@ def save_profile(profile: ProfileSaveRequest):
         logger.error(f"save_profile FAILED: {type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class ProfilePatchRequest(BaseModel):
+    name: Optional[str] = None
+    base_url: Optional[str] = None
+    model_name: Optional[str] = None
+    api_format: Optional[str] = None
+    api_key: Optional[str] = None
+
+@router.patch("/api/profiles/{profile_id}")
+def patch_profile(profile_id: str, patch_data: ProfilePatchRequest):
+    try:
+        stored = config_manager.get_profile(profile_id)
+        if not stored:
+            raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+        
+        updates = patch_data.model_dump(exclude_unset=True)
+        # If api_key is None, retain current stored key
+        if "api_key" not in updates or updates["api_key"] is None:
+            updates["api_key"] = stored.get("api_key", "")
+            
+        merged = {**stored, **updates, "id": profile_id}
+        saved = config_manager.save_profile(merged)
+        return {"success": True, "profile": saved}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"patch_profile FAILED: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/api/profiles/active")
 def set_active_profile(req: ProfileSelectRequest):
     try:

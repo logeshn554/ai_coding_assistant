@@ -488,26 +488,36 @@ def get_permission_manager() -> PermissionManager:
     _permission_managers[sid].workspace_root = workspace_state.root
     return _permission_managers[sid]
 
-_ws_tickets = {}
+_ws_tickets: dict[str, dict] = {}
 
-def create_ws_ticket() -> str:
+def create_ws_ticket(
+    user_id: str = "default-user",
+    tenant_id: str = "default-org",
+    workspace_id: str = ""
+) -> str:
     import time
     ticket = secrets.token_urlsafe(32)
-    _ws_tickets[ticket] = time.time() + 60.0
+    _ws_tickets[ticket] = {
+        "exp": time.time() + 60.0,
+        "user_id": user_id,
+        "tenant_id": tenant_id,
+        "workspace_id": workspace_id
+    }
     return ticket
 
-def verify_ws_ticket(ticket: str) -> bool:
+def verify_ws_ticket(ticket: str) -> Optional[dict]:
+    """Verify and consume a one-time WebSocket connection ticket, returning its identity context."""
     if not ticket:
-        return False
+        return None
     import time
     now = time.time()
-    expired = [t for t, exp in list(_ws_tickets.items()) if exp < now]
+    expired = [t for t, data in list(_ws_tickets.items()) if isinstance(data, dict) and data.get("exp", 0) < now]
     for t in expired:
         _ws_tickets.pop(t, None)
     if ticket in _ws_tickets:
-        _ws_tickets.pop(ticket)
-        return True
-    return False
+        ticket_data = _ws_tickets.pop(ticket)
+        return ticket_data if isinstance(ticket_data, dict) else {"user_id": "default-user", "tenant_id": "default-org"}
+    return None
 
 async def verify_token(request: Request = None):
     """

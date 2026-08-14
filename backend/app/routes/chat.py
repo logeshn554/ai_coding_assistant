@@ -582,18 +582,23 @@ async def websocket_chat(
     await request.accept()
     from ..state import verify_ws_ticket, SESSION_TOKEN
     from ..config import settings
-    is_prod_server = (settings.ENVIRONMENT == "production" and settings.MODE == "server")
-
-    is_authenticated = False
-    if ticket and verify_ws_ticket(ticket):
-        is_authenticated = True
+    ticket_identity = None
+    if ticket:
+        ticket_identity = verify_ws_ticket(ticket)
+        if ticket_identity:
+            is_authenticated = True
     elif token and not is_prod_server and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         is_authenticated = True
+        ticket_identity = {"user_id": "default-user", "tenant_id": "default-org"}
 
     if not is_authenticated:
         await request.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid, expired, or missing connection ticket."}))
         await request.close(code=4401)
         return
+
+    authenticated_user_id = ticket_identity.get("user_id", "default-user") if ticket_identity else "default-user"
+    authenticated_org_id = ticket_identity.get("tenant_id", "default-org") if ticket_identity else "default-org"
+
     active_profile = config_manager.get_active_profile()
 
     # If no session_id provided, resume the last session for this workspace.
@@ -900,21 +905,37 @@ async def websocket_chat(
             msg_repo = MessageRepository(db)
             run_repo = AgentRunRepository(db)
 
-            ws = await ws_repo.get_by_root("default-org", session_workspace_root)
-            if not ws:
-                from backend.app.infrastructure.database.models import Project
-                proj_res = await db.execute(sqlalchemy.select(Project).where(Project.name == "Default Project"))
-                proj = proj_res.scalars().first()
-                if not proj:
-                    proj = Project(organization_id="default-org", name="Default Project")
-                    db.add(proj)
-                    await db.flush()
-                ws = await ws_repo.create("default-org", proj.id, "Workspace", session_workspace_root)
+            # Ensure Organization and User records exist for authenticated tenant
+            org = await org_repo.get(authenticated_org_id)
+            if not org:
+                org = await org_repo.create(name=authenticated_org_id, id=authenticated_org_id)
                 await db.flush()
 
-            conv = await conv_repo.get_conversation("default-org", resolved_session_id)
+            usr = await user_repo.get(authenticated_user_id)
+            if not usr:
+                usr = await user_repo.create(
+                    organization_id=authenticated_org_id,
+                    email=f"{authenticated_user_id}@tenant.local",
+                    name=authenticated_user_id,
+                    id=authenticated_user_id
+                )
+                await db.flush()
+
+            ws = await ws_repo.get_by_root(authenticated_org_id, session_workspace_root)
+            if not ws:
+                from backend.app.infrastructure.database.models import Project
+                proj_res = await db.execute(sqlalchemy.select(Project).where(Project.organization_id == authenticated_org_id))
+                proj = proj_res.scalars().first()
+                if not proj:
+                    proj = Project(organization_id=authenticated_org_id, name="Default Project")
+                    db.add(proj)
+                    await db.flush()
+                ws = await ws_repo.create(authenticated_org_id, proj.id, "Workspace", session_workspace_root)
+                await db.flush()
+
+            conv = await conv_repo.get_conversation(authenticated_org_id, resolved_session_id)
             if not conv:
-                conv = await conv_repo.create("default-org", "default-user", ws.id, "Conversation", id=resolved_session_id)
+                conv = await conv_repo.create(authenticated_org_id, authenticated_user_id, ws.id, "Conversation", id=resolved_session_id)
                 await db.flush()
 
             msgs = await msg_repo.get_by_conversation(conv.id)
@@ -926,8 +947,8 @@ async def websocket_chat(
             active_profile_identifier = active_profile.get("id") or active_profile.get("name") or None
 
             run = await run_repo.create(
-                org_id="default-org",
-                user_id="default-user",
+                org_id=authenticated_org_id,
+                user_id=authenticated_user_id,
                 project_id=ws.project_id,
                 workspace_id=ws.id,
                 conversation_id=conv.id,
@@ -941,8 +962,8 @@ async def websocket_chat(
 
             await AgentQueue.enqueue(
                 run_id=run.id,
-                organization_id="default-org",
-                user_id="default-user",
+                organization_id=authenticated_org_id,
+                user_id=authenticated_user_id,
                 project_id=ws.project_id,
                 workspace_id=ws.id
             )

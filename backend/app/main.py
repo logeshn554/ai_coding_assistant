@@ -180,12 +180,18 @@ def permission_error_handler(request: Request, exc: PermissionError):
     )
 
 # Setup CORS
+is_prod_server = (settings.ENVIRONMENT == "production" and settings.MODE == "server")
 cors_origins = settings.CORS_ORIGINS
-allow_all = "*" in cors_origins
+allow_all = ("*" in cors_origins) and not is_prod_server
+
+if is_prod_server and "*" in cors_origins:
+    cors_origins = [o for o in cors_origins if o != "*"]
+    if not cors_origins:
+        cors_origins = ["http://localhost:3000", "http://localhost:8000", "http://127.0.0.1:3000"]
 
 if allow_all:
     logger.warning(
-        "CORS_ORIGINS includes '*' — serving true wildcard CORS. "
+        "CORS_ORIGINS includes '*' — serving true wildcard CORS in development mode. "
         "allow_credentials is forced to False in this mode (per CORS spec)."
     )
 

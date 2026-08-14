@@ -14,30 +14,11 @@ logger = logging.getLogger("devpilot.files")
 
 def safe_path(workspace_root: str, relative_path: str) -> str:
     """
-    Resolves relative_path against workspace_root and ensures it doesn't escape the root.
+    Resolves relative_path against workspace_root using SecureFileSystem canonical validation.
     """
-    if not relative_path:
-        relative_path = "."
-    
-    root_path = Path(workspace_root).resolve()
-    target_path = Path(workspace_root).joinpath(relative_path).resolve()
-    
-    is_inside = False
-    try:
-        if os.name == "nt":
-            norm_target = Path(str(target_path).lower())
-            norm_root = Path(str(root_path).lower())
-            if norm_target.anchor == norm_root.anchor:
-                is_inside = norm_target.is_relative_to(norm_root)
-        else:
-            is_inside = target_path.is_relative_to(root_path)
-    except ValueError:
-        pass
-            
-    if not is_inside:
-        raise PermissionError(f"Access denied: path '{relative_path}' is outside the workspace root.")
-    
-    return str(target_path)
+    from .agent.security.secure_fs import SecureFileSystem
+    sfs = SecureFileSystem(workspace_root)
+    return sfs.resolve_safe_path(relative_path or ".")
 
 def list_workspace_dir(workspace_root: str, relative_path: str = "") -> list:
     """

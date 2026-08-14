@@ -191,39 +191,32 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
         onClose={() => setIsProviderModalOpen(false)}
         activeModelName={activeModelName}
         onSelectModel={async (mId, pId) => {
-          setActiveModelName(mId);
-          if (pId) {
+          if (!pId) {
+            setActiveModelName(mId);
+            return;
+          }
+          try {
+            // 1. Activate the chosen profile in backend config_manager
+            const actRes = await fetch('/api/profiles/active', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: pId }),
+            });
+            if (!actRes.ok) throw new Error('Failed to activate profile');
+
+            // 2. Update model_name cleanly via explicit PATCH endpoint
+            const patchRes = await fetch(`/api/profiles/${pId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model_name: mId }),
+            });
+            if (!patchRes.ok) throw new Error('Failed to patch model name');
+
+            // 3. Confirm state update in UI
+            setActiveModelName(mId);
             setActiveProviderName(pId.toUpperCase());
-            try {
-              // 1. Activate the chosen profile in backend config_manager
-              await fetch('/api/profiles/active', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: pId }),
-              });
-              // 2. Fetch full profile and update model_name if needed
-              const profRes = await fetch('/api/profiles');
-              if (profRes.ok) {
-                const profData = await profRes.json();
-                const matched = profData.profiles?.find((p: any) => p.id === pId);
-                if (matched && matched.model_name !== mId) {
-                  await fetch('/api/profiles', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      id: pId,
-                      name: matched.name,
-                      base_url: matched.base_url,
-                      api_key: '', // keeps existing key
-                      model_name: mId,
-                      api_format: matched.api_format || 'openai',
-                    }),
-                  });
-                }
-              }
-            } catch (err) {
-              console.error('Failed to sync active provider profile:', err);
-            }
+          } catch (err) {
+            console.error('Failed to sync active provider profile:', err);
           }
         }}
       />
