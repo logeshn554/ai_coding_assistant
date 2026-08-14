@@ -190,9 +190,41 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
         isOpen={isProviderModalOpen}
         onClose={() => setIsProviderModalOpen(false)}
         activeModelName={activeModelName}
-        onSelectModel={(mId, pId) => {
+        onSelectModel={async (mId, pId) => {
           setActiveModelName(mId);
-          if (pId) setActiveProviderName(pId.toUpperCase());
+          if (pId) {
+            setActiveProviderName(pId.toUpperCase());
+            try {
+              // 1. Activate the chosen profile in backend config_manager
+              await fetch('/api/profiles/active', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: pId }),
+              });
+              // 2. Fetch full profile and update model_name if needed
+              const profRes = await fetch('/api/profiles');
+              if (profRes.ok) {
+                const profData = await profRes.json();
+                const matched = profData.profiles?.find((p: any) => p.id === pId);
+                if (matched && matched.model_name !== mId) {
+                  await fetch('/api/profiles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      id: pId,
+                      name: matched.name,
+                      base_url: matched.base_url,
+                      api_key: '', // keeps existing key
+                      model_name: mId,
+                      api_format: matched.api_format || 'openai',
+                    }),
+                  });
+                }
+              }
+            } catch (err) {
+              console.error('Failed to sync active provider profile:', err);
+            }
+          }
         }}
       />
     </div>
