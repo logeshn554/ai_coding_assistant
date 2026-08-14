@@ -582,14 +582,20 @@ async def websocket_chat(
     await request.accept()
     from ..state import verify_ws_ticket, SESSION_TOKEN
     from ..config import settings
+    is_prod_server = (settings.ENVIRONMENT.lower() == "production" and settings.MODE == "server")
+    is_authenticated = False
     ticket_identity = None
     if ticket:
         ticket_identity = verify_ws_ticket(ticket)
         if ticket_identity:
             is_authenticated = True
-    elif token and not is_prod_server and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+    elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         is_authenticated = True
         ticket_identity = {"user_id": "default-user", "tenant_id": "default-org"}
+    elif not is_prod_server:
+        # In desktop / development mode, local IDE connections are authenticated by default
+        is_authenticated = True
+        ticket_identity = {"user_id": "local-user", "tenant_id": "local"}
 
     if not is_authenticated:
         await request.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid, expired, or missing connection ticket."}))

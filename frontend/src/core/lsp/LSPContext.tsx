@@ -104,7 +104,11 @@ export function LSPProvider({ children }: { children: React.ReactNode }) {
         );
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/lsp/${language}`;
+        const token = localStorage.getItem('session_token') || '';
+        const params = new URLSearchParams();
+        if (token) params.set('token', token);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const wsUrl = `${protocol}//${window.location.host}/ws/lsp/${language}${query}`;
 
         const webSocket = new WebSocket(wsUrl);
 

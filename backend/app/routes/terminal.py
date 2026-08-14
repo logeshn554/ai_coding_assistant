@@ -17,11 +17,16 @@ async def websocket_terminal(
     session_id: Optional[str] = Query(None),
 ):
     await websocket.accept()
-    from ..state import verify_ws_ticket
+    from ..state import verify_ws_ticket, SESSION_TOKEN
+    from ..config import settings
+    is_prod_server = (settings.ENVIRONMENT.lower() == "production" and settings.MODE == "server")
     is_authenticated = False
     if ticket and verify_ws_ticket(ticket):
         is_authenticated = True
     elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+        is_authenticated = True
+    elif not is_prod_server:
+        # In desktop / development mode, local IDE connections are authenticated by default
         is_authenticated = True
 
     if not is_authenticated:

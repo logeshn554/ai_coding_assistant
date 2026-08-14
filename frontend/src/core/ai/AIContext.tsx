@@ -328,7 +328,11 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/chat?session_id=${activeSessionId}`;
+    const token = localStorage.getItem('session_token') || '';
+    const params = new URLSearchParams();
+    if (activeSessionId) params.set('session_id', activeSessionId);
+    if (token) params.set('token', token);
+    const wsUrl = `${protocol}//${window.location.host}/ws/chat?${params.toString()}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

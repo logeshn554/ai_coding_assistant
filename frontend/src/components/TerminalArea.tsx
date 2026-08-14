@@ -121,10 +121,12 @@ function TerminalPane({
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const sessionId = localStorage.getItem('devpilot_session_id') || '';
+      const token = localStorage.getItem('session_token') || '';
       const params = new URLSearchParams();
       if (shell) params.set('shell', shell);
       if (workspacePath) params.set('workspace', workspacePath);
       if (sessionId) params.set('session_id', sessionId);
+      if (token) params.set('token', token);
       const wsUrl = `${protocol}//${window.location.host}/ws/terminal?${params.toString()}`;
       const socket = new WebSocket(wsUrl);
       ws = socket;
