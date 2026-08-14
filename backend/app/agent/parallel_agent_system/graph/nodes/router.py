@@ -133,6 +133,9 @@ async def run_agents_parallel_node(state: GraphState) -> dict:
         if not pending_batch:
             break
 
+        # Sort pending batch by priority (highest first)
+        pending_batch.sort(key=lambda t: getattr(t, "priority", 0), reverse=True)
+
         # Execute the entire pending batch concurrently
         # return_exceptions=True → a single failure does NOT kill siblings
         raw_results = await asyncio.gather(

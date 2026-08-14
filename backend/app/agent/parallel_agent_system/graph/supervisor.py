@@ -13,8 +13,12 @@ from parallel_agent_system.graph.nodes.router import route_node, run_agents_para
 
 async def reduce_node(state: GraphState) -> dict:
     """Merges parallel agent execution results and runs conflict checks."""
-    results = state.get("results", [])
+    raw_results = state.get("results", [])
     subtasks = state.get("subtasks", [])
+    
+    # Deduplicate results per subtask (latest result wins across refinement/retry cycles)
+    results_map = {r.subtask_id: r for r in raw_results}
+    results = list(results_map.values())
     global_cost = sum(r.cost_usd for r in results)
     
     # Conflict detection
@@ -33,7 +37,8 @@ async def reduce_node(state: GraphState) -> dict:
             
     messages = []
     failed_results = [r for r in results if r.status != "success"]
-    complete = len(results) >= len(subtasks)
+    subtask_ids = {st.id for st in subtasks}
+    complete = bool(subtask_ids) and all(results_map.get(sid) is not None for sid in subtask_ids)
     
     if conflicts:
         from langchain_core.messages import AIMessage
@@ -97,10 +102,10 @@ async def refine_node(state: GraphState) -> dict:
     results = state.get("results", [])
     evaluator_types = {"review", "security", "test"}
 
-    # Collect evaluator results from the *latest* batch (successful runs only).
+    # Collect evaluator results from the *latest* batch.
     evaluator_results = [
         r for r in results
-        if r.agent_type in evaluator_types and r.status == "success"
+        if r.agent_type in evaluator_types
     ]
 
     high_severity_results = [r for r in evaluator_results if _is_high_severity(r)]

@@ -1,7 +1,6 @@
 from uuid import uuid4
 from typing import Literal
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 from parallel_agent_system.core.config import SystemConfig
@@ -123,6 +122,7 @@ async def decompose_task_node(state: GraphState) -> dict:
             raw_tasks = validated.tasks
         else:
             # Setup LangChain LLM with structured output mapping for test fallback
+            from langchain_openai import ChatOpenAI
             llm = ChatOpenAI(
                 model=config.decomposer_model,
                 openai_api_key=api_key,

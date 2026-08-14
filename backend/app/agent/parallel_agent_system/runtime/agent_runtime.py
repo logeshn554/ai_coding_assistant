@@ -221,9 +221,9 @@ class Conversation:
             tool_registry.register(t)
 
         # Register shared memory tools for all agents
+        conv_run_id = self.run_id or "default"
         try:
             from agent_runtime.tools.shared_memory import create_shared_memory_tools
-            conv_run_id = self.run_id or "default"
             for t in create_shared_memory_tools(conv_run_id):
                 tool_registry.register(t)
         except Exception as e:
