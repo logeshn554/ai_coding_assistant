@@ -170,7 +170,13 @@ class AgentWorker:
                 "directory. Refusing to execute — fix the workspace configuration."
             )
 
-        # 3. No valid workspace found — fail explicitly (never use cwd)
+        # 3. Desktop / Local development fallback: use current working directory if not configured
+        if settings.ENVIRONMENT != "production":
+            cwd = os.getcwd()
+            logger.info(f"AgentRun {run.id}: No workspace stored, using desktop working directory: {cwd}")
+            return cwd
+
+        # 4. No valid workspace found in production — fail explicitly (never use cwd in production)
         raise RuntimeError(
             f"AgentRun {run.id}: No workspace root configured. "
             "Set workspace_root on the run or configure a Workspace with a valid root_identifier."
@@ -422,6 +428,14 @@ class AgentWorker:
 
         except Exception as run_err:
             logger.exception(f"process_run failed for {run_id}: {run_err}")
+            try:
+                await EventPublisher.publish(
+                    run_id,
+                    "agent.error",
+                    {"error": str(run_err), "errors": [str(run_err)]}
+                )
+            except Exception as pub_err:
+                logger.error(f"Failed to publish error event for run {run_id}: {pub_err}")
             try:
                 async with async_session_factory() as db:
                     await db.execute(

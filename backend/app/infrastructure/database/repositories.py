@@ -13,8 +13,10 @@ class BaseRepository:
         self.db = db
 
 class OrganizationRepository(BaseRepository):
-    async def create(self, name: str) -> Organization:
+    async def create(self, name: str, id: Optional[str] = None) -> Organization:
         org = Organization(name=name)
+        if id:
+            org.id = id
         self.db.add(org)
         await self.db.flush()
         return org
@@ -23,11 +25,32 @@ class OrganizationRepository(BaseRepository):
         res = await self.db.execute(select(Organization).where(Organization.id == org_id))
         return res.scalars().first()
 
+    async def get(self, org_id: str) -> Optional[Organization]:
+        return await self.get_by_id(org_id)
+
 class UserRepository(BaseRepository):
-    async def create(self, email: str, full_name: str, hashed_password: str) -> User:
-        user = User(email=email, full_name=full_name, hashed_password=hashed_password)
+    async def create(
+        self,
+        email: str,
+        full_name: str = "",
+        hashed_password: str = "",
+        organization_id: Optional[str] = None,
+        name: Optional[str] = None,
+        id: Optional[str] = None
+    ) -> User:
+        user = User(
+            email=email,
+            full_name=full_name or name or email,
+            hashed_password=hashed_password or "dummy"
+        )
+        if id:
+            user.id = id
         self.db.add(user)
         await self.db.flush()
+        if organization_id:
+            membership = Membership(organization_id=organization_id, user_id=user.id, role="DEVELOPER")
+            self.db.add(membership)
+            await self.db.flush()
         return user
 
     async def get_by_email(self, email: str) -> Optional[User]:
@@ -37,6 +60,9 @@ class UserRepository(BaseRepository):
     async def get_by_id(self, user_id: str) -> Optional[User]:
         res = await self.db.execute(select(User).where(User.id == user_id))
         return res.scalars().first()
+
+    async def get(self, user_id: str) -> Optional[User]:
+        return await self.get_by_id(user_id)
 
 class MembershipRepository(BaseRepository):
     async def add_member(self, org_id: str, user_id: str, role: str = "DEVELOPER") -> Membership:

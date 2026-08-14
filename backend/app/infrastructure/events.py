@@ -68,4 +68,5 @@ class EventPublisher:
                 client = await redis_client._ensure_client()
                 await client.publish(channel, json.dumps(message))
             except Exception as redis_err:
-                logger.error(f"Failed to publish event to Redis: {redis_err}")
+                logger.debug(f"Redis publish unavailable, switching to local in-memory fallback: {redis_err}")
+                redis_client.use_fallback = True
