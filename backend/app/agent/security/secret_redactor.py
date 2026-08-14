@@ -15,16 +15,22 @@ from typing import List, Set
 # Regex patterns matching secrets
 SECRET_PATTERNS: List[re.Pattern] = [
     re.compile(r"AKIA[0-9A-Z]{16}"),  # AWS Access Key ID
-    re.compile(r"ghp_[a-zA-Z0-9]{36}"),  # GitHub Token
+    re.compile(r"ghp_[a-zA-Z0-9]{36}"),  # GitHub Personal Access Token
+    re.compile(r"gho_[a-zA-Z0-9]{36}"),  # GitHub OAuth Token
+    re.compile(r"glpat-[a-zA-Z0-9\-=_]{20,32}"),  # GitLab Personal Access Token
+    re.compile(r"xox[baprs]-[0-9a-zA-Z]{10,48}"),  # Slack Token
+    re.compile(r"sk-[a-zA-Z0-9]{32,64}"),  # OpenAI API Key
+    re.compile(r"sk-ant-[a-zA-Z0-9_\-]{32,128}"),  # Anthropic API Key
+    re.compile(r"AIza[0-9A-Za-z-_]{35}"),  # Google API Key
     re.compile(r"eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}"),  # JWT Token
-    re.compile(r"-----\s*BEGIN\s+PRIVATE\s+KEY\s*-----[\s\S]*?-----\s*END\s+PRIVATE\s+KEY\s*-----"),  # RSA/PEM Key
-    re.compile(r"(?:api_key|apikey|secret_key|private_key|password|passwd|token)\s*[:=]\s*[\"']?([A-Za-z0-9_\-\.\/]{8,})[\"']?", re.IGNORECASE),
-    re.compile(r"postgres://[^:]+:([^@]+)@"),  # Database URL password
+    re.compile(r"-----\s*BEGIN\s+(?:RSA|DSA|EC|OPENSSH|PGP|ENCRYPTED)?\s*PRIVATE\s+KEY\s*-----[\s\S]*?-----\s*END\s+(?:RSA|DSA|EC|OPENSSH|PGP|ENCRYPTED)?\s*PRIVATE\s+KEY\s*-----"),
+    re.compile(r"(?:api_key|apikey|secret_key|private_key|password|passwd|token|auth_token)\s*[:=]\s*[\"']?([A-Za-z0-9_\-\.\/]{8,})[\"']?", re.IGNORECASE),
+    re.compile(r"(?:postgres|postgresql|mysql|mongodb|redis|amqp):\/\/[^:]+:([^@]+)@"),  # DB connection string password
 ]
 
 # Sensitive file patterns
 PROTECTED_SECRET_FILES: Set[str] = {
-    ".env", ".env.local", ".env.production", "secret.pem", "id_rsa", "id_ed25519", "credentials.json"
+    ".env", ".env.local", ".env.production", ".env.development", "secret.pem", "id_rsa", "id_ed25519", "credentials.json", "service_account.json"
 }
 
 

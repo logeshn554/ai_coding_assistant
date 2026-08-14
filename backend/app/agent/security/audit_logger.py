@@ -28,6 +28,10 @@ class AuditRecord:
     decision: str  # APPROVED | DENIED | REJECTED | PENDING
     command: Optional[str] = None
     files_affected: List[str] = field(default_factory=list)
+    tenant_id: str = "default-org"
+    actor: str = "agent"
+    correlation_id: Optional[str] = None
+    arguments_hash: Optional[str] = None
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat()
     )
@@ -36,10 +40,14 @@ class AuditRecord:
         return {
             "timestamp": self.timestamp,
             "session_id": self.session_id,
+            "tenant_id": self.tenant_id,
+            "actor": self.actor,
+            "correlation_id": self.correlation_id,
             "action": self.action,
             "resource": self.resource,
             "risk": self.risk,
             "decision": self.decision,
+            "arguments_hash": self.arguments_hash,
             "command": SecretRedactor.redact_secrets(self.command) if self.command else None,
             "files_affected": [SecretRedactor.redact_secrets(f) for f in self.files_affected],
         }

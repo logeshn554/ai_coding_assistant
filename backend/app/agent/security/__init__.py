@@ -11,7 +11,7 @@ from .prompt_injection_guard import PromptInjectionGuard
 from .secret_redactor import SecretRedactor
 from .terminal_sandbox import CommandAnalysisResult, TerminalSandbox
 from .workspace_guard import WorkspaceGuard
-from .workspace_policy import WorkspacePolicy, Capability, DEFAULT_EXCLUDE_DIRS
+from .secure_fs import SecureFileSystem
 from .sandbox import SandboxManager, SandboxExecutor, ExecutionPolicy, ExecutionResult, ExecutionStatus, global_sandbox_manager
 
 __all__ = [
@@ -40,4 +40,5 @@ __all__ = [
     "ExecutionResult",
     "ExecutionStatus",
     "global_sandbox_manager",
+    "SecureFileSystem",
 ]

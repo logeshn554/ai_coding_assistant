@@ -113,11 +113,11 @@ app.add_middleware(SlowAPIMiddleware)
 
 @app.middleware("http")
 async def session_middleware(request: Request, call_next):
-    session_id = (
-        request.headers.get("X-Session-ID")
-        or request.query_params.get("session_id")
-        or request.headers.get("x-session-id")
-    )
+    # Enforce header-only session extraction in production
+    session_id = request.headers.get("X-Session-ID") or request.headers.get("x-session-id")
+    if not session_id and settings.ENVIRONMENT != "production":
+        session_id = request.query_params.get("session_id")
+
     from .state import session_id_var
     token = session_id_var.set(session_id)
     try:
@@ -186,19 +186,18 @@ allow_all = "*" in cors_origins
 if allow_all:
     logger.warning(
         "CORS_ORIGINS includes '*' — serving true wildcard CORS. "
-        "allow_credentials is forced to False in this mode (per CORS spec) "
-        "since combining a reflected wildcard origin with credentials=True "
-        "would let any website make authenticated requests. Auth in this app "
-        "is header/query-token based, not cookie based, so this does not "
-        "affect normal API usage."
+        "allow_credentials is forced to False in this mode (per CORS spec)."
     )
+
+ALLOWED_HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
+ALLOWED_HTTP_HEADERS = ["Content-Type", "Authorization", "X-Session-ID", "x-session-id", "X-Requested-With", "Accept", "Origin"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"] if allow_all else cors_origins,
     allow_credentials=not allow_all,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=ALLOWED_HTTP_METHODS,
+    allow_headers=ALLOWED_HTTP_HEADERS if not allow_all else ["*"],
 )
 
 import time
