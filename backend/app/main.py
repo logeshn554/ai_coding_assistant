@@ -34,10 +34,16 @@ async def lifespan(app: FastAPI):
         await init_db()
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
+        if settings.ENVIRONMENT == "production":
+            raise RuntimeError(f"FATAL: Database initialization failed in production mode: {e}") from e
+
     try:
         await check_redis_at_startup()
     except Exception as e:
         logger.warning(f"Redis startup check raised unexpectedly: {e}")
+        if settings.ENVIRONMENT == "production" and not getattr(settings, "ALLOW_DEGRADED_REDIS", False):
+            raise RuntimeError(f"FATAL: Redis connection failed in production mode: {e}") from e
+
     # Evict old ChromaDB indexes to keep disk usage bounded
     try:
         _evict_old_chroma_indexes()

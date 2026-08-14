@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from .audit_logger import AuditLogger, AuditRecord
 from .network_policy import NetworkMode, NetworkPolicyEngine
@@ -66,7 +66,7 @@ _TERMINAL_TOOL_NAMES = {"run_terminal_command", "run_command", "execute_command"
 class PermissionEngine:
     """Canonical Security & Permission Engine."""
 
-    _instances: Dict[str, "PermissionEngine"] = {}
+    _instances: Dict[Tuple[str, str], "PermissionEngine"] = {}
 
     def __init__(self, workspace_root: str, mode: str = "Assisted") -> None:
         self.workspace_root = os.path.abspath(workspace_root)
@@ -79,9 +79,10 @@ class PermissionEngine:
     @classmethod
     def get_instance(cls, workspace_root: str, mode: str = "Assisted") -> "PermissionEngine":
         root = os.path.abspath(workspace_root)
-        if root not in cls._instances:
-            cls._instances[root] = cls(root, mode=mode)
-        return cls._instances[root]
+        key = (root, mode)
+        if key not in cls._instances:
+            cls._instances[key] = cls(root, mode=mode)
+        return cls._instances[key]
 
     def evaluate_tool_call(
         self,
@@ -169,7 +170,8 @@ class PermissionEngine:
             return RiskLevel.HIGH
         elif canonical in ("git_push", "force_push"):
             return RiskLevel.CRITICAL
-        return RiskLevel.MEDIUM
+        # Unknown tools default to HIGH risk (fail closed / require review)
+        return RiskLevel.HIGH
 
     def _mode_requires_approval(self, risk: RiskLevel) -> bool:
         if self.mode == "Strict":

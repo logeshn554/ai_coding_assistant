@@ -103,6 +103,7 @@ class TerminalSandbox:
             return False, f"Command blocked by security policy: critical risk command '{command}'", 126
 
         from backend.app.agent.security.sandbox import ExecutionPolicy, global_sandbox_manager, ExecutionStatus
+        import uuid
         t_limit = timeout or self.timeout
         policy = ExecutionPolicy(
             workspace_root=self.workspace_root,
@@ -110,10 +111,12 @@ class TerminalSandbox:
             environment_policy=env_vars or {}
         )
         
+        exec_id = uuid.uuid4().hex[:12]
+        ws_id = os.path.basename(self.workspace_root.rstrip("\\/")) or "ws"
         try:
             sandbox = await global_sandbox_manager.get_or_create(
-                workspace_id="sandbox_terminal",
-                run_id="run_terminal",
+                workspace_id=ws_id,
+                run_id=f"run_{exec_id}",
                 policy=policy
             )
             res = await sandbox.execute(command, timeout=t_limit, environment=env_vars)
