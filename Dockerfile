@@ -54,7 +54,10 @@ ENV PORT=8000 \
     HOST=0.0.0.0 \
     PYTHONPATH=/app \
     DOCKER_MODE=true \
-    ALLOW_REMOTE=true
+    ALLOW_REMOTE=true \
+    ENVIRONMENT=production \
+    MODE=server \
+    USE_SANDBOX=true
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8000/health/live || exit 1

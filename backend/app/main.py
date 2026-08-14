@@ -53,12 +53,13 @@ async def lifespan(app: FastAPI):
             "fallback. Install ripgrep: https://github.com/BurntSushi/ripgrep#installation"
         )
     
-    # Start AgentWorker background task for local development / non-production mode
-    if settings.ENVIRONMENT != "production":
+    # Start AgentWorker background task unless run as a dedicated external worker cluster
+    run_embedded_worker = os.getenv("RUN_EMBEDDED_WORKER", "true").lower() == "true"
+    if run_embedded_worker or settings.ENVIRONMENT != "production":
         from .infrastructure.worker import AgentWorker
         worker = AgentWorker()
         app.state.worker_task = asyncio.create_task(worker.start())
-        logger.info("Background AgentWorker started for development mode.")
+        logger.info("Background AgentWorker started.")
         
     yield
     # Shutdown: stop any processes we spawned (Live Server, dev servers started

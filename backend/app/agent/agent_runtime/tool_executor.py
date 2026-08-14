@@ -185,6 +185,38 @@ class ToolExecutor:
                 if hasattr(self.session, "state"):
                     self.session.state = AgentState.WAITING_FOR_APPROVAL
 
+                # Genuinely await user confirmation if session provides a confirmation bridge
+                if hasattr(self.session, "request_tool_confirmation"):
+                    approved, modified_args = await self.session.request_tool_confirmation(
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_def.name,
+                        arguments=validated_args
+                    )
+                    if not approved:
+                        TelemetryManager.increment_counter(
+                            "tool_approval_denied_total",
+                            attributes={"tool_name": tool_def.name}
+                        )
+                        if hasattr(self.session, "state"):
+                            self.session.state = AgentState.RUNNING
+                        return ToolResult(
+                            success=False,
+                            output=None,
+                            error=f"Execution of tool '{tool_def.name}' was rejected by user."
+                        )
+                    if modified_args and isinstance(modified_args, dict):
+                        validated_args = modified_args
+                elif hasattr(self.session, "permission_manager") and self.session.permission_manager:
+                    # In headless or non-interactive mode without confirmation callback, reject dangerous unapproved actions
+                    if hasattr(self.session, "state"):
+                        self.session.state = AgentState.RUNNING
+                    if getattr(self.session, "interactive", False) is False and not auto_apply:
+                        return ToolResult(
+                            success=False,
+                            output=None,
+                            error=f"Execution of high-risk tool '{tool_def.name}' requires explicit user approval."
+                        )
+
             # Apply default timeouts if requested is higher than platform allowed max
             run_timeout = min(timeout, tool_def.timeout)
 

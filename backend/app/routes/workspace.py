@@ -112,6 +112,17 @@ async def change_workspace(req: WorkspaceChangeRequest):
         else:
             path = os.path.abspath(path)
 
+        # Restrict paths in production server mode to tenant-isolated workspace root
+        from backend.app.config import settings
+        if settings.ENVIRONMENT == "production" and settings.MODE == "server":
+            allowed_base = os.path.realpath(os.getenv("TENANT_WORKSPACES_ROOT", "/srv/devpilot/workspaces"))
+            real_path = os.path.realpath(path)
+            if not real_path.startswith(allowed_base):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Access Denied: In production multi-tenant mode, workspaces must reside within {allowed_base}"
+                )
+
         is_dir = await asyncio.to_thread(os.path.isdir, path)
         if not is_dir:
             raise HTTPException(
@@ -194,6 +205,14 @@ async def browse_workspace(path: str = ""):
             return await asyncio.to_thread(_list_dir, browse_path, parent=None, is_docker=False)
 
     browse_path = os.path.normpath(path)
+
+    # Restrict browsing in production server mode
+    from backend.app.config import settings
+    if settings.ENVIRONMENT == "production" and settings.MODE == "server":
+        allowed_base = os.path.realpath(os.getenv("TENANT_WORKSPACES_ROOT", "/srv/devpilot/workspaces"))
+        real_browse = os.path.realpath(browse_path)
+        if not real_browse.startswith(allowed_base):
+            raise HTTPException(status_code=403, detail=f"Access Denied: Cannot browse outside {allowed_base}")
 
     is_dir = await asyncio.to_thread(os.path.isdir, browse_path)
     if not is_dir:
