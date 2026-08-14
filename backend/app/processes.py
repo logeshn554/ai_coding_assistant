@@ -286,8 +286,12 @@ class ActiveProcess:
                 self.startup_success_event.set()
 
     def _parse_line(self, line: str):
+        # Strip ANSI escape codes before URL/port parsing
+        ansi_escape = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]')
+        clean_line = ansi_escape.sub('', line)
+
         # 1. Parse URLs
-        urls = re.findall(r'https?://[^\s/$,;?#()]+(?::\d+)?', line)
+        urls = re.findall(r'https?://[^\s/$,;?#()]+(?::\d+)?', clean_line)
         for url in urls:
             url = url.rstrip("/")
             if "localhost" in url or "127.0.0.1" in url or "0.0.0.0" in url:
@@ -308,7 +312,7 @@ class ActiveProcess:
                     self.status = "running"
                     self.startup_success_event.set()
 
-        port_match = re.search(r'\b(?:port|Port|listening on|listening on port|Tomcat started on port\(s\):?)\s*:?\s*(\d{4,5})\b', line)
+        port_match = re.search(r'\b(?:port|Port|listening on|listening on port|Tomcat started on port\(s\):?)\s*:?\s*(\d{4,5})\b', clean_line)
         if port_match:
             detected_port = int(port_match.group(1))
             self.port = detected_port
@@ -318,10 +322,10 @@ class ActiveProcess:
                 self.status = "running"
                 self.startup_success_event.set()
 
-        if any(pat in line.lower() for pat in ["eaddrinuse", "address already in use", "port already in use", "could not bind"]):
+        if any(pat in clean_line.lower() for pat in ["eaddrinuse", "address already in use", "port already in use", "could not bind"]):
             self.port_conflict = True
             self.status = "failed"
-            conf_port_match = re.search(r'\b(?:port|Port|listening on|EADDRINUSE:?)\s*:?\s*(\d{4,5})\b', line)
+            conf_port_match = re.search(r'\b(?:port|Port|listening on|EADDRINUSE:?)\s*:?\s*(\d{4,5})\b', clean_line)
             if conf_port_match:
                 self.port = int(conf_port_match.group(1))
             self.startup_success_event.set()

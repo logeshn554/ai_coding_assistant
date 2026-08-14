@@ -673,6 +673,23 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         case 'processes_update':
           setActiveProcesses(data.processes || []);
           break;
+        case 'server_started':
+          if (data.url) {
+            setActiveProcesses((prev) => [
+              ...prev.filter((p) => p.url !== data.url && p.port !== data.port),
+              {
+                id: `proc_${data.pid || Date.now()}`,
+                name: data.name || `Server (port ${data.port || 5173})`,
+                url: data.url,
+                port: data.port,
+                pid: data.pid,
+                status: 'running'
+              }
+            ]);
+            showToast(`🚀 Server running at ${data.url}`, 'success');
+            window.dispatchEvent(new CustomEvent('devpilot_server_started', { detail: { url: data.url, port: data.port, pid: data.pid } }));
+          }
+          break;
         case 'port_conflict_request':
           setIsGenerating(false);
           setStatusMessage(null);

@@ -175,6 +175,7 @@ export interface ProcessEntry {
   status?: 'starting' | 'running' | 'stopped' | 'error';
   pid?: number;
   port?: number;
+  url?: string;
 }
 
 export type ChatMode = 'Ask' | 'Plan' | 'Assist' | 'Code' | 'Debug' | 'Review' | 'Architect' | 'Autonomous' | 'Agent' | 'Goal' | 'Auto';

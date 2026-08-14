@@ -157,6 +157,20 @@ class AgentSession:
         except Exception:
             pass
 
+    async def monitor_and_stream_events(self, proc) -> None:
+        """Stream process stdout events to the WebSocket client."""
+        while proc and proc.status == "running":
+            await asyncio.sleep(0.5)
+            if getattr(proc, "localhost_url", None):
+                await self.send_ws_message({
+                    "type": "server_started",
+                    "url": proc.localhost_url,
+                    "port": proc.port,
+                    "pid": proc.pid,
+                    "status": proc.status,
+                })
+                break
+
     async def enqueue_message(self, text: str, mode: str, auto_apply: bool = False):
         """Queue a user message for sequential processing.
 
