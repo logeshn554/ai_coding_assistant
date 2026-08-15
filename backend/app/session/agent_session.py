@@ -537,8 +537,33 @@ class AgentSession:
                         retained_indices.add(idx)
                         truncated_content = truncate_text(content_str, remaining_space - 1000, label=f"message {idx}")
                         truncated_msg_contents[idx] = truncated_content
-                        current_used += estimate_text_size({"role": msg.get("role"), "content": truncated_content})
-                        
+        # Guarantee atomic pairing of assistant tool calls and tool results
+        call_id_to_tool_indices: dict[str, list[int]] = {}
+        asst_index_to_call_ids: dict[int, list[str]] = {}
+        for i, m in enumerate(history):
+            if m.get("role") == "tool":
+                cid = m.get("tool_call_id") or m.get("id")
+                if cid:
+                    call_id_to_tool_indices.setdefault(cid, []).append(i)
+            elif m.get("role") == "assistant" and m.get("tool_calls"):
+                cids = [tc.get("id") for tc in m.get("tool_calls", []) if tc.get("id")]
+                if cids:
+                    asst_index_to_call_ids[i] = cids
+
+        # If an assistant message is retained, ensure all its tool results are also retained
+        for asst_idx, cids in asst_index_to_call_ids.items():
+            if asst_idx in retained_indices:
+                for cid in cids:
+                    for t_idx in call_id_to_tool_indices.get(cid, []):
+                        retained_indices.add(t_idx)
+
+        # If a tool result is retained, ensure its parent assistant message is retained
+        for cid, t_indices in call_id_to_tool_indices.items():
+            if any(t_idx in retained_indices for t_idx in t_indices):
+                for asst_idx, cids in asst_index_to_call_ids.items():
+                    if cid in cids:
+                        retained_indices.add(asst_idx)
+
         trimmed_history = []
         last_was_trim_marker = False
         
@@ -1148,7 +1173,6 @@ class AgentSession:
                             }
                             for tc in tool_calls_to_run
                         ]
-                    self.conversation_history.append(assistant_msg)
 
                     if self._exec_logger:
                         self._exec_logger.increment_turns()
@@ -1922,6 +1946,41 @@ class AgentSession:
                 self.pending_confirmations[tool_call_id]["command"] = edited_command
             self.pending_confirmations[tool_call_id]["event"].set()
 
+    async def request_tool_confirmation(
+        self,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict,
+    ) -> tuple[bool, dict | None]:
+        """Request explicit approval for a high-risk tool call over WebSocket."""
+        event = asyncio.Event()
+        self.pending_confirmations[tool_call_id] = {
+            "event": event,
+            "approved": False,
+            "scope": "once",
+            "args": arguments,
+        }
+
+        await self.send_ws_message({
+            "type": "permission_request",
+            "tool_call_id": tool_call_id,
+            "tool_name": tool_name,
+            "args": arguments,
+        })
+
+        try:
+            await asyncio.wait_for(event.wait(), timeout=300)
+        except asyncio.TimeoutError:
+            self.pending_confirmations.pop(tool_call_id, None)
+            return False, None
+
+        decision = self.pending_confirmations.pop(tool_call_id, {})
+        approved = bool(decision.get("approved", False))
+        modified_args = decision.get("args")
+        if not isinstance(modified_args, dict):
+            modified_args = arguments
+        return approved, modified_args
+
     async def _stream_chat_wrapper(self, adapter, messages, tools, system_prompt):
         """
         Wraps adapter.stream_chat to capture usage chunks, calculate costs,
@@ -1936,7 +1995,9 @@ class AgentSession:
         hard_limit = float(getattr(settings, "DEVPILOT_HARD_COST_LIMIT", 10.0))
 
         from backend.app.infrastructure.model_gateway import ModelGateway
-        async for chunk in ModelGateway.generate_stream(self.profile, cleaned_messages, tools, system_prompt):
+        from ..state import config_manager
+        active_profile = config_manager.get_active_profile() or self.profile
+        async for chunk in ModelGateway.generate_stream(active_profile, cleaned_messages, tools, system_prompt):
             if chunk.get("type") == "usage":
                 turn_cost = float(chunk.get("cost_usd", 0.0))
                 self.total_cost_usd = self.total_cost_usd + turn_cost
@@ -1994,11 +2055,13 @@ class AgentSession:
         Queries the LLM non-disruptively by accumulating stream_chat chunks.
         """
         from ..adapters.router import ModelRouter
+        from ..state import config_manager
+        active_profile = config_manager.get_active_profile() or self.profile
         messages = [{"role": "user", "content": user_content}]
         try:
             router = ModelRouter()
             adapter = router.get_adapter(
-                self.profile, is_agent=True, task_type=agent_name
+                active_profile, is_agent=True, task_type=agent_name
             )
             response_text = ""
             async for chunk in self._stream_chat_wrapper(

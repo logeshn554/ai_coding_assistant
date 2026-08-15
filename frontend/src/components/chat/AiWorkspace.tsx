@@ -198,17 +198,14 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
             });
             if (!actRes.ok) throw new Error('Failed to activate profile');
 
-            // 2. Update model_name cleanly via explicit PATCH endpoint
-            const patchRes = await fetch(`/api/profiles/${pId}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ model_name: mId }),
-            });
-            if (!patchRes.ok) throw new Error('Failed to patch model name');
-
-            // 3. Confirm state update in UI
+            // 2. Confirm state update in UI
             setActiveModelName(mId);
-            setActiveProviderName(pId.toUpperCase());
+            const profRes = await fetch('/api/profiles');
+            if (profRes.ok) {
+              const profData = await profRes.json();
+              const found = (profData.profiles || []).find((p: any) => p.id === pId);
+              if (found?.name) setActiveProviderName(found.name);
+            }
           } catch (err) {
             console.error('Failed to sync active provider profile:', err);
           }

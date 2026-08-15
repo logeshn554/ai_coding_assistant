@@ -286,17 +286,21 @@ async def test_connection(profile: ProfileSaveRequest):
             return {"success": False, "message": "No API key found. Please save the profile with a valid API key first, then test connection."}
 
         if fmt == "anthropic" or "anthropic.com" in url_l or "claude" in model_l:
+            if not model:
+                return {"success": False, "message": "model_name is required — no hardcoded model fallback."}
             from anthropic import AsyncAnthropic
             base_url_val = url if (url and "api.anthropic.com" not in url) else None
             client = AsyncAnthropic(api_key=key, base_url=base_url_val)
             await client.messages.create(
-                model=model or "claude-3-5-sonnet-20241022",
+                model=model,
                 max_tokens=1,
                 messages=[{"role": "user", "content": "ping"}],
             )
         elif (fmt == "google" or "generativelanguage.googleapis.com" in url_l) and "openai" not in url_l:
+            if not model:
+                return {"success": False, "message": "model_name is required — no hardcoded model fallback."}
             # Use native Google Gemini API via urllib
-            m_name = model or "gemini-1.5-flash"
+            m_name = model
             model_path = m_name if m_name.startswith("models/") else f"models/{m_name}"
             test_url = f"{url.rstrip('/')}/{model_path}:generateContent" if url else f"https://generativelanguage.googleapis.com/v1beta/{model_path}:generateContent"
             test_url += f"?key={key}"
@@ -314,13 +318,15 @@ async def test_connection(profile: ProfileSaveRequest):
             with urllib.request.urlopen(req_obj, timeout=10, context=ctx) as resp:
                 resp.read()
         else:
+            if not model:
+                return {"success": False, "message": "model_name is required — no hardcoded model fallback."}
             from openai import AsyncOpenAI
             base_url_val = url if url else "https://api.openai.com/v1"
             # For local providers (ollama, lmstudio, etc.) allow empty key
             effective_key = key or "local"
             client = AsyncOpenAI(api_key=effective_key, base_url=base_url_val)
             await client.chat.completions.create(
-                model=model or "gpt-4o",
+                model=model,
                 messages=[{"role": "user", "content": "ping"}],
                 max_tokens=1,
             )

@@ -18,7 +18,10 @@ class Configuration:
             "agent_os_mode": "sandbox",
             "max_agent_concurrency": 4,
             "cost_limit_usd": 5.0,
-            "default_model": "gemini-2.0-flash",
+            # No hardcoded model name — resolved from DEVPILOT_DEFAULT_MODEL env var
+            # or the caller's active profile.  Set DEVPILOT_DEFAULT_MODEL in your .env
+            # if you need a fallback (e.g. DEVPILOT_DEFAULT_MODEL=gemini-2.0-flash).
+            "default_model": "",
             "debug_mode": True,
         }
 

@@ -23,29 +23,36 @@ from agent_runtime.llm import (
 logger = logging.getLogger("agent_runtime.llm.openai_provider")
 
 
-# Approximate pricing per 1M tokens (USD) — used for cost estimation only.
-_MODEL_PRICING: dict[str, dict[str, float]] = {
-    "gpt-4o": {"input": 2.50, "output": 10.00},
-    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
-    "gpt-4.1": {"input": 2.00, "output": 8.00},
-    "gpt-4.1-mini": {"input": 0.40, "output": 1.60},
-    "gpt-4.1-nano": {"input": 0.10, "output": 0.40},
-    "o3-mini": {"input": 1.10, "output": 4.40},
-}
+def _estimate_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    *,
+    input_cost_per_m: float | None = None,
+    output_cost_per_m: float | None = None,
+) -> float:
+    """Estimate USD cost from explicit per-million rates (no hardcoded model table)."""
+    import os
 
-
-def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Estimate USD cost from token counts and model name."""
-    pricing = _MODEL_PRICING.get(model)
-    if not pricing:
-        # Try prefix matching for versioned models
-        for key, val in _MODEL_PRICING.items():
-            if model.startswith(key):
-                pricing = val
-                break
-    if not pricing:
+    in_rate = input_cost_per_m
+    out_rate = output_cost_per_m
+    if in_rate is None:
+        env_in = os.environ.get("DEVPILOT_INPUT_COST_PER_M")
+        if env_in:
+            try:
+                in_rate = float(env_in)
+            except ValueError:
+                pass
+    if out_rate is None:
+        env_out = os.environ.get("DEVPILOT_OUTPUT_COST_PER_M")
+        if env_out:
+            try:
+                out_rate = float(env_out)
+            except ValueError:
+                pass
+    if in_rate is None or out_rate is None:
         return 0.0
-    return (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000
+    return (input_tokens * float(in_rate) + output_tokens * float(out_rate)) / 1_000_000
 
 
 def _messages_to_openai(messages: list[Message]) -> list[dict[str, Any]]:
@@ -95,7 +102,7 @@ class OpenAIProvider(LLMProvider):
 
     Args:
         api_key: API key for authentication.
-        model: Model name (e.g. ``gpt-4o``, ``gpt-4.1-mini``).
+        model: Model name from user/config (required — no hardcoded default).
         base_url: API base URL. Defaults to OpenAI's API.
         timeout: Request timeout in seconds.
     """
@@ -103,12 +110,19 @@ class OpenAIProvider(LLMProvider):
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4o-mini",
+        model: str = "",
         base_url: str = "https://api.openai.com/v1",
         timeout: float = 120.0,
     ) -> None:
+        import os
+        resolved = (model or os.environ.get("DEVPILOT_MODEL") or "").strip()
+        if not resolved:
+            raise ValueError(
+                "OpenAIProvider requires a model name via constructor or DEVPILOT_MODEL. "
+                "No hardcoded model defaults are allowed."
+            )
         self.api_key = api_key
-        self.model = model
+        self.model = resolved
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 

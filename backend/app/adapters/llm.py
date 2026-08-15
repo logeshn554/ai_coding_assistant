@@ -825,9 +825,9 @@ class LLMAdapter(ModelAdapter):
                 content = msg.get("content")
                 tool_calls = msg.get("tool_calls")
                 if content is None:
-                    content_str = "" if tool_calls else " "
+                    content_str = None if tool_calls else " "
                 elif isinstance(content, str):
-                    content_str = content
+                    content_str = content if (content.strip() or not tool_calls) else None
                 else:
                     content_str = json.dumps(content)
                 item = {

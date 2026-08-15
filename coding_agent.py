@@ -102,11 +102,18 @@ class CodingAgent:
     Provides creating files, editing files, listing, directory creation,
     and a delete tool to remove files/directories.
     """
-    def __init__(self, api_key: str, workspace_dir: str = "."):
+    def __init__(self, api_key: str, workspace_dir: str = ".", model: str | None = None):
         self.api_key = api_key
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.messages = []
-        self.model = "claude-3-5-sonnet-20260620"
+        # Model must come from caller or DEVPILOT_MODEL env — never hardcode a vendor model id.
+        resolved = (model or os.environ.get("DEVPILOT_MODEL") or "").strip()
+        if not resolved:
+            raise ValueError(
+                "Model name required. Pass model=... or set DEVPILOT_MODEL. "
+                "No hardcoded model defaults are allowed."
+            )
+        self.model = resolved
         
         if api_key == "mock":
             self.client = MockAnthropic(api_key)

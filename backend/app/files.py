@@ -413,33 +413,42 @@ def _search_with_ripgrep(workspace_root: str, query: str) -> list | None:
         return None
 
 
-def search_workspace_codebase(workspace_root: str, query: str) -> list:
+def search_workspace_codebase(
+    workspace_root: str,
+    query: str,
+    case_sensitive: bool = False,
+    whole_word: bool = False,
+    is_regex: bool = False
+) -> list:
     """
-    Grep-like search across files in the workspace using ripgrep with Python fallback.
+    Grep-like search across files in the workspace with support for Case-sensitive, Whole-word, and Regex matching.
     Excludes binary files, .git, node_modules, etc.
     """
-    # If query is empty or whitespace, return empty results
     if not query or not query.strip():
         return []
 
-    # Try ripgrep first
-    rg_results = _search_with_ripgrep(workspace_root, query)
-    if rg_results is not None:
-        return rg_results
+    # If simple search and rg is available, try ripgrep
+    if not case_sensitive and not whole_word and not is_regex:
+        rg_results = _search_with_ripgrep(workspace_root, query)
+        if rg_results is not None:
+            return rg_results
 
     results = []
     exclude_dirs = set(config_manager.get_exclude_list())
     exclude_extensions = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}
     
-    # Compile regex case-insensitively
+    # Build regex pattern
+    raw_pattern = query if is_regex else re.escape(query)
+    if whole_word:
+        raw_pattern = rf"\b{raw_pattern}\b"
+    
+    flags = 0 if case_sensitive else re.IGNORECASE
     try:
-        pattern = re.compile(query, re.IGNORECASE)
+        pattern = re.compile(raw_pattern, flags)
     except re.error:
-        # If query is not a valid regex, match literally
-        pattern = re.compile(re.escape(query), re.IGNORECASE)
+        pattern = re.compile(re.escape(query), flags)
 
     for root, dirs, files in os.walk(workspace_root):
-        # Prune excluded directories
         current_excludes = set(exclude_dirs)
         dirs[:] = [d for d in dirs if d not in current_excludes]
         for file in files:
@@ -459,13 +468,70 @@ def search_workspace_codebase(workspace_root: str, query: str) -> list:
                                 "line": line_num,
                                 "content": line.strip()
                             })
-                            if len(results) >= 100:  # limit to 100 results
+                            if len(results) >= 200:
                                 return results
             except Exception:
-                # Skip files that can't be read (e.g. permission error, binary encoding issue)
                 continue
                 
     return results
+
+def replace_workspace_codebase(
+    workspace_root: str,
+    query: str,
+    replace_text: str,
+    case_sensitive: bool = False,
+    whole_word: bool = False,
+    is_regex: bool = False,
+    target_paths: list[str] | None = None
+) -> dict:
+    """
+    Finds and replaces text across workspace files safely with automatic file backups.
+    """
+    if not query:
+        return {"modified_files": 0, "total_replacements": 0}
+
+    raw_pattern = query if is_regex else re.escape(query)
+    if whole_word:
+        raw_pattern = rf"\b{raw_pattern}\b"
+    
+    flags = 0 if case_sensitive else re.IGNORECASE
+    try:
+        pattern = re.compile(raw_pattern, flags)
+    except re.error:
+        pattern = re.compile(re.escape(query), flags)
+
+    modified_files = 0
+    total_replacements = 0
+    exclude_dirs = set(config_manager.get_exclude_list())
+    exclude_extensions = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}
+
+    for root, dirs, files in os.walk(workspace_root):
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+        for file in files:
+            ext = os.path.splitext(file)[1].lower()
+            if ext in exclude_extensions:
+                continue
+                
+            abs_file_path = os.path.join(root, file)
+            rel_file_path = os.path.relpath(abs_file_path, workspace_root).replace("\\", "/")
+            
+            if target_paths and rel_file_path not in target_paths:
+                continue
+                
+            try:
+                with open(abs_file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+
+                new_content, count = pattern.subn(replace_text, content)
+                if count > 0:
+                    write_workspace_file(workspace_root, rel_file_path, new_content)
+                    modified_files += 1
+                    total_replacements += count
+            except Exception:
+                continue
+
+    return {"modified_files": modified_files, "total_replacements": total_replacements}
+
 
 def get_codebase_contents(workspace_root: str, max_chars: int | None = None) -> str:
     """

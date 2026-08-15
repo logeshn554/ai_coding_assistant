@@ -89,45 +89,140 @@ class ModelAdapter:
         return {"type": "text", "content": content}
 
     @staticmethod
-    def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> tuple[float, bool]:
-        """Estimate cost using a generic default rate.
+    def calculate_cost(
+        model_name: str,
+        input_tokens: int,
+        output_tokens: int,
+        *,
+        input_cost_per_m: float | None = None,
+        output_cost_per_m: float | None = None,
+        profile: dict | None = None,
+    ) -> tuple[float, bool]:
+        """Estimate cost from profile / env / per-model table.
 
-        Provider-specific pricing should be configured in the user profile
-        rather than hardcoded here. This fallback uses a conservative
-        mid-range estimate ($3/$15 per million tokens) so cost tracking
-        is never zero, but users should set accurate rates in their profile.
+        Resolution order (first hit wins per side):
+          1. Explicit input_cost_per_m / output_cost_per_m kwargs
+          2. profile["input_cost_per_m"] / profile["output_cost_per_m"]
+          3. DEVPILOT_INPUT_COST_PER_M / DEVPILOT_OUTPUT_COST_PER_M env vars
+          4. Per-model pricing table (matched by model name substring, is_estimated=False)
+          5. settings.DEFAULT_*_COST_PER_M global fallback (is_estimated=True)
 
         Returns:
-            (cost_usd, is_estimated) — is_estimated=True when using fallback rates.
+            (cost_usd, is_estimated) — is_estimated=True only when using the global
+            default rates (step 5), meaning the model name was not recognised.
         """
-        # Default mid-range pricing (per million tokens)
-        input_rate = 3.00
-        output_rate = 15.00
-        is_estimated = True  # Assume estimate unless overridden with a known rate
-
-        # Allow profile-level overrides via environment variables
         import os
+
+        is_estimated = True
+        input_rate: float | None = None
+        output_rate: float | None = None
+
+        # Step 1 — explicit kwargs
+        if input_cost_per_m is not None:
+            input_rate = float(input_cost_per_m)
+            is_estimated = False
+        if output_cost_per_m is not None:
+            output_rate = float(output_cost_per_m)
+            is_estimated = False
+
+        # Step 2 — profile fields
+        if profile:
+            if input_rate is None and profile.get("input_cost_per_m") not in (None, ""):
+                try:
+                    input_rate = float(profile["input_cost_per_m"])
+                    is_estimated = False
+                except (TypeError, ValueError):
+                    pass
+            if output_rate is None and profile.get("output_cost_per_m") not in (None, ""):
+                try:
+                    output_rate = float(profile["output_cost_per_m"])
+                    is_estimated = False
+                except (TypeError, ValueError):
+                    pass
+
+        # Step 3 — environment variable overrides
         env_input = os.environ.get("DEVPILOT_INPUT_COST_PER_M")
         env_output = os.environ.get("DEVPILOT_OUTPUT_COST_PER_M")
-        if env_input:
+        if input_rate is None and env_input:
             try:
                 input_rate = float(env_input)
-                is_estimated = False  # User provided explicit rate
+                is_estimated = False
             except ValueError:
                 pass
-        if env_output:
+        if output_rate is None and env_output:
             try:
                 output_rate = float(env_output)
                 is_estimated = False
             except ValueError:
                 pass
 
+        # Step 4 — per-model pricing table (USD per million tokens).
+        # Rates sourced from public provider pricing pages; ordered most-specific first
+        # to avoid substring false-matches (e.g. "haiku" before "claude").
+        _MODEL_PRICING: list[tuple[str, float, float]] = [
+            # Claude — Anthropic (input $/M, output $/M)
+            ("claude-opus-4",       15.00,  75.00),
+            ("claude-opus-3",       15.00,  75.00),
+            ("claude-sonnet-4",      3.00,  15.00),
+            ("claude-sonnet-3-7",    3.00,  15.00),
+            ("claude-sonnet-3-5",    3.00,  15.00),
+            ("claude-haiku-4",       0.80,   4.00),
+            ("claude-haiku-3",       0.25,   1.25),
+            # GPT / o-series — OpenAI
+            ("gpt-4o-mini",          0.15,   0.60),
+            ("gpt-4o",               2.50,  10.00),
+            ("gpt-4-turbo",         10.00,  30.00),
+            ("gpt-4",               30.00,  60.00),
+            ("o3-mini",              1.10,   4.40),
+            ("o3",                  10.00,  40.00),
+            ("o1-mini",              1.10,   4.40),
+            ("o1",                  15.00,  60.00),
+            ("gpt-3.5-turbo",        0.50,   1.50),
+            # Gemini — Google
+            ("gemini-2.5-pro",       1.25,  10.00),
+            ("gemini-2.0-flash",     0.075,  0.30),
+            ("gemini-1.5-pro",       1.25,   5.00),
+            ("gemini-1.5-flash",     0.075,  0.30),
+        ]
+
+        if input_rate is None or output_rate is None:
+            model_lower = (model_name or "").lower()
+            for key, inp, out in _MODEL_PRICING:
+                if key in model_lower:
+                    if input_rate is None:
+                        input_rate = inp
+                    if output_rate is None:
+                        output_rate = out
+                    is_estimated = False
+                    break
+
+        # Step 5 — global configured defaults (is_estimated stays True)
+        if input_rate is None or output_rate is None:
+            try:
+                from ..config import settings
+                default_in = float(getattr(settings, "DEFAULT_INPUT_COST_PER_M", 3.0))
+                default_out = float(getattr(settings, "DEFAULT_OUTPUT_COST_PER_M", 15.0))
+            except Exception:
+                default_in, default_out = 3.0, 15.0
+            if input_rate is None:
+                input_rate = default_in
+            if output_rate is None:
+                output_rate = default_out
+            is_estimated = True
+
         cost = (input_tokens * input_rate + output_tokens * output_rate) / 1_000_000
         return cost, is_estimated
 
     @staticmethod
-    def build_usage_chunk(input_tokens: int, output_tokens: int, model_name: str = "unknown") -> Dict[str, Any]:
-        cost, is_estimated = ModelAdapter.calculate_cost(model_name, input_tokens, output_tokens)
+    def build_usage_chunk(
+        input_tokens: int,
+        output_tokens: int,
+        model_name: str = "unknown",
+        profile: dict | None = None,
+    ) -> Dict[str, Any]:
+        cost, is_estimated = ModelAdapter.calculate_cost(
+            model_name, input_tokens, output_tokens, profile=profile
+        )
         chunk = {
             "type": "usage",
             "input_tokens": input_tokens or 0,
@@ -498,4 +593,4 @@ AVAILABLE_TOOLS = [
             "required": ["question"]
         }
     }
-]
+]

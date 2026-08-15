@@ -368,3 +368,55 @@ async def test_worker_resolves_workspace_root_not_db_url():
         assert resolved == workspace, f"Expected {workspace!r}, got {resolved!r}"
         assert "://" not in resolved, f"Workspace root contains URL scheme: {resolved}"
         assert not resolved.startswith("sqlite"), "Workspace root must not be a SQLite URL"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Live integration (optional — requires API key + configured model)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not os.getenv("ANTHROPIC_API_KEY") and not os.getenv("OPENAI_API_KEY"),
+    reason="Live LLM API key not configured",
+)
+@pytest.mark.skipif(
+    not (os.getenv("DEVPILOT_MODEL") or "").strip(),
+    reason="DEVPILOT_MODEL must be set — no hardcoded model defaults",
+)
+async def test_real_agent_creates_file(tmp_path):
+    """Full loop against a live provider: agent writes hello.py and it runs."""
+    import subprocess
+    from backend.app.session.agent_session import AgentSession
+
+    collected: list[dict] = []
+
+    async def collect_messages(msg: dict):
+        collected.append(msg)
+
+    model = os.environ["DEVPILOT_MODEL"].strip()
+    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
+    api_format = "anthropic" if os.getenv("ANTHROPIC_API_KEY") else "openai"
+
+    session = AgentSession(
+        workspace_root=str(tmp_path),
+        profile={
+            "model_name": model,
+            "api_key": api_key,
+            "api_format": api_format,
+        },
+        send_ws_message=collect_messages,
+    )
+    await session.process_message(
+        "Create a file called hello.py that prints Hello World"
+    )
+    hello = tmp_path / "hello.py"
+    assert hello.exists(), f"hello.py was not created. WS events: {collected[-5:]}"
+    result = subprocess.run(
+        ["python", str(hello)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert "Hello World" in (result.stdout or ""), result.stdout
+

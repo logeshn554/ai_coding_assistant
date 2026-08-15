@@ -13,7 +13,7 @@ import { useState, useEffect, useRef } from 'react';
 import Editor, { DiffEditor } from '@monaco-editor/react';
 import {
   X, Save, RotateCcw, Play, Folder,
-  Zap, FileCode, Check, Plus
+  Zap, FileCode, Check, Plus, WrapText, Map as MapIcon, Sparkles, ZoomIn, ZoomOut
 } from 'lucide-react';
 import { useLSP } from '../core/lsp/LSPContext';
 import { InlineChatPopover } from './editor/InlineChatPopover';
@@ -160,6 +160,32 @@ export default function EditorArea({
 
 
   const [activeTheme, setActiveTheme] = useState<string>(() => localStorage.getItem('devpilot_theme') || 'dark');
+  const [editorFontSize, setEditorFontSize] = useState<number>(() => {
+    try {
+      const s = localStorage.getItem('devpilot_editor_fontsize');
+      return s ? parseInt(s, 10) || 13 : 13;
+    } catch {
+      return 13;
+    }
+  });
+  const [isMinimapEnabled, setIsMinimapEnabled] = useState<boolean>(true);
+  const [isWordWrapOn, setIsWordWrapOn] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showDiff && proposedDiff) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          handleAcceptDiff();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          handleRejectDiff();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showDiff, proposedDiff]);
 
   useEffect(() => {
     const handleThemeChange = () => {
@@ -523,6 +549,54 @@ export default function EditorArea({
                   <Play className="w-3 h-3 fill-current" /> Run
                 </button>
 
+                {/* Quick Editor Controls */}
+                <div className="flex items-center gap-1 border-l border-r border-[#2A3146] px-2">
+                  <button
+                    onClick={() => setIsWordWrapOn(!isWordWrapOn)}
+                    className={`p-1 rounded transition-colors cursor-pointer ${
+                      isWordWrapOn ? 'bg-[#4C8DFF]/20 text-[#4C8DFF]' : 'text-zinc-400 hover:text-white'
+                    }`}
+                    title={isWordWrapOn ? 'Disable Word Wrap' : 'Enable Word Wrap (Alt+Z)'}
+                  >
+                    <WrapText className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    onClick={() => setIsMinimapEnabled(!isMinimapEnabled)}
+                    className={`p-1 rounded transition-colors cursor-pointer ${
+                      isMinimapEnabled ? 'bg-[#4C8DFF]/20 text-[#4C8DFF]' : 'text-zinc-400 hover:text-white'
+                    }`}
+                    title={isMinimapEnabled ? 'Hide Minimap' : 'Show Minimap'}
+                  >
+                    <MapIcon className="w-3.5 h-3.5" />
+                  </button>
+
+                  <button
+                    onClick={() => setEditorFontSize(f => Math.max(10, f - 1))}
+                    className="p-1 rounded text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                    title="Zoom Out Font"
+                  >
+                    <ZoomOut className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-[10px] font-mono text-zinc-400 px-0.5">{editorFontSize}px</span>
+                  <button
+                    onClick={() => setEditorFontSize(f => Math.min(24, f + 1))}
+                    className="p-1 rounded text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                    title="Zoom In Font"
+                  >
+                    <ZoomIn className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* AI Quick Actions */}
+                <button
+                  onClick={() => handleSendMessage(`Explain this active code in ${activeTab.path}:\n\`\`\`\n${activeTab.content.slice(0, 4000)}\n\`\`\``, 'Ask', false)}
+                  className="flex items-center gap-1 text-[#4C8DFF] hover:text-[#9176FF] font-medium cursor-pointer text-[11px]"
+                  title="Explain code with AI"
+                >
+                  <Sparkles className="w-3.5 h-3.5" /> Explain
+                </button>
+
                 {/* Backups / Revert dropdown */}
                 <div className="relative">
                   <button
@@ -586,12 +660,14 @@ export default function EditorArea({
                     <button
                       onClick={handleAcceptDiff}
                       className="px-3 py-1 bg-[#32D583] hover:bg-[#2bbb72] text-white rounded-lg text-xs font-bold shadow transition-colors flex items-center gap-1 cursor-pointer"
+                      title="Accept Changes (Ctrl+Enter)"
                     >
                       <Check className="w-3.5 h-3.5" /> Accept
                     </button>
                     <button
                       onClick={handleRejectDiff}
                       className="px-3 py-1 bg-[#F04438]/20 hover:bg-[#F04438]/30 text-[#F04438] border border-[#F04438]/30 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                      title="Reject Changes (Esc)"
                     >
                       <X className="w-3.5 h-3.5" /> Reject
                     </button>
@@ -626,7 +702,7 @@ export default function EditorArea({
                       minimap: { enabled: false },
                       scrollBeyondLastLine: false,
                       fontFamily: EDITOR_OPTIONS.fontFamily,
-                      fontSize: EDITOR_OPTIONS.fontSize,
+                      fontSize: editorFontSize,
                       fontLigatures: true,
                     }}
                   />
@@ -638,7 +714,12 @@ export default function EditorArea({
                     language={getLanguage(activeTab.path)}
                     theme={monacoTheme}
                     height="100%"
-                    options={EDITOR_OPTIONS}
+                    options={{
+                      ...EDITOR_OPTIONS,
+                      fontSize: editorFontSize,
+                      minimap: { enabled: isMinimapEnabled, side: 'right' as const },
+                      wordWrap: isWordWrapOn ? 'on' : 'off',
+                    }}
                     onMount={handleEditorMount}
                   />
 

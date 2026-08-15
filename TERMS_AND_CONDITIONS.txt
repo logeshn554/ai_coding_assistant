@@ -1,0 +1,74 @@
+================================================================================
+                    DEVPILOT AI CODING ASSISTANT
+            SOFTWARE LICENSE AGREEMENT & BETA TERMS OF SERVICE
+================================================================================
+
+Please read the following license agreement and terms of service carefully before 
+installing and using DevPilot. By installing, copying, or otherwise using DevPilot, 
+you agree to be bound by the terms of this Agreement.
+
+If you do not agree to the terms of this Agreement, do not install or use DevPilot.
+
+--------------------------------------------------------------------------------
+1. PUBLIC BETA RELEASE DISCLAIMER
+--------------------------------------------------------------------------------
+DevPilot is currently provided as a Public Beta release. The software, its features, 
+autonomous agent workflows, and artificial intelligence models are experimental 
+and under active development. 
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS 
+FOR A PARTICULAR PURPOSE, TITLE, AND NONINFRINGEMENT.
+
+--------------------------------------------------------------------------------
+2. USER API KEYS, TOKEN CONSUMPTION & CREDIT USAGE LIABILITY
+--------------------------------------------------------------------------------
+DevPilot operates as a client interface and runtime that connects directly to 
+third-party Large Language Model (LLM) providers (including, but not limited to, 
+OpenAI, Anthropic, DeepSeek, Groq, NVIDIA NIM, Ollama, and custom endpoints) using 
+API keys and endpoints configured by you.
+
+YOU EXPRESSLY ACKNOWLEDGE AND AGREE THAT:
+a) Autonomous coding agents, codebase indexing, background file scanning, multi-turn 
+   interactive sessions, and automated error-fixing loops may consume significant 
+   quantities of tokens and API credits.
+b) YOU ARE SOLELY RESPONSIBLE for all fees, billing charges, credit deductions, and 
+   costs incurred on your third-party API accounts resulting from the use of DevPilot.
+c) The creators, developers, contributors, and distributors of DevPilot shall have 
+   ZERO LIABILITY for any financial expenses, lost credits, or API provider quota 
+   depletions resulting directly or indirectly from your use of this software.
+d) You are advised to set spending limits, budget alerts, and token quotas within 
+   your respective AI provider dashboards.
+
+--------------------------------------------------------------------------------
+3. CODE GENERATION & PRODUCTION SAFETY
+--------------------------------------------------------------------------------
+AI models are probabilistic and may occasionally generate inaccurate, incomplete, 
+insecure, or syntactically erroneous code. 
+
+YOU AGREE TO:
+a) Independently inspect, review, and test all code suggestions, file edits, git 
+   commits, and shell commands before executing them on your system or deploying 
+   them to production environments.
+b) Assume full responsibility for any data loss, system disruptions, or unintended 
+   consequences resulting from the application of AI-generated code.
+
+--------------------------------------------------------------------------------
+4. PRIVACY & LOCAL SECURITY
+--------------------------------------------------------------------------------
+DevPilot is designed with local-first architecture. Your source code, workspace files, 
+and API keys remain on your local computer and are only transmitted directly to your 
+explicitly selected AI model providers. No proprietary source code is collected, 
+stored, or monetized by the DevPilot distribution team.
+
+--------------------------------------------------------------------------------
+5. LIMITATION OF LIABILITY
+--------------------------------------------------------------------------------
+IN NO EVENT SHALL THE AUTHORS, COPYRIGHT HOLDERS, OR CONTRIBUTORS BE LIABLE FOR 
+ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, 
+OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE 
+USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+================================================================================
+DevPilot Team | https://devpilot.ai
+================================================================================

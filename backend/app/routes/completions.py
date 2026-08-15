@@ -75,7 +75,12 @@ async def create_completion(req: CompletionRequest) -> CompletionResponse:
     """
     profile = config_manager.get_active_profile()
     provider: str = (profile.get("provider") or "anthropic").lower()
-    model: str = profile.get("completion_model") or "claude-haiku-4-5-20251001"
+    # Resolve completion model from profile — no hardcoded model ID fallback.
+    # Priority: profile.completion_model → profile.model_name → raise (no valid model)
+    model: str = profile.get("completion_model") or profile.get("model_name") or ""
+    if not model:
+        logger.warning("No model configured for completions — returning empty completion.")
+        return CompletionResponse(completion="", model="unconfigured")
     api_key: Optional[str] = profile.get("api_key") or None
 
     # Build a tight fill-in-the-middle style prompt

@@ -499,46 +499,68 @@ def get_permission_manager() -> PermissionManager:
 _MAX_WS_TICKETS = 10_000
 
 _ws_tickets: dict[str, dict] = {}
-"""
-Process-local one-time ticket store for WebSocket handshake authentication.
+"""Process-local fallback for WebSocket tickets when Redis is unavailable."""
 
-WARNING: This is a single-worker-only data structure. In a multi-worker
-deployment you MUST replace this with Redis or another shared store, otherwise
-workers cannot share ticket state and connections will fail non-deterministically.
-"""
+_WS_TICKET_TTL_SECONDS = 300
 
 
-def create_ws_ticket(
+async def create_ws_ticket(
     user_id: str = "default-user",
     tenant_id: str = "default-org",
     workspace_id: str = ""
 ) -> str:
+    """Create a one-time WebSocket ticket stored in Redis (with in-memory fallback)."""
     import time
-    # Evict expired tickets before creating a new one
-    now = time.time()
-    expired = [t for t, data in list(_ws_tickets.items()) if isinstance(data, dict) and data.get("exp", 0) < now]
-    for t in expired:
-        _ws_tickets.pop(t, None)
-    # Enforce capacity limit to prevent memory exhaustion
-    if len(_ws_tickets) >= _MAX_WS_TICKETS:
-        # Evict oldest 10 % when at capacity
-        items = sorted(_ws_tickets.items(), key=lambda kv: kv[1].get("exp", 0) if isinstance(kv[1], dict) else 0)
-        for k, _ in items[: _MAX_WS_TICKETS // 10 + 1]:
-            _ws_tickets.pop(k, None)
+    import json as _json
+
     ticket = secrets.token_urlsafe(32)
-    _ws_tickets[ticket] = {
-        "exp": time.time() + 60.0,
+    payload = {
+        "exp": time.time() + float(_WS_TICKET_TTL_SECONDS),
         "user_id": user_id,
         "tenant_id": tenant_id,
-        "workspace_id": workspace_id
+        "workspace_id": workspace_id,
     }
+    try:
+        await redis_client.set(
+            f"ws_ticket:{ticket}",
+            _json.dumps(payload),
+            ex=_WS_TICKET_TTL_SECONDS,
+        )
+    except Exception as exc:
+        logger.warning("Redis WS ticket set failed, using memory fallback: %s", exc)
+        # Evict expired local tickets
+        now = time.time()
+        expired = [t for t, data in list(_ws_tickets.items()) if isinstance(data, dict) and data.get("exp", 0) < now]
+        for t in expired:
+            _ws_tickets.pop(t, None)
+        if len(_ws_tickets) >= _MAX_WS_TICKETS:
+            items = sorted(_ws_tickets.items(), key=lambda kv: kv[1].get("exp", 0) if isinstance(kv[1], dict) else 0)
+            for k, _ in items[: _MAX_WS_TICKETS // 10 + 1]:
+                _ws_tickets.pop(k, None)
+        _ws_tickets[ticket] = payload
     return ticket
 
-def verify_ws_ticket(ticket: str) -> Optional[dict]:
-    """Verify and consume a one-time WebSocket connection ticket, returning its identity context."""
+
+async def verify_ws_ticket(ticket: str) -> Optional[dict]:
+    """Verify and consume a one-time WebSocket connection ticket."""
     if not ticket:
         return None
     import time
+    import json as _json
+
+    key = f"ws_ticket:{ticket}"
+    try:
+        raw = await redis_client.get(key)
+        if raw:
+            await redis_client.delete(key)
+            data = _json.loads(raw) if isinstance(raw, str) else raw
+            if isinstance(data, dict):
+                if data.get("exp", 0) >= time.time():
+                    return data
+                return None
+    except Exception as exc:
+        logger.debug("Redis WS ticket verify failed, checking memory: %s", exc)
+
     now = time.time()
     expired = [t for t, data in list(_ws_tickets.items()) if isinstance(data, dict) and data.get("exp", 0) < now]
     for t in expired:
@@ -548,6 +570,36 @@ def verify_ws_ticket(ticket: str) -> Optional[dict]:
         return ticket_data if isinstance(ticket_data, dict) else {"user_id": "default-user", "tenant_id": "default-org"}
     return None
 
+
+async def set_run_cancelled(run_id: str, ttl: int = 3600) -> None:
+    """Mark an agent run as cancelled in Redis (survives worker restart)."""
+    if not run_id:
+        return
+    try:
+        await redis_client.set(f"cancel:{run_id}", "1", ex=ttl)
+    except Exception as exc:
+        logger.warning("Failed to set cancel flag for %s: %s", run_id, exc)
+
+
+async def is_run_cancelled(run_id: str) -> bool:
+    """Return True if a cancel flag is set for the given run id."""
+    if not run_id:
+        return False
+    try:
+        val = await redis_client.get(f"cancel:{run_id}")
+        return val in ("1", b"1", True)
+    except Exception:
+        return False
+
+
+async def clear_run_cancelled(run_id: str) -> None:
+    """Clear a cancel flag after a run starts or finishes."""
+    if not run_id:
+        return
+    try:
+        await redis_client.delete(f"cancel:{run_id}")
+    except Exception:
+        pass
 async def verify_token(request: Request = None):
     """
     Validate the session token from Authorization or X-Session-Token header only.

@@ -21,51 +21,40 @@ async def init_db() -> None:
     from backend.app.config import settings
     import sys
     
-    # 1. Run migrations if in dev environment
-    if settings.ENVIRONMENT != "production":
-        if getattr(sys, 'frozen', False):
-            # When frozen (in PyInstaller), we cannot run 'sys.executable -m alembic'
-            # Instead, we ensure all database tables are created using SQLAlchemy Base metadata.
-            from backend.app.infrastructure.database.models import Base
-            from backend.app.infrastructure.database.connection import engine
-            try:
-                async with engine.begin() as conn:
-                    await conn.run_sync(Base.metadata.create_all)
-                logger.info("Database tables initialized successfully via SQLAlchemy Base metadata.")
-            except Exception as e:
-                logger.error(f"Failed to initialize database tables via SQLAlchemy metadata: {e}")
-        else:
-            # Running in standard Python development mode, use Alembic CLI via subprocess
-            try:
-                import subprocess
-                import asyncio
-                
-                def run_alembic():
-                    # Run the alembic CLI as a subprocess to avoid event loop nesting deadlocks
-                    cmd = [sys.executable, "-m", "alembic", "upgrade", "head"]
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        check=True
-                    )
-                    logger.info("Alembic migrations completed successfully.")
-                    if result.stdout:
-                        logger.debug(f"Alembic stdout: {result.stdout.strip()}")
+    # 1. Initialize tables
+    if settings.MODE == "desktop" or getattr(sys, 'frozen', False):
+        from backend.app.infrastructure.database.models import Base
+        from backend.app.infrastructure.database.connection import engine
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("Database tables initialized successfully via SQLAlchemy Base metadata.")
+        except Exception as e:
+            logger.error(f"Failed to initialize database tables via SQLAlchemy metadata: {e}")
+    elif settings.ENVIRONMENT != "production":
+        # Running in standard Python development mode, use Alembic CLI via subprocess
+        try:
+            import subprocess
+            import asyncio
+            
+            def run_alembic():
+                cmd = [sys.executable, "-m", "alembic", "upgrade", "head"]
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                logger.info("Alembic migrations completed successfully.")
 
-                await asyncio.to_thread(run_alembic)
-            except Exception as e:
-                logger.warning(f"Initial Alembic migration check/run failed or table already exists: {e}")
-                # Self-healing: if migrations fail (e.g. because tables already exist but version is unstamped),
-                # we stamp the database to head so uvicorn can proceed.
-                try:
-                    def stamp_alembic():
-                        cmd = [sys.executable, "-m", "alembic", "stamp", "head"]
-                        subprocess.run(cmd, capture_output=True, check=True)
-                    await asyncio.to_thread(stamp_alembic)
-                    logger.info("Stamped alembic migration to head after initial check/run failure.")
-                except Exception as stamp_err:
-                    logger.error(f"Failed to stamp alembic to head: {stamp_err}")
+            await asyncio.to_thread(run_alembic)
+        except Exception as e:
+            logger.warning(f"Initial Alembic migration check/run failed: {e}")
+            # Self-healing: if migrations fail (e.g. because tables already exist but version is unstamped),
+            # we stamp the database to head so uvicorn can proceed.
+            try:
+                def stamp_alembic():
+                    cmd = [sys.executable, "-m", "alembic", "stamp", "head"]
+                    subprocess.run(cmd, capture_output=True, check=True)
+                await asyncio.to_thread(stamp_alembic)
+                logger.info("Stamped alembic migration to head after initial check/run failure.")
+            except Exception as stamp_err:
+                logger.error(f"Failed to stamp alembic to head: {stamp_err}")
 
     # 1b. Safe schema migration — add new columns if absent (SQLite compatible)
     from sqlalchemy import text
@@ -165,9 +154,6 @@ async def resolve_session_for_identity(
     user_id: Optional[str] = None,
 ) -> SessionModel:
     """Validate a session belongs to the authenticated user and tenant."""
-    from backend.app.config import settings
-    is_prod_server = (settings.ENVIRONMENT.lower() == "production" and settings.MODE == "server")
-
     async with async_session() as db:
         stmt = select(SessionModel).where(SessionModel.id == session_id)
         res = await db.execute(stmt)
@@ -181,12 +167,10 @@ async def resolve_session_for_identity(
             user_id = user_id or getattr(identity, "user_id", None)
 
         if org_id and session.organization_id and session.organization_id != org_id:
-            if is_prod_server or (org_id != "default-org" and session.organization_id != "default-org"):
-                raise HTTPException(status_code=403, detail="Forbidden: session is not in your tenant")
+            raise HTTPException(status_code=403, detail="Forbidden: session is not in your tenant")
 
         if user_id and session.user_id and session.user_id != user_id:
-            if is_prod_server or (user_id != "default-user" and session.user_id != "default-user"):
-                raise HTTPException(status_code=403, detail="Forbidden: session does not belong to you")
+            raise HTTPException(status_code=403, detail="Forbidden: session does not belong to you")
 
         return session
 

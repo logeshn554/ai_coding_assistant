@@ -28,6 +28,12 @@ playwright>=1.40.0,<2.0.0
 pytesseract>=0.3.10,<1.0.0
 Pillow>=10.0.0,<12.0.0
 chromadb>=0.4.0,<1.0.0
+# Optional: enable with RAG_BACKEND=pgvector + PostgreSQL DATABASE_URL
+# pgvector is a Postgres extension; SQL uses CAST(... AS vector) via SQLAlchemy.
+asyncpg>=0.29.0,<1.0.0
 mcp>=1.0.0,<2.0.0
 tavily-python>=0.3.0,<1.0.0
 pywebview>=3.0,<6.0
+opentelemetry-api>=1.20.0,<2.0.0
+opentelemetry-sdk>=1.20.0,<2.0.0
+opentelemetry-instrumentation-fastapi>=0.41b0,<1.0.0

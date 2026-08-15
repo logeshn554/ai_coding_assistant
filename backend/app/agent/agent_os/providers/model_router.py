@@ -29,7 +29,7 @@ class ModelRouter(IModelRouter):
             try:
                 import os
                 provider = os.getenv("LLM_PROVIDER", "openai")
-                model = os.getenv(f"{provider.upper()}_MODEL")
+                model = (os.getenv(f"{provider.upper()}_MODEL") or os.getenv("DEVPILOT_MODEL") or "").strip()
                 api_key = os.getenv(f"{provider.upper()}_API_KEY")
                 
                 # Check secret registry fallback
@@ -38,12 +38,12 @@ class ModelRouter(IModelRouter):
                     api_key = SecretRegistry.get(f"{provider.upper()}_API_KEY") or SecretRegistry.get("LLM_API_KEY")
                 
                 if not model or not api_key:
-                    # Non-crashing default fallback config
+                    # Incomplete config — leave an empty placeholder; callers must supply model
                     config = ProviderConfig(
-                        name="openai",
-                        model="gpt-4o-mini",
-                        base_url="https://api.openai.com/v1",
-                        api_key="mock-key",
+                        name=provider or "openai",
+                        model=model or "",
+                        base_url=os.getenv(f"{provider.upper()}_BASE_URL") or "https://api.openai.com/v1",
+                        api_key=api_key or "mock-key",
                     )
                 else:
                     config = ProviderConfig(
@@ -55,7 +55,7 @@ class ModelRouter(IModelRouter):
             except Exception:
                 config = ProviderConfig(
                     name="openai",
-                    model="gpt-4o-mini",
+                    model="",
                     base_url="https://api.openai.com/v1",
                     api_key="mock-key",
                 )

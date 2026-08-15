@@ -42,6 +42,16 @@ async def test_contract_llm_tool_execution_and_file_creation(tmp_path):
         llm_provider_func=mock_llm_provider,
     )
 
+    print("RESULT SUCCESS:", result.success)
+    print("RESULT STATE:", result.state)
+    print("RESULT ERRORS:", result.errors)
+    print("RESULT OUTPUT:", result.output)
+    print("RESULT VERIFICATION_STATUS:", result.verification_status)
+    print("RESULT CHANGED_FILES:", result.changed_files)
+    print("RESULT EVENTS:")
+    for ev in result.events:
+        print("  EVENT:", ev.to_dict())
+
     assert result.session_id == "contract_sess_01"
     assert (workspace / "app.py").exists()
     content = (workspace / "app.py").read_text(encoding="utf-8")

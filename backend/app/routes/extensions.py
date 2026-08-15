@@ -2,8 +2,10 @@ import os
 import json
 import zipfile
 import tempfile
-from typing import Optional, List
-from fastapi import APIRouter, File, UploadFile, HTTPException
+import urllib.request
+import urllib.parse
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, File, UploadFile, HTTPException, Query
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -17,12 +19,14 @@ class ExtensionActionRequest(BaseModel):
     description: Optional[str] = None
     version: Optional[str] = None
     category: Optional[str] = None
+    publisher: Optional[str] = None
+    download_url: Optional[str] = None
 
 class ToggleStateRequest(BaseModel):
     id: str
     enabled: bool
 
-def get_installed_extensions_list():
+def get_installed_extensions_list() -> List[Dict[str, Any]]:
     os.makedirs(os.path.dirname(EXTENSIONS_FILE_PATH), exist_ok=True)
     os.makedirs(CUSTOM_EXTENSIONS_DIR, exist_ok=True)
     if os.path.exists(EXTENSIONS_FILE_PATH):
@@ -32,49 +36,147 @@ def get_installed_extensions_list():
         except Exception:
             pass
     
-    # Defaults
-    defaults = [
-        {"id": "python", "name": "Python Language Server", "description": "Syntax highlighting, auto-completions, and debug configs", "version": "v2.4.0", "category": "Languages", "installed": True, "enabled": True, "publisher": "ms-python"},
-        {"id": "prettier", "name": "Prettier Code Formatter", "description": "Opinionated code formatter for TS, JS, CSS, and HTML", "version": "v3.2.0", "category": "Formatters", "installed": True, "enabled": True, "publisher": "esbenp"},
-        {"id": "eslint", "name": "ESLint Linter", "description": "Integrates ESLint JavaScript into the editor", "version": "v2.4.2", "category": "Linters", "installed": True, "enabled": True, "publisher": "dbaeumer"},
-        {"id": "gitlens", "name": "GitLens Extension", "description": "Visualize git commit history, lines details, and blame logs", "version": "v12.0.0", "category": "Git", "installed": False, "enabled": False, "publisher": "eamodio"},
-        {"id": "copilot", "name": "DevPilot AI Agent", "description": "Real-time AI inline code completions suggestions & Chat OS", "version": "v1.5.0", "category": "AI", "installed": True, "enabled": True, "publisher": "devpilot"},
-
-        {"id": "docker", "name": "Docker Container Tool", "description": "Manage Docker containers, networks, and images", "version": "v1.23.0", "category": "DevOps", "installed": False, "enabled": False, "publisher": "ms-azuretools"},
-        {"id": "dracula", "name": "Dracula Official Theme", "description": "Dark theme for VS Code with vibrant accent colors", "version": "v2.24.0", "category": "Themes", "installed": False, "enabled": False, "publisher": "dracula-theme"}
+    # Clean initial registry
+    initial = [
+        {"id": "ms-python.python", "name": "Python", "description": "IntelliSense, linting, debugging, code formatting, and refactoring", "version": "2024.2.0", "category": "Programming Languages", "installed": True, "enabled": True, "publisher": "ms-python"},
+        {"id": "esbenp.prettier-vscode", "name": "Prettier - Code formatter", "description": "Code formatter using prettier for JS, TS, HTML, CSS", "version": "10.4.0", "category": "Formatters", "installed": True, "enabled": True, "publisher": "esbenp"},
+        {"id": "dbaeumer.vscode-eslint", "name": "ESLint", "description": "Integrates ESLint into DevPilot editor", "version": "2.4.4", "category": "Linters", "installed": True, "enabled": True, "publisher": "dbaeumer"},
+        {"id": "devpilot.core-ai", "name": "DevPilot AI Agent Assistant", "description": "Autonomous AI reasoning, inline multi-file editing & LSP integration", "version": "1.0.0", "category": "AI", "installed": True, "enabled": True, "publisher": "devpilot"}
     ]
     with open(EXTENSIONS_FILE_PATH, "w", encoding="utf-8") as f:
-        json.dump(defaults, f)
-    return defaults
+        json.dump(initial, f, indent=2)
+    return initial
+
+def save_installed_extensions_list(exts: List[Dict[str, Any]]) -> None:
+    os.makedirs(os.path.dirname(EXTENSIONS_FILE_PATH), exist_ok=True)
+    with open(EXTENSIONS_FILE_PATH, "w", encoding="utf-8") as f:
+        json.dump(exts, f, indent=2)
 
 @router.get("/api/extensions/installed")
 def get_installed_extensions():
     return {"extensions": get_installed_extensions_list()}
 
+@router.get("/api/extensions/search")
+async def search_marketplace_extensions(query: str = Query("", description="Search term for Open VSX marketplace"), size: int = 25):
+    """
+    Search real VS Code extensions dynamically from the Open VSX Registry.
+    """
+    installed_map = {e["id"]: e for e in get_installed_extensions_list()}
+    
+    if not query.strip():
+        # Popular extensions query
+        search_term = "python"
+    else:
+        search_term = query.strip()
+
+    encoded_query = urllib.parse.quote(search_term)
+    url = f"https://open-vsx.org/api/-/search?query={encoded_query}&size={size}&sortBy=downloadCount&sortOrder=desc"
+
+    results = []
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "DevPilot-AI-Editor/1.0", "Accept": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=8.0) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                raw_exts = data.get("extensions", [])
+                for ext in raw_exts:
+                    namespace = ext.get("namespace", "")
+                    name = ext.get("name", "")
+                    ext_id = f"{namespace}.{name}" if namespace else name
+                    display_name = ext.get("displayName") or name
+                    description = ext.get("description") or ""
+                    version = ext.get("version") or "1.0.0"
+                    
+                    files = ext.get("files", {})
+                    download_url = files.get("download") or f"https://open-vsx.org/api/{namespace}/{name}/{version}/file/{namespace}.{name}-{version}.vsix"
+                    icon_url = files.get("icon")
+                    
+                    is_installed = ext_id in installed_map and installed_map[ext_id].get("installed", False)
+                    is_enabled = installed_map.get(ext_id, {}).get("enabled", True) if is_installed else False
+
+                    results.append({
+                        "id": ext_id,
+                        "name": display_name,
+                        "description": description,
+                        "version": version,
+                        "category": ext.get("categories", ["General"])[0] if ext.get("categories") else "General",
+                        "publisher": namespace or ext.get("publisher", "community"),
+                        "download_url": download_url,
+                        "icon_url": icon_url,
+                        "downloads": ext.get("downloadCount", 0),
+                        "installed": is_installed,
+                        "enabled": is_enabled
+                    })
+    except Exception as e:
+        # Fallback to local filtering if network is offline
+        for ext in get_installed_extensions_list():
+            if query.lower() in ext.get("name", "").lower() or query.lower() in ext.get("description", "").lower():
+                results.append(ext)
+
+    return {"extensions": results, "total": len(results)}
+
 @router.post("/api/extensions/install")
-def install_extension(req: ExtensionActionRequest):
+async def install_extension(req: ExtensionActionRequest):
+    """
+    Installs an extension. If from marketplace/URL, downloads and extracts the .vsix package into custom_extensions.
+    """
     exts = get_installed_extensions_list()
+    dest_dir = os.path.join(CUSTOM_EXTENSIONS_DIR, req.id.replace("/", "_").replace("\\", "_"))
+
+    # If download_url provided or open-vsx extension, download and extract .vsix
+    download_url = req.download_url
+    if not download_url and "." in req.id:
+        parts = req.id.split(".", 1)
+        ver = req.version or "latest"
+        download_url = f"https://open-vsx.org/api/{parts[0]}/{parts[1]}/{ver}/file/{parts[0]}.{parts[1]}-{ver}.vsix"
+
+    if download_url:
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                vsix_file = os.path.join(tmp_dir, "pkg.vsix")
+                download_req = urllib.request.Request(
+                    download_url,
+                    headers={"User-Agent": "DevPilot-AI-Editor/1.0"}
+                )
+                with urllib.request.urlopen(download_req, timeout=30.0) as resp:
+                    with open(vsix_file, "wb") as out_f:
+                        out_f.write(resp.read())
+
+                # Unpack vsix into custom extensions directory
+                os.makedirs(dest_dir, exist_ok=True)
+                with zipfile.ZipFile(vsix_file, "r") as zf:
+                    zf.extractall(dest_dir)
+        except Exception:
+            # Fallback: still register as installed metadata
+            os.makedirs(dest_dir, exist_ok=True)
+
     matched = False
     for ext in exts:
         if ext["id"] == req.id:
             ext["installed"] = True
             ext["enabled"] = True
+            if req.version: ext["version"] = req.version
+            if req.description: ext["description"] = req.description
             matched = True
             break
     if not matched:
         exts.append({
             "id": req.id,
             "name": req.name or req.id,
-            "description": req.description or "",
-            "version": req.version or "v1.0.0",
+            "description": req.description or "Installed extension",
+            "version": req.version or "1.0.0",
             "category": req.category or "General",
+            "publisher": req.publisher or (req.id.split(".")[0] if "." in req.id else "community"),
             "installed": True,
             "enabled": True,
-            "publisher": "custom"
+            "install_path": dest_dir
         })
-    with open(EXTENSIONS_FILE_PATH, "w", encoding="utf-8") as f:
-        json.dump(exts, f)
-    return {"success": True}
+
+    save_installed_extensions_list(exts)
+    return {"success": True, "id": req.id}
 
 @router.post("/api/extensions/toggle-enable")
 def toggle_extension_enable(req: ToggleStateRequest):
@@ -83,8 +185,7 @@ def toggle_extension_enable(req: ToggleStateRequest):
         if ext["id"] == req.id:
             ext["enabled"] = req.enabled
             break
-    with open(EXTENSIONS_FILE_PATH, "w", encoding="utf-8") as f:
-        json.dump(exts, f)
+    save_installed_extensions_list(exts)
     return {"success": True}
 
 @router.post("/api/extensions/uninstall")
@@ -95,8 +196,7 @@ def uninstall_extension(req: ExtensionActionRequest):
             ext["installed"] = False
             ext["enabled"] = False
             break
-    with open(EXTENSIONS_FILE_PATH, "w", encoding="utf-8") as f:
-        json.dump(exts, f)
+    save_installed_extensions_list(exts)
     return {"success": True}
 
 @router.post("/api/extensions/load-vsix")
@@ -117,7 +217,6 @@ async def load_vsix_package(file: UploadFile = File(...)):
 
             manifest_data = {}
             with zipfile.ZipFile(zip_path, "r") as zf:
-                # Look for extension/package.json or package.json
                 for item in zf.namelist():
                     if item.endswith("package.json"):
                         manifest_raw = zf.read(item)
@@ -133,25 +232,28 @@ async def load_vsix_package(file: UploadFile = File(...)):
                 }
 
             ext_id = f"{manifest_data.get('publisher', 'user')}.{manifest_data.get('name', 'custom-ext')}"
+            dest_dir = os.path.join(CUSTOM_EXTENSIONS_DIR, ext_id.replace("/", "_"))
+            os.makedirs(dest_dir, exist_ok=True)
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                zf.extractall(dest_dir)
+
             ext_item = {
                 "id": ext_id,
                 "name": manifest_data.get("displayName") or manifest_data.get("name", "Custom Extension"),
                 "description": manifest_data.get("description", "VSIX Extension"),
-                "version": manifest_data.get("version", "v1.0.0"),
+                "version": manifest_data.get("version", "1.0.0"),
                 "category": "VSIX Package",
                 "installed": True,
                 "enabled": True,
-                "publisher": manifest_data.get("publisher", "local")
+                "publisher": manifest_data.get("publisher", "local"),
+                "install_path": dest_dir
             }
 
             exts = get_installed_extensions_list()
             exts = [e for e in exts if e["id"] != ext_id]
             exts.append(ext_item)
-
-            with open(EXTENSIONS_FILE_PATH, "w", encoding="utf-8") as f:
-                json.dump(exts, f)
+            save_installed_extensions_list(exts)
 
             return {"success": True, "extension": ext_item}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse VSIX package: {str(e)}")
-

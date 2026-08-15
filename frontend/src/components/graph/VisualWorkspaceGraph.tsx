@@ -66,6 +66,23 @@ interface GraphData {
   };
 }
 
+const getLanguageName = (ext?: string, label?: string): string => {
+  const e = (ext || label?.split('.').pop() || '').toLowerCase().replace(/^\./, '');
+  const map: Record<string, string> = {
+    js: 'JavaScript', jsx: 'JavaScript (JSX)', ts: 'TypeScript', tsx: 'TypeScript (TSX)',
+    py: 'Python', html: 'HTML5', css: 'CSS3', scss: 'SCSS', json: 'JSON', md: 'Markdown',
+    rs: 'Rust', go: 'Go', cpp: 'C++', c: 'C', java: 'Java', rb: 'Ruby', php: 'PHP',
+    sql: 'SQL', sh: 'Shell Script', yml: 'YAML', yaml: 'YAML', toml: 'TOML', txt: 'Plain Text'
+  };
+  return map[e] || (e ? e.toUpperCase() : 'Module');
+};
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+};
+
 export const VisualWorkspaceGraph: React.FC = () => {
   const [data, setData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -76,7 +93,15 @@ export const VisualWorkspaceGraph: React.FC = () => {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [inspectorTab, setInspectorTab] = useState<'overview' | 'imports' | 'importedBy'>('overview');
   const [nodeSummary, setNodeSummary] = useState<{ loading: boolean; text: string | null }>({ loading: false, text: null });
-  const [favorites, setFavorites] = useState<Set<string>>(new Set(['config.py', 'auth.py', 'main.py']));
+  const [nodeStats, setNodeStats] = useState<{ size: string; lines: number; loading: boolean }>({ size: '—', lines: 0, loading: false });
+  const [favorites, setFavorites] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('devpilot_graph_favorites');
+      return saved ? new Set(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
   const [copiedMermaid, setCopiedMermaid] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -93,7 +118,7 @@ export const VisualWorkspaceGraph: React.FC = () => {
         const json = await res.json();
         setData(json);
         if (json.nodes && json.nodes.length > 0 && !selectedNode) {
-          const defaultNode = json.nodes.find((n: GraphNode) => n.label.includes('config') || n.label.includes('main')) || json.nodes[0];
+          const defaultNode = json.nodes.find((n: GraphNode) => n.label.includes('config') || n.label.includes('main') || n.label.includes('index')) || json.nodes[0];
           setSelectedNode(defaultNode);
         }
       }
@@ -108,16 +133,19 @@ export const VisualWorkspaceGraph: React.FC = () => {
     fetchGraph();
   }, []);
 
-  // Fetch per-file AI summary when node is selected
+  // Fetch per-file AI summary and file stats dynamically when node is selected
   useEffect(() => {
     if (!selectedNode) {
       setNodeSummary({ loading: false, text: null });
+      setNodeStats({ size: '—', lines: 0, loading: false });
       return;
     }
 
     let isMounted = true;
     setNodeSummary({ loading: true, text: null });
+    setNodeStats({ size: '—', lines: 0, loading: true });
 
+    // Fetch dynamic AI summary
     fetch(`/api/workspace/graph/summary/${selectedNode.id}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('session_token') || ''}` }
     })
@@ -127,76 +155,98 @@ export const VisualWorkspaceGraph: React.FC = () => {
           if (resData && resData.summary) {
             setNodeSummary({ loading: false, text: resData.summary });
           } else {
-            setNodeSummary({ loading: false, text: `Configuration and environment settings for ${selectedNode.label}.` });
+            setNodeSummary({ loading: false, text: `${getLanguageName(selectedNode.extension, selectedNode.label)} module: ${selectedNode.path}` });
           }
         }
       })
       .catch(() => {
         if (isMounted) {
-          setNodeSummary({ loading: false, text: `Source module defining ${selectedNode.label}.` });
+          setNodeSummary({ loading: false, text: `${getLanguageName(selectedNode.extension, selectedNode.label)} module: ${selectedNode.path}` });
         }
+      });
+
+    // Fetch dynamic file content & size metrics
+    fetch(`/api/files/content?path=${encodeURIComponent(selectedNode.path)}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(contentData => {
+        if (isMounted && contentData) {
+          const content = contentData.content || '';
+          const lineCount = content ? content.split('\n').length : 0;
+          const sizeStr = formatFileSize(contentData.size || content.length);
+          setNodeStats({ size: sizeStr, lines: lineCount, loading: false });
+        } else if (isMounted) {
+          setNodeStats({ size: '—', lines: 0, loading: false });
+        }
+      })
+      .catch(() => {
+        if (isMounted) setNodeStats({ size: '—', lines: 0, loading: false });
       });
 
     return () => { isMounted = false; };
   }, [selectedNode]);
 
-  const handleExplainGraph = () => {
-    if (!data) return;
-    const prompt = `Analyse our workspace architecture graph:\n- Total Files: ${data.summary.total_nodes}\n- Total Dependencies: ${data.summary.total_edges}\n- Circular Imports: ${data.summary.circular_count}\n\nProvide an architectural review and suggest structural improvements.`;
-    handleSendMessage(prompt, 'Agent', false);
-  };
-
-  const handleCopyMermaid = () => {
-    if (!data || data.nodes.length === 0) return;
-    let graphStr = 'graph TD\n';
-    data.nodes.slice(0, 25).forEach(node => {
-      const cleanLabel = node.label.replace(/[^a-zA-Z0-9_]/g, '_');
-      graphStr += `  ${cleanLabel}["${node.label}"]\n`;
-    });
-    data.edges.slice(0, 30).forEach(edge => {
-      const srcNode = data.nodes.find(n => n.id === edge.source);
-      const tgtNode = data.nodes.find(n => n.id === edge.target);
-      if (srcNode && tgtNode) {
-        const srcLabel = srcNode.label.replace(/[^a-zA-Z0-9_]/g, '_');
-        const tgtLabel = tgtNode.label.replace(/[^a-zA-Z0-9_]/g, '_');
-        graphStr += `  ${srcLabel} --> ${tgtLabel}\n`;
-      }
-    });
-    copyToClipboard(graphStr);
-    setCopiedMermaid(true);
-    setTimeout(() => setCopiedMermaid(false), 2000);
-  };
-
-  const toggleFavorite = (filename: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
+  const toggleFavorite = (label: string, e: React.MouseEvent) => {
+    e.stopPropagation();
     setFavorites(prev => {
       const next = new Set(prev);
-      if (next.has(filename)) next.delete(filename);
-      else next.add(filename);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      try {
+        localStorage.setItem('devpilot_graph_favorites', JSON.stringify(Array.from(next)));
+      } catch {}
       return next;
     });
   };
 
+  const handleCopyMermaid = () => {
+    if (!data || data.nodes.length === 0) return;
+    const lines = ['graph TD'];
+    data.nodes.forEach(n => {
+      const cleanLabel = n.label.replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const cleanId = n.id.replace(/[^a-zA-Z0-9_]/g, '_');
+      lines.push(`    ${cleanId}["${cleanLabel}"]`);
+    });
+    data.edges.forEach(e => {
+      const src = e.source.replace(/[^a-zA-Z0-9_]/g, '_');
+      const tgt = e.target.replace(/[^a-zA-Z0-9_]/g, '_');
+      lines.push(`    ${src} --> ${tgt}`);
+    });
+    copyToClipboard(lines.join('\n'));
+    setCopiedMermaid(true);
+    setTimeout(() => setCopiedMermaid(false), 2000);
+  };
+
+  const handleExplainGraph = () => {
+    if (!data) return;
+    const prompt = `Analyze this codebase dependency graph:\n- Total Files: ${data.nodes.length}\n- Import Connections: ${data.edges.length}\n- Circular Imports: ${data.circular_imports.length}\nExplain the overall architecture and recommendations.`;
+    handleSendMessage(prompt, 'Plan', false);
+  };
+
+  // Filter nodes based on search & filter category
   const filteredNodes = useMemo(() => {
     if (!data) return [];
     return data.nodes.filter(n => {
-      const matchesSearch = !searchQuery ||
+      const matchesSearch =
+        searchQuery === '' ||
         n.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
         n.path.toLowerCase().includes(searchQuery.toLowerCase());
 
-      const matchesType = filterType === 'all' ||
-        (filterType === 'files' && n.type === 'file') ||
-        (filterType === 'apis' && n.type === 'api') ||
-        (filterType === 'components' && n.type === 'component') ||
-        (filterType === 'services' && n.type === 'service') ||
-        n.type === filterType;
+      const matchesCategory =
+        filterType === 'all' ||
+        n.type.toLowerCase() === filterType.toLowerCase() ||
+        (filterType === 'files' && n.type === 'file');
 
-      return matchesSearch && matchesType;
+      return matchesSearch && matchesCategory;
     });
   }, [data, searchQuery, filterType]);
 
+  // Dynamic connected nodes calculation for the selected node
   const connectedNodes = useMemo(() => {
     if (!selectedNode || !data) return { imports: [], importedBy: [] };
+
     const imports = data.edges
       .filter(e => e.source === selectedNode.id)
       .map(e => data.nodes.find(n => n.id === e.target))
@@ -210,19 +260,30 @@ export const VisualWorkspaceGraph: React.FC = () => {
     return { imports, importedBy };
   }, [selectedNode, data]);
 
+  // Dynamic statistics calculated directly from live data
   const statsCounts = useMemo(() => {
-    if (!data) return { modules: 21, edges: 15, services: 6, apis: 4 };
-    const servicesCount = data.nodes.filter(n => n.type === 'service').length || 6;
-    const apisCount = data.nodes.filter(n => n.type === 'api').length || 4;
+    if (!data) return { modules: 0, edges: 0, services: 0, apis: 0 };
+    const servicesCount = data.nodes.filter(n => n.type === 'service').length;
+    const apisCount = data.nodes.filter(n => n.type === 'api').length;
     return {
-      modules: data.summary.total_nodes || 21,
-      edges: data.summary.total_edges || 15,
+      modules: data.summary?.total_nodes ?? data.nodes.length,
+      edges: data.summary?.total_edges ?? data.edges.length,
       services: servicesCount,
       apis: apisCount
     };
   }, [data]);
 
-  // Pre-calculate positions with generous node spacing for full-width canvas
+  // Dynamic related files based on workspace structure
+  const relatedFiles = useMemo(() => {
+    if (!selectedNode || !data) return [];
+    const normalizedPath = selectedNode.path.replace(/\\/g, '/');
+    const folder = normalizedPath.includes('/') ? normalizedPath.substring(0, normalizedPath.lastIndexOf('/')) : '';
+    return data.nodes
+      .filter(n => n.id !== selectedNode.id && (folder === '' || n.path.replace(/\\/g, '/').startsWith(folder)))
+      .slice(0, 5);
+  }, [selectedNode, data]);
+
+  // Pre-calculate positions with generous node spacing for canvas
   const nodePositions = useMemo(() => {
     const map: Record<string, { x: number; y: number }> = {};
     if (filteredNodes.length === 0) return map;
@@ -283,7 +344,7 @@ export const VisualWorkspaceGraph: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Statistics Cards Row (4 Metric Cards) ── */}
+      {/* ── Dynamic Statistics Cards Row ── */}
       <div className="grid grid-cols-4 gap-2.5 shrink-0">
         {[
           { label: 'Modules', count: statsCounts.modules, icon: Layers, color: 'text-[#4C8DFF]' },
@@ -345,58 +406,51 @@ export const VisualWorkspaceGraph: React.FC = () => {
         </button>
       </div>
 
-      {/* ── Large Interactive Graph Canvas (Fills Available Space) ── */}
+      {/* ── Interactive Graph Canvas ── */}
       <div className="flex-1 bg-[#151823] border border-[#2A3146] rounded-2xl relative overflow-hidden flex items-center justify-center min-h-0">
         
-        {/* SVG Dotted Grid Background */}
-        <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-40">
-          <defs>
-            <pattern id="dotPattern" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-              <circle cx="2" cy="2" r="1.2" fill="#2A3146" />
-            </pattern>
-            <linearGradient id="edgeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#4C8DFF" stopOpacity="0.85" />
-              <stop offset="100%" stopColor="#60A5FA" stopOpacity="0.85" />
-            </linearGradient>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#dotPattern)" />
-        </svg>
-
         {loading ? (
-          <div className="flex items-center gap-2 text-gray-400 text-xs z-10">
-            <RefreshCw className="w-4 h-4 animate-spin text-[#4C8DFF]" /> Parsing AST Dependencies...
+          <div className="flex flex-col items-center justify-center text-gray-400 space-y-2">
+            <Loader2 className="w-8 h-8 text-[#4C8DFF] animate-spin" />
+            <span className="font-mono text-xs">Analyzing workspace structure...</span>
+          </div>
+        ) : filteredNodes.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-gray-500 space-y-2 font-mono">
+            <Layers className="w-10 h-10 opacity-30" />
+            <span>No modules found in active workspace</span>
           </div>
         ) : (
           <div
-            className="w-full h-full relative"
+            className="w-full h-full relative cursor-grab active:cursor-grabbing"
             style={{
-              transform: `scale(${zoom}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+              transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
               transformOrigin: 'center center',
-              transition: 'transform 0.15s ease-out'
+              transition: 'transform 0.1s ease-out'
             }}
           >
-            {/* Render SVG Curved Bezier Edges */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
-              {data?.edges.map(edge => {
+            {/* Render SVG Connection Lines */}
+            <svg className="w-full h-full absolute inset-0 pointer-events-none z-0">
+              <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#4C8DFF" />
+                </marker>
+              </defs>
+              {data?.edges.map((edge, idx) => {
                 const srcPos = nodePositions[edge.source];
                 const tgtPos = nodePositions[edge.target];
                 if (!srcPos || !tgtPos) return null;
 
-                const dx = tgtPos.x - srcPos.x;
-                const cx1 = srcPos.x + dx * 0.5;
-                const cy1 = srcPos.y;
-                const cx2 = srcPos.x + dx * 0.5;
-                const cy2 = tgtPos.y;
-
                 const isEdgeConnected = selectedNode && (edge.source === selectedNode.id || edge.target === selectedNode.id);
 
                 return (
-                  <g key={edge.id}>
-                    <path
-                      d={`M ${srcPos.x + 50} ${srcPos.y + 18} C ${cx1 + 50} ${cy1 + 18}, ${cx2 + 50} ${cy2 + 18}, ${tgtPos.x + 50} ${tgtPos.y + 18}`}
-                      fill="none"
-                      stroke={isEdgeConnected ? '#4C8DFF' : 'url(#edgeGrad)'}
-                      strokeWidth={isEdgeConnected ? 2.5 : 1.5}
+                  <g key={idx}>
+                    <line
+                      x1={srcPos.x + 80}
+                      y1={srcPos.y + 24}
+                      x2={tgtPos.x + 80}
+                      y2={tgtPos.y + 24}
+                      stroke={isEdgeConnected ? '#4C8DFF' : '#2A3146'}
+                      strokeWidth={isEdgeConnected ? 2.5 : 1}
                       strokeDasharray={isEdgeConnected ? 'none' : '4,4'}
                       className="transition-all"
                     />
@@ -410,6 +464,7 @@ export const VisualWorkspaceGraph: React.FC = () => {
               const pos = nodePositions[node.id] || { x: 200, y: 200 };
               const isSelected = selectedNode?.id === node.id;
               const isFav = favorites.has(node.label);
+              const connCount = (data?.edges || []).filter(e => e.source === node.id || e.target === node.id).length;
 
               return (
                 <div
@@ -434,7 +489,7 @@ export const VisualWorkspaceGraph: React.FC = () => {
 
                       <div className="min-w-0">
                         <span className="font-bold text-[11px] text-white block truncate">{node.label}</span>
-                        <span className="text-[8px] text-gray-400 block capitalize">{node.type} File</span>
+                        <span className="text-[8px] text-gray-400 block capitalize">{getLanguageName(node.extension, node.label)}</span>
                       </div>
                     </div>
 
@@ -447,7 +502,7 @@ export const VisualWorkspaceGraph: React.FC = () => {
                   <div className="flex items-center justify-between text-[8px] font-mono text-gray-400 pt-1 border-t border-[#2A3146]">
                     <span className="truncate max-w-[90px]">{node.path}</span>
                     <span className="bg-[#151823] px-1 py-0.2 rounded text-[#4C8DFF] font-bold border border-[#4C8DFF]/30">
-                      ⚡ 4
+                      {connCount > 0 ? `⚡ ${connCount}` : (node.extension ? `.${node.extension}` : 'file')}
                     </span>
                   </div>
                 </div>
@@ -516,7 +571,7 @@ export const VisualWorkspaceGraph: React.FC = () => {
           </div>
         </div>
 
-        {/* ── FLOATING OVERLAY INSPECTOR PANEL (Slides OVER Graph Canvas) ── */}
+        {/* ── FLOATING OVERLAY INSPECTOR PANEL ── */}
         {selectedNode && (
           <div className="absolute right-3 top-3 bottom-3 w-80 bg-[#1A1F2E] border border-[#2A3146] rounded-2xl shadow-2xl flex flex-col justify-between p-3.5 z-30 overflow-y-auto animate-slide-in font-sans">
             <div className="space-y-3">
@@ -529,7 +584,7 @@ export const VisualWorkspaceGraph: React.FC = () => {
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-extrabold text-white text-xs truncate">{selectedNode.label}</h3>
-                    <p className="text-[9px] text-gray-400 capitalize">{selectedNode.type} File</p>
+                    <p className="text-[9px] text-gray-400 capitalize">{getLanguageName(selectedNode.extension, selectedNode.label)}</p>
                   </div>
                 </div>
 
@@ -580,7 +635,7 @@ export const VisualWorkspaceGraph: React.FC = () => {
                       </div>
                     ) : (
                       <p className="text-[11px] text-gray-300 leading-relaxed font-sans">
-                        {nodeSummary.text || `Configuration and environment settings for ${selectedNode.label}.`}
+                        {nodeSummary.text || `${getLanguageName(selectedNode.extension, selectedNode.label)} module defining ${selectedNode.label}.`}
                       </p>
                     )}
                   </div>
@@ -605,14 +660,30 @@ export const VisualWorkspaceGraph: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Metadata Table */}
+                  {/* Dynamic Metadata Table */}
                   <div className="p-2.5 bg-[#151823] border border-[#2A3146] rounded-xl space-y-1.5 text-xs">
                     <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Metadata</span>
                     <div className="space-y-1 font-mono text-[10px]">
-                      <div className="flex justify-between"><span className="text-gray-500">Language</span><span className="text-white font-semibold">Python</span></div>
-                      <div className="flex justify-between"><span className="text-gray-500">Size</span><span className="text-white font-semibold">2.45 KB</span></div>
-                      <div className="flex justify-between"><span className="text-gray-500">Lines</span><span className="text-white font-semibold">128</span></div>
-                      <div className="flex justify-between"><span className="text-gray-500">Modified</span><span className="text-white font-semibold">2 hours ago</span></div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Language</span>
+                        <span className="text-white font-semibold">{getLanguageName(selectedNode.extension, selectedNode.label)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Path</span>
+                        <span className="text-white font-semibold truncate max-w-[170px]" title={selectedNode.path}>{selectedNode.path}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Size</span>
+                        <span className="text-white font-semibold">
+                          {nodeStats.loading ? '...' : nodeStats.size}
+                        </span>
+                      </div>
+                      {nodeStats.lines > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Lines</span>
+                          <span className="text-white font-semibold">{nodeStats.lines}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -639,25 +710,29 @@ export const VisualWorkspaceGraph: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Related Files Section */}
-                  <div className="space-y-1.5">
-                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">Related Files</span>
-                    <div className="space-y-1 font-mono text-[11px]">
-                      {[
-                        { name: '.env', type: 'Environment File' },
-                        { name: 'settings.py', type: 'Python File' },
-                        { name: 'constants.py', type: 'Python File' },
-                      ].map((rel, i) => (
-                        <div key={i} className="flex items-center gap-2 p-1.5 rounded-lg bg-[#151823] border border-[#2A3146] text-gray-300">
-                          <FileText className="w-3.5 h-3.5 text-[#4C8DFF]" />
-                          <div>
-                            <span className="text-white font-semibold block leading-tight">{rel.name}</span>
-                            <span className="text-[8px] text-gray-500">{rel.type}</span>
+                  {/* Dynamic Related Files in Directory */}
+                  {relatedFiles.length > 0 && (
+                    <div className="space-y-1.5">
+                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block">
+                        Workspace Files ({relatedFiles.length})
+                      </span>
+                      <div className="space-y-1 font-mono text-[11px]">
+                        {relatedFiles.map((rel) => (
+                          <div
+                            key={rel.id}
+                            onClick={() => handleSelectFile(rel.path)}
+                            className="flex items-center gap-2 p-1.5 rounded-lg bg-[#151823] hover:bg-white/5 border border-[#2A3146] text-gray-300 cursor-pointer transition-colors"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-[#4C8DFF]" />
+                            <div className="min-w-0 flex-1">
+                              <span className="text-white font-semibold block leading-tight truncate">{rel.label}</span>
+                              <span className="text-[8px] text-gray-500 capitalize">{getLanguageName(rel.extension, rel.label)}</span>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                 </div>
               )}

@@ -9,7 +9,7 @@
  *  5. Handle native OS dialogs and clean process termination.
  */
 
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, session } = require('electron');
 const path = require('path');
 const http = require('http');
 const { spawn, exec } = require('child_process');
@@ -72,7 +72,7 @@ function setApplicationMenu() {
           label: 'DevPilot Documentation',
           click: async () => {
             const { shell } = require('electron');
-            await shell.openExternal('https://github.com/logeshn554/ai_coding_assistant');
+            await shell.openExternal('https://github.com/devpilot-ai/devpilot');
           },
         },
       ],
@@ -312,6 +312,21 @@ function createWindow() {
 // ─── App Lifecycle ───────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
+  // Harden renderer: CSP prevents XSS from escalating to Node via preload bridge.
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const responseHeaders = { ...details.responseHeaders };
+    responseHeaders['Content-Security-Policy'] = [
+      "default-src 'self'; " +
+      "script-src 'self'; " +
+      "style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data: blob:; " +
+      "font-src 'self' data:; " +
+      `connect-src 'self' http://127.0.0.1:${DEVPILOT_PORT} http://localhost:${DEVPILOT_PORT} ws://127.0.0.1:${DEVPILOT_PORT} ws://localhost:${DEVPILOT_PORT}; ` +
+      "object-src 'none'; frame-ancestors 'none'; base-uri 'self';"
+    ];
+    callback({ responseHeaders });
+  });
+
   setApplicationMenu();
   createWindow();
 

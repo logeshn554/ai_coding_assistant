@@ -180,7 +180,7 @@ class ToolExecutor:
                 )
                 return ToolResult(success=False, output=None, error=f"Security Policy Denied: {decision.reason}")
 
-            if decision.requires_approval:
+            if decision.requires_approval and not auto_apply:
                 from backend.app.agent.agent_runtime.runtime import AgentState
                 if hasattr(self.session, "state"):
                     self.session.state = AgentState.WAITING_FOR_APPROVAL
@@ -208,6 +208,8 @@ class ToolExecutor:
                         validated_args = modified_args
                     if hasattr(self.session, "state"):
                         self.session.state = AgentState.RUNNING
+                    # Explicitly override auto_apply to bypass inner legacy confirmation prompts
+                    auto_apply = True
                 else:
                     # In headless, automated, or non-interactive mode without confirmation callback, fail closed
                     if hasattr(self.session, "state"):

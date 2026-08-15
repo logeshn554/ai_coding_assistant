@@ -71,29 +71,36 @@ class AgentBudget:
 
 
 class CostTracker:
-    """Tracks costs and manages budgets."""
+    """Tracks costs and manages budgets.
 
-    # Typical pricing (can be configured per provider)
-    PRICING = {
-        "gpt-4": {
-            "input": 0.00003,  # $0.03 per 1K tokens
-            "output": 0.00006,  # $0.06 per 1K tokens
-        },
-        "gpt-3.5-turbo": {
-            "input": 0.0000015,  # $0.0015 per 1K tokens
-            "output": 0.000002,  # $0.002 per 1K tokens
-        },
-        "claude-3-opus": {
-            "input": 0.000015,  # $0.015 per 1K tokens
-            "output": 0.000075,  # $0.075 per 1K tokens
-        },
-    }
+    Pricing comes from explicit rates or env — never from a hardcoded model table.
+    """
 
-    def __init__(self):
+    def __init__(
+        self,
+        default_input_cost_per_1k: float | None = None,
+        default_output_cost_per_1k: float | None = None,
+    ):
         """Initialize cost tracker."""
+        import os
         self.costs: Dict[str, list] = {}  # run_id -> list of CostEntry
         self.budgets: Dict[str, AgentBudget] = {}
         self.run_start_times: Dict[str, datetime] = {}
+        env_in = os.environ.get("DEVPILOT_INPUT_COST_PER_M")
+        env_out = os.environ.get("DEVPILOT_OUTPUT_COST_PER_M")
+        # Convert per-million → per-1k when using env defaults
+        self._default_input_per_1k = default_input_cost_per_1k
+        self._default_output_per_1k = default_output_cost_per_1k
+        if self._default_input_per_1k is None and env_in:
+            try:
+                self._default_input_per_1k = float(env_in) / 1000.0
+            except ValueError:
+                pass
+        if self._default_output_per_1k is None and env_out:
+            try:
+                self._default_output_per_1k = float(env_out) / 1000.0
+            except ValueError:
+                pass
 
     def create_budget(self, agent_id: str, **kwargs) -> AgentBudget:
         """Create budget for agent."""
@@ -108,6 +115,9 @@ class CostTracker:
         model: str,
         input_tokens: int,
         output_tokens: int,
+        *,
+        input_cost_per_1k: float | None = None,
+        output_cost_per_1k: float | None = None,
     ) -> float:
         """
         Track token usage and calculate cost.
@@ -115,9 +125,11 @@ class CostTracker:
         Args:
             run_id: Run identifier
             agent_id: Agent identifier
-            model: Model name (e.g., gpt-4)
+            model: Model name (for metadata only)
             input_tokens: Input tokens used
             output_tokens: Output tokens generated
+            input_cost_per_1k: Optional explicit input rate
+            output_cost_per_1k: Optional explicit output rate
 
         Returns:
             Cost in USD
@@ -125,11 +137,14 @@ class CostTracker:
         if run_id not in self.costs:
             self.costs[run_id] = []
 
-        # Calculate cost
-        pricing = self.PRICING.get(model, self.PRICING["gpt-3.5-turbo"])
-        input_cost = (input_tokens / 1000) * pricing["input"]
-        output_cost = (output_tokens / 1000) * pricing["output"]
-        total_cost = input_cost + output_cost
+        in_rate = input_cost_per_1k if input_cost_per_1k is not None else self._default_input_per_1k
+        out_rate = output_cost_per_1k if output_cost_per_1k is not None else self._default_output_per_1k
+        if in_rate is None or out_rate is None:
+            total_cost = 0.0
+        else:
+            input_cost = (input_tokens / 1000) * float(in_rate)
+            output_cost = (output_tokens / 1000) * float(out_rate)
+            total_cost = input_cost + output_cost
 
         # Record entry
         entry = CostEntry(

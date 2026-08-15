@@ -47,7 +47,7 @@ export const TitleBar: React.FC = () => {
   const { activeFilePath } = useEditor();
   const { activeMenu, setActiveMenu, setSidebarTab, isSidebarOpen, setIsSidebarOpen, isAiPanelOpen, setIsAiPanelOpen } = useUI();
   const { statusBarBranch, statusBarDebug } = useGit();
-  const { setBottomTab } = useTerminal();
+  const { setBottomTab, toggleBottomPanel, isBottomPanelOpen, bottomTab } = useTerminal();
   const { handleSendMessage, contextPercentage = 0, contextTokensRaw = 0 } = useAI();
   const { setIsCommandPaletteOpen } = useCommand();
   const { activeProfileName } = useSettings();
@@ -99,8 +99,13 @@ export const TitleBar: React.FC = () => {
       { label: 'Source Control', shortcut: 'Ctrl+Shift+G', action: () => { setSidebarTab('git'); setIsSidebarOpen(true); } },
       { label: 'Run & Debug', shortcut: 'Ctrl+Shift+D', action: () => { setSidebarTab('debug'); setIsSidebarOpen(true); } },
       { label: 'Extensions', shortcut: 'Ctrl+Shift+X', action: () => { setSidebarTab('extensions'); setIsSidebarOpen(true); } },
-      { label: 'Developer Profile', shortcut: 'Ctrl+Shift+P', action: () => { setSidebarTab('profile'); setIsSidebarOpen(true); }, dividerAfter: true },
-      { label: 'Terminal', shortcut: 'Ctrl+`', action: () => setBottomTab('terminal') },
+      { label: 'Terminal', shortcut: 'Ctrl+`', action: () => {
+        if (isBottomPanelOpen && bottomTab === 'terminal') {
+          toggleBottomPanel();
+        } else {
+          setBottomTab('terminal');
+        }
+      } },
       { label: 'Problems', shortcut: 'Ctrl+Shift+M', action: () => setBottomTab('problems') },
     ],
     terminal: [

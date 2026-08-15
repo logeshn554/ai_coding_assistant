@@ -195,9 +195,18 @@ class Conversation:
             except Exception:
                 pass
 
+        model_name = (self.agent.llm.model or "").strip()
+        if not model_name:
+            import os
+            model_name = (os.environ.get("DEVPILOT_MODEL") or "").strip()
+        if not model_name:
+            raise ValueError(
+                "Parallel agent requires a model name on agent.llm.model or DEVPILOT_MODEL. "
+                "No hardcoded model defaults are allowed."
+            )
         llm = OpenAIProvider(
             api_key=api_key,
-            model=self.agent.llm.model or "gpt-4o-mini",
+            model=model_name,
             base_url=base_url
         )
 

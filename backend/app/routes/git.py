@@ -345,6 +345,8 @@ async def perform_git_action(req: GitActionRequest):
             await run_cmd_async(["git", "pull"], workspace_state.root)
         elif req.action == "checkout":
             await run_cmd_async(["git", "checkout", req.branch], workspace_state.root)
+        elif req.action == "create_branch":
+            await run_cmd_async(["git", "checkout", "-b", req.branch], workspace_state.root)
         elif req.action == "discard_file":
             status_out = await run_cmd_async(["git", "status", "--porcelain", req.path], workspace_state.root)
             is_untracked = any(l.strip().startswith("??") for l in status_out.splitlines())

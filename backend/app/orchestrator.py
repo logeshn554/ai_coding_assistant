@@ -3551,7 +3551,7 @@ class AgentOrchestrator:
                 await self.context.log("AgentOS: Transitioned to REVIEW. Performing patch review...")
 
                 # Debate Engine & Consensus
-                critiques = debate_engine.hold_debate("diff of modifications placeholder")
+                critiques = await debate_engine.hold_debate("diff of modifications placeholder")
                 for critique in critiques:
                     await self.context.log(
                         f"[Debate Engine] Critique from {critique.agent_name}: "

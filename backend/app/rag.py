@@ -1,8 +1,13 @@
-"""Minimal ChromaDB RAG pipeline for non-image file attachments.
+"""RAG pipeline for non-image file attachments.
+
+Backends (selected via settings.RAG_BACKEND):
+- ``pgvector`` — Postgres-native vector search (preferred in server mode)
+- ``chroma`` — local ChromaDB under ~/.devpilot/chroma
+- ``auto`` — pgvector when DATABASE_URL is Postgres, else ChromaDB
 
 Provides:
 - `chunk_file`: line & token-window file chunker preserving line numbers.
-- `embed_and_index`: indexes file chunks into a workspace ChromaDB collection.
+- `embed_and_index`: indexes file chunks into the active backend.
 - `query`: retrieves top_k relevant chunks for a question.
 """
 
@@ -22,14 +27,11 @@ logger = logging.getLogger("devpilot.rag")
 _MAX_CHROMA_DIRS = int(os.environ.get("DEVPILOT_MAX_CHROMA_DIRS", "8"))
 _MAX_CHROMA_AGE_DAYS = int(os.environ.get("DEVPILOT_CHROMA_MAX_AGE_DAYS", "30"))
 
+_PGVECTOR_DIM = 384  # matches simple hash embedding dimensionality
+
 
 def _evict_old_chroma_indexes() -> None:
-    """Remove ChromaDB workspace indexes that exceed the age or count limits.
-
-    Called once at application startup to keep ~/.devpilot/chroma/ bounded.
-    - First evicts all indexes older than _MAX_CHROMA_AGE_DAYS.
-    - Then evicts oldest-first beyond _MAX_CHROMA_DIRS count.
-    """
+    """Remove ChromaDB workspace indexes that exceed the age or count limits."""
     base = os.path.join(os.path.expanduser("~"), ".devpilot", "chroma")
     if not os.path.isdir(base):
         return
@@ -50,7 +52,6 @@ def _evict_old_chroma_indexes() -> None:
     now = time.time()
     max_age_secs = _MAX_CHROMA_AGE_DAYS * 86400
 
-    # Phase 1: remove by age
     surviving = []
     for path, mtime in subdirs:
         if (now - mtime) > max_age_secs:
@@ -62,7 +63,6 @@ def _evict_old_chroma_indexes() -> None:
         else:
             surviving.append((path, mtime))
 
-    # Phase 2: remove oldest beyond count limit (newest first)
     surviving.sort(key=lambda x: x[1], reverse=True)
     for path, _ in surviving[_MAX_CHROMA_DIRS:]:
         try:
@@ -70,7 +70,6 @@ def _evict_old_chroma_indexes() -> None:
             logger.info("ChromaDB eviction (count): removed %s", path)
         except Exception as e:
             logger.warning("ChromaDB eviction failed for %s: %s", path, e)
-
 
 
 @dataclass
@@ -88,16 +87,7 @@ class Chunk:
 
 
 def chunk_file(path: str, max_tokens: int = 500, overlap: int = 50) -> List[Chunk]:
-    """Chunk a file into token-bounded line windows with overlap.
-
-    Args:
-        path: Path to the target file.
-        max_tokens: Approximate max tokens (words) per chunk.
-        overlap: Approximate overlap tokens (words) between chunks.
-
-    Returns:
-        List of Chunk objects.
-    """
+    """Chunk a file into token-bounded line windows with overlap."""
     if not path or not os.path.exists(path):
         return []
 
@@ -138,7 +128,6 @@ def chunk_file(path: str, max_tokens: int = 500, overlap: int = 50) -> List[Chun
                         },
                     )
                 )
-            # Retain overlap lines for context continuity
             overlap_lines: List[str] = []
             overlap_words = 0
             for prev_line in reversed(current_lines):
@@ -152,7 +141,6 @@ def chunk_file(path: str, max_tokens: int = 500, overlap: int = 50) -> List[Chun
             current_word_count = overlap_words
             start_line = max(1, line_idx - len(overlap_lines) + 1)
 
-    # Remaining lines chunk
     if current_lines:
         chunk_text = "".join(current_lines).strip()
         if chunk_text:
@@ -174,20 +162,204 @@ def chunk_file(path: str, max_tokens: int = 500, overlap: int = 50) -> List[Chun
     return chunks
 
 
+def _use_pgvector() -> bool:
+    """Decide whether pgvector should be used for this process."""
+    try:
+        from .config import settings
+        backend = (getattr(settings, "RAG_BACKEND", "auto") or "auto").lower()
+        db_url = (getattr(settings, "DATABASE_URL", "") or "").lower()
+    except Exception:
+        backend = (os.environ.get("RAG_BACKEND") or "auto").lower()
+        db_url = (os.environ.get("DATABASE_URL") or "").lower()
+
+    if backend == "chroma":
+        return False
+    if backend == "pgvector":
+        return True
+    return "postgres" in db_url or "postgresql" in db_url
+
+
+def _hash_embed(text: str, dim: int = _PGVECTOR_DIM) -> List[float]:
+    """Deterministic bag-of-tokens embedding (no external model dependency)."""
+    vec = [0.0] * dim
+    tokens = (text or "").lower().split()
+    if not tokens:
+        return vec
+    for tok in tokens:
+        h = int(hashlib.md5(tok.encode("utf-8")).hexdigest(), 16)
+        idx = h % dim
+        sign = 1.0 if (h >> 8) & 1 else -1.0
+        vec[idx] += sign
+    norm = sum(v * v for v in vec) ** 0.5
+    if norm > 0:
+        vec = [v / norm for v in vec]
+    return vec
+
+
+_pg_ready = False
+
+
+async def _ensure_pgvector_schema() -> bool:
+    """Create rag_chunks table + extension when using Postgres."""
+    global _pg_ready
+    if _pg_ready:
+        return True
+    try:
+        from sqlalchemy import text
+        from .infrastructure.database.connection import async_session_factory
+
+        async with async_session_factory() as db:
+            await db.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await db.execute(
+                text(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS rag_chunks (
+                        id TEXT PRIMARY KEY,
+                        collection_name TEXT NOT NULL,
+                        workspace_root TEXT NOT NULL DEFAULT '',
+                        content TEXT NOT NULL,
+                        metadata JSONB NOT NULL DEFAULT '{{}}',
+                        embedding vector({_PGVECTOR_DIM})
+                    )
+                    """
+                )
+            )
+            await db.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_rag_chunks_collection
+                    ON rag_chunks (collection_name, workspace_root)
+                    """
+                )
+            )
+            await db.commit()
+        _pg_ready = True
+        return True
+    except Exception as exc:
+        logger.warning("pgvector schema setup failed: %s", exc)
+        return False
+
+
+async def _pg_embed_and_index(
+    chunks: List[Chunk],
+    collection_name: str,
+    workspace_root: str = "",
+) -> Any:
+    from sqlalchemy import text
+    import json as _json
+    from .infrastructure.database.connection import async_session_factory
+
+    if not await _ensure_pgvector_schema():
+        return None
+
+    safe_name = "col_" + hashlib.md5(collection_name.encode("utf-8")).hexdigest()[:20]
+    try:
+        async with async_session_factory() as db:
+            for i, c in enumerate(chunks):
+                cid = f"chk_{i}_{hashlib.md5(c.text.encode('utf-8')).hexdigest()[:8]}"
+                emb = _hash_embed(c.text)
+                emb_literal = "[" + ",".join(f"{v:.8f}" for v in emb) + "]"
+                await db.execute(
+                    text(
+                        """
+                        INSERT INTO rag_chunks (id, collection_name, workspace_root, content, metadata, embedding)
+                        VALUES (:id, :col, :ws, :content, CAST(:meta AS jsonb), CAST(:emb AS vector))
+                        ON CONFLICT (id) DO UPDATE SET
+                            content = EXCLUDED.content,
+                            metadata = EXCLUDED.metadata,
+                            embedding = EXCLUDED.embedding
+                        """
+                    ),
+                    {
+                        "id": cid,
+                        "col": safe_name,
+                        "ws": workspace_root or "",
+                        "content": c.text,
+                        "meta": _json.dumps(c.metadata or {}),
+                        "emb": emb_literal,
+                    },
+                )
+            await db.commit()
+        logger.info("RAG(pgvector): Indexed %d chunks into '%s'", len(chunks), safe_name)
+        return {"backend": "pgvector", "collection": safe_name, "count": len(chunks)}
+    except Exception as exc:
+        logger.error("RAG(pgvector) indexing failed: %s", exc)
+        return None
+
+
+async def _pg_query(
+    collection_name: str,
+    question: str,
+    top_k: int = 5,
+    workspace_root: str = "",
+) -> List[Chunk]:
+    from sqlalchemy import text
+    import json as _json
+    from .infrastructure.database.connection import async_session_factory
+
+    if not await _ensure_pgvector_schema():
+        return []
+
+    safe_name = "col_" + hashlib.md5(collection_name.encode("utf-8")).hexdigest()[:20]
+    emb = _hash_embed(question)
+    emb_literal = "[" + ",".join(f"{v:.8f}" for v in emb) + "]"
+    try:
+        async with async_session_factory() as db:
+            result = await db.execute(
+                text(
+                    """
+                    SELECT content, metadata
+                    FROM rag_chunks
+                    WHERE collection_name = :col
+                      AND (:ws = '' OR workspace_root = :ws)
+                    ORDER BY embedding <=> CAST(:emb AS vector)
+                    LIMIT :k
+                    """
+                ),
+                {
+                    "col": safe_name,
+                    "ws": workspace_root or "",
+                    "emb": emb_literal,
+                    "k": top_k,
+                },
+            )
+            rows = result.fetchall()
+        out: List[Chunk] = []
+        for content, meta in rows:
+            if isinstance(meta, str):
+                try:
+                    meta = _json.loads(meta)
+                except Exception:
+                    meta = {}
+            meta = meta or {}
+            out.append(
+                Chunk(
+                    text=content,
+                    start_line=int(meta.get("start_line", 1) or 1),
+                    end_line=int(meta.get("end_line", 1) or 1),
+                    source_file=meta.get("path", meta.get("filename", "attached_file")),
+                    metadata=meta,
+                )
+            )
+        logger.info("RAG(pgvector): Retrieved %d chunks for '%s'", len(out), question[:40])
+        return out
+    except Exception as exc:
+        logger.error("RAG(pgvector) query failed: %s", exc)
+        return []
+
+
 _chroma_clients: dict = {}
+
 
 def _get_chroma_client(workspace_root: Optional[str] = None):
     """Retrieve persistent ChromaDB client for the workspace with connection pooling."""
     if workspace_root and os.path.isdir(workspace_root):
-        import hashlib
         h = hashlib.sha256(os.path.abspath(workspace_root).encode("utf-8")).hexdigest()[:16]
         chroma_dir = os.path.join(os.path.expanduser("~"), ".devpilot", "chroma", h)
-        
-        # One-time migration
+
         old_dir = os.path.join(workspace_root, "artifacts", "chroma")
         if os.path.exists(old_dir) and not os.path.exists(chroma_dir):
             try:
-                import shutil
                 os.makedirs(os.path.dirname(chroma_dir), exist_ok=True)
                 shutil.move(old_dir, chroma_dir)
                 logger.info(f"Migrated ChromaDB index from {old_dir} to {chroma_dir}")
@@ -217,37 +389,28 @@ async def embed_and_index(
     collection_name: str,
     workspace_root: str = "",
 ) -> Any:
-    """Index chunks into a ChromaDB collection.
-
-    Args:
-        chunks: List of Chunk objects to index.
-        collection_name: Target collection name.
-        workspace_root: Workspace root path.
-    """
+    """Index chunks into pgvector (preferred) or ChromaDB."""
     if not chunks:
         return None
 
-    # Sanitize collection name for ChromaDB rules (3-63 chars, alphanumeric)
-    safe_name = "col_" + hashlib.md5(collection_name.encode("utf-8")).hexdigest()[:20]
+    if _use_pgvector():
+        result = await _pg_embed_and_index(chunks, collection_name, workspace_root)
+        if result is not None:
+            return result
+        logger.warning("pgvector indexing unavailable; falling back to ChromaDB")
 
+    safe_name = "col_" + hashlib.md5(collection_name.encode("utf-8")).hexdigest()[:20]
     client = _get_chroma_client(workspace_root)
     if client is None:
         logger.info("RAG: ChromaDB unavailable, returning %d unindexed chunks.", len(chunks))
         return None
 
     try:
-        # Get or create collection
         collection = client.get_or_create_collection(name=safe_name)
-
         documents = [c.text for c in chunks]
         metadatas = [c.metadata for c in chunks]
         ids = [f"chk_{i}_{hashlib.md5(c.text.encode('utf-8')).hexdigest()[:8]}" for i, c in enumerate(chunks)]
-
-        collection.add(
-            documents=documents,
-            metadatas=metadatas,
-            ids=ids,
-        )
+        collection.add(documents=documents, metadatas=metadatas, ids=ids)
         logger.info("RAG: Indexed %d chunks into collection '%s'", len(chunks), safe_name)
         return collection
     except Exception as exc:
@@ -261,22 +424,16 @@ async def query(
     top_k: int = 5,
     workspace_root: str = "",
 ) -> List[Chunk]:
-    """Query a ChromaDB collection for top_k relevant chunks matching question.
-
-    Args:
-        collection_name: Name of collection to query.
-        question: Question / search string.
-        top_k: Number of relevant chunks to retrieve.
-        workspace_root: Workspace root path.
-
-    Returns:
-        List of relevant Chunk objects.
-    """
+    """Query the active RAG backend for top_k relevant chunks."""
     if not question or not question.strip():
         question = "relevant code context"
 
-    safe_name = "col_" + hashlib.md5(collection_name.encode("utf-8")).hexdigest()[:20]
+    if _use_pgvector():
+        results = await _pg_query(collection_name, question, top_k, workspace_root)
+        if results:
+            return results
 
+    safe_name = "col_" + hashlib.md5(collection_name.encode("utf-8")).hexdigest()[:20]
     client = _get_chroma_client(workspace_root)
     if client is None:
         return []
@@ -292,16 +449,12 @@ async def query(
             return []
 
         actual_k = min(top_k, count)
-        results = collection.query(
-            query_texts=[question],
-            n_results=actual_k,
-        )
+        results = collection.query(query_texts=[question], n_results=actual_k)
 
         retrieved_chunks: List[Chunk] = []
         if results and "documents" in results and results["documents"]:
             docs = results["documents"][0]
             metas = results["metadatas"][0] if "metadatas" in results and results["metadatas"] else [{}] * len(docs)
-
             for doc, meta in zip(docs, metas):
                 retrieved_chunks.append(
                     Chunk(
@@ -312,7 +465,6 @@ async def query(
                         metadata=meta,
                     )
                 )
-
         logger.info("RAG: Retrieved %d chunks for query '%s'", len(retrieved_chunks), question[:40])
         return retrieved_chunks
     except Exception as exc:

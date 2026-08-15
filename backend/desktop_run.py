@@ -17,6 +17,11 @@ else:
     backend_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(backend_dir)
 
+os.environ.setdefault("MODE", "desktop")
+os.environ.setdefault("ENVIRONMENT", "desktop")
+os.environ.setdefault("ALLOW_DEGRADED_REDIS", "true")
+os.environ.setdefault("USE_SANDBOX", "false")
+
 os.chdir(project_root)
 sys.path.insert(0, backend_dir)
 sys.path.insert(0, project_root)

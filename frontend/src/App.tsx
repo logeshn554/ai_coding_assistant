@@ -9,6 +9,7 @@ import { useGit } from './core/git/GitContext';
 import { useAI } from './core/ai/AIContext';
 import { useSettings } from './core/settings/SettingsContext';
 import { useToast } from './core/toast/ToastContext';
+import { useTerminal } from './core/terminal/TerminalContext';
 import { LSPProvider } from './core/lsp/LSPContext';
 
 // Layout Components
@@ -42,6 +43,7 @@ import QuickOpen from './components/QuickOpen';
 import GoToSymbol from './components/GoToSymbol';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
+import TermsAndDisclaimerModal from './components/modals/TermsAndDisclaimerModal';
 
 // Custom Hooks & Types
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
@@ -102,6 +104,8 @@ function EditorShell() {
     sidebarTab,
     isAiPanelOpen,
   } = useUI();
+
+  const { isBottomPanelOpen } = useTerminal();
 
   const { gitChanges } = useGit();
   const { isSettingsOpen, setIsSettingsOpen, handleSettingsChanged } = useSettings();
@@ -208,18 +212,20 @@ function EditorShell() {
             </div>
 
             {/* Resizable Terminal Panel */}
-            <div
-              className="shrink-0 overflow-hidden flex flex-col relative"
-              style={{ borderTop: '1px solid var(--dp-border)', height: `${terminalHeight}px` }}
-            >
+            {isBottomPanelOpen && (
               <div
-                onMouseDown={() => setIsResizingTerminal(true)}
-                className="dp-resize-handle-v absolute top-0 left-0 right-0 h-[3px] z-50 select-none cursor-row-resize"
-              />
-              <ErrorBoundary title="Terminal Panel Error">
-                <BottomPanel />
-              </ErrorBoundary>
-            </div>
+                className="shrink-0 overflow-hidden flex flex-col relative"
+                style={{ borderTop: '1px solid var(--dp-border)', height: `${terminalHeight}px` }}
+              >
+                <div
+                  onMouseDown={() => setIsResizingTerminal(true)}
+                  className="dp-resize-handle-v absolute top-0 left-0 right-0 h-[3px] z-50 select-none cursor-row-resize"
+                />
+                <ErrorBoundary title="Terminal Panel Error">
+                  <BottomPanel />
+                </ErrorBoundary>
+              </div>
+            )}
           </div>
 
           {/* Secondary Side Bar (width controlled by aiPanelWidth) */}
@@ -283,6 +289,9 @@ function EditorShell() {
         onClose={() => setIsSettingsOpen(false)}
         onProfileChanged={handleSettingsChanged}
       />
+
+      {/* Terms & Beta Disclaimer Modal */}
+      <TermsAndDisclaimerModal />
 
       {/* Toast Overlay */}
       <div className="fixed bottom-6 right-5 z-50 flex flex-col gap-2 pointer-events-none" role="status" aria-live="polite">

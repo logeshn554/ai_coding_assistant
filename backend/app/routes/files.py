@@ -7,6 +7,7 @@ import glob
 import asyncio
 import logging
 from typing import Optional, List
+from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from ..state import workspace_state, logger
@@ -17,6 +18,7 @@ from ..files import (
     delete_workspace_item,
     safe_path,
     search_workspace_codebase,
+    replace_workspace_codebase,
     rollback_file
 )
 from ..transactional_fs import transactional_fs
@@ -133,13 +135,54 @@ async def rename_file(req: FileRenameRequest):
 
 
 @router.get("/api/files/search")
-async def get_codebase_search(query: str):
+async def get_codebase_search(
+    query: str,
+    case_sensitive: bool = False,
+    whole_word: bool = False,
+    is_regex: bool = False
+):
     try:
         if not workspace_state.root:
             return []
-        return await asyncio.to_thread(search_workspace_codebase, workspace_state.root, query)
+        return await asyncio.to_thread(
+            search_workspace_codebase,
+            workspace_state.root,
+            query,
+            case_sensitive,
+            whole_word,
+            is_regex
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class ReplaceAllRequest(BaseModel):
+    query: str
+    replace_text: str
+    case_sensitive: bool = False
+    whole_word: bool = False
+    is_regex: bool = False
+    target_paths: Optional[List[str]] = None
+
+@router.post("/api/files/replace-all")
+async def replace_all_in_codebase(req: ReplaceAllRequest):
+    try:
+        if not workspace_state.root:
+            raise HTTPException(status_code=400, detail="No workspace folder open.")
+        res = await asyncio.to_thread(
+            replace_workspace_codebase,
+            workspace_state.root,
+            req.query,
+            req.replace_text,
+            req.case_sensitive,
+            req.whole_word,
+            req.is_regex,
+            req.target_paths
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @router.post("/api/rollback", response_model=RollbackResponse)

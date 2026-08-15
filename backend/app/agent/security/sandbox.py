@@ -694,10 +694,22 @@ class SandboxManager:
             # Verify Docker availability
             from backend.app.tools.terminal_tool import _is_docker_available
             if not _is_docker_available():
-                if is_prod or settings.USE_SANDBOX:
-                    raise RuntimeError("Production Sandbox Unavailable: Docker daemon not reachable or CLI missing. Failing closed.")
+                if is_prod or settings.USE_SANDBOX or is_server:
+                    raise RuntimeError(
+                        "Sandbox unavailable: Docker daemon not reachable or CLI missing. "
+                        "Install Docker Desktop or set USE_SANDBOX=False only in trusted local development."
+                    )
                 else:
-                    logger.warning("Docker sandbox requested but not available in development. Falling back to local host sandbox.")
+                    import warnings
+                    warnings.warn(
+                        "Running commands on HOST (no sandbox). "
+                        "Never open untrusted repos in this mode.",
+                        stacklevel=3,
+                    )
+                    logger.warning(
+                        "Running commands on host because Docker sandbox is unavailable. "
+                        "Never use this mode with untrusted repositories."
+                    )
                     sandbox = LocalSandboxExecutor(workspace_id, run_id, policy)
             else:
                 sandbox = DockerSandboxExecutor(workspace_id, run_id, policy)

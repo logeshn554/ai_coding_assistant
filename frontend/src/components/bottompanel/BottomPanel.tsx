@@ -19,6 +19,7 @@ export const BottomPanel: React.FC = () => {
   const {
     bottomTab, setBottomTab,
     terminalHeight, setTerminalHeight,
+    setIsBottomPanelOpen,
     consoleLogs, activeProcesses,
     activeTerminalCommand, activeTerminalStatus,
     activeTerminalExitCode, activeTerminalElapsed
@@ -111,9 +112,9 @@ export const BottomPanel: React.FC = () => {
             <ChevronUp className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={() => setTerminalHeight(100)}
+            onClick={() => setIsBottomPanelOpen(false)}
             className="w-6 h-6 flex items-center justify-center rounded text-[var(--dp-text-muted)] hover:text-[var(--dp-text-primary)] hover:bg-white/5 transition-colors cursor-pointer"
-            title="Minimize Panel"
+            title="Close Panel"
           >
             <X className="w-3.5 h-3.5" />
           </button>

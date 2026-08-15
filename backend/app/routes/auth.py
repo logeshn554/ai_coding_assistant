@@ -39,8 +39,8 @@ def get_auth_token(request: Request):
     return {"token": SESSION_TOKEN}
 
 @router.post("/api/auth/ticket")
-def issue_ws_ticket(request: Request):
+async def issue_ws_ticket(request: Request):
     from ..state import create_ws_ticket
-    ticket = create_ws_ticket()
+    ticket = await create_ws_ticket()
     return {"ticket": ticket}
 

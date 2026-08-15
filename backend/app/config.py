@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     DOCKER_MODE: bool = False
     
     # Storage & Database
-    DATABASE_URL: str = "sqlite:///devpilot.db"
+    DATABASE_URL: str = ""
     REDIS_URL: str = "redis://localhost:6379"
     
     # LLM & AI Providers
@@ -39,19 +39,19 @@ class Settings(BaseSettings):
     
     # Auto QA & Dev Server Settings
     AUTO_INSPECT_ON_SERVER_START: bool = False
-
+ 
     # Cost Circuit Breaker
     # Soft advisory — user is prompted to approve continuation above this threshold
     COST_LIMIT_USD: float = 5.0
     # Hard ceiling — session is forcibly terminated above this amount, no user override
     DEVPILOT_HARD_COST_LIMIT: float = 10.0
-
+ 
     # Web Search Fallback Settings
     WEB_SEARCH_FALLBACK_ENABLED: bool = False
     REPEAT_ERROR_THRESHOLD: int = 2
-
+ 
     # Docker Sandbox settings
-    USE_SANDBOX: bool = False
+    USE_SANDBOX: bool = True
     ENVIRONMENT: str = "development"
     MODE: str = "desktop"  # desktop | server
     # Docker image used for sandbox execution. Pin to a digest for reproducibility:
@@ -59,26 +59,50 @@ class Settings(BaseSettings):
     # Run `docker inspect python:3.12-slim --format '{{index .RepoDigests 0}}'`
     # after pulling to get the current digest, then set SANDBOX_IMAGE in .env.
     SANDBOX_IMAGE: str = "python:3.12-slim"
-
+ 
+    # Dual-LLM critic (DebateEngine). Leave empty to skip critic reviews.
+    # Prefer a saved profile id/name; otherwise treat as model name + CRITIC_API_KEY.
+    CRITIC_MODEL_PROFILE: str = ""
+    CRITIC_API_KEY: str = ""
+    CRITIC_API_FORMAT: str = ""
+    CRITIC_BASE_URL: str = ""
+ 
+    # Default token pricing (USD per million tokens) when profile omits rates.
+    # Override via profile input_cost_per_m / output_cost_per_m or env
+    # DEVPILOT_INPUT_COST_PER_M / DEVPILOT_OUTPUT_COST_PER_M.
+    DEFAULT_INPUT_COST_PER_M: float = 3.0
+    DEFAULT_OUTPUT_COST_PER_M: float = 15.0
+ 
+    # RAG backend: "pgvector" | "chroma" | "auto" (pgvector when Postgres URL, else chroma)
+    RAG_BACKEND: str = "auto"
+ 
     # Logging settings
     LOG_JSON: bool = False
     LOG_LEVEL: str = "INFO"
-
+ 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore"
     )
-
+ 
     def __init__(self, **values):
         super().__init__(**values)
+        if not self.DATABASE_URL:
+            if self.MODE == "server" or self.ENVIRONMENT == "production":
+                raise RuntimeError("DATABASE_URL must be explicitly configured in server or production mode. SQLite is not allowed.")
+            else:
+                self.DATABASE_URL = "sqlite+aiosqlite:///devpilot.db"
+
+        if (self.MODE == "server" or self.ENVIRONMENT == "production") and "sqlite" in self.DATABASE_URL.lower():
+            raise RuntimeError(
+                "SQLite is not safe for server mode or production environment. Set DATABASE_URL to a PostgreSQL connection string."
+            )
         if self.ENVIRONMENT == "production":
             jwt_env = os.getenv("DEVPILOT_JWT_SECRET") or os.getenv("JWT_SECRET") or self.JWT_SECRET
             if not jwt_env:
                 raise RuntimeError("JWT_SECRET must be explicitly set via environment variable in production mode.")
             self.JWT_SECRET = jwt_env
-            if "sqlite" in self.DATABASE_URL.lower() or not self.DATABASE_URL:
-                raise RuntimeError("PostgreSQL is required in production mode. SQLite is not allowed. Failing fast.")
             if self.DEBUG:
                 raise RuntimeError("DEBUG mode is forbidden in production mode. Failing fast.")
             if not self.USE_SANDBOX:
@@ -809,4 +833,4 @@ class ConfigManager:
 
 config_manager = ConfigManager()
 
-
+

@@ -233,6 +233,21 @@ class AgentRuntime:
         session.state = new_state
         logger.info(f"Session {session.session_id} state transition: {curr.value} -> {new_state.value}")
 
+        try:
+            from backend.app.infrastructure.observability.telemetry import TelemetryManager
+            tracer = TelemetryManager.get_tracer()
+            with tracer.start_as_current_span(
+                "agent.state_transition",
+                attributes={
+                    "from_state": curr.value,
+                    "to_state": new_state.value if isinstance(new_state, AgentState) else str(new_state),
+                    "session_id": session.session_id,
+                },
+            ):
+                pass
+        except Exception:
+            pass
+
         from backend.app.infrastructure.database.connection import async_session_factory
         from backend.app.infrastructure.database.models import AgentRun
         from sqlalchemy import update
@@ -347,6 +362,11 @@ class AgentRuntime:
         session = self._sessions[session_id]
         cancel_event = self._cancellation_events.setdefault(session_id, asyncio.Event())
         cancel_event.clear()
+        try:
+            from backend.app.state import clear_run_cancelled, is_run_cancelled
+            await clear_run_cancelled(session_id)
+        except Exception:
+            pass
 
         has_checkpoint = await self.load_checkpoint(session)
         
@@ -436,7 +456,9 @@ class AgentRuntime:
                 step += 1
                 session.current_step = step
 
-                if cancel_event.is_set():
+                if cancel_event.is_set() or await self._is_cancelled(session_id):
+                    if not cancel_event.is_set():
+                        cancel_event.set()
                     await self.transition_state(session, AgentState.CANCELLED, _emit)
                     _emit(AgentEvent(session_id, EVENT_AGENT_CANCELLED, {"step": step}))
                     return AgentResult(
@@ -515,7 +537,9 @@ class AgentRuntime:
 
                 # Process Tool Calls
                 for tc in model_resp.tool_calls:
-                    if cancel_event.is_set():
+                    if cancel_event.is_set() or await self._is_cancelled(session_id):
+                        if not cancel_event.is_set():
+                            cancel_event.set()
                         break
 
                     await self.transition_state(session, AgentState.WAITING_FOR_TOOL, _emit)
@@ -806,6 +830,42 @@ class AgentRuntime:
             _emit(AgentEvent(session_id, EVENT_VERIFICATION_COMPLETED, {"status": session.verification_status.value, "command": v_res.command}))
             await self.save_checkpoint(session, "after_verification")
 
+            # 3b. Dual-LLM critic debate on the accumulated change set
+            try:
+                from backend.app.debate.debate_engine import debate_engine
+                from backend.app.debate.consensus import consensus_engine
+
+                diff_summary = json.dumps(tx_workspace.change_set.to_dict(), default=str)[:6000]
+                critiques = await debate_engine.hold_debate(diff_summary)
+                if critiques:
+                    approved = consensus_engine.resolve_consensus(critiques)
+                    _emit(AgentEvent(
+                        session_id,
+                        "agent.debate.completed",
+                        {
+                            "approved": approved,
+                            "critiques": [
+                                {
+                                    "agent": c.agent_name,
+                                    "score": c.score,
+                                    "blocking": c.is_blocking,
+                                    "feedback": c.feedback,
+                                }
+                                for c in critiques
+                            ],
+                        },
+                    ))
+                    if not approved:
+                        low = min(critiques, key=lambda c: c.score)
+                        session.errors.append(f"Debate rejected: {low.feedback}")
+                        # Stay recoverable: VERIFYING -> REPAIRING is valid; final
+                        # assignment below will mark FAILED if unrepaired.
+                        if session.state == AgentState.VERIFYING:
+                            await self.transition_state(session, AgentState.REPAIRING, _emit)
+                        session.verification_status = VerificationStatus.FAILED
+            except Exception as debate_err:
+                logger.warning(f"DebateEngine skipped due to error: {debate_err}")
+
             # 4. Acceptance Criteria & Agent Reviewer
             changed_files_list = list(tx_workspace.change_set.modified_files | tx_workspace.change_set.created_files)
             review_res = AgentReviewer.review_task(contract, changed_files_list, v_res)
@@ -884,10 +944,27 @@ class AgentRuntime:
                 events=events_collected,
             )
 
+    async def _is_cancelled(self, session_id: str) -> bool:
+        """Check in-process cancel event plus Redis cancel flag (multi-worker safe)."""
+        local = self._cancellation_events.get(session_id)
+        if local and local.is_set():
+            return True
+        try:
+            from backend.app.state import is_run_cancelled
+            return await is_run_cancelled(session_id)
+        except Exception:
+            return False
+
     async def cancel(self, session_id: str) -> None:
         """Cancel an active agent session (Step 11 requirement)."""
         if session_id in self._cancellation_events:
             self._cancellation_events[session_id].set()
+
+        try:
+            from backend.app.state import set_run_cancelled
+            await set_run_cancelled(session_id)
+        except Exception as e:
+            logger.warning(f"Failed to persist cancel flag for {session_id}: {e}")
 
         # Stop active process supervisor / global processes on cancellation
         try:

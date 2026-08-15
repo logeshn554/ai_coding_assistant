@@ -30,17 +30,27 @@ class SecureFileSystem:
         if not path_str:
             raise ValueError("Target path cannot be empty")
 
-        if not self.guard.is_within_workspace(path_str):
-            raise PermissionError(
-                f"Path traversal or boundary escape blocked: '{path_str}' is outside workspace '{self.workspace_root}'"
-            )
-
         if not os.path.isabs(path_str):
-            full_path = os.path.join(self.workspace_root, path_str)
+            abs_path = os.path.join(self.workspace_root, path_str)
         else:
-            full_path = path_str
+            abs_path = path_str
 
-        real_path = os.path.realpath(full_path)
+        # MUST use realpath to resolve symlinks BEFORE boundary check
+        real_path = os.path.realpath(abs_path)
+        real_root = os.path.realpath(self.workspace_root)
+
+        if os.name == "nt":
+            norm_path = os.path.normcase(real_path)
+            norm_root = os.path.normcase(real_root)
+        else:
+            norm_path = real_path
+            norm_root = real_root
+
+        # Ensure path is strictly inside workspace or exactly the workspace
+        if not norm_path.startswith(norm_root + os.sep) and norm_path != norm_root:
+            raise PermissionError(
+                f"Path escapes workspace: {path_str!r}"
+            )
         return real_path
 
     def read_text(self, target_path: Union[str, Path], encoding: str = "utf-8") -> str:

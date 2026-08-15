@@ -700,16 +700,17 @@ async def websocket_chat(
     is_authenticated = False
     ticket_identity = None
     if ticket:
-        ticket_identity = verify_ws_ticket(ticket)
+        ticket_identity = await verify_ws_ticket(ticket)
         if ticket_identity:
             is_authenticated = True
-    elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
-        is_authenticated = True
-        ticket_identity = {"user_id": "default-user", "tenant_id": "default-org"}
     elif not is_prod_server:
-        # In desktop / development mode, local IDE connections are authenticated by default
-        is_authenticated = True
-        ticket_identity = {"user_id": "default-user", "tenant_id": "default-org"}
+        if token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+            is_authenticated = True
+            ticket_identity = {"user_id": "default-user", "tenant_id": "default-org"}
+        else:
+            # In desktop / development mode, local IDE connections are authenticated by default
+            is_authenticated = True
+            ticket_identity = {"user_id": "default-user", "tenant_id": "default-org"}
 
     if not is_authenticated:
         await request.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid, expired, or missing connection ticket."}))
@@ -748,11 +749,8 @@ async def websocket_chat(
                         user_id=authenticated_user_id,
                     )
                     await db.commit()
-            elif not is_prod_server:
-                # In desktop development mode, allow session access
-                pass
             else:
-                await request.send_text(json.dumps({"type": "error", "message": exc.detail}))
+                await request.send_text(json.dumps({"type": "error", "message": "You don't own this session."}))
                 await request.close(code=4403)
                 return
 
@@ -1181,6 +1179,22 @@ async def websocket_chat(
                 edited_command = msg.get("command", None)
                 hunk_decisions = msg.get("hunk_decisions", None)
                 session.resolve_confirmation(tool_call_id, approved, scope, edited_command, hunk_decisions)
+
+                if is_prod_server and not redis_client.use_fallback:
+                    try:
+                        client = await redis_client._ensure_client()
+                        confirm_channel = f"channel:run-confirmations:{session.session_id}"
+                        payload = {
+                            "tool_call_id": tool_call_id,
+                            "approved": approved,
+                            "scope": scope,
+                            "args": msg.get("args"),
+                            "command": edited_command,
+                            "hunk_decisions": hunk_decisions
+                        }
+                        await client.publish(confirm_channel, json.dumps(payload))
+                    except Exception as redis_err:
+                        logger.error(f"Failed to publish confirm_response to Redis: {redis_err}")
                 
             elif msg_type == "change_profile":
                 new_profile = config_manager.get_active_profile()

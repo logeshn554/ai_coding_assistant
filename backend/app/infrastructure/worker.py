@@ -66,6 +66,103 @@ class RunLock:
             redis_client._fallback_expiry.pop(lock_key, None)
 
 
+class WorkerSessionProxy:
+    def __init__(self, run_id: str, workspace_root: str, profile: dict):
+        self.session_id = run_id
+        self.workspace_root = workspace_root
+        self.profile = profile
+        self.conversation_history = []
+        self.pending_confirmations = {}
+        self.state = None
+        self.audit_log = []
+        
+        from backend.app.permissions import PermissionManager
+        from backend.app.state import config_manager
+        self.permission_manager = PermissionManager(config_manager, workspace_root)
+
+    def log_audit(self, action: str, resource: Any, status: str, details: str = "") -> None:
+        record = {
+            "timestamp": datetime.datetime.utcnow().isoformat(),
+            "action": action,
+            "resource": str(resource),
+            "status": status,
+            "details": details
+        }
+        self.audit_log.append(record)
+        logger.info(f"[Audit Log] Action: {action}, Resource: {resource}, Status: {status}, Details: {details}")
+
+    async def send_ws_message(self, message: dict) -> None:
+        evt_type = message.get("type", "unknown")
+        await EventPublisher.publish(self.session_id, evt_type, message)
+
+    async def request_tool_confirmation(
+        self,
+        tool_call_id: str,
+        tool_name: str,
+        arguments: dict,
+    ) -> tuple[bool, dict | None]:
+        req_payload = {
+            "type": "permission_request",
+            "tool_call_id": tool_call_id,
+            "tool_name": tool_name,
+            "args": arguments,
+        }
+        if tool_name == "run_terminal_command":
+            req_payload["command"] = arguments.get("command", "")
+            req_payload["explanation"] = f"Runs the terminal command: `{arguments.get('command', '')}`"
+
+        await self.send_ws_message(req_payload)
+
+        confirm_channel = f"channel:run-confirmations:{self.session_id}"
+        approved = False
+        modified_args = None
+
+        if not redis_client.use_fallback:
+            try:
+                from backend.app.state import is_run_cancelled
+                client = await redis_client._ensure_client()
+                pubsub = client.pubsub()
+                await pubsub.subscribe(confirm_channel)
+                
+                start_time = asyncio.get_event_loop().time()
+                timeout = 300.0  # 5 minutes
+                
+                while True:
+                    if await is_run_cancelled(self.session_id):
+                        logger.warning(f"Worker execution for run {self.session_id} cancelled during tool approval.")
+                        break
+
+                    elapsed = asyncio.get_event_loop().time() - start_time
+                    if elapsed >= timeout:
+                        logger.warning(f"Worker confirmation timeout for run {self.session_id}, tool {tool_call_id}")
+                        break
+                    
+                    msg = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                    if msg:
+                        data = json.loads(msg["data"])
+                        if data.get("tool_call_id") == tool_call_id:
+                            approved = bool(data.get("approved", False))
+                            args_payload = data.get("args")
+                            if approved:
+                                if tool_name == "run_terminal_command" and "command" in data:
+                                    modified_args = {"command": data["command"]}
+                                elif isinstance(args_payload, dict):
+                                    modified_args = args_payload
+                                else:
+                                    modified_args = arguments
+                            break
+                    await asyncio.sleep(0.5)
+                
+                await pubsub.unsubscribe(confirm_channel)
+            except Exception as e:
+                logger.error(f"Error in worker request_tool_confirmation Redis loop: {e}")
+        else:
+            logger.warning("Redis client fallback active: worker cannot await user confirmation. Rejecting high-risk tool call.")
+            return False, None
+
+        return approved, modified_args
+
+
 class AgentWorker:
     def __init__(self, worker_id: Optional[str] = None):
         self.worker_id = worker_id or f"worker_{uuid.uuid4().hex[:8]}"
@@ -418,6 +515,7 @@ class AgentWorker:
                 existing_messages.append({"role": "user", "content": run.task_description})
 
             # Run the canonical execution path
+            proxy_session = WorkerSessionProxy(run_id, workspace_root, profile)
             res = await runtime.run(
                 session_id=run_id,
                 task=task_obj,
@@ -425,9 +523,22 @@ class AgentWorker:
                 event_callback=on_event,
                 llm_provider_func=llm_provider,
                 conversation_messages=existing_messages,
+                agent_session=proxy_session,
             )
 
             async with async_session_factory() as db:
+                # Persist updated conversation history back to the database
+                from backend.app.infrastructure.database.models import Conversation
+                conv_stmt = (
+                    update(Conversation)
+                    .where(Conversation.id == run.conversation_id)
+                    .values(
+                        messages_json=json.dumps(existing_messages),
+                        updated_at=datetime.datetime.utcnow(),
+                    )
+                )
+                await db.execute(conv_stmt)
+
                 run_repo = AgentRunRepository(db)
                 db_run = await run_repo.get_run(job["organization_id"], run_id)
                 if db_run:

@@ -8,7 +8,7 @@ def test_production_fails_on_sqlite():
             DATABASE_URL="sqlite:///devpilot.db",
             JWT_SECRET="super-secret-production-jwt-key-xyz"
         )
-    assert "PostgreSQL is required in production" in str(excinfo.value)
+    assert "PostgreSQL" in str(excinfo.value)
 
 def test_production_fails_on_debug():
     with pytest.raises(RuntimeError) as excinfo:

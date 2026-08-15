@@ -8,10 +8,6 @@ import {
 } from 'lucide-react';
 import { useAI } from '../core/ai/AIContext';
 import { getAgents, getAgentPrompts, addAgent, updateAgentPrompt } from '../api';
-import ThinkingState from './chat/ThinkingState';
-import ToolChips from './chat/ToolChips';
-import { ApprovalCard } from './chat/ApprovalCard';
-import SelectionActions from './chat/SelectionActions';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -417,52 +413,8 @@ export default function AgentsSidebar() {
         </div>
       )}
 
-      {/* Agent Tiers & Interactive Trace Showcase */}
+      {/* Agent Tiers List */}
       <div className="flex-1 overflow-y-auto p-2">
-        {/* Live Redesigned Trace Preview Card */}
-        <div className="mb-3 p-2.5 rounded-lg border border-[var(--dp-border)] bg-[#1A1B1E]/60 shadow-sm">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-300">
-              Expandable Trace UI
-            </span>
-          </div>
-          <ThinkingState showVariantTabs={true} variant="Steps" />
-        </div>
-
-        {/* Tool Chips Preview Card */}
-        <div className="mb-3 p-2.5 rounded-lg border border-[var(--dp-border)] bg-[#1A1B1E]/60 shadow-sm">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Code2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-300">
-              Compact Tool Chips
-            </span>
-          </div>
-          <ToolChips />
-        </div>
-
-        {/* Human-in-the-loop Approval Preview Card */}
-        <div className="mb-3 p-2.5 rounded-lg border border-[var(--dp-border)] bg-[#1A1B1E]/60 shadow-sm">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Shield className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-300">
-              Interactive Approval Card
-            </span>
-          </div>
-          <ApprovalCard />
-        </div>
-
-        {/* Selection Actions Contextual AI Bar Preview Card */}
-        <div className="mb-3 p-2.5 rounded-lg border border-[var(--dp-border)] bg-[#1A1B1E]/60 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-1.5 mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-300">
-              Selection AI Actions Bar
-            </span>
-          </div>
-          <SelectionActions />
-        </div>
-
         {loading ? (
           <div className="flex flex-col items-center justify-center h-32 gap-2 text-gray-500">
             <Loader2 className="w-4 h-4 animate-spin text-[var(--dp-accent)]" />

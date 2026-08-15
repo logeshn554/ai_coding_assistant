@@ -2,6 +2,8 @@ import os
 import sys
 import logging
 import asyncio
+import uuid
+from contextvars import ContextVar
 
 # Add agent subdirectory to path to support consolidated imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -43,6 +45,16 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Redis startup check raised unexpectedly: {e}")
         if settings.ENVIRONMENT == "production" and not getattr(settings, "ALLOW_DEGRADED_REDIS", False):
             raise RuntimeError(f"FATAL: Redis connection failed in production mode: {e}") from e
+
+    # 3. Sandbox verification
+    is_prod_server = (settings.MODE == "server" and settings.ENVIRONMENT == "production")
+    if settings.USE_SANDBOX and is_prod_server:
+        from .tools.terminal_tool import _is_docker_available
+        if not _is_docker_available():
+            raise RuntimeError(
+                "Sandbox verification failed: Docker daemon is not reachable or CLI is missing, "
+                "but USE_SANDBOX is configured or server is starting in production mode."
+            )
 
     # Evict old ChromaDB indexes to keep disk usage bounded
     try:
@@ -129,6 +141,27 @@ async def session_middleware(request: Request, call_next):
         return response
     finally:
         session_id_var.reset(token)
+
+
+# ── Request Correlation ID Middleware ─────────────────────────────────────────
+# Every request gets a unique X-Request-ID injected into the logging context so
+# all log lines emitted during that request are automatically correlated.
+_correlation_id_var: ContextVar[str] = ContextVar("correlation_id", default="")
+
+@app.middleware("http")
+async def correlation_middleware(request: Request, call_next):
+    req_id = (
+        request.headers.get("X-Request-ID")
+        or request.headers.get("x-request-id")
+        or str(uuid.uuid4())
+    )
+    token = _correlation_id_var.set(req_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = req_id
+        return response
+    finally:
+        _correlation_id_var.reset(token)
 
 from .gateway.auth import auth_gateway
 from .gateway.rate_limiter import rate_limiter, RateLimitResult
@@ -217,7 +250,10 @@ if allow_all:
     )
 
 ALLOWED_HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]
-ALLOWED_HTTP_HEADERS = ["Content-Type", "Authorization", "X-Session-ID", "x-session-id", "X-Requested-With", "Accept", "Origin"]
+ALLOWED_HTTP_HEADERS = [
+    "Content-Type", "Authorization", "X-Session-ID", "x-session-id",
+    "X-Requested-With", "Accept", "Origin", "X-Request-ID",
+]
 
 app.add_middleware(
     CORSMiddleware,

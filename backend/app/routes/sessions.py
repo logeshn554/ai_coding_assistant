@@ -7,7 +7,7 @@ import json
 import logging
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -17,6 +17,7 @@ from ..db import (
     SessionModel,
     async_session,
     first_user_preview,
+    resolve_session_for_identity,
 )
 from ..state import workspace_state
 
@@ -112,14 +113,32 @@ def _session_to_summary(s: SessionModel) -> SessionSummary:
 
 @router.get("/api/sessions", response_model=SessionListResponse)
 async def list_sessions(
+    request: Request,
     workspace: Optional[str] = Query(
         None, description="Filter by workspace root; defaults to current workspace"
     ),
 ) -> SessionListResponse:
     """List chat sessions, newest first, optionally filtered by workspace."""
+    from ..config import settings
+    is_prod_server = (settings.ENVIRONMENT.lower() == "production" and settings.MODE == "server")
+
+    identity = getattr(request.state, "identity", None)
+    org_id = getattr(getattr(identity, "tenant", None), "tenant_id", None) if identity else None
+    user_id = getattr(identity, "user_id", None) if identity else None
+
     root = (workspace or workspace_state.root or "").strip()
     async with async_session() as db:
         stmt = select(SessionModel).options(selectinload(SessionModel.messages)).order_by(SessionModel.updated_at.desc())
+        if is_prod_server:
+            if org_id:
+                stmt = stmt.where(SessionModel.organization_id == org_id)
+            if user_id:
+                stmt = stmt.where(SessionModel.user_id == user_id)
+        elif org_id and org_id != "default-org":
+            stmt = stmt.where(SessionModel.organization_id == org_id)
+        elif user_id and user_id != "default-user":
+            stmt = stmt.where(SessionModel.user_id == user_id)
+
         res = await db.execute(stmt)
         sessions = list(res.scalars().all())
 
@@ -137,8 +156,9 @@ async def list_sessions(
     "/api/sessions/{session_id}/messages",
     response_model=SessionMessagesResponse,
 )
-async def get_session_messages(session_id: str) -> SessionMessagesResponse:
+async def get_session_messages(session_id: str, request: Request) -> SessionMessagesResponse:
     """Return all messages for a session."""
+    await resolve_session_for_identity(session_id, request=request)
     async with async_session() as db:
         stmt = select(SessionModel).options(selectinload(SessionModel.messages)).where(SessionModel.id == session_id)
         res = await db.execute(stmt)
@@ -154,8 +174,9 @@ async def get_session_messages(session_id: str) -> SessionMessagesResponse:
 
 
 @router.delete("/api/sessions/{session_id}")
-async def delete_session(session_id: str):
+async def delete_session(session_id: str, request: Request):
     """Delete a chat session from history."""
+    await resolve_session_for_identity(session_id, request=request)
     async with async_session() as db:
         stmt = select(SessionModel).where(SessionModel.id == session_id)
         res = await db.execute(stmt)

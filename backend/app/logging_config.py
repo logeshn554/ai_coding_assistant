@@ -20,7 +20,16 @@ class JSONFormatter(logging.Formatter):
             "module": record.module,
             "lineno": record.lineno,
         }
-        
+
+        # Inject X-Request-ID correlation ID when available (set by correlation_middleware)
+        try:
+            from .main import _correlation_id_var  # lazy import — avoids circular dep
+            req_id = _correlation_id_var.get("")
+            if req_id:
+                log_data["request_id"] = req_id
+        except Exception:
+            pass
+
         # Include session/context info if added via extra keys
         # We can extract any dynamic fields attached to the LogRecord dict
         for key, val in record.__dict__.items():
@@ -31,11 +40,11 @@ class JSONFormatter(logging.Formatter):
                 "processName", "process", "message"
             }:
                 log_data[key] = val
-                
+
         # Append traceback details if exception info is available
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
-            
+
         return json.dumps(log_data)
 
     def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:

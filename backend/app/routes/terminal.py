@@ -21,7 +21,7 @@ async def websocket_terminal(
     from ..config import settings
     is_prod_server = (settings.ENVIRONMENT.lower() == "production" and settings.MODE == "server")
     is_authenticated = False
-    if ticket and verify_ws_ticket(ticket):
+    if ticket and await verify_ws_ticket(ticket):
         is_authenticated = True
     elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         is_authenticated = True

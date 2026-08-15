@@ -16,7 +16,13 @@ logger = logging.getLogger("devpilot.observability_middleware")
 async def observability_middleware(request: Request, call_next):
     """Middleware that injects correlation context, records request latencies, and tracks status distributions."""
     # Track correlation IDs across HTTP layer (Section 2 requirement)
-    corr_id = request.headers.get("x-correlation-id") or request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
+    corr_id = (
+        request.headers.get("x-correlation-id")
+        or request.headers.get("X-Correlation-ID")
+        or request.headers.get("x-request-id")
+        or request.headers.get("X-Request-ID")
+        or str(uuid.uuid4())
+    )
     correlation_id_var.set(corr_id)
     
     organization_id_var.set(request.headers.get("x-organization-id"))
@@ -64,6 +70,7 @@ async def observability_middleware(request: Request, call_next):
             )
             
             response.headers["X-Correlation-ID"] = corr_id
+            response.headers["X-Request-ID"] = corr_id
             return response
         except Exception as exc:
             TelemetryManager.increment_counter(
