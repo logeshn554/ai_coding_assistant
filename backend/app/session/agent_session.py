@@ -1190,6 +1190,12 @@ class AgentSession:
                 effective_max_turns = self.max_turns
                 self._agent_tool_call_count = 0
 
+                _history_for_runtime = self._trim_history_for_context(
+                    self.conversation_history,
+                    self._get_system_prompt("Agent"),
+                    self._get_tools_for_mode("Agent")
+                )
+
                 run_res = await self.agent_runtime.run(
                     session_id=self.session_id,
                     task=text,
@@ -1197,7 +1203,8 @@ class AgentSession:
                     auto_apply=auto_apply,
                     max_turns=effective_max_turns,
                     llm_provider_func=agent_llm_provider,
-                    agent_session=self
+                    agent_session=self,
+                    conversation_messages=_history_for_runtime,
                 )
 
                 # Set task memory files written

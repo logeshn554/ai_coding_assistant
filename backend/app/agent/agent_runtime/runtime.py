@@ -426,8 +426,42 @@ class AgentRuntime:
 
         # Initialize mutable conversation message list for multi-turn LLM dialogue
         if conversation_messages is None:
+            context_block = ""
+            if not has_checkpoint and 'agent_context' in locals():
+                try:
+                    ctx_parts: list[str] = []
+                    for item in agent_context.items:
+                        header = f"### {item.file}"
+                        if item.line_start and item.line_end:
+                            header += f" (lines {item.line_start}-{item.line_end})"
+                        ctx_parts.append(f"{header}\n```\n{item.content}\n```")
+                    if ctx_parts:
+                        context_block = (
+                            "\n\n<workspace_context>\n"
+                            + "\n\n".join(ctx_parts)
+                            + "\n</workspace_context>\n\n"
+                        )
+                    elif session.workspace_root and os.path.isdir(session.workspace_root):
+                        # Fallback: plain directory listing when context engine finds nothing
+                        entries: list[str] = []
+                        for root_dir, dirs, files in os.walk(session.workspace_root):
+                            dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
+                            rel = os.path.relpath(root_dir, session.workspace_root)
+                            for f in files:
+                                entries.append(os.path.join(rel, f) if rel != "." else f)
+                            if len(entries) > 200:
+                                break
+                        if entries:
+                            context_block = (
+                                "\n\n<workspace_context>\n### Workspace file listing\n"
+                                + "\n".join(f"- {e}" for e in entries[:200])
+                                + "\n</workspace_context>\n\n"
+                            )
+                except Exception as ctx_err:
+                    logger.warning(f"Failed to build context block: {ctx_err}")
+
             conversation_messages = [
-                {"role": "user", "content": task_obj.description}
+                {"role": "user", "content": context_block + task_obj.description}
             ]
 
         # Build tool schemas list from ToolRegistry if not provided

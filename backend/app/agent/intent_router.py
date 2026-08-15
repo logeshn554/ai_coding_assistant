@@ -99,6 +99,13 @@ _REFACTOR_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+_READ_REPO_PATTERNS = re.compile(
+    r"\b(read|scan|index|load|ingest|understand|explore|walk(\s+through)?|map|overview|summarise|summarize)\b"
+    r".{0,30}\b(repo|repository|codebase|project|workspace|code|files?|everything)\b"
+    r"|\b(show|list|give me).{0,20}\b(files?|structure|overview|summary)\b",
+    re.IGNORECASE,
+)
+
 _IMPLEMENT_SPEC_PATTERNS = re.compile(
     r"\b(implement|build|create|develop|code|write)\b.*\.(md|txt|pdf|doc|docx)\b|"
     r"\b(according\s+to|based\s+on|following\s+the|as\s+per)\s+\S+\.(md|txt)\b",
@@ -196,13 +203,17 @@ class IntentRouter:
 
         # ── 3. EXPLAIN ───────────────────────────────────────────────────
         if _EXPLAIN_PATTERNS.search(text_stripped):
+            _has_followup_pronoun = bool(re.search(
+                r"\b(these|this|them|it|those|above|the\s+code|the\s+repo|the\s+file|the\s+project)\b",
+                text_stripped, re.IGNORECASE,
+            ))
             return IntentResult(
                 intent=IntentType.EXPLAIN,
                 confidence=0.92,
                 referenced_files=file_refs,
                 referenced_symbols=symbol_refs,
                 spec_file=None,
-                needs_context=bool(file_refs or symbol_refs),
+                needs_context=bool(file_refs or symbol_refs or _has_followup_pronoun),
                 needs_plan=False,
                 explanation="User wants an explanation or answer.",
             )
@@ -272,9 +283,23 @@ class IntentRouter:
                 explanation="User wants to refactor or restructure code.",
             )
 
+        # ── 8b. READ_REPO / whole-workspace exploration ──────────────────
+        if _READ_REPO_PATTERNS.search(text_stripped) or text_stripped.startswith("/learn"):
+            return IntentResult(
+                intent=IntentType.REVIEW,
+                confidence=0.80,
+                referenced_files=file_refs,
+                referenced_symbols=symbol_refs,
+                spec_file=None,
+                needs_context=True,
+                needs_plan=False,
+                explanation="User wants to explore or read the whole workspace/repo.",
+            )
+
         # ── 9. GENERAL (fallback) ────────────────────────────────────────
         confidence = 0.70
-        needs_context = bool(file_refs or symbol_refs)
+        # Always collect context for general/vague queries so agent has workspace content
+        needs_context = True
         needs_plan = False  # Disabled task planning
 
         return IntentResult(

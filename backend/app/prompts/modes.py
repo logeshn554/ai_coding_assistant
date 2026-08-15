@@ -34,6 +34,13 @@ AGENT_MODE_INSTRUCTIONS = """
 │ Full execution. All six tools available.                            │
 │                                                                     │
 │ STEP 0 — CLASSIFY THE REQUEST FIRST (every task, before any tool):  │
+│  • EXPLORE / ANALYSE / EXPLAIN: any request to read, understand,    │
+│    analyse, explain, summarise, learn, or walk through the repo,    │
+│    a file, or a feature — including vague follow-ups like           │
+│    "explain these", "read my repo", "what does this do", /learn.   │
+│    → MUST call list_directory on workspace root FIRST, then         │
+│    read_file on every relevant file before writing any response.    │
+│    Never answer from context alone — always verify via tools.       │
 │  • TRIVIAL: a single, self-contained file with no dependencies on   │
 │    project state (e.g. "create a README", "write a .gitignore").    │
 │    → Act immediately with write_file. No exploration needed.        │
