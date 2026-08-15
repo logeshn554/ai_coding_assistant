@@ -168,7 +168,45 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
         }
       });
     } else if (m.role === 'assistant') {
-      // 1. Thinking
+      // 1. Tool Calls on Assistant Message
+      if (m.tool_calls && Array.isArray(m.tool_calls)) {
+        m.tool_calls.forEach((tc: any, tcIdx: number) => {
+          const callId = tc.id || `${messageId}_tc_${tcIdx}`;
+          const fnName = tc.function?.name || tc.name || 'action';
+          let argsStr = tc.function?.arguments || tc.arguments || '';
+          if (typeof argsStr === 'object') argsStr = JSON.stringify(argsStr);
+
+          const hasToolResp = (turn.allMessages || []).some(
+            (toolMsg) => toolMsg.role === 'tool' && (toolMsg.tool_call_id === callId || toolMsg.id === callId)
+          );
+
+          if (!hasToolResp) {
+            const parsed = parseToolEvent(
+              fnName,
+              nameToToolType(fnName),
+              argsStr,
+              '',
+              'success'
+            );
+            blocks.push({
+              type: 'tool',
+              id: callId,
+              message: m,
+              toolInfo: {
+                action: parsed.action,
+                substep: parsed.substep,
+                detail: parsed.detail,
+                resultText: parsed.resultText,
+                toolType: parsed.toolType,
+                status: 'success',
+                name: fnName,
+              }
+            });
+          }
+        });
+      }
+
+      // 2. Thinking
       let thinking = '';
       const stepsText = (m.thinkingSteps && m.thinkingSteps.length > 0) 
         ? m.thinkingSteps.join('\n') 
@@ -200,7 +238,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
         });
       }
       
-      // 2. Confirmations
+      // 3. Confirmations
       if (m.isConfirmPending || m.isPermissionRequest || m.isPortConflictRequest || m.isCostConfirmationRequest) {
         blocks.push({
           type: 'confirm',
@@ -208,21 +246,32 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
           message: m,
         });
       } else {
-        // 3. Main response text
+        // 4. Main response text
         let textContent = '';
         if (typeof m.content === 'string') {
-          textContent = m.content.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+          let raw = m.content;
+          if (raw.startsWith('{')) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (parsed && typeof parsed === 'object') {
+                if (typeof parsed.content === 'string') {
+                  raw = parsed.content;
+                }
+              }
+            } catch {}
+          }
+          textContent = raw.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
         } else if (m.content && typeof m.content === 'object') {
-          if (!('tool_calls' in m.content) && !('role' in m.content)) {
+          if (typeof m.content.content === 'string') {
+            textContent = m.content.content.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+          } else if (!('tool_calls' in m.content) && !('role' in m.content)) {
             textContent = JSON.stringify(m.content);
           }
         }
 
         const isRawJsonDump =
-          textContent.startsWith('[{"id":"chatcmpl-tool') ||
-          textContent.startsWith('{"content":"","tool_calls":') ||
-          (textContent.startsWith('[{"') && textContent.includes('"tool_calls"')) ||
-          (textContent.startsWith('{"') && textContent.includes('"tool_calls"'));
+          (textContent.startsWith('[{"id":"chatcmpl-tool') || textContent.startsWith('{"content":"","tool_calls":')) &&
+          !textContent.includes('"text":');
 
         if (textContent && !isRawJsonDump) {
           blocks.push({
@@ -444,6 +493,11 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
     );
   };
 
+  // If this turn is completely empty (no text, no tools, no diffs) and not generating, skip rendering
+  if (!isExecuting && groupedBlocks.length === 0 && diffsList.length === 0) {
+    return null;
+  }
+
   return (
     <div className="flex flex-col gap-3.5 mb-6 select-text animate-[fadeIn_150ms_ease-out] font-sans">
       {/* AI Assistant Header Row */}
@@ -644,17 +698,5 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
   );
 };
 
-export const AssistantMessage = React.memo(AssistantMessageComponent, (prev, next) => {
-  return (
-    prev.turn.id === next.turn.id &&
-    prev.turn.isGenerating === next.turn.isGenerating &&
-    prev.statusMessage === next.statusMessage &&
-    prev.hunkDecisions === next.hunkDecisions &&
-    prev.turn.allMessages?.length === next.turn.allMessages?.length &&
-    prev.turn.assistantMessages.length === next.turn.assistantMessages.length &&
-    prev.turn.toolMessages.length === next.turn.toolMessages.length &&
-    prev.turn.confirmMessages.length === next.turn.confirmMessages.length &&
-    prev.turn.assistantMessages.every((m: ChatMessage, i: number) => m.content === next.turn.assistantMessages[i].content) &&
-    prev.turn.toolMessages.every((m: ChatMessage, i: number) => m.status === next.turn.toolMessages[i].status)
-  );
-});
+export const AssistantMessage = React.memo(AssistantMessageComponent);
+

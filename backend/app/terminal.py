@@ -125,10 +125,38 @@ class TerminalManager:
             elif self.shell == "cmd":
                 return "cmd.exe"
             elif self.shell == "bash":
+                import shutil
+                if shutil.which("bash.exe"):
+                    return "bash.exe"
+                # Search common Git Bash installation paths on Windows
+                git_bash_paths = [
+                    r"C:\Program Files\Git\bin\bash.exe",
+                    r"C:\Program Files\Git\usr\bin\bash.exe",
+                    os.path.join(os.environ.get("LocalAppData", ""), r"Programs\Git\bin\bash.exe"),
+                    os.path.join(os.environ.get("LocalAppData", ""), r"Programs\Git\usr\bin\bash.exe"),
+                ]
+                for path in git_bash_paths:
+                    if path and os.path.isfile(path):
+                        return path
                 return "bash.exe"
+            elif self.shell == "sh":
+                import shutil
+                if shutil.which("sh.exe"):
+                    return "sh.exe"
+                # Search common Git sh paths on Windows
+                git_sh_paths = [
+                    r"C:\Program Files\Git\bin\sh.exe",
+                    r"C:\Program Files\Git\usr\bin\sh.exe",
+                    os.path.join(os.environ.get("LocalAppData", ""), r"Programs\Git\bin\sh.exe"),
+                ]
+                for path in git_sh_paths:
+                    if path and os.path.isfile(path):
+                        return path
+                return "sh.exe"
             elif self.shell == "wsl":
                 return "wsl.exe"
             return self.shell
+
 
         if sys.platform == "win32":
             # Try to find powershell, fall back to cmd

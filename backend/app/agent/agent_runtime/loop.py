@@ -257,11 +257,16 @@ async def agent_loop(
                         if secondary_model:
                             try:
                                 from agent_runtime.llm.openai_provider import OpenAIProvider
-                                active_profile = config_manager.get_active_profile()
-                                api_key = active_profile.get("api_key", "")
-                                base_url = active_profile.get("base_url", "https://api.openai.com/v1")
+                                secondary_profile_name = config_manager.get_secondary_agent_profile()
+                                secondary_profile = None
+                                if secondary_profile_name:
+                                    secondary_profile = config_manager.get_profile(secondary_profile_name)
+                                
+                                profile_to_use = secondary_profile or config_manager.get_active_profile()
+                                api_key = profile_to_use.get("api_key", "") if profile_to_use else ""
+                                base_url = profile_to_use.get("base_url", "https://api.openai.com/v1") if profile_to_use else "https://api.openai.com/v1"
                                 gen_llm = OpenAIProvider(api_key=api_key, model=secondary_model, base_url=base_url)
-                                logger.info("Dual-LLM Mode: Generator using secondary_agent_model '%s'", secondary_model)
+                                logger.info("Dual-LLM Mode: Generator using secondary_agent_model '%s' and profile '%s'", secondary_model, profile_to_use.get("name", "active") if profile_to_use else "active")
                             except Exception as sec_err:
                                 logger.warning("Failed to initialize secondary LLM provider '%s': %s", secondary_model, sec_err)
                                 gen_llm = llm

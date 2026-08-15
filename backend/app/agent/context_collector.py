@@ -196,6 +196,23 @@ class ContextCollector:
 
         return ctx
 
+    def _build_file_map(self, root: Path) -> dict[str, list[Path]]:
+        """Walk once, return filenameâ†’paths map. Cache by mtime."""
+        try:
+            mtime = root.stat().st_mtime if root.exists() else 0
+        except Exception:
+            mtime = 0
+        if hasattr(self, '_file_map_cache') and self._file_map_cache[0] == mtime:
+            return self._file_map_cache[1]
+        skip = {"node_modules", "__pycache__", ".git", "venv", ".venv", "dist", ".next"}
+        file_map: dict[str, list[Path]] = {}
+        for dirpath, dirs, files in os.walk(root):
+            dirs[:] = [d for d in dirs if d not in skip]
+            for f in files:
+                file_map.setdefault(f.lower(), []).append(Path(dirpath) / f)
+        self._file_map_cache = (mtime, file_map)
+        return file_map
+
     def _try_read(self, root: Path, rel_path: str, max_chars: int = _MAX_FILE_CHARS) -> str | None:
         """Try to read a file relative to workspace root. Returns None if not found."""
         # Try exact path
@@ -203,14 +220,9 @@ class ContextCollector:
             root / rel_path,
             root / rel_path.lower(),
         ]
-        # Also search recursively for the filename (not path)
-        filename = Path(rel_path).name.lower()
-        for dirpath, _dirs, files in os.walk(root):
-            for f in files:
-                if f.lower() == filename:
-                    candidates.append(Path(dirpath) / f)
-            if len(candidates) > 10:
-                break
+        # Also lookup in cached file map for the filename
+        file_map = self._build_file_map(root)
+        candidates.extend(file_map.get(Path(rel_path).name.lower(), []))
 
         for candidate in candidates:
             try:

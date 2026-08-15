@@ -22,9 +22,7 @@ async def run_cmd_async(cmd: Union[str, List[str]], cwd: str) -> str:
     from backend.app.config import settings
     from backend.app.tools.terminal_tool import _is_docker_available
     
-    use_sandbox = False
-    if (settings.USE_SANDBOX or settings.ENVIRONMENT == "production") and _is_docker_available():
-        use_sandbox = True
+    is_sandboxed_env = (settings.USE_SANDBOX or settings.ENVIRONMENT == "production")
 
     # Check if this is a safe host infrastructure command (e.g., git query commands)
     is_safe_infra = False
@@ -32,7 +30,13 @@ async def run_cmd_async(cmd: Union[str, List[str]], cwd: str) -> str:
     if cmd_lower.startswith("git ") and not any(dangerous in cmd_lower for dangerous in ["clone", "push", "pull", "fetch"]):
         is_safe_infra = True
 
-    if use_sandbox and not is_safe_infra:
+    if is_sandboxed_env and not is_safe_infra:
+        if not _is_docker_available():
+            raise RuntimeError(
+                "Production Sandbox Unavailable: Docker daemon not reachable or CLI missing. "
+                "Refusing host execution (fail-closed)."
+            )
+
         # Retrieve or create sandbox
         from backend.app.agent.security.sandbox import global_sandbox_manager, ExecutionPolicy, ExecutionStatus
         
@@ -55,16 +59,14 @@ async def run_cmd_async(cmd: Union[str, List[str]], cwd: str) -> str:
                     policy=policy
                 )
             except Exception as e:
-                # If production and sandbox failed, fail closed!
-                if settings.ENVIRONMENT == "production":
-                    raise RuntimeError(f"Sandbox creation failed: {e}. Failing closed.")
-                active_sandbox = None
+                raise RuntimeError(f"Sandbox creation failed: {e}. Refusing host execution (fail-closed).")
 
         if active_sandbox:
             res = await active_sandbox.execute(cmd_str, timeout=30.0, cwd=cwd)
             if res.status == ExecutionStatus.TIMEOUT:
                 return "Command timed out after 30 seconds."
             return res.combined_output
+        raise RuntimeError("Sandbox is unavailable. Refusing host execution (fail-closed).")
 
     # Local host fallback for development or safe infra
     # Use isolated environment

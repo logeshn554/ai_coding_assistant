@@ -4,27 +4,24 @@ This document details the current data persistence mechanisms, identifies hardco
 
 ---
 
-## 1. Current Persistence Review
+## 1. Current Persistence Architecture
 
-- **Database Engine:** SQLite (using `SQLAlchemy 2.x` and `aiosqlite` driver).
-- **File Location:** Hardcoded to `~/.devpilot/history.db` in [db.py](file:///e:/os%20kernel%20with%20ani/ai_coding_assistant/backend/app/db.py).
-- **JSON Configuration:** Local settings and MCP server profiles are read/written to `~/.devpilot/config.json`. Keyring is used for API keys.
-- **Volatile In-Memory Storage:**
-  - Connection tickets (`_ws_tickets`) in `state.py`.
-  - Session workspace roots (`_session_roots`) in `state.py`.
-  - Agent run states, tasks, and cancellation flags in `AgentRuntime`.
-  - Terminal process IDs and logs in `processes.py`.
+- **Database Support:** Multi-database support with SQLite (local development/desktop) and PostgreSQL (production server), using `SQLAlchemy 2.x`, `asyncpg`, and `aiosqlite`.
+- **Relational Schema:** Fully normalized multi-tenant models (`Organization`, `User`, `Workspace`, `Conversation`, `Message`, `AgentRun`, `AgentStep`, `ToolCall`, `Approval`, `AgentEvent`, `UsageRecord`, `Artifact`).
+- **Migrations:** Managed via Alembic (`alembic.ini` and `alembic/` migration scripts).
+- **Session Identity:** Single canonical session lifecycle with tenant/user authorization boundaries. Message sequence uniqueness is enforced via `UNIQUE(conversation_id, sequence)`.
+- **Durability:** Messages are persisted idempotently per sequence. Eager loading with `selectinload` avoids greenlet issues in async sessions.
 
 ---
 
-## 2. Bottlenecks for Production/Multi-Instance Scale
+## 2. Production Scalability & Multi-Tenancy Status
 
-1. **Ad-Hoc Migration Logic:**
-   - [db.py](file:///e:/os%20kernel%20with%20ani/ai_coding_assistant/backend/app/db.py) defines an inline `_ensure_session_columns` migrator. This uses SQLite-specific PRAGMA queries (`PRAGMA table_info(sessions)`) and SQLite ALTER syntax. It will fail immediately if pointed to PostgreSQL.
-2. **Missing Alembic Configuration:**
-   - There are no Alembic configuration files or migration history files. Database updates must be applied manually.
-3. **No Multi-Tenancy:**
-   - The `sessions` and `chat_sessions` tables lack a `tenant_id` or `user_id` foreign key. All sessions are globally visible to anyone connecting to the SQLite database.
+1. **Schema Migration:**
+   - Production uses Alembic migrations for continuous schema evolution on PostgreSQL.
+2. **Multi-Tenancy & Authorization:**
+   - Multi-tenant tenant boundaries (`organization_id`, `user_id`, `workspace_id`) are enforced across all chat routes, sessions, history, and WebSocket connections.
+3. **Dual History Deprecation:**
+   - The normalized `messages` table serves as the primary source of truth for conversation history.
 
 ---
 

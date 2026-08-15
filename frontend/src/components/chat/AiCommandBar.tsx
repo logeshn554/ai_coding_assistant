@@ -47,6 +47,9 @@ interface AiCommandBarProps {
   setMode: (mode: ChatMode) => void;
   onOpenContextModal?: () => void;
   contextPercentage?: number;
+  activeModelName?: string;
+  activeProviderName?: string;
+  onOpenProviderModal?: () => void;
 }
 
 export const AiCommandBar: React.FC<AiCommandBarProps> = ({
@@ -58,6 +61,9 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
   mode,
   onOpenContextModal,
   contextPercentage = 0,
+  activeModelName = 'Select Model',
+  activeProviderName = 'AI Provider',
+  onOpenProviderModal,
 }) => {
   const [autoApply, setAutoApply] = useState(true);
   const [showSlashMenu, setShowSlashMenu]     = useState(false);
@@ -480,6 +486,19 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
           </label>
         ) : (
           <div />
+        )}
+
+        {/* Right: Model Selector */}
+        {onOpenProviderModal && (
+          <button
+            type="button"
+            onClick={onOpenProviderModal}
+            className="flex items-center gap-1 px-2.5 py-1 rounded bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 text-zinc-450 hover:text-zinc-200 transition-colors text-[10.5px] cursor-pointer"
+            title={`Active model: ${activeModelName} (${activeProviderName}) - Click to configure`}
+          >
+            <span className="font-semibold text-zinc-300 truncate max-w-[150px]">{activeModelName}</span>
+            <ChevronRight className="w-3 h-3 text-zinc-500 rotate-90 shrink-0" />
+          </button>
         )}
       </div>
     </div>

@@ -115,6 +115,8 @@ class AgentSession:
         self._last_request_snapshot = None
         self.total_cost_usd: float = 0.0
         self._cost_advisory_sent: bool = False
+        self._db_saved_up_to: int = 0
+        self._msg_size_cache: dict[int, int] = {}
         # System prompt cache: avoid rebuilding the full prompt on every LLM turn.
         # Keyed by (mode, workspace_mtime) — invalidated when files change.
         self._cached_system_prompt: dict[str, tuple[float, str]] = {}
@@ -265,32 +267,29 @@ class AgentSession:
         for t in list(self._monitor_tasks):
             if not t.done():
                 t.cancel()
-        self._monitor_tasks.clear()
-
         # 6. Reset per-run state flags so they fire correctly on the next request.
         self._cost_advisory_sent = False
-
 
         await self.send_ws_message({
             "type": "queue_status",
             "queue_depth": 0,
         })
 
-
     async def load_history_from_db(self):
         try:
             from ..db import async_session, SessionModel
             from sqlalchemy.future import select
+            from sqlalchemy.orm import selectinload
             async with async_session() as db:
-                stmt = select(SessionModel).where(SessionModel.id == self.session_id)
+                stmt = select(SessionModel).options(selectinload(SessionModel.messages)).where(SessionModel.id == self.session_id)
                 res = await db.execute(stmt)
                 session_obj = res.scalar()
                 if session_obj:
                     if session_obj.mode:
                         self.last_mode = session_obj.mode
                     raw_history = []
-                    for m in session_obj.messages:
-                        raw_content = m.content  # May be None or string from DB
+                    for m in (session_obj.messages or []):
+                        raw_content = m.content
                         content = ""
                         tool_calls = None
                         tool_call_id = None
@@ -299,12 +298,10 @@ class AgentSession:
                             if raw_content:
                                 parsed = json.loads(raw_content)
                                 if isinstance(parsed, dict) and "tool_calls" in parsed:
-                                    # New format: {"content": "...", "tool_calls": [...]}
-                                    tool_calls = parsed["tool_calls"]
+                                    tool_calls = parsed.get("tool_calls")
                                     content = str(parsed.get("content") or "")
                                 elif isinstance(parsed, dict) and "tool_call_id" in parsed:
-                                    # Tool message metadata format
-                                    tool_call_id = parsed["tool_call_id"]
+                                    tool_call_id = parsed.get("tool_call_id")
                                     tool_name = parsed.get("name")
                                     content = str(parsed.get("content") or "")
                                 elif isinstance(parsed, str):
@@ -312,47 +309,35 @@ class AgentSession:
                                 elif parsed is None:
                                     content = ""
                                 else:
-                                    # Dict/list without tool_calls: stringify it
                                     content = json.dumps(parsed)
                         except Exception:
-                            # Raw string content (not JSON)
                             content = raw_content or ""
 
-                        # Skip orphaned assistant messages: no text and no tool_calls
-                        if m.role == "assistant" and not content.strip() and not tool_calls:
-                            continue
-                        # Skip orphaned tool messages: they reference tool_calls that aren't in history
-                        # (will be re-checked after assembling full list)
                         entry: dict = {"role": m.role, "content": content}
                         if tool_calls:
                             entry["tool_calls"] = tool_calls
                         if tool_call_id:
                             entry["tool_call_id"] = tool_call_id
                             entry["name"] = tool_name or "unknown"
-                        # Restore tool_call_id for tool messages if saved in content
                         if m.role == "tool" and not entry.get("tool_call_id"):
                             entry["tool_call_id"] = "legacy_tool"
                             entry["name"] = entry.get("name", "unknown")
                         raw_history.append(entry)
 
-                    # Final pass: remove orphaned tool messages (no preceding assistant with tool_calls)
-                    valid_history = []
-                    has_pending_tool_calls = False
-                    for entry in raw_history:
-                        if entry["role"] == "assistant" and entry.get("tool_calls"):
-                            has_pending_tool_calls = True
-                        elif entry["role"] == "tool":
-                            if not has_pending_tool_calls:
-                                continue  # Skip orphaned tool result
-                            has_pending_tool_calls = False
-                        elif entry["role"] == "user":
-                            has_pending_tool_calls = False
-                        valid_history.append(entry)
+                    # Fallback to messages_json if relational table has fewer messages or lacks assistant replies
+                    has_assistant = any(m.get("role") in ("assistant", "tool") for m in raw_history)
+                    if (not raw_history or not has_assistant) and session_obj.messages_json:
+                        try:
+                            json_msgs = json.loads(session_obj.messages_json)
+                            if isinstance(json_msgs, list) and json_msgs:
+                                raw_history = json_msgs
+                        except Exception:
+                            pass
 
-                    self.conversation_history = valid_history
+                    self.conversation_history = raw_history
+                    self._db_saved_up_to = len(raw_history)
         except Exception as e:
             logger.error(f"Failed to load history from DB: {e}")
-
 
     async def save_history_to_db(self):
         try:
@@ -377,25 +362,28 @@ class AgentSession:
                         )
                         await db.flush()
 
-                    msg_stmt = select(MessageModel).where(MessageModel.conversation_id == self.session_id).order_by(MessageModel.sequence.asc())
+                    # Query existing message sequences in the database for idempotency
+                    msg_stmt = select(MessageModel.sequence).where(MessageModel.conversation_id == self.session_id)
                     msg_res = await db.execute(msg_stmt)
-                    existing_msgs = msg_res.scalars().all()
+                    existing_seqs = set(msg_res.scalars().all())
 
-                    n_existing = len(existing_msgs)
                     for i, m in enumerate(self.conversation_history):
-                        if i < n_existing:
+                        seq = i + 1
+                        if seq in existing_seqs:
                             continue
 
                         role = m.get("role", "user")
                         content = m.get("content", "")
                         tool_calls = m.get("tool_calls")
+                        thinking_blocks = m.get("thinking_blocks")
+                        thinkingSteps = m.get("thinkingSteps")
 
-                        # For assistant messages with tool_calls, serialize the full entry
-                        # so that load_history_from_db can reconstruct tool_calls properly
-                        if role == "assistant" and tool_calls:
+                        if role == "assistant":
                             db_content = json.dumps({
                                 "content": content if content is not None else "",
-                                "tool_calls": tool_calls
+                                "tool_calls": tool_calls,
+                                "thinking_blocks": thinking_blocks,
+                                "thinkingSteps": thinkingSteps,
                             })
                         elif role == "tool":
                             db_content = json.dumps({
@@ -412,11 +400,13 @@ class AgentSession:
                             conversation_id=self.session_id,
                             role=role,
                             content=db_content,
-                            sequence=i + 1,
+                            sequence=seq,
                             created_at=datetime.datetime.utcnow()
                         )
                         db.add(msg)
+                        existing_seqs.add(seq)
 
+                    self._db_saved_up_to = len(self.conversation_history)
                     session_obj.updated_at = datetime.datetime.utcnow()
                     if getattr(self, "workspace_root", None) is not None:
                         session_obj.workspace_root = self.workspace_root or ""
@@ -512,7 +502,10 @@ class AgentSession:
         scored_messages = []
         for idx, msg in enumerate(history):
             prio = get_priority(msg, idx)
-            size = estimate_text_size(msg)
+            size = self._msg_size_cache.get(idx)
+            if size is None:
+                size = estimate_text_size(msg)
+                self._msg_size_cache[idx] = size
             scored_messages.append((prio, idx, msg, size))
             
         sorted_candidates = sorted(scored_messages, key=lambda x: (x[0], x[1]), reverse=True)
@@ -1066,11 +1059,18 @@ class AgentSession:
 
             # ── 14-Phase Agent Intelligence Layer (Agent mode only) ───────
             if mode == "Agent":
+                _cached_enriched_prompt: dict[str, str] = {}
+
                 async def agent_llm_provider(messages: list, tools_schema: list):
-                    sys_prompt = self._get_system_prompt("Agent")
-                    sys_prompt = await self._run_agent_intelligence_pipeline(
-                        text, sys_prompt
-                    )
+                    cache_key = text  # same user message across all turns
+                    if cache_key not in _cached_enriched_prompt:
+                        sys_prompt = self._get_system_prompt("Agent")
+                        sys_prompt = await self._run_agent_intelligence_pipeline(
+                            text, sys_prompt
+                        )
+                        _cached_enriched_prompt[cache_key] = sys_prompt
+                    else:
+                        sys_prompt = _cached_enriched_prompt[cache_key]
 
                     # Determine step number from messages list length
                     step_num = len(messages) // 2 + 1
@@ -1438,24 +1438,29 @@ class AgentSession:
                     # 3. Execute tool calls (potentially seeking user confirmation)
                     tool_results = []
                 
-                    # Chunk tool_calls_to_run into batches. Consecutive 'delegate_to_agent' tool calls
-                    # run concurrently using asyncio.gather, while other tools run sequentially.
+                    # Chunk tool_calls_to_run into batches. Safe read-only tools and 'delegate_to_agent'
+                    # run concurrently using asyncio.gather, while mutating tools run sequentially.
+                    PARALLEL_SAFE_TOOLS = {
+                        "read_file", "list_dir", "search_files", "glob",
+                        "grep", "get_file_info", "shared_memory_get",
+                        "delegate_to_agent",
+                    }
                     batches = []
                     current_batch = []
                     is_parallel_batch = False
 
                     for tc in tool_calls_to_run:
-                        is_delegate = (tc["name"] == "delegate_to_agent")
+                        is_parallel = tc["name"] in PARALLEL_SAFE_TOOLS
                         if not current_batch:
                             current_batch.append(tc)
-                            is_parallel_batch = is_delegate
+                            is_parallel_batch = is_parallel
                         else:
-                            if is_delegate == is_parallel_batch and is_parallel_batch:
+                            if is_parallel == is_parallel_batch and is_parallel_batch:
                                 current_batch.append(tc)
                             else:
                                 batches.append((current_batch, is_parallel_batch))
                                 current_batch = [tc]
-                                is_parallel_batch = is_delegate
+                                is_parallel_batch = is_parallel
                     if current_batch:
                         batches.append((current_batch, is_parallel_batch))
 
@@ -1809,7 +1814,7 @@ class AgentSession:
                 })
         finally:
             self.is_running = False
-            await self.save_history_to_db()
+            asyncio.create_task(self.save_history_to_db())
 
     async def handle_simple_ask(self, text: str):
         """
@@ -1884,7 +1889,7 @@ class AgentSession:
                 "type": "session_done",
                 "total_cost_usd": getattr(self, "total_cost_usd", 0.0)
             })
-            await self.save_history_to_db()
+            asyncio.create_task(self.save_history_to_db())
 
     async def _execute_tool_with_guardrails(
         self, tc_id: str, name: str, args: dict, auto_apply: bool

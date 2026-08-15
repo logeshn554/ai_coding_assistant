@@ -62,7 +62,7 @@ class _RpmLimiter:
         try:
             return config_manager.get_devpilot_rpm()
         except Exception:
-            return 15
+            return 500
 
     async def acquire(self):
         async with self.lock:
@@ -86,7 +86,7 @@ class LLMAdapter(ModelAdapter):
     Unified LLM adapter for both Anthropic and OpenAI.
     Provider-specific behaviors are routed internally based on self.provider.
     """
-    _rpm_limiter = None
+    _rpm_limiters: dict[str, _RpmLimiter] = {}
 
     def __init__(self, api_key: str, base_url: str, model_name: str, provider: str):
         super().__init__(api_key, base_url, model_name)
@@ -100,9 +100,10 @@ class LLMAdapter(ModelAdapter):
         tools: List[Dict[str, Any]], 
         system_prompt: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        # Lazily initialize global RPM limiter
-        if LLMAdapter._rpm_limiter is None:
-            LLMAdapter._rpm_limiter = _RpmLimiter()
+        # Lazily initialize per-provider RPM limiter
+        provider_key = self.provider or "default"
+        if provider_key not in LLMAdapter._rpm_limiters:
+            LLMAdapter._rpm_limiters[provider_key] = _RpmLimiter()
 
         from .tool_history import validate_tool_history
         validate_tool_history(messages)
@@ -115,7 +116,7 @@ class LLMAdapter(ModelAdapter):
             )
 
         # Acquire rate limiter ticket before calling LLM providers
-        await LLMAdapter._rpm_limiter.acquire()
+        await LLMAdapter._rpm_limiters[provider_key].acquire()
 
         if self.provider == "anthropic":
             async for chunk in self._stream_anthropic(messages, tools, system_prompt):

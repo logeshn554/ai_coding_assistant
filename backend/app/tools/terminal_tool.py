@@ -25,15 +25,22 @@ def is_server_start_command(command: str) -> bool:
         "python app.py", "python -m uvicorn", "node server.js", "node app.js", "launcher.py"
     ])
 
-async def check_url_reachable(url: str) -> bool:
+async def check_url_reachable(url: str, timeout: float = 8.0) -> bool:
     import httpx
-    for _ in range(5):
-        try:
-            async with httpx.AsyncClient(timeout=1.0) as client:
-                res = await client.get(url)
-                return True
-        except Exception:
-            await asyncio.sleep(1.0)
+    import time
+    deadline = time.monotonic() + timeout
+    delay = 0.2
+    try:
+        async with httpx.AsyncClient(timeout=1.0) as client:
+            while time.monotonic() < deadline:
+                try:
+                    res = await client.get(url)
+                    return res.status_code < 500
+                except Exception:
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 1.5, 2.0)
+    except Exception:
+        pass
     return False
 
 

@@ -333,9 +333,9 @@ class AuthGateway:
         self._api_key_provider = APIKeyAuthProvider()
         self._ws_provider = WebSocketTokenProvider(self._jwt_provider)
         self._default_identity = AuthIdentity(
-            user_id="local-user",
+            user_id="default-user",
             auth_method=AuthMethod.JWT,
-            tenant=TenantContext(tenant_id="local", tier="free"),
+            tenant=TenantContext(tenant_id="default-org", tier="free"),
             roles=["developer"],
             permissions=["workspace:read", "workspace:write", "terminal:execute"],
         )

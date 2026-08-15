@@ -161,6 +161,10 @@ class Conversation(Base):
 
 class Message(Base):
     __tablename__ = "messages"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "sequence", name="uq_conversation_sequence"),
+        Index("idx_messages_conv_seq", "conversation_id", "sequence"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)

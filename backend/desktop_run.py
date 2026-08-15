@@ -41,8 +41,11 @@ class DesktopAPI:
         return None
 
 
+import webbrowser
+
 def get_free_port():
-    for preferred_port in [62746, 8000, 8080]:
+    # Prioritize standard DevPilot port 8000, then fallback alternatives
+    for preferred_port in [8000, 8080, 62746, 8088]:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.bind(('127.0.0.1', preferred_port))
@@ -80,44 +83,74 @@ def ensure_frontend_built():
             print(f"Warning: Failed to build frontend automatically: {e}")
 
 def start_server(port):
-    uvicorn.run("app.main:app", host="127.0.0.1", port=port, log_level="warning")
+    try:
+        from backend.app.main import app
+    except ImportError:
+        from app.main import app
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 
 if __name__ == "__main__":
     ensure_frontend_built()
 
-    # Find a free port dynamically
+    # Find a free port dynamically (prioritizing 8000)
     port = get_free_port()
+    app_url = f"http://127.0.0.1:{port}/"
     
     # Start FastAPI server thread
     t = threading.Thread(target=start_server, args=(port,), daemon=True)
     t.start()
     
     # Poll HTTP health endpoint until backend is fully ready
-    print(f"Waiting for backend HTTP server readiness on http://127.0.0.1:{port}/...")
+    print(f"Waiting for backend HTTP server readiness on {app_url}...")
     start_time = time.time()
+    backend_online = False
     while time.time() - start_time < 20:
         if is_backend_ready(port):
-            print("Backend HTTP server is online and responding.")
+            print(f"Backend HTTP server is online and responding at {app_url}")
+            backend_online = True
             break
         time.sleep(0.3)
+
+    if not backend_online:
+        print(f"Warning: Backend health check timed out. Attempting to continue anyway...")
 
     # Define and initialize API
     api = DesktopAPI()
     
-    # Create the pywebview desktop window
-    window = webview.create_window(
-        title="DevPilot AI Editor",
-        url=f"http://127.0.0.1:{port}/",
-        js_api=api,
-        width=1280,
-        height=800,
-        min_size=(1000, 600)
-    )
-    api._window = window
-    
-    # Run pywebview loop with Edge Chromium on Windows if available
-    gui_engine = "edgechromium" if sys.platform == "win32" else None
+    # Try launching PyWebView window
+    webview_launched = False
     try:
-        webview.start(gui=gui_engine, debug=True)
-    except Exception:
-        webview.start(debug=True)
+        window = webview.create_window(
+            title="DevPilot AI Editor",
+            url=app_url,
+            js_api=api,
+            width=1280,
+            height=800,
+            min_size=(1000, 600)
+        )
+        api._window = window
+        
+        gui_engine = "edgechromium" if sys.platform == "win32" else None
+        try:
+            webview.start(gui=gui_engine, debug=False)
+            webview_launched = True
+        except Exception as e:
+            print(f"PyWebView edgechromium failed: {e}. Trying default GUI engine...")
+            try:
+                webview.start(debug=False)
+                webview_launched = True
+            except Exception as e2:
+                print(f"PyWebView default engine failed: {e2}")
+    except Exception as e:
+        print(f"PyWebView window creation error: {e}")
+
+    # If PyWebView couldn't open, fallback to opening default web browser and keeping the server alive
+    if not webview_launched:
+        print(f"Opening DevPilot in your default browser at {app_url}...")
+        webbrowser.open(app_url)
+        print("DevPilot server is running. Press Ctrl+C in this terminal to stop.")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("Shutting down DevPilot...")

@@ -70,7 +70,10 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [collaborationLog, setCollaborationLog] = useState<string[]>([]);
   const [subtasks, setSubtasks] = useState<SubTask[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState('default-session');
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    const persisted = localStorage.getItem('devpilot_session_id');
+    return persisted && persisted.trim() && persisted !== 'default-session' ? persisted.trim() : '';
+  });
   const [liveToolCalls, setLiveToolCalls] = useState<ToolExecutionItem[]>([]);
   const [liveFileChanges, setLiveFileChanges] = useState<LiveFileChange[]>([]);
   const [pendingFileChanges, setPendingFileChanges] = useState<string[]>([]);
@@ -105,6 +108,30 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const wsRef = useRef<WebSocket | null>(null);
   const lastAssistantMsgIdRef = useRef<string | null>(null);
   const reconnectDelayRef = useRef(1000);
+  const historyRequestRef = useRef(0);
+
+  const getEffectiveSessionId = (override?: string | null): string => {
+    const candidate = override || activeSessionId || localStorage.getItem('devpilot_session_id') || '';
+    return candidate && candidate.trim() ? candidate.trim() : '';
+  };
+
+  const applySessionIdentity = (nextSessionId: string | null, persist = true) => {
+    const safeSessionId = nextSessionId && nextSessionId.trim() ? nextSessionId.trim() : '';
+    if (persist) {
+      if (safeSessionId && safeSessionId !== 'default-session') {
+        localStorage.setItem('devpilot_session_id', safeSessionId);
+      } else if (!safeSessionId) {
+        localStorage.removeItem('devpilot_session_id');
+      }
+    }
+    setActiveSessionId(safeSessionId);
+  };
+
+  useEffect(() => {
+    if (activeSessionId && activeSessionId !== 'default-session') {
+      localStorage.setItem('devpilot_session_id', activeSessionId);
+    }
+  }, [activeSessionId]);
 
   // Listen for localhost URL detections in terminal / process execution
   useEffect(() => {
@@ -112,6 +139,17 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       const detail = (e as CustomEvent<{ url: string; port: string }>).detail;
       if (detail?.url) {
         showToast(`Localhost server running at ${detail.url}`, 'info');
+        const portNum = detail.port ? Number(detail.port) : undefined;
+        setActiveProcesses((prev) => [
+          ...prev.filter((p) => p.url !== detail.url && p.port !== portNum),
+          {
+            id: `proc_detected_${detail.port || Date.now()}`,
+            name: `Server (port ${detail.port || 'detected'})`,
+            url: detail.url,
+            port: portNum,
+            status: 'running'
+          }
+        ]);
         setMessages((prev) => {
           const exists = prev.some((m) => typeof m.content === 'string' && m.content.includes(detail.url));
           if (exists) return prev;
@@ -128,7 +166,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     };
     window.addEventListener('devpilot-localhost-detected', handleLocalhostDetected);
     return () => window.removeEventListener('devpilot-localhost-detected', handleLocalhostDetected);
-  }, [showToast]);
+  }, [showToast, setActiveProcesses]);
 
   // Debounced tokenization from the backend
   useEffect(() => {
@@ -169,18 +207,29 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     return () => window.removeEventListener('devpilot_explain_error', handleExplainError);
   }, [isGenerating]);
 
-  const fetchSessions = async (syncActive: boolean = false) => {
+  const fetchSessions = async (syncActive: boolean = false): Promise<string | null> => {
     try {
       const res = await fetch('/api/chat/sessions');
-      if (res.ok) {
-        const data = await res.json();
-        setSessions(data.sessions || []);
-        if (syncActive && data.active_session_id) {
-          setActiveSessionId((prev) => prev || data.active_session_id);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const sessionList: Session[] = data.sessions || [];
+      setSessions(sessionList);
+
+      const serverActiveId = data.active_session_id || sessionList[0]?.id || null;
+      if (syncActive) {
+        const storedSessionId = localStorage.getItem('devpilot_session_id');
+        const hasStoredInList = storedSessionId && sessionList.some(s => s.id === storedSessionId);
+        const preferredSessionId = hasStoredInList ? storedSessionId : (serverActiveId || '');
+
+        if (preferredSessionId) {
+          applySessionIdentity(preferredSessionId, true);
         }
+        return preferredSessionId;
       }
+      return serverActiveId;
     } catch (e) {
       console.error('Failed to fetch sessions:', e);
+      return null;
     }
   };
 
@@ -196,7 +245,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         const parsed = JSON.parse(content);
         if (parsed && typeof parsed === 'object') {
           if ('content' in parsed) content = parsed.content;
-          if ('tool_calls' in parsed) toolCalls = parsed.tool_calls;
+          if ('tool_calls' in parsed && (!toolCalls || toolCalls.length === 0)) toolCalls = parsed.tool_calls;
           if ('tool_call_id' in parsed) toolCallId = parsed.tool_call_id;
           if ('thinking_blocks' in parsed) thinkingBlocks = parsed.thinking_blocks;
           if ('thinkingSteps' in parsed) thinkingSteps = parsed.thinkingSteps;
@@ -204,9 +253,11 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       } catch {}
     }
 
+    const stableId = msg.id || (msg.timestamp ? `hist_${msg.role || 'msg'}_${msg.timestamp}_${idx}` : `hist_${msg.role || 'msg'}_${idx}_${Date.now()}`);
+
     return {
       ...msg,
-      id: msg.id || `hist_${idx}_${Date.now()}`,
+      id: stableId,
       content: content !== undefined ? content : '',
       tool_calls: toolCalls,
       tool_call_id: toolCallId,
@@ -215,16 +266,19 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     };
   };
 
-  const fetchChatHistory = async () => {
+  const fetchChatHistory = async (sessionIdOverride?: string) => {
+    const generation = ++historyRequestRef.current;
+    const effectiveSessionId = getEffectiveSessionId(sessionIdOverride);
+    if (!effectiveSessionId) return;
+
     try {
-      const url = activeSessionId ? `/api/chat/history?session_id=${activeSessionId}` : '/api/chat/history';
+      const url = `/api/chat/history?session_id=${encodeURIComponent(effectiveSessionId)}`;
       const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        const msgs = (data.messages || []).map(normalizeMessage);
-        setMessages(msgs);
-      }
-      await fetchSessions(false);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (generation !== historyRequestRef.current) return;
+      const msgs = (data.messages || []).map(normalizeMessage);
+      setMessages(msgs);
     } catch (e) {
       console.error('Failed to load chat history:', e);
     }
@@ -232,11 +286,11 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   const handleSelectSession = async (sessionId: string) => {
     try {
-      const res = await fetch(`/api/chat/sessions/${sessionId}`);
+      applySessionIdentity(sessionId, true);
+      const res = await fetch(`/api/chat/history?session_id=${encodeURIComponent(sessionId)}`);
       if (res.ok) {
         const data = await res.json();
-        setActiveSessionId(sessionId);
-        const msgs = (data.session?.messages || []).map(normalizeMessage);
+        const msgs = (data.messages || []).map(normalizeMessage);
         setMessages(msgs);
         await fetchSessions(false);
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -258,7 +312,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.session?.id) {
-          setActiveSessionId(data.session.id);
+          applySessionIdentity(data.session.id, true);
           setMessages([]);
           await fetchSessions(false);
         }
@@ -274,20 +328,23 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         method: 'DELETE'
       });
       if (res.ok) {
-        await fetchSessions();
         const res2 = await fetch('/api/chat/sessions');
         if (res2.ok) {
           const data = await res2.json();
-          const newActiveId = data.active_session_id;
-          setActiveSessionId(newActiveId);
-          const sessionDetailsRes = await fetch(`/api/chat/sessions/${newActiveId}`);
-          if (sessionDetailsRes.ok) {
-            const detailsData = await sessionDetailsRes.json();
-            const msgs = (detailsData.session?.messages || []).map((msg: any, idx: number) => ({
-              ...msg,
-              id: msg.id || `hist_${idx}_${Date.now()}`
-            }));
-            setMessages(msgs);
+          setSessions(data.sessions || []);
+          const newActiveId = data.active_session_id || data.sessions?.[0]?.id || '';
+          applySessionIdentity(newActiveId, true);
+          if (newActiveId) {
+            const sessionDetailsRes = await fetch(`/api/chat/sessions/${newActiveId}`);
+            if (sessionDetailsRes.ok) {
+              const detailsData = await sessionDetailsRes.json();
+              const msgs = (detailsData.session?.messages || []).map(normalizeMessage);
+              setMessages(msgs);
+            } else {
+              setMessages([]);
+            }
+          } else {
+            setMessages([]);
           }
         }
       }
@@ -330,7 +387,8 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const token = localStorage.getItem('session_token') || '';
     const params = new URLSearchParams();
-    if (activeSessionId) params.set('session_id', activeSessionId);
+    const currentSessionId = getEffectiveSessionId();
+    if (currentSessionId) params.set('session_id', currentSessionId);
     if (token) params.set('token', token);
     const wsUrl = `${protocol}//${window.location.host}/ws/chat?${params.toString()}`;
     const ws = new WebSocket(wsUrl);
@@ -348,7 +406,16 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      let data: any;
+      try {
+        data = JSON.parse(event.data);
+        if (!data || typeof data !== 'object' || typeof data.type !== 'string') {
+          return;
+        }
+      } catch (e) {
+        console.warn('[AIContext] Malformed WebSocket event received:', e);
+        return;
+      }
 
       const ensureAssistantMessage = (prevMessages: ChatMessage[], newContent: string = '', initialThinkingStep?: string, signature?: string): { updatedMessages: ChatMessage[], activeId: string } => {
         const lastMsg = prevMessages[prevMessages.length - 1];
@@ -392,6 +459,11 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       switch (data.type) {
         case 'ping':
           wsRef.current?.send(JSON.stringify({ type: 'pong' }));
+          break;
+        case 'session_loaded':
+          if (data.session_id && data.session_id !== activeSessionId) {
+            applySessionIdentity(data.session_id, true);
+          }
           break;
         case 'text_delta':
           setMessages((prev) => {
@@ -776,6 +848,19 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         return;
       }
 
+      // On 4403 Forbidden / invalid session: reset session identity and adopt a valid session
+      if (evt.code === 4403) {
+        logger.info('Chat socket rejected (Forbidden / invalid session). Refreshing session identity...');
+        localStorage.removeItem('devpilot_session_id');
+        setActiveSessionId('');
+        fetchSessions(true).then((newId) => {
+          if (newId) {
+            applySessionIdentity(newId, true);
+          }
+        });
+        return;
+      }
+
       setTimeout(() => {
         if (wsRef.current !== ws) return;
         connectChatSocket(guard);
@@ -896,13 +981,33 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     }
   };
 
-  // Reconnect socket and load history when activeSessionId changes
+  // Reconnect socket and load history when activeSessionId changes.
+  // Keep the server's authoritative session ID in sync with the browser cache before
+  // initializing the socket or loading history.
   useEffect(() => {
     const guard = { cancelled: false };
-    connectChatSocket(guard);
-    fetchChatHistory();
-    setIsModelFallback(false); // Reset fallback warnings on session change
+    let cancelled = false;
+
+    const refreshActiveSession = async () => {
+      const serverSessionId = await fetchSessions(true);
+      const chosenSessionId = serverSessionId || (localStorage.getItem('devpilot_session_id') || activeSessionId || '');
+
+      if (cancelled) return;
+      if (chosenSessionId && chosenSessionId !== activeSessionId) {
+        applySessionIdentity(chosenSessionId, true);
+      }
+
+      if (chosenSessionId) {
+        connectChatSocket(guard);
+        await fetchChatHistory(chosenSessionId);
+      }
+      setIsModelFallback(false);
+    };
+
+    refreshActiveSession();
+
     return () => {
+      cancelled = true;
       guard.cancelled = true;
       if (wsRef.current) {
         const socket = wsRef.current;

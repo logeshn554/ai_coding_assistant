@@ -26,7 +26,8 @@ export const BrowserAgentPanel: React.FC<BrowserAgentPanelProps> = ({
         body: JSON.stringify({ url: targetUrl })
       });
       if (!res.ok) {
-        throw new Error(`Inspect request failed with status ${res.status}`);
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `Inspect request failed with status ${res.status}`);
       }
       const data = await res.json();
       setCaptureData(data);

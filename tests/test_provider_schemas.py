@@ -563,6 +563,30 @@ class TestProfileImmutability:
             result = worker._resolve_model_profile(run)
             assert result["name"] == "active"
 
+    def test_no_stored_profile_uses_primary_agent_profile(self):
+        """If no profile was stored at run creation, check primary agent profile first before falling back to active."""
+        from backend.app.infrastructure.worker import AgentWorker
+        from unittest.mock import MagicMock, patch
+
+        worker = MagicMock()
+        run = MagicMock()
+        run.id = "test-run-no-profile-primary"
+        run.profile_name = None
+
+        primary_profile = {"name": "primary-custom", "model_name": "claude-3-7", "provider": "anthropic"}
+        active_profile = {"name": "active", "model_name": "gpt-4o", "provider": "openai"}
+
+        with patch("backend.app.infrastructure.worker.config_manager") as mock_cm:
+            mock_cm.get_primary_agent_profile.return_value = "primary-custom"
+            mock_cm.get_profile.return_value = primary_profile
+            mock_cm.get_active_profile.return_value = active_profile
+
+            from backend.app.infrastructure.worker import AgentWorker
+            worker = AgentWorker()
+            result = worker._resolve_model_profile(run)
+            assert result["name"] == "primary-custom"
+            mock_cm.get_profile.assert_called_with("primary-custom")
+
 
 # ===========================================================================
 # P1-6 — Self-Repair Verification

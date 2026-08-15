@@ -86,13 +86,19 @@ class ActiveProcess:
         self.logs.append(f"Starting: {self.command}\n")
 
         # Determine sandbox mode
-        use_docker = False
         from backend.app.config import settings
         from backend.app.tools.terminal_tool import _is_docker_available
-        if (settings.USE_SANDBOX or settings.ENVIRONMENT == "production") and _is_docker_available():
-            use_docker = True
+        is_sandboxed_env = (settings.USE_SANDBOX or settings.ENVIRONMENT == "production")
 
-        if use_docker:
+        if is_sandboxed_env:
+            if not _is_docker_available():
+                self.status = "failed"
+                err_msg = "Production Sandbox Unavailable: Docker daemon not reachable or CLI missing. Failing closed."
+                self.logs.append(f"{err_msg}\n")
+                logger.error(err_msg)
+                self.startup_success_event.set()
+                return
+
             # Docker isolated execution
             from backend.app.agent.security import ExecutionPolicy, global_sandbox_manager, NetworkMode
             

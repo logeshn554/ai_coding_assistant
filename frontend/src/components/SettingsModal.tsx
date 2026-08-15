@@ -127,6 +127,46 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   const [stream, setStream] = useState<boolean>(true);
   const [decisionEngine, setDecisionEngine] = useState<string>('rule_based');
   const [dualLlmMode, setDualLlmMode] = useState<boolean>(false);
+  const [primaryAgentProfile, setPrimaryAgentProfile] = useState<string>('');
+  const [secondaryAgentProfile, setSecondaryAgentProfile] = useState<string>('');
+  const [profileModels, setProfileModels] = useState<Record<string, string[]>>({});
+
+  const fetchModelsForProfile = async (profileId: string) => {
+    if (!profileId) return;
+    const prof = profiles.find(p => p.id === profileId);
+    if (!prof) return;
+    try {
+      const res = await fetch('/api/models/fetch', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          profile_id: prof.id,
+          api_key: prof.api_key,
+          base_url: prof.base_url,
+          api_format: prof.api_format || 'openai'
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.models && data.models.length > 0) {
+        setProfileModels(prev => ({
+          ...prev,
+          [profileId]: data.models
+        }));
+      }
+    } catch (e) {
+      console.error('Error fetching models for profile:', profileId, e);
+    }
+  };
+
+  useEffect(() => {
+    if (profiles.length > 0) {
+      profiles.forEach(p => {
+        if (p.id) {
+          fetchModelsForProfile(p.id);
+        }
+      });
+    }
+  }, [profiles]);
 
   // Agent Behavior & Local Permissions State
   const [artifactReviewPolicy, setArtifactReviewPolicy] = useState<string>('Always Ask');
@@ -189,6 +229,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         if (data?.stream !== undefined) setStream(data.stream);
         if (data?.decision_engine !== undefined) setDecisionEngine(data.decision_engine);
         if (data?.dual_llm_mode !== undefined) setDualLlmMode(data.dual_llm_mode);
+        if (data?.primary_agent_profile !== undefined) setPrimaryAgentProfile(data.primary_agent_profile);
+        if (data?.secondary_agent_profile !== undefined) setSecondaryAgentProfile(data.secondary_agent_profile);
         // Terminal preferences
         setDefaultShell(data?.default_shell || '');
         if (data?.terminal_font_size) setTermFontSize(data.terminal_font_size);
@@ -229,7 +271,9 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
     newDecisionEngine?: string,
     newDualLlmMode?: boolean,
     newImgMode?: string,
-    newSecAgentModel?: string
+    newSecAgentModel?: string,
+    newPriAgentProfile?: string,
+    newSecAgentProfile?: string
   ) => {
     try {
       await fetch('/api/config/settings', {
@@ -240,6 +284,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           auto_backup_enabled: newBackup,
           agent_model_name: newAgentModel !== undefined ? newAgentModel : agentModelName,
           secondary_agent_model: newSecAgentModel !== undefined ? newSecAgentModel : secondaryAgentModel,
+          primary_agent_profile: newPriAgentProfile !== undefined ? newPriAgentProfile : primaryAgentProfile,
+          secondary_agent_profile: newSecAgentProfile !== undefined ? newSecAgentProfile : secondaryAgentProfile,
           agent_models: newAgentModels !== undefined ? newAgentModels : agentModels,
           agent_profiles: newAgentProfiles !== undefined ? newAgentProfiles : agentProfiles,
           image_analysis_model: newImgModel !== undefined ? newImgModel : imageAnalysisModel,
@@ -300,6 +346,9 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           stream: stream,
           decision_engine: decisionEngine,
           dual_llm_mode: dualLlmMode,
+          secondary_agent_model: secondaryAgentModel,
+          primary_agent_profile: primaryAgentProfile,
+          secondary_agent_profile: secondaryAgentProfile,
         })
       });
     } catch (e) {
@@ -411,6 +460,19 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
       list.unshift(selectedProfile.model_name);
     }
     return list;
+  };
+
+  const getSelectableModelsForProfile = (profileId: string, isSecondary?: boolean) => {
+    const targetId = profileId || (isSecondary ? (primaryAgentProfile || activeId) : activeId);
+    const fetched = profileModels[targetId] || [];
+    if (fetched.length > 0) {
+      return fetched;
+    }
+    const prof = profiles.find(p => p.id === targetId);
+    if (prof?.model_name) {
+      return [prof.model_name];
+    }
+    return [];
   };
 
   if (!isOpen) return null;
@@ -1170,57 +1232,284 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
             </div>
 
             {/* Agent Models Selection (Primary & Secondary for Dual-LLM) */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-400 block">
-                  Primary Agent Model (Brain / Planner)
-                </label>
-                <span className="text-[10px] text-gray-500 block">
-                  Default model used for high-level reasoning and step-by-step task orchestration:
-                </span>
-                <select
-                  value={agentModelName}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setAgentModelName(val);
-                    savePreferences(excludeList, autoBackupEnabled, val);
-                  }}
-                  className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
-                >
-                  <option value="">Use Active Profile Model (Default)</option>
-                  {getSelectableModels().map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {(() => {
+              const brainSelectable = getSelectableModelsForProfile(primaryAgentProfile, false);
+              const isBrainDefault = agentModelName === '';
+              const isBrainCustom = agentModelName !== '' && !brainSelectable.includes(agentModelName);
+              const brainSelectValue = isBrainDefault ? '' : (isBrainCustom ? 'custom' : agentModelName);
 
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-400 block">
-                  Secondary Agent Model (Generator / Executor)
-                </label>
-                <span className="text-[10px] text-gray-500 block">
-                  Secondary model used for tool execution in Dual-LLM mode:
-                </span>
-                <select
-                  value={secondaryAgentModel}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setSecondaryAgentModel(val);
-                    savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
-                  }}
-                  className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
-                >
-                  <option value="">Use Primary Model (Default)</option>
-                  {getSelectableModels().map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+              const generatorSelectable = getSelectableModelsForProfile(secondaryAgentProfile, true);
+              const isGeneratorDefault = secondaryAgentModel === '';
+              const isGeneratorCustom = secondaryAgentModel !== '' && !generatorSelectable.includes(secondaryAgentModel);
+              const generatorSelectValue = isGeneratorDefault ? '' : (isGeneratorCustom ? 'custom' : secondaryAgentModel);
+
+              return (
+                <div className="space-y-3 p-4 bg-white/[0.02] border border-white/5 rounded-xl">
+                  <div className="text-xs font-semibold text-gray-300">Agent Connection & Role Routing</div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Brain / Planner Role */}
+                    <div className="space-y-2.5 p-3 bg-white/[0.01] border border-white/5 rounded-lg">
+                      <div className="text-xs font-semibold text-[#4C8DFF]">Brain (Planner) Role</div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-gray-400 block font-semibold">Connection Profile</label>
+                        <select
+                          value={primaryAgentProfile}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setPrimaryAgentProfile(val);
+                            savePreferences(
+                              excludeList,
+                              autoBackupEnabled,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              val
+                            );
+                          }}
+                          className="w-full px-2.5 py-1.5 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF]"
+                        >
+                          <option value="">Use Active Profile (Default)</option>
+                          {profiles.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-gray-400 block font-semibold">Model Name</label>
+                        <div className="flex flex-col gap-1.5">
+                          <select
+                            value={brainSelectValue}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === 'custom') {
+                                setAgentModelName('custom-model');
+                                savePreferences(excludeList, autoBackupEnabled, 'custom-model');
+                              } else {
+                                setAgentModelName(val);
+                                savePreferences(excludeList, autoBackupEnabled, val);
+                              }
+                            }}
+                            className="w-full px-2.5 py-1.5 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF]"
+                          >
+                            <option value="">Use Active Profile Model (Default)</option>
+                            {brainSelectable.map((model) => (
+                              <option key={model} value={model}>
+                                {model}
+                              </option>
+                            ))}
+                            <option value="custom">Custom (Type Model)...</option>
+                          </select>
+                          {(isBrainCustom || brainSelectValue === 'custom') && (
+                            <input
+                              type="text"
+                              value={agentModelName === 'custom-model' ? '' : agentModelName}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setAgentModelName(val);
+                                savePreferences(excludeList, autoBackupEnabled, val);
+                              }}
+                              className="w-full px-2.5 py-1.5 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF] font-mono"
+                              placeholder="Type model name..."
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Generator / Executor Role */}
+                    <div className="space-y-2.5 p-3 bg-white/[0.01] border border-white/5 rounded-lg">
+                      <div className="text-xs font-semibold text-[#4C8DFF]">Generator (Executor) Role</div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-gray-400 block font-semibold">Connection Profile</label>
+                        <select
+                          value={secondaryAgentProfile}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSecondaryAgentProfile(val);
+                            savePreferences(
+                              excludeList,
+                              autoBackupEnabled,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              undefined,
+                              val
+                            );
+                          }}
+                          disabled={!dualLlmMode}
+                          className={`w-full px-2.5 py-1.5 border rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF] ${
+                            dualLlmMode ? "bg-[#171922] border-white/5" : "bg-[#171922]/50 border-white/5 opacity-50 cursor-not-allowed"
+                          }`}
+                        >
+                          <option value="">Use Primary Profile (Default)</option>
+                          {profiles.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-gray-400 block font-semibold">Model Name</label>
+                        <div className="flex flex-col gap-1.5">
+                          <select
+                            value={generatorSelectValue}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === 'custom') {
+                                setSecondaryAgentModel('custom-model');
+                                savePreferences(
+                                  excludeList,
+                                  autoBackupEnabled,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  'custom-model'
+                                );
+                              } else {
+                                setSecondaryAgentModel(val);
+                                savePreferences(
+                                  excludeList,
+                                  autoBackupEnabled,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  val
+                                );
+                              }
+                            }}
+                            disabled={!dualLlmMode}
+                            className={`w-full px-2.5 py-1.5 border rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF] ${
+                              dualLlmMode ? "bg-[#171922] border-white/5" : "bg-[#171922]/50 border-white/5 opacity-50 cursor-not-allowed"
+                            }`}
+                          >
+                            <option value="">Use Primary Model (Default)</option>
+                            {generatorSelectable.map((model) => (
+                              <option key={model} value={model}>
+                                {model}
+                              </option>
+                            ))}
+                            <option value="custom">Custom (Type Model)...</option>
+                          </select>
+                          {(isGeneratorCustom || generatorSelectValue === 'custom') && (
+                            <input
+                              type="text"
+                              value={secondaryAgentModel === 'custom-model' ? '' : secondaryAgentModel}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setSecondaryAgentModel(val);
+                                savePreferences(
+                                  excludeList,
+                                  autoBackupEnabled,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  undefined,
+                                  val
+                                );
+                              }}
+                              disabled={!dualLlmMode}
+                              className={`w-full px-2.5 py-1.5 border rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF] font-mono ${
+                                dualLlmMode ? "bg-[#171922] border-white/5" : "bg-[#171922]/50 border-white/5 opacity-50 cursor-not-allowed"
+                              }`}
+                              placeholder="Type model name..."
+                            />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Image & Visual Analysis Settings */}
             <div className="space-y-3 p-3.5 bg-white/[0.02] border border-white/5 rounded-xl">

@@ -108,7 +108,7 @@ interface FileTreeProps {
   searchTerm: string;
   showHidden: boolean;
   onToggleExpand: (path: string) => void;
-  onSelectFile: (path: string, isCtrlKey: boolean) => void;
+  onSelectFile: (path: string, isCtrlKey: boolean, isDir: boolean) => void;
   selectedPaths: string[];
   onContextMenu: (e: React.MouseEvent, item: FileItem) => void;
   onRenameSubmit: (e: React.FormEvent, item: FileItem) => void;
@@ -272,7 +272,8 @@ export const FileTree: React.FC<FileTreeProps> = ({
         }
 
         const isExpanded = Boolean(expandedPaths[item.path]);
-        const isSelected = selectedFilePath === item.path || selectedPaths.includes(item.path);
+        const isActiveFile = selectedFilePath === item.path;
+        const isTreeSelected = selectedPaths.includes(item.path);
         const gitStatus = gitChanges?.[item.path];
         const isRenaming = renamingPath === item.path;
 
@@ -286,13 +287,13 @@ export const FileTree: React.FC<FileTreeProps> = ({
             onClick={(e) => {
               if (item.is_dir) {
                 if (e.ctrlKey || e.metaKey) {
-                  onSelectFile(item.path, true);
+                  onSelectFile(item.path, true, true);
                 } else {
                   onToggleExpand(item.path);
-                  onSelectFile(item.path, false);
+                  onSelectFile(item.path, false, true);
                 }
               } else {
-                onSelectFile(item.path, e.ctrlKey || e.metaKey);
+                onSelectFile(item.path, e.ctrlKey || e.metaKey, false);
               }
             }}
             onContextMenu={e => onContextMenu(e, item)}
@@ -307,7 +308,11 @@ export const FileTree: React.FC<FileTreeProps> = ({
             }}
             className={`
               group flex items-center justify-between pr-2 text-[12px] cursor-pointer transition-colors
-              ${isSelected ? 'bg-[#4C8DFF]/20 text-white font-semibold border-l-2 border-[#4C8DFF]' : 'text-gray-300 hover:bg-white/5 hover:text-white'}
+              ${isActiveFile 
+                ? 'bg-[#4C8DFF]/20 text-white font-semibold border-l-2 border-[#4C8DFF]' 
+                : isTreeSelected 
+                ? 'bg-white/[0.08] text-white font-medium' 
+                : 'text-gray-300 hover:bg-white/5 hover:text-white'}
             `}
           >
             <div className="flex items-center gap-1.5 min-w-0 flex-1">

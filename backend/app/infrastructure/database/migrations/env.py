@@ -1,6 +1,5 @@
-import asyncio
 from logging.config import fileConfig
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import create_engine
 from alembic import context
 from backend.app.config import settings
 from backend.app.infrastructure.database.models import Base
@@ -14,10 +13,11 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     url = settings.DATABASE_URL
-    if url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    elif url.startswith("sqlite://") and not url.startswith("sqlite+aiosqlite://"):
-        url = url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+    # Ensure synchronous driver is used for offline mode
+    if url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    elif url.startswith("sqlite+aiosqlite://"):
+        url = url.replace("sqlite+aiosqlite://", "sqlite://", 1)
 
     context.configure(
         url=url,
@@ -34,31 +34,24 @@ def do_run_migrations(connection):
     with context.begin_transaction():
         context.run_migrations()
 
-async def run_migrations_online() -> None:
+def run_migrations_online() -> None:
     url = settings.DATABASE_URL
-    if url.startswith("postgresql://"):
-        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    # Ensure synchronous driver is used for migrations (e.g. sqlite3 instead of aiosqlite)
+    if url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    elif url.startswith("sqlite+aiosqlite://"):
+        url = url.replace("sqlite+aiosqlite://", "sqlite://", 1)
     elif url.startswith("sqlite://") and not url.startswith("sqlite+aiosqlite://"):
-        url = url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+        pass
 
-    connectable = create_async_engine(url)
+    connectable = create_engine(url)
 
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
+    with connectable.connect() as connection:
+        do_run_migrations(connection)
 
-    await connectable.dispose()
+    connectable.dispose()
 
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    try:
-        # Check if an event loop is already running
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
-        # Run using a task if a loop exists
-        asyncio.ensure_future(run_migrations_online())
-    else:
-        asyncio.run(run_migrations_online())
+    run_migrations_online()

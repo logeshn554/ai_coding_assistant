@@ -409,9 +409,6 @@ class AgentRuntime:
             conversation_messages = [
                 {"role": "user", "content": task_obj.description}
             ]
-        else:
-            # Make a mutable copy so we don't mutate the caller's list
-            conversation_messages = list(conversation_messages)
 
         # Build tool schemas list from ToolRegistry if not provided
         if tool_schemas is None:

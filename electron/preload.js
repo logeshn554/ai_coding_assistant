@@ -68,6 +68,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Notifies the main process that the terminal focus state has changed.
+   * Used to dynamically ignore menu accelerators like Ctrl+C while the terminal is active.
+   * @param {boolean} isFocused
+   */
+  setTerminalFocus: (isFocused) => ipcRenderer.send('terminal:focus-change', isFocused),
+
+  /**
    * Removes all listeners for a given IPC channel (cleanup on unmount).
    * @param {string} channel
    */

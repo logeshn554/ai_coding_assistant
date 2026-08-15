@@ -519,6 +519,24 @@ class ConfigManager:
         config["image_analysis_mode"] = mode
         self._save_raw_config(config)
 
+    def get_primary_agent_profile(self) -> str:
+        config = self._read_raw_config()
+        return config.get("primary_agent_profile", "")
+
+    def set_primary_agent_profile(self, name: str):
+        config = self._read_raw_config()
+        config["primary_agent_profile"] = str(name or "")
+        self._save_raw_config(config)
+
+    def get_secondary_agent_profile(self) -> str:
+        config = self._read_raw_config()
+        return config.get("secondary_agent_profile", "")
+
+    def set_secondary_agent_profile(self, name: str):
+        config = self._read_raw_config()
+        config["secondary_agent_profile"] = str(name or "")
+        self._save_raw_config(config)
+
     def get_secondary_agent_model(self) -> str:
         config = self._read_raw_config()
         return config.get("secondary_agent_model", "")

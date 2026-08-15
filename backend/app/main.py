@@ -152,13 +152,15 @@ async def gateway_middleware(request: Request, call_next):
     headers = dict(request.headers)
     identity = auth_gateway.authenticate(headers)
 
-    # C7: Guard against null identity before any attribute access.
-    # In production, unauthenticated requests return 401 (not a 500 crash).
+    # In production, unauthenticated requests return 401. In local dev mode, fall back to default identity.
     if identity is None:
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Unauthorized: valid Bearer token or API key required."},
-        )
+        if settings.ENVIRONMENT != "production":
+            identity = getattr(auth_gateway, "_default_identity", None)
+        if identity is None:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Unauthorized: valid Bearer token or API key required."},
+            )
 
     # Expose identity in request state
     request.state.identity = identity

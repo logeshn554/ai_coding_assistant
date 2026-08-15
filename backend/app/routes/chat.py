@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 from ..state import workspace_state, config_manager, get_permission_manager, SESSION_TOKEN, logger
-from ..db import async_session, SessionModel, MessageModel, get_fallback_session_id
+from ..db import async_session, SessionModel, MessageModel, get_fallback_session_id, resolve_session_for_identity
 from fastapi import Request
 from ..session.agent_session import AgentSession
 
@@ -211,6 +211,13 @@ async def tokenize_chat_context(req: TokenizeRequest):
 @router.get("/api/chat/history")
 async def get_chat_history(request: Request, session_id: Optional[str] = None):
     active_id = await resolve_session_id(request, session_id)
+    try:
+        session = await __import__("backend.app.db", fromlist=["resolve_session_for_identity"]).resolve_session_for_identity(
+            active_id,
+            request=request,
+        )
+    except HTTPException:
+        raise
     async with async_session() as db:
         stmt = select(SessionModel).options(selectinload(SessionModel.messages)).where(SessionModel.id == active_id)
         res = await db.execute(stmt)
@@ -222,26 +229,46 @@ async def get_chat_history(request: Request, session_id: Optional[str] = None):
         if session.messages:
             for m in session.messages:
                 content = m.content
+                tool_calls = None
+                tool_call_id = None
+                name = None
+                thinking_blocks = None
+                thinkingSteps = None
+
                 try:
-                    content = json.loads(m.content)
+                    if m.content:
+                        parsed = json.loads(m.content)
+                        if isinstance(parsed, dict):
+                            content = parsed.get("content", "")
+                            tool_calls = parsed.get("tool_calls")
+                            tool_call_id = parsed.get("tool_call_id")
+                            name = parsed.get("name")
+                            thinking_blocks = parsed.get("thinking_blocks")
+                            thinkingSteps = parsed.get("thinkingSteps")
+                        elif isinstance(parsed, (list, int, float, bool)):
+                            content = str(parsed)
                 except Exception:
                     pass
 
                 msg_entry = {
                     "role": m.role,
-                    "timestamp": int(m.created_at.timestamp()) if m.created_at else int(datetime.datetime.utcnow().timestamp())
+                    "content": content if content is not None else "",
+                    "timestamp": int(m.created_at.timestamp()) if m.created_at else int(datetime.datetime.utcnow().timestamp()),
                 }
-                if isinstance(content, dict) and ("content" in content or "tool_calls" in content or "thinking_blocks" in content or "tool_call_id" in content):
-                    msg_entry["content"] = content.get("content") or ""
-                    for k, v in content.items():
-                        if k != "content":
-                            msg_entry[k] = v
-                else:
-                    msg_entry["content"] = content
+                if tool_calls:
+                    msg_entry["tool_calls"] = tool_calls
+                if tool_call_id:
+                    msg_entry["tool_call_id"] = tool_call_id
+                if name:
+                    msg_entry["name"] = name
+                if thinking_blocks:
+                    msg_entry["thinking_blocks"] = thinking_blocks
+                if thinkingSteps:
+                    msg_entry["thinkingSteps"] = thinkingSteps
 
                 messages_list.append(msg_entry)
 
-        # Fallback to messages_json if relational messages list is empty or only contains user role
+        # Fallback/merge with messages_json if messages_list has fewer messages or lacks assistant replies
         has_assistant_or_tool = any(m.get("role") in ("assistant", "tool") for m in messages_list)
         if (not messages_list or not has_assistant_or_tool) and session.messages_json:
             try:
@@ -270,6 +297,14 @@ async def get_chat_history(request: Request, session_id: Optional[str] = None):
 async def save_chat_history(req: ChatHistoryRequest, request: Request, session_id: Optional[str] = None):
     active_id = await resolve_session_id(request, session_id)
     try:
+        session = await __import__("backend.app.db", fromlist=["resolve_session_for_identity"]).resolve_session_for_identity(
+            active_id,
+            request=request,
+        )
+        identity = getattr(request.state, "identity", None)
+        org_id = getattr(getattr(identity, "tenant", None), "tenant_id", None) or session.organization_id or "default-org"
+        user_id = getattr(identity, "user_id", None) or session.user_id or "default-user"
+
         async with async_session() as db:
             async with db.begin():
                 stmt = select(SessionModel).where(SessionModel.id == active_id)
@@ -282,23 +317,45 @@ async def save_chat_history(req: ChatHistoryRequest, request: Request, session_i
                         session_id=active_id,
                         title="Default Conversation",
                         workspace_root=workspace_state.root or "",
+                        org_id=org_id,
+                        user_id=user_id,
                     )
                     await db.flush()
                     
-                msg_stmt = select(MessageModel).where(MessageModel.conversation_id == active_id).order_by(MessageModel.sequence.asc())
+                msg_stmt = select(MessageModel.sequence).where(MessageModel.conversation_id == active_id)
                 msg_res = await db.execute(msg_stmt)
-                existing_msgs = msg_res.scalars().all()
-                
-                n_existing = len(existing_msgs)
+                existing_seqs = set(msg_res.scalars().all())
                 
                 for i, m in enumerate(req.messages):
-                    if i < n_existing:
+                    seq = i + 1
+                    if seq in existing_seqs:
                         continue
                         
                     role = m.get("role", "user")
                     content = m.get("content", "")
-                    if isinstance(content, (dict, list)):
-                        content = json.dumps(content)
+                    tool_calls = m.get("tool_calls")
+                    thinking_blocks = m.get("thinking_blocks")
+                    thinkingSteps = m.get("thinkingSteps")
+                    tool_call_id = m.get("tool_call_id")
+                    name = m.get("name")
+
+                    if role == "assistant":
+                        db_content = json.dumps({
+                            "content": content if content is not None else "",
+                            "tool_calls": tool_calls,
+                            "thinking_blocks": thinking_blocks,
+                            "thinkingSteps": thinkingSteps,
+                        })
+                    elif role == "tool":
+                        db_content = json.dumps({
+                            "content": content if content is not None else "",
+                            "tool_call_id": tool_call_id or "",
+                            "name": name or "",
+                        })
+                    elif isinstance(content, (dict, list)):
+                        db_content = json.dumps(content)
+                    else:
+                        db_content = content if content is not None else ""
                         
                     m_ts = m.get("timestamp")
                     if m_ts:
@@ -309,14 +366,21 @@ async def save_chat_history(req: ChatHistoryRequest, request: Request, session_i
                     msg = MessageModel(
                         conversation_id=active_id,
                         role=role,
-                        content=content if content is not None else "",
-                        sequence=i + 1,
+                        content=db_content,
+                        sequence=seq,
                         created_at=dt,
                     )
                     db.add(msg)
+                    existing_seqs.add(seq)
                     
                 session.updated_at = datetime.datetime.utcnow()
+                try:
+                    session.messages_json = json.dumps(req.messages)
+                except Exception:
+                    pass
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to save chat history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -324,16 +388,31 @@ async def save_chat_history(req: ChatHistoryRequest, request: Request, session_i
 @router.get("/api/chat/sessions")
 async def get_chat_sessions(request: Request):
     from ..db import first_user_preview
+    from ..config import settings
+    is_prod_server = (settings.ENVIRONMENT.lower() == "production" and settings.MODE == "server")
+
+    identity = getattr(request.state, "identity", None)
+    org_id = getattr(getattr(identity, "tenant", None), "tenant_id", None) if identity else None
+    user_id = getattr(identity, "user_id", None) if identity else None
+
     async with async_session() as db:
         stmt = select(SessionModel).options(selectinload(SessionModel.messages)).order_by(SessionModel.updated_at.desc())
+        if is_prod_server:
+            if org_id:
+                stmt = stmt.where(SessionModel.organization_id == org_id)
+            if user_id:
+                stmt = stmt.where(SessionModel.user_id == user_id)
+        elif org_id and org_id != "default-org":
+            stmt = stmt.where(SessionModel.organization_id == org_id)
+        elif user_id and user_id != "default-user":
+            stmt = stmt.where(SessionModel.user_id == user_id)
+
         res = await db.execute(stmt)
         sessions = res.scalars().all()
 
         root = (workspace_state.root or "").strip()
         if root:
-            scoped = [s for s in sessions if (s.workspace_root or "") == root]
-            if scoped:
-                sessions = scoped
+            sessions = [s for s in sessions if (s.workspace_root or "") == root]
 
         sessions_list = []
         for s in sessions:
@@ -363,8 +442,12 @@ async def get_chat_sessions(request: Request):
         }
 
 @router.post("/api/chat/sessions")
-async def create_chat_session(req: ChatSessionCreateRequest):
+async def create_chat_session(req: ChatSessionCreateRequest, request: Request):
     new_id = f"session_{uuid.uuid4().hex[:8]}"
+    identity = getattr(request.state, "identity", None)
+    org_id = getattr(getattr(identity, "tenant", None), "tenant_id", None) or "default-org"
+    user_id = getattr(identity, "user_id", None) or "default-user"
+
     try:
         async with async_session() as db:
             from ..db import create_new_session_record
@@ -374,6 +457,8 @@ async def create_chat_session(req: ChatSessionCreateRequest):
                 title=req.title.strip() or "New Chat",
                 workspace_root=workspace_state.root or "",
                 mode="Ask",
+                org_id=org_id,
+                user_id=user_id,
             )
             await db.commit()
 
@@ -396,7 +481,11 @@ async def create_chat_session(req: ChatSessionCreateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/chat/sessions/{session_id}")
-async def get_chat_session_details(session_id: str):
+async def get_chat_session_details(session_id: str, request: Request):
+    session = await __import__("backend.app.db", fromlist=["resolve_session_for_identity"]).resolve_session_for_identity(
+        session_id,
+        request=request,
+    )
     async with async_session() as db:
         stmt = select(SessionModel).options(selectinload(SessionModel.messages)).where(SessionModel.id == session_id)
         res = await db.execute(stmt)
@@ -461,8 +550,12 @@ async def get_chat_session_details(session_id: str):
         }
 
 @router.put("/api/chat/sessions/{session_id}")
-async def rename_chat_session(session_id: str, req: ChatSessionRenameRequest):
+async def rename_chat_session(session_id: str, req: ChatSessionRenameRequest, request: Request):
     try:
+        session = await __import__("backend.app.db", fromlist=["resolve_session_for_identity"]).resolve_session_for_identity(
+            session_id,
+            request=request,
+        )
         async with async_session() as db:
             stmt = select(SessionModel).where(SessionModel.id == session_id)
             res = await db.execute(stmt)
@@ -491,6 +584,10 @@ async def rename_chat_session(session_id: str, req: ChatSessionRenameRequest):
 @router.delete("/api/chat/sessions/{session_id}")
 async def delete_chat_session(session_id: str, request: Request):
     try:
+        await __import__("backend.app.db", fromlist=["resolve_session_for_identity"]).resolve_session_for_identity(
+            session_id,
+            request=request,
+        )
         async with async_session() as db:
             stmt = select(SessionModel).where(SessionModel.id == session_id)
             res = await db.execute(stmt)
@@ -536,16 +633,30 @@ async def delete_chat_session(session_id: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/api/chat/sessions")
-async def clear_all_sessions():
+async def clear_all_sessions(request: Request):
     try:
         workspace_root_val = (workspace_state.root or "").strip()
         if not workspace_root_val:
             raise HTTPException(status_code=400, detail="No workspace folder open.")
+
+        identity = getattr(request.state, "identity", None)
+        org_id = getattr(getattr(identity, "tenant", None), "tenant_id", None) or "default-org"
+        user_id = getattr(identity, "user_id", None) or "default-user"
+
         async with async_session() as db:
-            await db.execute(delete(SessionModel).where(SessionModel.workspace_root == workspace_root_val))
+            del_stmt = delete(SessionModel).where(
+                SessionModel.workspace_root == workspace_root_val,
+                SessionModel.organization_id == org_id,
+            )
+            if user_id and user_id != "default-user":
+                del_stmt = del_stmt.where(SessionModel.user_id == user_id)
+            await db.execute(del_stmt)
             await db.flush()
             
-            stmt_check = select(SessionModel).where(SessionModel.id == "default-session")
+            stmt_check = select(SessionModel).where(
+                SessionModel.id == "default-session",
+                SessionModel.organization_id == org_id
+            )
             res_check = await db.execute(stmt_check)
             exist_default = res_check.scalar()
             
@@ -556,6 +667,8 @@ async def clear_all_sessions():
                 session_id=default_id,
                 title="Default Conversation",
                 workspace_root=workspace_root_val,
+                org_id=org_id,
+                user_id=user_id,
             )
             await db.commit()
 
@@ -568,6 +681,7 @@ async def clear_all_sessions():
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Failed to clear sessions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 from ..state import limiter
@@ -595,7 +709,7 @@ async def websocket_chat(
     elif not is_prod_server:
         # In desktop / development mode, local IDE connections are authenticated by default
         is_authenticated = True
-        ticket_identity = {"user_id": "local-user", "tenant_id": "local"}
+        ticket_identity = {"user_id": "default-user", "tenant_id": "default-org"}
 
     if not is_authenticated:
         await request.send_text(json.dumps({"type": "error", "message": "Unauthorized: invalid, expired, or missing connection ticket."}))
@@ -611,7 +725,36 @@ async def websocket_chat(
     resolved_session_id = session_id
     if not resolved_session_id and workspace_state.root:
         from ..db import get_fallback_session_id
-        resolved_session_id = await get_fallback_session_id(workspace_state.root)
+        resolved_session_id = await get_fallback_session_id(workspace_state.root, org_id=authenticated_org_id, user_id=authenticated_user_id)
+
+    if resolved_session_id:
+        try:
+            await resolve_session_for_identity(
+                resolved_session_id,
+                org_id=authenticated_org_id,
+                user_id=authenticated_user_id,
+            )
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                # Auto-create session if it does not exist yet
+                async with async_session() as db:
+                    from ..db import create_new_session_record
+                    await create_new_session_record(
+                        db,
+                        session_id=resolved_session_id,
+                        title="New Chat",
+                        workspace_root=workspace_state.root or "",
+                        org_id=authenticated_org_id,
+                        user_id=authenticated_user_id,
+                    )
+                    await db.commit()
+            elif not is_prod_server:
+                # In desktop development mode, allow session access
+                pass
+            else:
+                await request.send_text(json.dumps({"type": "error", "message": exc.detail}))
+                await request.close(code=4403)
+                return
 
     from ..state import session_id_var
     session_id_var.set(resolved_session_id)
@@ -966,6 +1109,8 @@ async def websocket_chat(
             run.state = "QUEUED"
             await db.commit()
 
+            run_to_conv_cache[run.id] = resolved_session_id
+
             await AgentQueue.enqueue(
                 run_id=run.id,
                 organization_id=authenticated_org_id,
@@ -1015,10 +1160,12 @@ async def websocket_chat(
                     except Exception as att_err:
                         logger.error("Failed to process attached files in chat session: %s", att_err)
 
-                # Do NOT update session.workspace_root from the global workspace_state here.
-                # The session workspace was locked at connection open to prevent cross-session bleed.
-                # Enqueue instead of cancel+replace — preserves in-flight work
-                await enqueue_chat_run(text, mode)
+                # In desktop / development mode, execute directly via session for instant streaming & confirmation support.
+                # In production server mode, dispatch to distributed background worker queue.
+                if is_prod_server:
+                    await enqueue_chat_run(text, mode)
+                else:
+                    await session.enqueue_message(text, mode, auto_apply)
 
             elif msg_type == "change_workspace":
                 # Explicit per-session workspace change from the UI

@@ -9,12 +9,6 @@ const savedTheme = localStorage.getItem('devpilot_theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);
 
 
-let devpilotSessionId = localStorage.getItem('devpilot_session_id');
-if (!devpilotSessionId) {
-  devpilotSessionId = crypto.randomUUID();
-  localStorage.setItem('devpilot_session_id', devpilotSessionId);
-}
-
 let sessionToken = ""
 
 // Global fetch interceptor

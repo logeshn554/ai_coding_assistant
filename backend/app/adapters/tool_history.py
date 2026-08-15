@@ -92,9 +92,15 @@ def validate_tool_history(messages: List[Dict[str, Any]]) -> None:
 
 def clean_tool_history(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Clean legacy, duplicate, or orphaned tool calls/results in-place to prevent API errors."""
-    pending: Dict[str, Dict[str, Any]] = {}
-    cleaned_messages = []
+    # Pass 1: Collect all resolved tool call IDs (those that have a corresponding tool result message)
+    resolved_ids = set()
+    for message in messages:
+        if message.get("role") == "tool":
+            call_id = message.get("tool_call_id") or message.get("id")
+            if call_id:
+                resolved_ids.add(call_id)
 
+    cleaned_messages = []
     for message in messages:
         # copy message dict to avoid mutating original session history
         msg_copy = dict(message)
@@ -110,10 +116,9 @@ def clean_tool_history(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 name = tool_call.get("name") or (tool_call.get("function", {}).get("name") if isinstance(tool_call.get("function"), dict) else "")
                 if not name:
                     continue
-                if call_id in pending:
-                    continue
-                pending[call_id] = tool_call
-                valid_calls.append(tool_call)
+                # Only keep the tool call if it has a matching tool result in the history
+                if call_id in resolved_ids:
+                    valid_calls.append(tool_call)
             if valid_calls:
                 msg_copy["tool_calls"] = valid_calls
             else:
@@ -121,13 +126,9 @@ def clean_tool_history(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
         elif role == "tool":
             call_id = msg_copy.get("tool_call_id") or msg_copy.get("id")
-            if not call_id or call_id not in pending:
+            if not call_id or call_id not in resolved_ids:
                 # Skip orphaned tool result
                 continue
-            del pending[call_id]
-
-        elif role == "user":
-            pending.clear()
 
         cleaned_messages.append(msg_copy)
 

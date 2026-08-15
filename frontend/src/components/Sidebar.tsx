@@ -156,7 +156,7 @@ export default function Sidebar({
     }
   };
 
-  const handleSelectFileClick = (path: string, isCtrlKey: boolean) => {
+  const handleSelectFileClick = (path: string, isCtrlKey: boolean, isDir: boolean) => {
     if (isCtrlKey) {
       setSelectedPaths(prev => {
         if (prev.includes(path)) {
@@ -167,7 +167,9 @@ export default function Sidebar({
       });
     } else {
       setSelectedPaths([path]);
-      onSelectFile(path);
+      if (!isDir) {
+        onSelectFile(path);
+      }
     }
   };
 

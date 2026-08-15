@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { ChatMessage, ChatMode } from '../../types/chat';
-import { Plus, ChevronDown, RotateCcw } from 'lucide-react';
+import { Plus, RotateCcw } from 'lucide-react';
 import { AiCommandBar } from './AiCommandBar';
 import { MessageList } from './MessageList';
 import { useAI } from '../../core/ai/AIContext';
@@ -88,20 +88,11 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
       <div className="px-3.5 py-2 shrink-0 border-b border-[#2A3146] bg-[#0E1016] select-none">
         <div className="flex items-center justify-between gap-2">
           
-          {/* Left: Provider & Model Selector */}
-          <button
-            onClick={() => setIsProviderModalOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 transition-all cursor-pointer group min-w-0"
-            title="Click to configure AI provider or active model"
-          >
-            <div className="flex items-center gap-1 text-xs font-bold text-zinc-100 group-hover:text-purple-300">
-              <span className="truncate max-w-[140px]">{activeModelName}</span>
-              <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-            </div>
-            <span className="text-[10px] text-zinc-500 font-mono tracking-tight hidden sm:inline">
-              · {activeProviderName}
-            </span>
-          </button>
+          {/* Left: Chat Title */}
+          <div className="flex items-center gap-2 font-semibold text-xs text-zinc-300">
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse shrink-0" />
+            <span>DevPilot AI</span>
+          </div>
 
           {/* Right Controls: History & New Chat */}
           <div className="flex items-center gap-2">
@@ -152,6 +143,9 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
             setMode={setMode}
             onOpenContextModal={() => setIsContextModalOpen(true)}
             contextPercentage={pct}
+            activeModelName={activeModelName}
+            activeProviderName={activeProviderName}
+            onOpenProviderModal={() => setIsProviderModalOpen(true)}
           />
         </div>
       </div>

@@ -103,6 +103,56 @@ function TerminalPane({
     term.open(terminalRef.current);
     fitAddon.fit();
 
+    // Custom key event handler for Ctrl+C (Interrupt/Copy) and Ctrl+V (Paste) in terminal
+    term.attachCustomKeyEventHandler((arg) => {
+      if (arg.type === 'keydown') {
+        const isCtrlC = arg.ctrlKey && arg.code === 'KeyC';
+        const isCtrlV = arg.ctrlKey && arg.code === 'KeyV';
+        
+        if (isCtrlC) {
+          const selection = term.getSelection();
+          if (selection) {
+            navigator.clipboard.writeText(selection);
+            term.clearSelection();
+            return false; // Skip xterm.js handling (do not send SIGINT)
+          }
+          return true; // Send SIGINT (\x03) to terminal
+        }
+        
+        if (isCtrlV) {
+          navigator.clipboard.readText().then(text => {
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+              wsRef.current.send(text);
+            }
+          }).catch(err => {
+            console.error('Failed to read from clipboard: ', err);
+          });
+          return false; // Skip xterm.js handling
+        }
+      }
+      return true;
+    });
+
+    const handleFocus = () => {
+      onFocus();
+      // @ts-ignore
+      if (window.electronAPI && window.electronAPI.setTerminalFocus) {
+        // @ts-ignore
+        window.electronAPI.setTerminalFocus(true);
+      }
+    };
+
+    const handleBlur = () => {
+      // @ts-ignore
+      if (window.electronAPI && window.electronAPI.setTerminalFocus) {
+        // @ts-ignore
+        window.electronAPI.setTerminalFocus(false);
+      }
+    };
+
+    term.textarea?.addEventListener('focus', handleFocus);
+    term.textarea?.addEventListener('blur', handleBlur);
+
     let ws: WebSocket | null = null;
     let disposable: any = null;
     let reconnectAttempts = 0;
@@ -215,9 +265,18 @@ function TerminalPane({
 
     const checkOutputForLocalhost = (text: string) => {
       if (!text) return;
-      const match = text.match(/https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d+)/i);
-      if (match) {
-        const port = match[1];
+      const stripped = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+      const urlMatch = stripped.match(/https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d+)/i);
+      let port = urlMatch ? urlMatch[1] : null;
+
+      if (!port) {
+        const portMatch = stripped.match(/(?:listening|running|ready|started|serving)\s+(?:at|on|port)?\s*:?\s*(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|0\.0\.0\.0)?(?::|\s+port\s+)?(\d{2,5})/i);
+        if (portMatch) {
+          port = portMatch[1];
+        }
+      }
+
+      if (port) {
         const detectedUrl = `http://localhost:${port}`;
         if (lastDetectedUrlRef.current !== detectedUrl) {
           lastDetectedUrlRef.current = detectedUrl;
@@ -266,6 +325,8 @@ function TerminalPane({
       if (disposable) disposable.dispose();
       resizeDisposable.dispose();
       window.removeEventListener('devpilot_terminal_stream', handleAgentStream);
+      term.textarea?.removeEventListener('focus', handleFocus);
+      term.textarea?.removeEventListener('blur', handleBlur);
       term.dispose();
       resizeObserver.disconnect();
       const activeWs = wsRef.current || ws;

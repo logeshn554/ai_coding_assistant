@@ -1,14 +1,20 @@
 @echo off
-title DevPilot AI Editor Launcher
-echo ===================================================
-echo               Starting DevPilot AI Editor          
-echo ===================================================
+title DevPilot AI Editor
+echo =========================================================
+echo               Starting DevPilot AI Editor                
+echo =========================================================
 echo.
 
-:: Launch desktop runner using virtual environment python
-echo Launching DevPilot Desktop Application...
-".\venv\Scripts\python" backend/desktop_run.py
+:: Ensure frontend production bundle exists
+if not exist "frontend\dist\index.html" (
+    echo Building frontend bundle...
+    cd frontend
+    call npm run build
+    cd ..
+)
 
-echo.
-echo Application stopped.
-pause
+:: Launch standalone Electron desktop application (no browser)
+cd electron
+call npx electron .
+cd ..
+

@@ -1,12 +1,38 @@
 {
-  "name": "devpilot-electron",
+  "name": "devpilot",
   "version": "1.0.0",
-  "description": "Electron wrapper for DevPilot – provides native OS folder picker",
+  "description": "DevPilot AI Coding Assistant & Code Editor",
   "main": "main.js",
+  "author": "DevPilot Team",
+  "license": "MIT",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder --win"
   },
   "dependencies": {
     "electron": "^31.0.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.devpilot.editor",
+    "productName": "DevPilot AI Editor",
+    "directories": {
+      "output": "../dist/electron-build"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "../assets/devpilot.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DevPilot AI Editor"
+    }
   }
 }

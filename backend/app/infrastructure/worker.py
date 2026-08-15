@@ -170,13 +170,7 @@ class AgentWorker:
                 "directory. Refusing to execute — fix the workspace configuration."
             )
 
-        # 3. Desktop / Local development fallback: use current working directory if not configured
-        if settings.ENVIRONMENT != "production":
-            cwd = os.getcwd()
-            logger.info(f"AgentRun {run.id}: No workspace stored, using desktop working directory: {cwd}")
-            return cwd
-
-        # 4. No valid workspace found in production — fail explicitly (never use cwd in production)
+        # 3. No valid workspace found — fail explicitly (never silently fallback to cwd)
         raise RuntimeError(
             f"AgentRun {run.id}: No workspace root configured. "
             "Set workspace_root on the run or configure a Workspace with a valid root_identifier."
@@ -204,7 +198,18 @@ class AgentWorker:
                 "Cannot switch providers silently. Reconfigure or re-create the run."
             )
 
-        # No profile was stored at run-creation time — fall back to active profile
+        # No profile was stored at run-creation time — fall back to primary agent profile if set
+        primary_profile_name = config_manager.get_primary_agent_profile()
+        if isinstance(primary_profile_name, str) and primary_profile_name.strip():
+            profile = config_manager.get_profile(primary_profile_name)
+            if profile:
+                logger.info(
+                    f"Worker: No profile stored for run {run.id}. "
+                    f"Using primary agent profile '{primary_profile_name}'"
+                )
+                return profile
+
+        # Fallback to active profile
         profile = config_manager.get_active_profile()
         if profile:
             logger.info(
@@ -249,8 +254,15 @@ class AgentWorker:
                 session_id=run_id,
             )
 
+            from backend.app.agent.agent_runtime.events import AgentEvent as RuntimeAgentEvent
+
             async def on_event(event):
-                await EventPublisher.publish(run_id, event.type, event.payload)
+                if hasattr(event, "type") and hasattr(event, "payload"):
+                    await EventPublisher.publish(run_id, event.type, event.payload)
+                elif isinstance(event, dict):
+                    evt_type = event.get("type", "unknown")
+                    payload = {k: v for k, v in event.items() if k not in ("type", "session_id", "run_id")}
+                    await EventPublisher.publish(run_id, evt_type, payload)
 
             task_obj = AgentTask(
                 id=run_id,
@@ -325,10 +337,10 @@ class AgentWorker:
                     if chunk_type == "text":
                         content = chunk.get("content", "")
                         text_parts.append(content)
-                        await on_event(AgentEvent(run_id, "text_delta", {"content": content}))
+                        await on_event(RuntimeAgentEvent(run_id, "text_delta", {"content": content}))
                     elif chunk_type == "thinking":
                         content = chunk.get("content", "")
-                        await on_event(AgentEvent(run_id, "thinking", {"content": content}))
+                        await on_event(RuntimeAgentEvent(run_id, "thinking", {"content": content}))
                     elif chunk_type in ("tool_call", "tool_use"):
                         tc_id = chunk.get("id", "")
                         tc_name = chunk.get("name", "")
@@ -477,10 +489,14 @@ class AgentWorker:
                                 role = m.get("role", "assistant")
                                 content = m.get("content", "")
                                 tool_calls = m.get("tool_calls")
-                                if role == "assistant" and tool_calls:
+                                thinking_blocks = m.get("thinking_blocks")
+                                thinkingSteps = m.get("thinkingSteps")
+                                if role == "assistant":
                                     db_content = json.dumps({
                                         "content": content if content is not None else "",
-                                        "tool_calls": tool_calls
+                                        "tool_calls": tool_calls,
+                                        "thinking_blocks": thinking_blocks,
+                                        "thinkingSteps": thinkingSteps,
                                     })
                                 elif role == "tool":
                                     db_content = json.dumps({

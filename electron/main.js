@@ -1,30 +1,32 @@
 /**
- * main.js — Electron main process for DevPilot.
+ * main.js — Electron main process for DevPilot (VS Code Architecture).
  *
  * Responsibilities:
- *  1. Open a BrowserWindow that loads the DevPilot web app (http://localhost:8000)
- *  2. Handle 'dialog:openFolder' IPC → show native OS folder picker
- *  3. Return the selected path (or cancelled flag) to the renderer
+ *  1. Open a native desktop window immediately (NO external web browser).
+ *  2. Display a built-in startup splash screen while initializing.
+ *  3. Automatically spawn and manage the background Python AI backend.
+ *  4. Load the full DevPilot workbench directly in the desktop window.
+ *  5. Handle native OS dialogs and clean process termination.
  */
 
 const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
+const http = require('http');
+const { spawn, exec } = require('child_process');
+const fs = require('fs');
 
-// The DevPilot backend URL (must be running before launching Electron)
-const DEVPILOT_URL = 'http://localhost:8000';
-
-// How long to wait for the backend to be ready before loading (ms)
-const BACKEND_POLL_INTERVAL = 500;
-const BACKEND_TIMEOUT = 30_000;
+// Configuration
+const DEVPILOT_PORT = process.env.PORT || 8000;
+const DEVPILOT_URL = `http://127.0.0.1:${DEVPILOT_PORT}`;
+const BACKEND_POLL_INTERVAL = 300;
+const BACKEND_TIMEOUT = 35_000;
 
 let mainWindow = null;
+let backendProcess = null;
+const projectRoot = path.resolve(__dirname, '..');
 
 // ─── Native Application Menu ─────────────────────────────────────────────────
 
-/**
- * Build and set a minimal, production-safe native application menu.
- * Replaces the default Electron menu that exposes DevTools and internal options.
- */
 function setApplicationMenu() {
   const isDev = process.env.NODE_ENV === 'development' || process.env.DEVPILOT_DEV === '1';
 
@@ -60,7 +62,6 @@ function setApplicationMenu() {
       submenu: [
         { role: 'reload' },
         { role: 'togglefullscreen' },
-        // Only expose DevTools in development mode
         ...(isDev ? [{ type: 'separator' }, { role: 'toggleDevTools' }] : []),
       ],
     },
@@ -81,15 +82,110 @@ function setApplicationMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// ─── Backend Process Management ──────────────────────────────────────────────
 
+function findPythonExecutable() {
+  const venvWin = path.join(projectRoot, 'venv', 'Scripts', 'python.exe');
+  const venvUnix = path.join(projectRoot, 'venv', 'bin', 'python');
 
-// ─── IPC Handler ────────────────────────────────────────────────────────────
+  if (process.platform === 'win32' && fs.existsSync(venvWin)) {
+    return venvWin;
+  }
+  if (fs.existsSync(venvUnix)) {
+    return venvUnix;
+  }
+  return 'python';
+}
 
-/**
- * 'dialog:openFolder'
- * Opens the native OS folder selection dialog.
- * Returns { path: string } on success, { cancelled: true } if the user cancels.
- */
+function startBackendServer() {
+  const pythonPath = findPythonExecutable();
+  console.log(`[DevPilot Electron] Starting background AI service: ${pythonPath}`);
+
+  const args = [
+    '-m',
+    'uvicorn',
+    'backend.app.main:app',
+    '--host',
+    '127.0.0.1',
+    '--port',
+    String(DEVPILOT_PORT),
+    '--log-level',
+    'warning'
+  ];
+
+  backendProcess = spawn(pythonPath, args, {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1',
+      PYTHONPATH: `${projectRoot};${path.join(projectRoot, 'backend')}`,
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+
+  backendProcess.stdout.on('data', (data) => {
+    console.log(`[Backend] ${data.toString().trim()}`);
+  });
+
+  backendProcess.stderr.on('data', (data) => {
+    console.warn(`[Backend] ${data.toString().trim()}`);
+  });
+
+  backendProcess.on('exit', (code, signal) => {
+    console.log(`[DevPilot Electron] Backend exited (code: ${code}, signal: ${signal})`);
+    backendProcess = null;
+  });
+}
+
+function killBackendServer() {
+  if (!backendProcess || !backendProcess.pid) return;
+
+  const pid = backendProcess.pid;
+  console.log(`[DevPilot Electron] Stopping background backend (PID: ${pid})...`);
+
+  if (process.platform === 'win32') {
+    exec(`taskkill /pid ${pid} /T /F`, () => {});
+  } else {
+    try {
+      backendProcess.kill('SIGTERM');
+    } catch (_) {}
+  }
+  backendProcess = null;
+}
+
+// ─── Backend Ready Check ─────────────────────────────────────────────────────
+
+async function waitForBackend(timeout = BACKEND_TIMEOUT) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeout) {
+    try {
+      await new Promise((resolve, reject) => {
+        const req = http.get(`${DEVPILOT_URL}/api/health`, (res) => {
+          res.destroy();
+          if (res.statusCode === 200) {
+            resolve();
+          } else {
+            reject(new Error(`Status ${res.statusCode}`));
+          }
+        });
+        req.on('error', reject);
+        req.setTimeout(800, () => {
+          req.destroy();
+          reject(new Error('timeout'));
+        });
+      });
+      return true;
+    } catch {
+      await new Promise((r) => setTimeout(r, BACKEND_POLL_INTERVAL));
+    }
+  }
+
+  return false;
+}
+
+// ─── IPC Handlers ────────────────────────────────────────────────────────────
+
 ipcMain.handle('dialog:openFolder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: 'Open Folder',
@@ -103,9 +199,14 @@ ipcMain.handle('dialog:openFolder', async () => {
   return { path: result.filePaths[0] };
 });
 
+ipcMain.on('terminal:focus-change', (_event, isFocused) => {
+  if (mainWindow) {
+    mainWindow.webContents.setIgnoreMenuShortcuts(isFocused);
+  }
+});
+
 ipcMain.handle('agentos:rollbackTask', async (_event, taskId) => {
   try {
-    const http = require('http');
     return new Promise((resolve) => {
       const req = http.request(`${DEVPILOT_URL}/api/files/rollback-task?task_id=${encodeURIComponent(taskId)}`, { method: 'POST' }, (res) => {
         let body = '';
@@ -122,7 +223,6 @@ ipcMain.handle('agentos:rollbackTask', async (_event, taskId) => {
 
 ipcMain.handle('agentos:getTaskDiff', async (_event, taskId) => {
   try {
-    const http = require('http');
     return new Promise((resolve) => {
       http.get(`${DEVPILOT_URL}/api/files/task-diff?task_id=${encodeURIComponent(taskId)}`, (res) => {
         let body = '';
@@ -135,87 +235,123 @@ ipcMain.handle('agentos:getTaskDiff', async (_event, taskId) => {
   }
 });
 
-// ─── Window Creation ─────────────────────────────────────────────────────────
+// ─── Window Creation & Startup ───────────────────────────────────────────────
+
+function getSplashHtml() {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0;
+      background: #0b0c14;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      height: 100vh; user-select: none;
+    }
+    .logo-container {
+      display: flex; align-items: center; justify-content: center;
+      width: 64px; height: 64px; border-radius: 16px;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(168, 85, 247, 0.15));
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      margin-bottom: 24px;
+    }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid rgba(59, 130, 246, 0.2);
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 6px; color: #ffffff; }
+    .subtitle { font-size: 13px; color: #94a3b8; display: flex; align-items: center; gap: 8px; }
+  </style>
+</head>
+<body>
+  <div class="logo-container">
+    <div class="spinner"></div>
+  </div>
+  <div class="title">DevPilot AI Editor</div>
+  <div class="subtitle">Starting local AI engine & workspace...</div>
+</body>
+</html>`;
+}
 
 function createWindow() {
+  const iconPath = path.join(projectRoot, 'assets', 'devpilot.ico');
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 800,
-    minHeight: 600,
-    title: 'DevPilot',
+    width: 1440,
+    height: 920,
+    minWidth: 1000,
+    minHeight: 650,
+    title: 'DevPilot AI Editor',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
+    backgroundColor: '#0b0c14',
+    show: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,   // Required for contextBridge security
-      nodeIntegration: false,   // Never expose Node in renderer
+      contextIsolation: true,
+      nodeIntegration: false,
     },
   });
 
-  // Load the running DevPilot web app
-  mainWindow.loadURL(DEVPILOT_URL);
+  // Display instantaneous native splash while engine loads
+  mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(getSplashHtml())}`);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-// ─── Backend Ready Check ─────────────────────────────────────────────────────
-
-/**
- * Polls localhost:8000 until the backend responds, then creates the window.
- * This prevents a blank screen if Electron starts before the server is up.
- */
-async function waitForBackend(timeout = BACKEND_TIMEOUT) {
-  const start = Date.now();
-
-  while (Date.now() - start < timeout) {
-    try {
-      // Node's built-in http — no need for node-fetch
-      await new Promise((resolve, reject) => {
-        const http = require('http');
-        const req = http.get(DEVPILOT_URL, (res) => {
-          res.destroy();
-          resolve();
-        });
-        req.on('error', reject);
-        req.setTimeout(1000, () => { req.destroy(); reject(new Error('timeout')); });
-      });
-      return true; // Backend is up
-    } catch {
-      await new Promise((r) => setTimeout(r, BACKEND_POLL_INTERVAL));
-    }
-  }
-
-  return false; // Timed out
-}
-
 // ─── App Lifecycle ───────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
-  // Set the native application menu before creating any windows
   setApplicationMenu();
+  createWindow();
 
-  const ready = await waitForBackend();
-
+  // Check if backend is already online, otherwise start it in the background
+  let ready = await waitForBackend(800);
+  if (!ready) {
+    startBackendServer();
+    ready = await waitForBackend(BACKEND_TIMEOUT);
+  }
 
   if (!ready) {
-    console.error(
-      `[DevPilot Electron] Backend at ${DEVPILOT_URL} did not respond within ${BACKEND_TIMEOUT / 1000}s.\n` +
-      'Make sure DevPilot is running (docker compose up or npm start) before launching Electron.'
+    dialog.showErrorBox(
+      'Initialization Error',
+      `DevPilot could not initialize its AI backend service at ${DEVPILOT_URL}.\nPlease make sure Python is installed in the virtual environment.`
     );
     app.quit();
     return;
   }
 
-  createWindow();
+  // Load the full DevPilot workspace into the native window
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.loadURL(DEVPILOT_URL);
+  }
 
-  // macOS: re-create the window when clicking the dock icon with no windows open
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-// Quit when all windows are closed (except on macOS)
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  killBackendServer();
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+app.on('before-quit', () => {
+  killBackendServer();
+});
+
+app.on('will-quit', () => {
+  killBackendServer();
 });

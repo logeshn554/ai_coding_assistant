@@ -687,14 +687,14 @@ class SandboxManager:
         is_prod = settings.ENVIRONMENT == "production"
         is_server = settings.MODE == "server"
 
-        if is_prod and is_server:
+        if is_prod or settings.USE_SANDBOX:
             use_docker = True
 
         if use_docker:
             # Verify Docker availability
             from backend.app.tools.terminal_tool import _is_docker_available
             if not _is_docker_available():
-                if is_prod and is_server:
+                if is_prod or settings.USE_SANDBOX:
                     raise RuntimeError("Production Sandbox Unavailable: Docker daemon not reachable or CLI missing. Failing closed.")
                 else:
                     logger.warning("Docker sandbox requested but not available in development. Falling back to local host sandbox.")

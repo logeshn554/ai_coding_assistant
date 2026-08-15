@@ -19,6 +19,8 @@ class SettingsUpdateRequest(BaseModel):
     image_analysis_model: Optional[str] = ""
     image_analysis_mode: Optional[str] = "auto"
     secondary_agent_model: Optional[str] = ""
+    primary_agent_profile: Optional[str] = ""
+    secondary_agent_profile: Optional[str] = ""
     mcp_servers: Optional[list] = None
     # Web Search Fallback settings
     web_search_fallback_enabled: Optional[bool] = False
@@ -54,6 +56,8 @@ def get_settings():
         "auto_inspect_on_server_start": config_manager.get_auto_inspect_on_server_start(),
         "agent_model_name": config_manager.get_agent_model_name(),
         "secondary_agent_model": config_manager.get_secondary_agent_model(),
+        "primary_agent_profile": config_manager.get_primary_agent_profile(),
+        "secondary_agent_profile": config_manager.get_secondary_agent_profile(),
         "agent_models": config_manager.get_agent_models(),
         "agent_profiles": config_manager.get_agent_profiles(),
         "image_analysis_model": config_manager.get_image_analysis_model(),
@@ -95,6 +99,10 @@ def save_settings(req: SettingsUpdateRequest):
         config_manager.set_agent_model_name(req.agent_model_name)
         if req.secondary_agent_model is not None:
             config_manager.set_secondary_agent_model(req.secondary_agent_model)
+        if req.primary_agent_profile is not None:
+            config_manager.set_primary_agent_profile(req.primary_agent_profile)
+        if req.secondary_agent_profile is not None:
+            config_manager.set_secondary_agent_profile(req.secondary_agent_profile)
         if req.agent_models is not None:
             config_manager.set_agent_models(req.agent_models)
         if req.agent_profiles is not None:
