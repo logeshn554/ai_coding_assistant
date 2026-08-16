@@ -577,6 +577,7 @@ class AgentWorker:
                     state=AgentState.FAILED,
                     output=f"Worker execution failed: {run_err}",
                     errors=[str(run_err)],
+                    error_code="WORKER_EXCEPTION",
                 )
                 await adapt_result(crash_res, crash_proxy)
             except Exception as pub_err:

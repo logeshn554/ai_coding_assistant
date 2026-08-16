@@ -298,6 +298,7 @@ class AgentRuntime:
             "verification_status": session.verification_status.value if isinstance(session.verification_status, VerificationStatus) else str(session.verification_status),
             "changed_files": session.changed_files,
             "errors": session.errors,
+            "error_code": session.error_code,
             "tool_calls_count": len(session.tool_calls),
             "started_at": session.started_at,
         }
@@ -350,6 +351,7 @@ class AgentRuntime:
                 session.verification_status = VerificationStatus(data.get("verification_status", "NOT_RUN"))
                 session.changed_files = data.get("changed_files", {})
                 session.errors = data.get("errors", [])
+                session.error_code = data.get("error_code")
                 session.started_at = data.get("started_at")
                 logger.info(f"Successfully loaded checkpoint '{cp.checkpoint_name}' for run {session.session_id}. Resuming at step {session.current_step}.")
                 return True
