@@ -182,8 +182,12 @@ async def test_agent_runtime_autonomous_workflow(temp_workspace):
     runtime = AgentRuntime()
     session = await runtime.start_session(str(temp_workspace))
 
+    async def mock_llm_provider(messages, tools=None):
+        from backend.app.agent.agent_runtime.llm_adapter import ModelResponse
+        return ModelResponse(text="Completed verification of math utils.", tool_calls=[])
+
     task = AgentTask(id="task_001", description="Verify math utils")
-    res = await runtime.run(session.session_id, task)
+    res = await runtime.run(session.session_id, task, llm_provider_func=mock_llm_provider)
 
     assert res.state in (AgentState.COMPLETED, AgentState.COMPLETED_VERIFIED, AgentState.COMPLETED_WITH_WARNINGS)
     assert res.verification_status.value == "PASSED"

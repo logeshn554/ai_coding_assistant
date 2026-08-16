@@ -507,46 +507,6 @@ class LLMAdapter(ModelAdapter):
                     )
                 stop_reason = "tool_use" if tool_calls_accum else "stop"
                 yield self.build_done_chunk(stop_reason)
-            except (asyncio.CancelledError, asyncio.TimeoutError, httpx.TimeoutException, Exception) as stream_err:
-                if is_continuation:
-                    logger.warning(
-                        "LLM continuation failure: provider=%s model=%s operation=tool_continuation stream=true http_status=200 failure=read_timeout attempt=1 provider_response_started_but_stream_stalled. Falling back to non-streaming.",
-                        self.provider, self.model_name
-                    )
-                    # Non-streaming fallback for tool continuation
-                    kwargs["stream"] = False
-                    kwargs.pop("stream_options", None)
-                    fb_response = await _call_with_retry(client.chat.completions.create, **kwargs)
-                    if hasattr(fb_response, "usage") and fb_response.usage:
-                        yield self.build_usage_chunk(
-                            getattr(fb_response.usage, "prompt_tokens", 0),
-                            getattr(fb_response.usage, "completion_tokens", 0),
-                            self.model_name
-                        )
-                    if fb_response.choices:
-                        choice = fb_response.choices[0]
-                        if getattr(choice.message, "content", None) is not None:
-                            yield self.build_text_chunk(choice.message.content)
-                        tcs = getattr(choice.message, "tool_calls", None)
-                        if tcs:
-                            for idx, tc in enumerate(tcs):
-                                tc_id = tc.id or f"call_{idx}"
-                                parsed_input, error_msg = self.parse_tool_arguments(
-                                    tc.function.name, tc.function.arguments
-                                )
-                                tc_sig = (
-                                    getattr(tc, "thought_signature", None)
-                                    or getattr(getattr(tc, "extra_content", None), "get", lambda k, d=None: None)("google", {}).get("thought_signature")
-                                    if hasattr(getattr(tc, "extra_content", None), "get") else None
-                                )
-                                yield self.build_tool_call_chunk(tc_id, tc.function.name, parsed_input, error_msg, tc_sig)
-                            yield self.build_done_chunk("tool_use")
-                        else:
-                            yield self.build_done_chunk(choice.finish_reason or "stop")
-                    else:
-                        yield self.build_done_chunk("stop")
-                    return
-                raise stream_err
             except Exception as stream_err:
                 err_str = str(stream_err).lower()
                 is_timeout = False
@@ -622,8 +582,8 @@ class LLMAdapter(ModelAdapter):
                         stream_err = retry_err
                         err_str = str(retry_err).lower()
 
-                if openai_tools:
-                    logger.warning(f"Streaming failed with tools ({stream_err}), falling back to non-streaming request.")
+                if openai_tools or is_continuation:
+                    logger.warning(f"Streaming failed ({stream_err}), falling back to non-streaming request.")
                     kwargs["stream"] = False
                     kwargs.pop("stream_options", None)
                     try:
@@ -648,7 +608,12 @@ class LLMAdapter(ModelAdapter):
                                 parsed_input, error_msg = self.parse_tool_arguments(
                                     tc.function.name, tc.function.arguments
                                 )
-                                yield self.build_tool_call_chunk(tc_id, tc.function.name, parsed_input, error_msg)
+                                tc_sig = (
+                                    getattr(tc, "thought_signature", None)
+                                    or getattr(getattr(tc, "extra_content", None), "get", lambda k, d=None: None)("google", {}).get("thought_signature")
+                                    if hasattr(getattr(tc, "extra_content", None), "get") else None
+                                )
+                                yield self.build_tool_call_chunk(tc_id, tc.function.name, parsed_input, error_msg, tc_sig)
                             yield self.build_done_chunk("tool_use")
                         else:
                             yield self.build_done_chunk(choice.finish_reason or "stop")

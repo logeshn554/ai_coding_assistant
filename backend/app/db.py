@@ -9,14 +9,30 @@ from sqlalchemy import select
 from backend.app.config import settings
 from backend.app.infrastructure.database.connection import (
     async_session_factory as async_session,
+    get_db_session,
 )
-from backend.app.infrastructure.database.models import Conversation as SessionModel
+from backend.app.infrastructure.database.models import (
+    Conversation as SessionModel,
+    Message as MessageModel,
+)
 from backend.app.infrastructure.database.repositories import (
     ConversationRepository,
     OrganizationRepository,
     UserRepository,
     WorkspaceRepository,
 )
+
+__all__ = [
+    "SessionModel",
+    "MessageModel",
+    "async_session",
+    "ConversationRepository",
+    "OrganizationRepository",
+    "UserRepository",
+    "WorkspaceRepository",
+    "init_db",
+    "get_db_session",
+]
 
 logger = logging.getLogger("devpilot.db")
 

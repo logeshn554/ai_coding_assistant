@@ -156,17 +156,18 @@ def test_secure_filesystem_traversal_prevention():
             sfs.write_text(".env", "SECRET=123")
 
 
-def test_websocket_ticket_tenant_identity_binding():
+@pytest.mark.asyncio
+async def test_websocket_ticket_tenant_identity_binding():
     # Ticket bound to custom tenant and user identity
-    ticket = create_ws_ticket(user_id="user_123", tenant_id="org_abc", workspace_id="ws_999")
+    ticket = await create_ws_ticket(user_id="user_123", tenant_id="org_abc", workspace_id="ws_999")
     assert isinstance(ticket, str) and len(ticket) > 20
 
     # Verify and consume the ticket
-    identity = verify_ws_ticket(ticket)
+    identity = await verify_ws_ticket(ticket)
     assert identity is not None
     assert identity["user_id"] == "user_123"
     assert identity["tenant_id"] == "org_abc"
     assert identity["workspace_id"] == "ws_999"
 
     # Ticket should be single-use (already popped)
-    assert verify_ws_ticket(ticket) is None
+    assert await verify_ws_ticket(ticket) is None

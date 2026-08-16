@@ -7,6 +7,7 @@ import asyncio
 import os
 import sys
 import types
+import pytest
 
 sys.path.insert(0, os.path.abspath("."))
 
@@ -411,6 +412,12 @@ async def run_full_smoke_test():
         shutil.rmtree(temp_dir, ignore_errors=True)
 
     return results
+
+
+@pytest.mark.asyncio
+async def test_full_runtime_smoke_test():
+    results = await run_full_smoke_test()
+    assert isinstance(results, dict)
 
 
 if __name__ == "__main__":

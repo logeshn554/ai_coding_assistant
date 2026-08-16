@@ -255,7 +255,10 @@ class VerificationEngine:
 
         # 1. Scope target test file if provided
         if test_files and self.profile.language == "python":
-            cmd = f"pytest {' '.join(test_files)}"
+            import shutil
+            import sys
+            py_exec = f'"{sys.executable}" -m pytest' if not shutil.which("pytest") else "pytest"
+            cmd = f"{py_exec} {' '.join(test_files)}"
         elif test_files and self.profile.language == "typescript":
             cmd = f"{self.profile.package_manager} test -- {' '.join(test_files)}"
 

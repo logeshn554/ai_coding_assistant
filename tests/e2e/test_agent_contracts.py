@@ -20,9 +20,10 @@ async def test_contract_llm_tool_execution_and_file_creation(tmp_path):
     runtime = AgentRuntime(str(workspace))
     session = await runtime.start_session(str(workspace), session_id="contract_sess_01")
 
-    async def mock_llm_provider(prompt, step):
+    async def mock_llm_provider(messages, tools=None):
         from backend.app.agent.agent_runtime.llm_adapter import ModelResponse, ToolCall
-        if step == 1:
+        has_tool_result = any(isinstance(m, dict) and m.get("role") == "tool" for m in messages)
+        if not has_tool_result:
             return ModelResponse(
                 text="Creating app.py",
                 tool_calls=[

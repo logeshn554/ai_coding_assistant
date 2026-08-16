@@ -44,5 +44,9 @@
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
     "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "nanoid": "^3.3.8",
+    "undici": "^7.28.1"
   }
 }

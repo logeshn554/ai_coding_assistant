@@ -78,7 +78,9 @@ class TestWorkspace:
             workspace = Workspace(tmpdir)
             await workspace.initialize()
 
-            result = await workspace.run_command("sleep 10", timeout=1)
+            import sys
+            sleep_cmd = f'"{sys.executable}" -c "import time; time.sleep(10)"'
+            result = await workspace.run_command(sleep_cmd, timeout=1)
             assert not result["success"]
             assert result["exit_code"] == -1
             assert "timeout" in result["stderr"].lower()

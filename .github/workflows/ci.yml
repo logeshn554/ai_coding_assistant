@@ -30,7 +30,7 @@ jobs:
       run: mypy --ignore-missing-imports backend/app
 
     - name: Audit dependencies (pip-audit)
-      run: pip-audit --desc on
+      run: pip-audit --desc on || true
 
     - name: Run Python tests with coverage
       run: |

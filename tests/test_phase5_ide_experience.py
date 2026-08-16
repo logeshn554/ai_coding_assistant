@@ -57,8 +57,12 @@ async def test_ide_agent_timeline_events(ide_workspace):
     def on_event(ev):
         events_received.append(ev.type)
 
+    async def mock_llm_provider(messages, tools=None):
+        from backend.app.agent.agent_runtime.llm_adapter import ModelResponse
+        return ModelResponse(text="Refactored auth service successfully.", tool_calls=[])
+
     task = AgentTask(id="task_ide_001", description="Refactor auth service")
-    res = await runtime.run(session.session_id, task, event_callback=on_event)
+    res = await runtime.run(session.session_id, task, event_callback=on_event, llm_provider_func=mock_llm_provider)
 
     assert "agent.started" in events_received
     assert "agent.plan.created" in events_received

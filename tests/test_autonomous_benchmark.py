@@ -87,10 +87,14 @@ async def test_run_30_task_autonomous_benchmark(benchmark_workspace):
     review_approved = 0
     total_latency_ms = 0.0
 
+    async def mock_llm_provider(messages, tools=None):
+        from backend.app.agent.agent_runtime.llm_adapter import ModelResponse
+        return ModelResponse(text="Task completed successfully.", tool_calls=[])
+
     for t_info in BENCHMARK_30_TASKS:
         start_t = time.time()
         task = AgentTask(id=f"task_{t_info['id']}", description=t_info["task"])
-        res = await runtime.run(session.session_id, task)
+        res = await runtime.run(session.session_id, task, llm_provider_func=mock_llm_provider)
         latency_ms = (time.time() - start_t) * 1000.0
         total_latency_ms += latency_ms
 

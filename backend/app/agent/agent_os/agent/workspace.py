@@ -149,7 +149,7 @@ class Workspace:
     async def _test_shell(self) -> bool:
         """Test shell command execution."""
         try:
-            result = await self.run_command("echo test", timeout=5)
+            result = await self.run_command("echo test", timeout=5, _skip_init_check=True)
             return result["exit_code"] == 0
         except Exception:
             return False
@@ -157,7 +157,10 @@ class Workspace:
     async def _test_python(self) -> bool:
         """Test Python availability."""
         try:
-            result = await self.run_command("python --version", timeout=5)
+            import shutil
+            import sys
+            py_cmd = f'"{sys.executable}" --version' if not shutil.which("python") else "python --version"
+            result = await self.run_command(py_cmd, timeout=5, _skip_init_check=True)
             return result["exit_code"] == 0
         except Exception:
             return False
@@ -167,6 +170,7 @@ class Workspace:
         command: str,
         timeout: int = 30,
         env: dict[str, str] | None = None,
+        _skip_init_check: bool = False,
     ) -> dict[str, Any]:
         """
         Execute a command in the workspace.
@@ -175,13 +179,14 @@ class Workspace:
             command: Shell command to run
             timeout: Timeout in seconds
             env: Environment variables to set
+            _skip_init_check: Allow running command during health check initialization
 
         Returns:
             Dict with exit_code, stdout, stderr, duration_ms
 
         Never raises - always returns structured result.
         """
-        if not self._is_initialized:
+        if not self._is_initialized and not _skip_init_check:
             return {
                 "exit_code": -1,
                 "stdout": "",
@@ -225,13 +230,17 @@ class Workspace:
                 }
 
             except asyncio.TimeoutError:
-                process.kill()
+                try:
+                    process.kill()
+                    await process.wait()
+                except Exception:
+                    pass
                 duration_ms = (time.time() - start_time) * 1000
 
                 return {
                     "exit_code": -1,
                     "stdout": "",
-                    "stderr": f"Command timed out after {timeout}s",
+                    "stderr": f"Command timed out (timeout) after {timeout}s",
                     "duration_ms": duration_ms,
                     "success": False,
                 }

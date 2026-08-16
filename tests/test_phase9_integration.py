@@ -11,7 +11,7 @@ from backend.app.orchestrator import AgentOrchestrator
 
 @pytest.mark.asyncio
 async def test_agent_mode_routes_to_orchestrator():
-    """Verify that agent mode calls orchestrator.run_task directly."""
+    """Verify that agent mode routes through unified AgentRuntime."""
     send_ws_mock = AsyncMock()
     profile = {
         "api_key": "test-key",
@@ -27,15 +27,23 @@ async def test_agent_mode_routes_to_orchestrator():
         session_id="test_session"
     )
     
-    # Mock orchestrator.run_task
-    run_task_mock = AsyncMock(return_value="completed")
-    session.orchestrator.run_task = run_task_mock
+    # Mock agent_runtime.run
+    mock_res = MagicMock(
+        changed_files={"created_files": [], "modified_files": [], "deleted_files": [], "diffs": {}},
+        verification_status="NOT_RUN",
+        state="COMPLETED",
+        output="completed",
+        errors=[]
+    )
+    run_mock = AsyncMock(return_value=mock_res)
+    session.agent_runtime.run = run_mock
     
     # Call handle_user_message in Agent mode
     await session.handle_user_message("Fix authentication", mode="Agent", auto_apply=True)
     
-    # Verify run_task was called with prompt
-    run_task_mock.assert_called_once_with("Fix authentication", session)
+    # Verify AgentRuntime.run was called
+    run_mock.assert_called_once()
+    assert run_mock.call_args.kwargs.get("task") == "Fix authentication"
 
 
 @pytest.mark.asyncio
