@@ -42,8 +42,11 @@ async def test_agent_dict_provider_creates_hello_py():
         runtime = AgentRuntime(str(ws_path))
         session = await runtime.start_session(str(ws_path), session_id="test_hello_sess")
 
-        async def dict_llm_provider(prompt, step):
-            if step == 1:
+        call_count = 0
+        async def dict_llm_provider(messages, tools):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
                 # Simulates AgentSession.agent_llm_provider returning canonical dict
                 return {
                     "content": "Creating hello.py",

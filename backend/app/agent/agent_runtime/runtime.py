@@ -262,7 +262,7 @@ class AgentRuntime:
                 )
                 await db.commit()
         except Exception as e:
-            logger.error(f"Failed to update AgentRun state in database: {e}")
+            logger.warning(f"Non-fatal: Failed to update AgentRun state in database for session {session.session_id}: {e}")
 
         ev = AgentEvent(
             session_id=session.session_id,
@@ -306,9 +306,9 @@ class AgentRuntime:
                 await db.commit()
                 logger.info(f"Saved runtime checkpoint '{checkpoint_type}' for run {session.session_id}")
         except Exception as e:
-            logger.error(f"Failed to save runtime checkpoint: {e}")
+            logger.warning(f"Non-fatal: Failed to save runtime checkpoint for session {session.session_id}: {e}")
 
-    async def load_checkpoint(self, session: AgentSessionState) -> bool:
+    async def load_checkpoint(self, session: AgentSessionState, task_id: Optional[str] = None) -> bool:
         from backend.app.infrastructure.database.connection import async_session_factory
         from backend.app.infrastructure.database.models import AgentCheckpoint
         from sqlalchemy import select
@@ -327,9 +327,19 @@ class AgentRuntime:
                     return False
                     
                 data = json.loads(cp.state_json)
+                cp_task_id = data.get("active_task_id")
+                # Do not resume checkpoint if task ID has changed
+                if task_id and cp_task_id and cp_task_id != task_id:
+                    return False
+
+                cp_state = data.get("state", "IDLE")
+                # Do not resume completed or terminal checkpoints
+                if cp_state in ("COMPLETED", "COMPLETED_VERIFIED", "COMPLETED_WITH_WARNINGS", "FAILED", "CANCELLED"):
+                    return False
+
                 session.current_step = data.get("current_step", 0)
-                session.state = AgentState(data.get("state", "IDLE"))
-                session.active_task_id = data.get("active_task_id")
+                session.state = AgentState(cp_state)
+                session.active_task_id = cp_task_id
                 session.verification_status = VerificationStatus(data.get("verification_status", "NOT_RUN"))
                 session.changed_files = data.get("changed_files", {})
                 session.errors = data.get("errors", [])
@@ -337,7 +347,7 @@ class AgentRuntime:
                 logger.info(f"Successfully loaded checkpoint '{cp.checkpoint_name}' for run {session.session_id}. Resuming at step {session.current_step}.")
                 return True
         except Exception as e:
-            logger.error(f"Failed to load runtime checkpoint: {e}")
+            logger.warning(f"Non-fatal: Could not load runtime checkpoint (starting fresh): {e}")
             return False
 
     async def run(
@@ -370,19 +380,19 @@ class AgentRuntime:
         except Exception:
             pass
 
-        has_checkpoint = await self.load_checkpoint(session)
-        
         task_obj: AgentTask
         if isinstance(task, str):
             import uuid
             task_obj = AgentTask(
-                id=session.active_task_id or f"task_{uuid.uuid4().hex[:8]}",
+                id=f"task_{uuid.uuid4().hex[:8]}",
                 description=task,
                 mode=mode,
                 auto_apply=auto_apply,
             )
         else:
             task_obj = task
+
+        has_checkpoint = await self.load_checkpoint(session, task_id=task_obj.id)
 
         if not has_checkpoint:
             session.active_task_id = task_obj.id

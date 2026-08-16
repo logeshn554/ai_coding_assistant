@@ -131,7 +131,7 @@ async def agent_loop(
                 max_tokens=config.max_tokens,
             )
         except Exception as e:
-            logger.error("LLM call failed on iteration %d: %s", iteration, e)
+            logger.exception("LLM call failed on iteration %d: %s", iteration, e)
             yield AgentEvent(
                 type="error",
                 content=f"LLM call failed: {type(e).__name__}: {e}",
@@ -323,7 +323,7 @@ async def agent_loop(
                             )
                         ))
                     except Exception as gen_err:
-                        logger.error("Generator LLM invocation failed: %s", gen_err)
+                        logger.exception("Generator LLM invocation failed: %s", gen_err)
                         # Save error to shared memory
                         await sm_set(sm_key, "generator_output", f"Generator Error: {gen_err}")
                         messages.append(Message(

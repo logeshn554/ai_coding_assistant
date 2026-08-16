@@ -222,8 +222,30 @@ class AgentSession:
                     # Queue was cleared via cancel — stop worker silently
                     break
                 except Exception as e:
-                    logger.error(f"Queue worker error: {e}")
+                    logger.exception(f"Queue worker uncaught error: {e}")
+                    import traceback
+                    tb = traceback.format_exc()
+                    short_tb = "\n".join(tb.splitlines()[-6:])
+                    error_type = type(e).__name__
+                    error_msg = str(e) or "Unknown error"
+                    
+                    crash_msg = (
+                        f"\n\n> ⚠️ **Agent Worker Error ({error_type})**\n\n"
+                        f"{error_msg}\n\n"
+                        f"<details><summary>Technical Stack Trace</summary>\n\n"
+                        f"```\n{short_tb}\n```\n</details>"
+                    )
+                    try:
+                        await self.send_ws_message({"type": "text_delta", "content": crash_msg})
+                        await self.send_ws_message({
+                            "type": "session_done",
+                            "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
+                            "wasted_turns": getattr(self, "wasted_turns", 0),
+                        })
+                    except Exception as ws_err:
+                        logger.error(f"Failed sending error message to WS: {ws_err}")
                 finally:
+                    self.is_running = False
                     self._message_queue.task_done()
 
         # Emit final queue-empty status
@@ -1085,8 +1107,12 @@ class AgentSession:
             # ── 14-Phase Agent Intelligence Layer (Agent mode only) ───────
             if mode == "Agent":
                 _cached_enriched_prompt: dict[str, str] = {}
+                self._current_run_step = 0
 
                 async def agent_llm_provider(messages: list, tools_schema: list):
+                    self._current_run_step += 1
+                    step_num = self._current_run_step
+
                     cache_key = text  # same user message across all turns
                     if cache_key not in _cached_enriched_prompt:
                         sys_prompt = self._get_system_prompt("Agent")
@@ -1096,9 +1122,6 @@ class AgentSession:
                         _cached_enriched_prompt[cache_key] = sys_prompt
                     else:
                         sys_prompt = _cached_enriched_prompt[cache_key]
-
-                    # Determine step number from messages list length
-                    step_num = len(messages) // 2 + 1
 
                     # Send status update
                     await self.send_ws_message({
@@ -1195,10 +1218,6 @@ class AgentSession:
                         self._exec_logger.increment_turns()
                     self._agent_tool_call_count += len(tool_calls_to_run)
 
-                    if not response_text.strip() and not tool_calls_to_run:
-                        logger.error("LLM returned an empty response with no content and no tool calls.")
-                        raise RuntimeError("LLM returned an empty response with no content and no tool calls.")
-
                     return {
                         "content": response_text,
                         "tool_calls": raw_tool_calls
@@ -1246,6 +1265,21 @@ class AgentSession:
                                 removed += 1
                     file_edits[fpath] = {"added": added, "removed": removed}
                 self.task_memory.file_edits = file_edits
+
+                # If the agent runtime failed, explicitly surface the failure to the user
+                if not run_res.success:
+                    err_lines = [e for e in run_res.errors if e]
+                    err_detail = "\n".join(f"- {e}" for e in err_lines) if err_lines else "An unexpected error interrupted the execution."
+                    state_str = run_res.state.value if hasattr(run_res.state, "value") else str(run_res.state)
+                    fail_card = (
+                        f"\n\n> ⚠️ **Agent Run Stopped ({state_str})**\n\n"
+                        f"{err_detail}\n\n"
+                        f"💡 *You can retry the request or check your model configuration.*"
+                    )
+                    await self.send_ws_message({
+                        "type": "text_delta",
+                        "content": fail_card
+                    })
 
                 # Verification results
                 _verification_evidence = None
