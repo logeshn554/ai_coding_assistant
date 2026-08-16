@@ -94,3 +94,28 @@ async def test_adapt_result_extra_payload():
     assert done_msg["type"] == "session_done"
     assert done_msg["task_memory"] == {"goal": "build api"}
     assert done_msg["verification"] == {"passed": True}
+
+
+@pytest.mark.asyncio
+async def test_adapt_result_empty_response():
+    session = DummySession()
+    res = AgentResult(
+        session_id="run_empty",
+        task_id="task_empty",
+        success=False,
+        state=AgentState.EMPTY_RESPONSE,
+        output="",
+        errors=["Model provider returned empty response."],
+    )
+
+    await adapt_result(res, session)
+
+    assert len(session.sent_messages) == 2
+    err_banner = session.sent_messages[0]
+    assert err_banner["type"] == "text_delta"
+    assert "No Content Generated (EMPTY_RESPONSE)" in err_banner["content"]
+    assert "Safety Filter" in err_banner["content"]
+
+    done_msg = session.sent_messages[1]
+    assert done_msg["type"] == "session_done"
+

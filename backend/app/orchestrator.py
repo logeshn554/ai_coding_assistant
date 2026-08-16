@@ -2921,7 +2921,21 @@ def route_next(state: AgentState):
     return valid_agents
 
 import typing
-from agent_os.providers.interfaces import IModelRouter
+try:
+    from agent_os.providers.interfaces import IModelRouter
+except ImportError:
+    import abc
+    class IModelRouter(abc.ABC):  # type: ignore
+        """Abstract interface for model routers."""
+        @abc.abstractmethod
+        def health_check(self, provider_name: str) -> bool: pass
+        @abc.abstractmethod
+        def set_provider_health(self, provider_name: str, healthy: bool) -> None: pass
+        @abc.abstractmethod
+        def cancel(self, task_id: str) -> None: pass
+        @abc.abstractmethod
+        async def generate(self, prompt: str, system_prompt: str = "", model_name: str = "default") -> str: pass
+
 
 class AgentOSModelRouterBridge(IModelRouter):
     def __init__(self, session):
@@ -2969,18 +2983,25 @@ class AgentOrchestrator:
         self.context = SharedContext()
         self.event_bus = EventBus()
 
-        # Instantiate new Agent OS components
-        from agent_os.core.cache import CacheService
-        from agent_os.execution.lock_manager import FileLockManager
-        from agent_os.kernel.state_manager import StateManager
-        from agent_os.context.context_manager import WorkspaceContextManager
-        from agent_os.kernel.scheduler import DependencyScheduler
+        # Instantiate auxiliary components safely
+        try:
+            from agent_os.core.cache import CacheService
+            from agent_os.execution.lock_manager import FileLockManager
+            from agent_os.kernel.state_manager import StateManager
+            from agent_os.context.context_manager import WorkspaceContextManager
+            from agent_os.kernel.scheduler import DependencyScheduler
 
-        self.cache = CacheService()
-        self.lock_manager = FileLockManager()
-        self.state_manager = StateManager(None)
-        self.context_manager = WorkspaceContextManager()
-        self.scheduler_concurrent = DependencyScheduler()
+            self.cache = CacheService()
+            self.lock_manager = FileLockManager()
+            self.state_manager = StateManager(None)
+            self.context_manager = WorkspaceContextManager()
+            self.scheduler_concurrent = DependencyScheduler()
+        except ImportError:
+            self.cache = None
+            self.lock_manager = None
+            self.state_manager = None
+            self.context_manager = None
+            self.scheduler_concurrent = None
 
         self.agents = {
             # Tier 1: Planning

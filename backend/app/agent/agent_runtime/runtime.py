@@ -604,17 +604,12 @@ class AgentRuntime:
 
                 # Assert LLM did not return an empty response with no tool calls
                 if not (model_resp.text or "").strip() and not model_resp.tool_calls:
-                    logger.warning("LLM turn produced no text content and no tool calls. Marking EMPTY_RESPONSE.")
-                    warning_text = (
-                        "> ⚠️ **Empty Response Detected**\n\n"
-                        "The model provider returned an empty response with no actions or explanation."
-                    )
-                    final_output += warning_text + "\n"
+                    logger.warning("LLM turn produced no text content and no tool calls. Transitioning to EMPTY_RESPONSE.")
                     session.errors.append("Model provider returned empty response.")
                     return await self._finalize_run(
                         session=session,
                         state=AgentState.EMPTY_RESPONSE,
-                        output=final_output,
+                        output=final_output.strip(),
                         task_obj=task_obj,
                         tx_workspace=tx_workspace,
                         events_collected=events_collected,

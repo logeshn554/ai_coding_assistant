@@ -485,8 +485,7 @@ class AgentWorker:
 
                 full_text = "".join(text_parts) or ""
                 if not full_text.strip() and not tool_calls_raw:
-                    logger.warning("LLM returned empty response body without tool calls. Providing graceful default summary.")
-                    full_text = "I have processed the workspace state and request."
+                    logger.warning("LLM returned empty response body without tool calls.")
 
                 logger.info(
                     "LLM Response received: content_len=%d, tool_calls_count=%d, finish_reason=%s",

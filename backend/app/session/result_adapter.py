@@ -23,13 +23,24 @@ async def adapt_result(
     # If failure, construct an error message
     if not run_res.success:
         state_str = run_res.state.value if isinstance(run_res.state, AgentState) else str(run_res.state)
-        err_lines = [e for e in run_res.errors if e]
-        err_detail = "\n".join(f"- {e}" for e in err_lines) if err_lines else "An unexpected error interrupted the execution."
-        fail_card = (
-            f"\n\n> ⚠️ **Agent Run Stopped ({state_str})**\n\n"
-            f"{err_detail}\n\n"
-            f"💡 *You can retry the request or check your model configuration.*"
-        )
+        if state_str == AgentState.EMPTY_RESPONSE.value or run_res.state == AgentState.EMPTY_RESPONSE:
+            fail_card = (
+                "\n\n> ⚠️ **No Content Generated (EMPTY_RESPONSE)**\n\n"
+                "The model provider returned an empty response or failed to generate text.\n\n"
+                "**Common Causes & Fixes:**\n"
+                "- **API Key / Quota**: Free-tier API rate limit or quota exceeded.\n"
+                "- **Model Selection**: The selected provider or model may be temporarily unavailable.\n"
+                "- **Safety Filter**: The prompt content was filtered by provider safety guardrails.\n\n"
+                "💡 *Try resending your request, switching to another model profile in Settings, or starting a new session.*"
+            )
+        else:
+            err_lines = [e for e in run_res.errors if e]
+            err_detail = "\n".join(f"- {e}" for e in err_lines) if err_lines else "An unexpected error interrupted the execution."
+            fail_card = (
+                f"\n\n> ⚠️ **Agent Run Stopped ({state_str})**\n\n"
+                f"{err_detail}\n\n"
+                f"💡 *You can retry the request or check your model configuration.*"
+            )
         await session.send_ws_message({"type": "text_delta", "content": fail_card})
 
     # Always emit session_done (once) after handling result

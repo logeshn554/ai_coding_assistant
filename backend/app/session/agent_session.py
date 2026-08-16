@@ -1182,40 +1182,25 @@ class AgentSession(BaseSession):
                             "arguments": json.dumps(tc["input"]) if isinstance(tc["input"], dict) else tc["input"]
                         })
 
-                    # Handle empty model response when no tool calls were made
-                    if not response_text and not tool_calls_to_run:
-                        fallback_msg = (
-                            "\n\n> ⚠️ **No Content Generated**\n\n"
-                            "The model provider returned an empty response or failed to generate text.\n\n"
-                            "**Common Causes & Fixes:**\n"
-                            "- **API Key / Quota**: Free-tier API rate limit or quota exceeded.\n"
-                            "- **Model Selection**: The selected provider or model may be temporarily unavailable.\n"
-                            "- **Safety Filter**: The prompt content was filtered by provider safety guardrails.\n\n"
-                            "💡 *Try resending your request, switching to another model profile in Settings, or starting a new session.*"
-                        )
-                        await self.send_ws_message({
-                            "type": "text_delta",
-                            "content": fallback_msg
-                        })
-                        response_text = fallback_msg
-
-                    # Record assistant message in the conversation history
-                    assistant_msg = {
-                        "role": "assistant",
-                        "content": response_text
-                    }
-                    if thinking_blocks_current_turn:
-                        assistant_msg["thinking_blocks"] = thinking_blocks_current_turn
-                    if tool_calls_to_run:
-                        assistant_msg["tool_calls"] = [
-                            {
-                                "id": tc["id"],
-                                "name": tc["name"],
-                                "input": tc["input"],
-                                "thought_signature": tc.get("thought_signature")
-                            }
-                            for tc in tool_calls_to_run
-                        ]
+                    # Record assistant message in the conversation history only if content or tools were produced
+                    if response_text or tool_calls_to_run:
+                        assistant_msg = {
+                            "role": "assistant",
+                            "content": response_text
+                        }
+                        if thinking_blocks_current_turn:
+                            assistant_msg["thinking_blocks"] = thinking_blocks_current_turn
+                        if tool_calls_to_run:
+                            assistant_msg["tool_calls"] = [
+                                {
+                                    "id": tc["id"],
+                                    "name": tc["name"],
+                                    "input": tc["input"],
+                                    "thought_signature": tc.get("thought_signature")
+                                }
+                                for tc in tool_calls_to_run
+                            ]
+                        self.conversation_history.append(assistant_msg)
 
                     if self._exec_logger:
                         self._exec_logger.increment_turns()
