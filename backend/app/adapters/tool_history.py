@@ -102,6 +102,9 @@ def clean_tool_history(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 resolved_ids.add(call_id)
 
     cleaned_messages = []
+    seen_tool_call_ids = set()
+    seen_tool_result_ids = set()
+
     for message in messages:
         # copy message dict to avoid mutating original session history
         msg_copy = dict(message)
@@ -112,14 +115,17 @@ def clean_tool_history(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
             valid_calls = []
             for tool_call in tool_calls:
                 call_id = tool_call.get("id")
-                if not call_id:
+                if not call_id or call_id in seen_tool_call_ids:
+                    # Skip missing or duplicate tool call IDs across assistant messages
                     continue
                 name = tool_call.get("name") or (tool_call.get("function", {}).get("name") if isinstance(tool_call.get("function"), dict) else "")
                 if not name:
                     continue
-                # Only keep the tool call if it has a matching tool result in the history
+                # Only keep the tool call if it is resolved by a matching tool result
                 if call_id in resolved_ids:
+                    seen_tool_call_ids.add(call_id)
                     valid_calls.append(tool_call)
+
             if valid_calls:
                 msg_copy["tool_calls"] = valid_calls
             else:
@@ -127,9 +133,10 @@ def clean_tool_history(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
         elif role == "tool":
             call_id = msg_copy.get("tool_call_id") or msg_copy.get("id")
-            if not call_id or call_id not in resolved_ids:
-                # Skip orphaned tool result
+            if not call_id or call_id in seen_tool_result_ids or call_id not in seen_tool_call_ids:
+                # Skip missing, duplicate, or orphaned tool result
                 continue
+            seen_tool_result_ids.add(call_id)
 
         cleaned_messages.append(msg_copy)
 

@@ -1,9 +1,9 @@
 {
-  "name": "devpilot",
+  "name": "loopix",
   "version": "1.0.0",
-  "description": "DevPilot AI Coding Assistant & Code Editor",
+  "description": "Loopix AI Coding Assistant & Code Editor",
   "main": "main.js",
-  "author": "DevPilot Team",
+  "author": "Loopix Team",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -16,8 +16,8 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.devpilot.editor",
-    "productName": "DevPilot AI Editor",
+    "appId": "com.loopix.editor",
+    "productName": "Loopix AI Editor",
     "directories": {
       "output": "../dist/electron-build"
     },
@@ -32,7 +32,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "DevPilot AI Editor"
+      "shortcutName": "Loopix AI Editor"
     }
   }
 }

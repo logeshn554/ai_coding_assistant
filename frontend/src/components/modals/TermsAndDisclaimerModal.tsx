@@ -41,7 +41,7 @@ export default function TermsAndDisclaimerModal({ isOpen: externalIsOpen, onClos
               <ShieldAlert className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white tracking-wide">DevPilot — Beta Notice & Terms</h2>
+              <h2 className="text-sm font-bold text-white tracking-wide">Loopix — Beta Notice & Terms</h2>
               <p className="text-[11px] text-zinc-400">Please review before using the AI coding assistant</p>
             </div>
           </div>
@@ -68,7 +68,7 @@ export default function TermsAndDisclaimerModal({ isOpen: externalIsOpen, onClos
               <span>1. Public Beta Disclaimer</span>
             </div>
             <p className="text-zinc-400">
-              DevPilot is currently provided as a <strong>Public Beta</strong> release. Features, autonomous agent behaviors, and code generation capabilities are under active development and may experience intermittent behavior, rate limits, or unexpected output. DevPilot is provided on an &ldquo;AS IS&rdquo; and &ldquo;AS AVAILABLE&rdquo; basis without warranties of any kind.
+              Loopix is currently provided as a <strong>Public Beta</strong> release. Features, autonomous agent behaviors, and code generation capabilities are under active development and may experience intermittent behavior, rate limits, or unexpected output. Loopix is provided on an &ldquo;AS IS&rdquo; and &ldquo;AS AVAILABLE&rdquo; basis without warranties of any kind.
             </p>
           </div>
 
@@ -79,12 +79,12 @@ export default function TermsAndDisclaimerModal({ isOpen: externalIsOpen, onClos
               <span>2. API Key, Token Consumption & Credit Liability</span>
             </div>
             <p className="text-zinc-400">
-              DevPilot connects directly to third-party LLM providers (including OpenAI, Anthropic, DeepSeek, Groq, NVIDIA, Ollama, etc.) using the API credentials configured by you:
+              Loopix connects directly to third-party LLM providers (including OpenAI, Anthropic, DeepSeek, Groq, NVIDIA, Ollama, etc.) using the API credentials configured by you:
             </p>
             <ul className="list-disc list-inside space-y-1 text-zinc-400 pl-1">
               <li>Autonomous agent workflows, deep workspace scans, multi-turn coding sessions, and automated debugging loops can consume significant tokens and provider credits.</li>
               <li><strong>You are solely responsible</strong> for all costs, billing, rate limits, and token usage incurred on your third-party API accounts.</li>
-              <li>DevPilot authors and maintainers bear <strong>zero financial liability</strong> for consumed tokens, charges, or lost credits.</li>
+              <li>Loopix authors and maintainers bear <strong>zero financial liability</strong> for consumed tokens, charges, or lost credits.</li>
             </ul>
           </div>
 
@@ -106,7 +106,7 @@ export default function TermsAndDisclaimerModal({ isOpen: externalIsOpen, onClos
               <span>4. Privacy & Secret Containment</span>
             </div>
             <p className="text-zinc-400">
-              Your API keys and source code are processed locally on your machine and stored securely in your local OS keyring or local configuration. DevPilot does not transmit your proprietary source code or credentials to any third-party servers other than your configured LLM endpoints.
+              Your API keys and source code are processed locally on your machine and stored securely in your local OS keyring or local configuration. Loopix does not transmit your proprietary source code or credentials to any third-party servers other than your configured LLM endpoints.
             </p>
           </div>
 
@@ -123,7 +123,7 @@ export default function TermsAndDisclaimerModal({ isOpen: externalIsOpen, onClos
               className="mt-0.5 w-4 h-4 rounded border-[#2A3146] bg-black/40 text-[#4C8DFF] focus:ring-0 focus:outline-none cursor-pointer accent-[#4C8DFF]"
             />
             <span>
-              I understand that DevPilot is in <strong>Beta</strong>, and I accept full responsibility for my API keys, token consumption, and code changes.
+              I understand that Loopix is in <strong>Beta</strong>, and I accept full responsibility for my API keys, token consumption, and code changes.
             </span>
           </label>
 
@@ -133,7 +133,7 @@ export default function TermsAndDisclaimerModal({ isOpen: externalIsOpen, onClos
             className="w-full py-2.5 bg-[#4C8DFF] hover:bg-[#6AA3FF] disabled:opacity-40 disabled:hover:bg-[#4C8DFF] text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg shadow-[#4C8DFF]/20"
           >
             <Check className="w-4 h-4" />
-            Accept Terms & Launch DevPilot
+            Accept Terms & Launch Loopix
           </button>
         </div>
 

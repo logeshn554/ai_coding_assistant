@@ -20,7 +20,7 @@ interface MessageListProps {
 const EmptyState: React.FC<{ onSuggest: (text: string) => void }> = ({ onSuggest }) => (
   <div className="flex flex-col items-center justify-center h-full gap-5 px-8 py-12 select-none">
     <div className="text-center space-y-1.5 max-w-sm">
-      <p className="text-[15px] font-bold text-zinc-100 font-sans">Ask DevPilot anything</p>
+      <p className="text-[15px] font-bold text-zinc-100 font-sans">Ask Loopix anything</p>
       <p className="text-[12.5px] leading-relaxed text-zinc-400 font-sans">
         Chat, plan, or let the Agent write code, execute shell commands, and run validation tests.
       </p>

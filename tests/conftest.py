@@ -63,11 +63,12 @@ def pytest_sessionstart(session):
     from backend.app.infrastructure.database.models import Base
     from backend.app.infrastructure.database.connection import engine
     
-    if os.path.exists("devpilot.db"):
-        try:
-            os.remove("devpilot.db")
-        except Exception:
-            pass
+    for db_f in ("devpilot.db", "loopix.db"):
+        if os.path.exists(db_f):
+            try:
+                os.remove(db_f)
+            except Exception:
+                pass
         
     async def init_tables():
         async with engine.begin() as conn:

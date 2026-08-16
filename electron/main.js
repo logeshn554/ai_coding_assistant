@@ -42,7 +42,7 @@ function setApplicationMenu() {
           },
         },
         { type: 'separator' },
-        { role: 'quit', label: 'Quit DevPilot' },
+        { role: 'quit', label: 'Quit Loopix' },
       ],
     },
     {
@@ -69,10 +69,10 @@ function setApplicationMenu() {
       label: 'Help',
       submenu: [
         {
-          label: 'DevPilot Documentation',
+          label: 'Loopix Documentation',
           click: async () => {
             const { shell } = require('electron');
-            await shell.openExternal('https://github.com/devpilot-ai/devpilot');
+            await shell.openExternal('https://github.com/loopix-ai/loopix');
           },
         },
       ],
@@ -276,7 +276,7 @@ function getSplashHtml() {
   <div class="logo-container">
     <div class="spinner"></div>
   </div>
-  <div class="title">DevPilot AI Editor</div>
+  <div class="title">Loopix AI Editor</div>
   <div class="subtitle">Starting local AI engine & workspace...</div>
 </body>
 </html>`;
@@ -290,7 +290,7 @@ function createWindow() {
     height: 920,
     minWidth: 1000,
     minHeight: 650,
-    title: 'DevPilot AI Editor',
+    title: 'Loopix AI Editor',
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     backgroundColor: '#0b0c14',
     show: true,

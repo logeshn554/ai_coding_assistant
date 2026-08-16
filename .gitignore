@@ -5,25 +5,31 @@ ENV/
 env/
 python/
 
-# Python caching
+# Python caching & test runner artifacts
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.coverage.*
 
-# Python packaging artifacts
+# Python packaging & build artifacts
 *.egg-info/
 .eggs/
+build/
+dist/
+dist_installer/
+out/
+.next/
+*.spec
 
 # Dependency directories
 node_modules/
 jspm_packages/
 web_elements/
-
-# Build outputs
-dist/
-build/
-out/
-.next/
 
 # IDE and Editor settings
 .vscode/
@@ -33,32 +39,31 @@ out/
 *.njsproj
 *.sln
 *.swp
+*.code-workspace
 
-# DevPilot backups and logs
+# DevPilot runtime state, backups, and logs
 .devpilot/
+.devpilot_phase_state.json
 *.log
+artifacts/
 
-# Environment variables
+# Environment variables & secrets
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# Vector database storage
+# Vector database storage & SQLite databases
 chroma/
-
-# Test artifacts
-shared_memory.txt
-test.txt
-test_temp.txt
-testfile_from_agent.txt
-
-# Runtime databases — NEVER commit these
 *.db
 *.db-shm
 *.db-wal
 *.sqlite
 *.sqlite3
 
-
+# Test temporary artifacts
+shared_memory.txt
+test.txt
+test_temp.txt
+testfile_from_agent.txt

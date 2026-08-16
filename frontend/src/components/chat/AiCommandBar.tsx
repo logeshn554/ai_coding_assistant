@@ -388,7 +388,7 @@ export const AiCommandBar: React.FC<AiCommandBarProps> = ({
           onPaste={handlePaste}
           placeholder={
             mode === 'Agent'
-              ? 'Ask DevPilot...'
+              ? 'Ask Loopix...'
               : mode === 'Plan'
               ? 'Describe feature to plan...'
               : 'Ask a question...'

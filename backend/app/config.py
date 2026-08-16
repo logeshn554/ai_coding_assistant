@@ -8,9 +8,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Centralized configuration management for DevPilot Backend."""
+    """Centralized configuration management for Loopix Backend."""
     
-    APP_NAME: str = "DevPilot API"
+    APP_NAME: str = "Loopix API"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     
@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     COST_LIMIT_USD: float = 5.0
     # Hard ceiling — session is forcibly terminated above this amount, no user override
     DEVPILOT_HARD_COST_LIMIT: float = 10.0
+    LOOPIX_HARD_COST_LIMIT: float = 10.0
  
     # Web Search Fallback Settings
     WEB_SEARCH_FALLBACK_ENABLED: bool = False
@@ -69,7 +70,7 @@ class Settings(BaseSettings):
  
     # Default token pricing (USD per million tokens) when profile omits rates.
     # Override via profile input_cost_per_m / output_cost_per_m or env
-    # DEVPILOT_INPUT_COST_PER_M / DEVPILOT_OUTPUT_COST_PER_M.
+    # LOOPIX_INPUT_COST_PER_M / LOOPIX_OUTPUT_COST_PER_M.
     DEFAULT_INPUT_COST_PER_M: float = 3.0
     DEFAULT_OUTPUT_COST_PER_M: float = 15.0
  
@@ -92,7 +93,8 @@ class Settings(BaseSettings):
             if self.MODE == "server" or self.ENVIRONMENT == "production":
                 raise RuntimeError("DATABASE_URL must be explicitly configured in server or production mode. SQLite is not allowed.")
             else:
-                self.DATABASE_URL = "sqlite+aiosqlite:///devpilot.db"
+                db_name = "devpilot.db" if os.path.exists("devpilot.db") else "loopix.db"
+                self.DATABASE_URL = f"sqlite+aiosqlite:///{db_name}"
 
         if (self.MODE == "server" or self.ENVIRONMENT == "production") and "sqlite" in self.DATABASE_URL.lower():
             raise RuntimeError(

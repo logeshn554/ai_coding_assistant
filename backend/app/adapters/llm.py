@@ -139,7 +139,8 @@ class LLMAdapter(ModelAdapter):
         if provider_key not in LLMAdapter._rpm_limiters:
             LLMAdapter._rpm_limiters[provider_key] = _RpmLimiter()
 
-        from .tool_history import validate_tool_history
+        from .tool_history import clean_tool_history, validate_tool_history
+        messages = clean_tool_history(messages)
         validate_tool_history(messages)
 
         # Opt-in sanitized debug logging of LLM payload

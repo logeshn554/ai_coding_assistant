@@ -53,10 +53,11 @@ class TaskGraphValidator:
             return True, []
 
         # 1. Check for duplicate IDs
-        task_ids = [t.task_id for t in tasks]
-        if len(task_ids) != len(set(task_ids)):
-            duplicates = [tid for tid in task_ids if task_ids.count(tid) > 1]
-            errors.append(f"Duplicate task IDs: {set(duplicates)}")
+        seen_ids = set()
+        for t in tasks:
+            if t.task_id in seen_ids:
+                errors.append(f"Duplicate task ID: {t.task_id}")
+            seen_ids.add(t.task_id)
 
         # 2. Build ID map
         task_map = {t.task_id: t for t in tasks}

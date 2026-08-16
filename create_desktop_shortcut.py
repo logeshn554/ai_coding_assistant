@@ -4,13 +4,17 @@ import subprocess
 
 def create_desktop_shortcut(target_exe_or_bat=None, icon_path=None):
     project_root = os.path.dirname(os.path.abspath(__file__))
-    dist_exe = os.path.join(project_root, "dist", "DevPilot", "DevPilot.exe")
-    bat_file = os.path.join(project_root, "DevPilot.bat")
+    dist_exe = os.path.join(project_root, "dist", "Loopix", "Loopix.exe")
+    bat_file = os.path.join(project_root, "Loopix.bat")
 
     if target_exe_or_bat and os.path.exists(target_exe_or_bat):
         target = target_exe_or_bat
     elif os.path.exists(dist_exe):
         target = dist_exe
+    elif os.path.exists(os.path.join(project_root, "dist", "DevPilot", "DevPilot.exe")):
+        target = os.path.join(project_root, "dist", "DevPilot", "DevPilot.exe")
+    elif os.path.exists(os.path.join(project_root, "DevPilot.bat")):
+        target = os.path.join(project_root, "DevPilot.bat")
     else:
         target = bat_file
 
@@ -22,12 +26,12 @@ $Desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)
 if (-not (Test-Path $Desktop)) {{
     $Desktop = Join-Path $env:USERPROFILE "Desktop"
 }}
-$ShortcutPath = Join-Path $Desktop "DevPilot AI Editor.lnk"
+$ShortcutPath = Join-Path $Desktop "Loopix AI Editor.lnk"
 $WshShell = New-Object -comObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = "{target.replace('\\', '\\\\')}"
 $Shortcut.WorkingDirectory = "{project_root.replace('\\', '\\\\')}"
-$Shortcut.Description = "DevPilot AI Coding Assistant & Code Editor"
+$Shortcut.Description = "Loopix AI Coding Assistant & Code Editor"
 if (Test-Path "{icon_path.replace('\\', '\\\\')}") {{
     $Shortcut.IconLocation = "{icon_path.replace('\\', '\\\\')},0"
 }}

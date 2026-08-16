@@ -69,12 +69,13 @@ function saveRecent(label: string) {
 
 // ── Category colours ─────────────────────────────────────────────────────────
 const CAT_COLORS: Record<string, string> = {
-  AI:    'var(--dp-accent)',
-  Git:   'var(--dp-git-added)',
-  Debug: 'var(--dp-warning)',
-  View:  'var(--dp-info)',
-  File:  'var(--dp-text-secondary)',
-  Tools: 'var(--dp-error)',
+  AI:        'var(--dp-accent)',
+  Extension: '#a855f7',
+  Git:       'var(--dp-git-added)',
+  Debug:     'var(--dp-warning)',
+  View:      'var(--dp-info)',
+  File:      'var(--dp-text-secondary)',
+  Tools:     'var(--dp-error)',
 };
 
 interface Command {
@@ -95,6 +96,7 @@ export const CommandPalette: React.FC = () => {
 
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [recentLabels, setRecentLabels] = useState<string[]>([]);
+  const [extensionCommands, setExtensionCommands] = useState<Command[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -103,6 +105,28 @@ export const CommandPalette: React.FC = () => {
       setRecentLabels(loadRecent());
       setSelectedIdx(0);
       setTimeout(() => inputRef.current?.focus(), 30);
+
+      // Fetch active dynamic extension commands
+      fetch('/api/extensions/active')
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data && Array.isArray(data.commands)) {
+            const extCmds: Command[] = data.commands.map((cmd: any) => ({
+              category: 'Extension',
+              label: `${cmd.category || 'Extension'}: ${cmd.title} (${cmd.id})`,
+              action: async () => {
+                close();
+                await fetch('/api/extensions/execute', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ command_id: cmd.id })
+                });
+              }
+            }));
+            setExtensionCommands(extCmds);
+          }
+        })
+        .catch(e => console.error('Failed fetching extension commands for CommandPalette:', e));
     }
   }, [isCommandPaletteOpen]);
 
@@ -127,6 +151,7 @@ export const CommandPalette: React.FC = () => {
   useEffect(() => { setSelectedIdx(0); }, [commandSearch]);
 
   const allCommands: Command[] = [
+    ...extensionCommands,
     // File
     { category: 'File', label: 'Go to File… (Quick Open)', shortcut: 'Ctrl+P',
       action: () => { close(); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true })); } },

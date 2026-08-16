@@ -148,11 +148,11 @@ export const TitleBar: React.FC = () => {
 
       {/* ── Left: Branding + Workspace Selector + Menus ── */}
       <div className="flex items-center gap-2.5">
-        {/* DevPilot Logo */}
-        <div className="w-5 h-5 rounded-[3px] flex items-center justify-center text-white text-[9px] font-extrabold shrink-0" style={{ background: "#4C8DFF" }}>
-          DP
+        {/* Loopix Logo */}
+        <div className="w-5 h-5 rounded-[3px] flex items-center justify-center text-white text-[9px] font-extrabold shrink-0" style={{ background: "#6366F1" }}>
+          LX
         </div>
-        <span className="text-[12px] font-bold text-[var(--dp-text-bright)] tracking-tight">DevPilot</span>
+        <span className="text-[12px] font-bold text-[var(--dp-text-bright)] tracking-tight">Loopix</span>
 
         {/* Workspace Selector Dropdown Badge */}
         <div

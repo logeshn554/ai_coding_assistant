@@ -453,8 +453,8 @@ export default function EditorArea({
 
     // Right-click or keybinding trigger for Inline AI Edit
     editor.addAction({
-      id: 'devpilot-inline-chat',
-      label: 'DevPilot: Inline AI Edit',
+      id: 'loopix-inline-chat',
+      label: 'Loopix: Inline AI Edit',
       keybindings: [2048 | 41], // Ctrl+K or Cmd+K
       run: (ed: any) => {
         const sel = ed.getSelection();
@@ -737,11 +737,11 @@ export default function EditorArea({
                 <div className="space-y-6">
                   {/* Branding */}
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-[4px] flex items-center justify-center text-white text-[12px] font-black" style={{ background: '#4C8DFF' }}>
-                      DP
+                    <div className="w-8 h-8 rounded-[4px] flex items-center justify-center text-white text-[12px] font-black" style={{ background: '#6366F1' }}>
+                      LX
                     </div>
                     <div>
-                      <h1 className="text-sm font-bold text-white tracking-tight">DevPilot IDE</h1>
+                      <h1 className="text-sm font-bold text-white tracking-tight">Loopix IDE</h1>
                       <span className="text-[9px] font-bold text-[#4C8DFF] uppercase tracking-wider">
                         AI-Native Platform
                       </span>

@@ -212,6 +212,7 @@
     margin: 0;
     overflow: hidden;
     height: 100vh;
+    touch-action: pan-x pan-y;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }

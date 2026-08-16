@@ -512,7 +512,7 @@ const AssistantMessageComponent: React.FC<AssistantMessageProps> = ({
             <Sparkles className="w-3.5 h-3.5" />
           </div>
           <span className="font-bold text-[12.5px] text-zinc-100 tracking-wide">
-            DevPilot AI
+            Loopix AI
           </span>
         </div>
 

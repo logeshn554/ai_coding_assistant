@@ -1,16 +1,16 @@
 @echo off
-title DevPilot - Build Windows Setup Installer
+title Loopix - Build Windows Setup Installer
 echo =========================================================
-echo       Building DevPilot Windows Setup Installer (.exe)
+echo       Building Loopix Windows Setup Installer (.exe)
 echo =========================================================
 echo.
 
-:: 1. Verify dist\DevPilot exists
-if not exist "dist\DevPilot\DevPilot.exe" (
+:: 1. Verify dist\Loopix exists
+if not exist "dist\Loopix\Loopix.exe" (
     echo [1/2] Compiling PyInstaller folder distribution first...
     call build_executable.bat
 ) else (
-    echo [1/2] Found compiled DevPilot distribution in dist\DevPilot.
+    echo [1/2] Found compiled Loopix distribution in dist\Loopix.
 )
 
 echo.
@@ -29,15 +29,15 @@ if defined ISCC (
     call npx -y innosetup installer.iss
 )
 
-if exist "dist_installer\DevPilot-Windows-Setup-1.0.0.exe" (
-    copy /y "dist_installer\DevPilot-Windows-Setup-1.0.0.exe" "dist\DevPilot-Windows-Setup-1.0.0.exe" >nul
+if exist "dist_installer\Loopix-Windows-Setup-1.0.0.exe" (
+    copy /y "dist_installer\Loopix-Windows-Setup-1.0.0.exe" "dist\Loopix-Windows-Setup-1.0.0.exe" >nul
 )
 
-if exist "dist\DevPilot-Windows-Setup-1.0.0.exe" (
+if exist "dist\Loopix-Windows-Setup-1.0.0.exe" (
     echo.
     echo =========================================================
     echo  SUCCESS: Full VS Code-Style Setup Installer Created!
-    echo  Location: dist\DevPilot-Windows-Setup-1.0.0.exe
+    echo  Location: dist\Loopix-Windows-Setup-1.0.0.exe
     echo =========================================================
 ) else (
     echo [ERROR] Setup installer compilation failed.

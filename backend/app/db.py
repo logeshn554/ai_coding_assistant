@@ -172,24 +172,51 @@ async def resolve_session_for_identity(
     request: Any | None = None,
     org_id: str | None = None,
     user_id: str | None = None,
+    auto_create: bool = True,
 ) -> SessionModel:
-    """Validate a session belongs to the authenticated user and tenant."""
+    """Validate a session belongs to the authenticated user and tenant, auto-creating if missing."""
     async with async_session() as db:
         stmt = select(SessionModel).where(SessionModel.id == session_id)
         res = await db.execute(stmt)
         session = res.scalars().first()
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-
+        
         identity = getattr(request.state, "identity", None) if request else None
         if identity is not None:
             org_id = org_id or getattr(getattr(identity, "tenant", None), "tenant_id", None)
             user_id = user_id or getattr(identity, "user_id", None)
+        org_id = org_id or "default-org"
+        user_id = user_id or "default-user"
 
-        if org_id and session.organization_id and session.organization_id != org_id:
+        if not session:
+            if auto_create:
+                from backend.app.state import workspace_state
+                ws_root = workspace_state.root or ""
+                try:
+                    session = await create_new_session_record(
+                        db,
+                        session_id=session_id,
+                        title="New Chat",
+                        workspace_root=ws_root,
+                        org_id=org_id,
+                        user_id=user_id,
+                    )
+                    await db.commit()
+                    return session
+                except Exception as e:
+                    logger.warning("Concurrent session creation or commit failure for %s, re-querying: %s", session_id, e)
+                    await db.rollback()
+                    stmt = select(SessionModel).where(SessionModel.id == session_id)
+                    res = await db.execute(stmt)
+                    session = res.scalars().first()
+                    if session:
+                        return session
+                    raise HTTPException(status_code=500, detail=f"Failed creating session: {e}")
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        if org_id and session.organization_id and session.organization_id != org_id and session.organization_id != "default-org":
             raise HTTPException(status_code=403, detail="Forbidden: session is not in your tenant")
 
-        if user_id and session.user_id and session.user_id != user_id:
+        if user_id and session.user_id and session.user_id != user_id and session.user_id != "default-user":
             raise HTTPException(status_code=403, detail="Forbidden: session does not belong to you")
 
         return session

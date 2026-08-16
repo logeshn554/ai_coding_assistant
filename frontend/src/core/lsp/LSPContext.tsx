@@ -134,7 +134,7 @@ export function LSPProvider({ children }: { children: React.ReactNode }) {
           const writer = new WebSocketMessageWriter(socket);
 
           const client = new MonacoLanguageClient({
-            name: `DevPilot LSP (${language})`,
+            name: `Loopix LSP (${language})`,
             clientOptions: {
               documentSelector: [
                 { language: language === 'javascript' ? 'javascript' : language },

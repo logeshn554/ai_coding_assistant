@@ -648,7 +648,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-[#14171f]">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2">
             <ShieldCheck className="text-[#4C8DFF] w-5 h-5" />
-            DevPilot Settings
+            Loopix Settings
           </h2>
           <button onClick={onClose} className="p-1 rounded hover:bg-white/5 text-gray-400 hover:text-white transition-colors">
             <X className="w-5 h-5" />
@@ -1896,8 +1896,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
               <label className="text-xs font-semibold text-gray-400 block">Color Theme</label>
               <div className="grid grid-cols-5 gap-2">
                 {([
-                  { id: 'dark', label: 'DevPilot Dark', bg: '#0d0e14', accent: '#7c6af0', text: '#c8ccd8' },
-                  { id: 'light', label: 'DevPilot Light', bg: '#f0f0f5', accent: '#6b54e8', text: '#1a1b26' },
+                  { id: 'dark', label: 'Loopix Dark', bg: '#0d0e14', accent: '#7c6af0', text: '#c8ccd8' },
+                  { id: 'light', label: 'Loopix Light', bg: '#f0f0f5', accent: '#6b54e8', text: '#1a1b26' },
                   { id: 'monokai', label: 'Monokai', bg: '#272822', accent: '#f92672', text: '#f8f8f2' },
                   { id: 'solarized', label: 'Solarized Dark', bg: '#002b36', accent: '#268bd2', text: '#839496' },
                   { id: 'high-contrast', label: 'High Contrast', bg: '#000000', accent: '#00ffff', text: '#ffffff' },

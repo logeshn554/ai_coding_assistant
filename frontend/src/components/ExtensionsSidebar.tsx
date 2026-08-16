@@ -1,5 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Puzzle, Search, Upload, Power, RefreshCw, Download, Trash2, Loader2 } from 'lucide-react';
+import {
+  Puzzle,
+  Search,
+  Upload,
+  Power,
+  RefreshCw,
+  Download,
+  Trash2,
+  Loader2,
+  Play,
+  Terminal,
+  Code,
+  Zap,
+  CheckCircle,
+  XCircle
+} from 'lucide-react';
 
 interface Extension {
   id: string;
@@ -15,14 +30,32 @@ interface Extension {
   icon_url?: string;
 }
 
+interface ActiveCapability {
+  id: string;
+  name: string;
+  publisher: string;
+  version: string;
+  description: string;
+  status: string;
+  dir?: string;
+  main?: string;
+  commands: Array<{ id: string; title: string; category?: string; description?: string }>;
+  snippets: Array<{ name: string; language: string; prefix: string; description?: string }>;
+  ai_tools: Array<{ name: string; description: string }>;
+}
+
 export default function ExtensionsSidebar() {
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<'installed' | 'marketplace' | 'recommended'>('installed');
+  const [activeTab, setActiveTab] = useState<'installed' | 'marketplace' | 'active'>('installed');
   const [installedExtensions, setInstalledExtensions] = useState<Extension[]>([]);
   const [marketplaceExtensions, setMarketplaceExtensions] = useState<Extension[]>([]);
+  const [activeCapabilities, setActiveCapabilities] = useState<ActiveCapability[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [executingCmdId, setExecutingCmdId] = useState<string | null>(null);
+  const [lastOutput, setLastOutput] = useState<{ title: string; text: string; success: boolean } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchInstalled = async () => {
@@ -34,6 +67,18 @@ export default function ExtensionsSidebar() {
       }
     } catch (e) {
       console.error('Failed to fetch installed extensions:', e);
+    }
+  };
+
+  const fetchActiveCapabilities = async () => {
+    try {
+      const res = await fetch('/api/extensions/active');
+      if (res.ok) {
+        const data = await res.json();
+        setActiveCapabilities(data.active_extensions || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch active capabilities:', e);
     }
   };
 
@@ -54,12 +99,13 @@ export default function ExtensionsSidebar() {
 
   useEffect(() => {
     fetchInstalled();
+    fetchActiveCapabilities();
     searchMarketplace(search || 'python');
   }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (search.trim() || activeTab === 'marketplace' || activeTab === 'recommended') {
+      if (search.trim() || activeTab === 'marketplace') {
         searchMarketplace(search || 'tools');
       }
     }, 400);
@@ -84,6 +130,7 @@ export default function ExtensionsSidebar() {
       });
       if (res.ok) {
         await fetchInstalled();
+        await fetchActiveCapabilities();
         setMarketplaceExtensions(prev =>
           prev.map(item => item.id === ext.id ? { ...item, installed: true, enabled: true } : item)
         );
@@ -105,6 +152,7 @@ export default function ExtensionsSidebar() {
       });
       if (res.ok) {
         await fetchInstalled();
+        await fetchActiveCapabilities();
         setMarketplaceExtensions(prev =>
           prev.map(item => item.id === ext.id ? { ...item, installed: false, enabled: false } : item)
         );
@@ -125,7 +173,8 @@ export default function ExtensionsSidebar() {
         body: JSON.stringify({ id: ext.id, enabled: nextState })
       });
       if (res.ok) {
-        fetchInstalled();
+        await fetchInstalled();
+        await fetchActiveCapabilities();
       }
     } catch (e) {
       console.error('Toggle error:', e);
@@ -148,6 +197,7 @@ export default function ExtensionsSidebar() {
       if (res.ok) {
         setUploadStatus(`Installed ${file.name}`);
         await fetchInstalled();
+        await fetchActiveCapabilities();
       } else {
         const err = await res.json();
         setUploadStatus(`Error: ${err.detail || 'Failed to install'}`);
@@ -160,7 +210,28 @@ export default function ExtensionsSidebar() {
     }
   };
 
-  // Compute displayed list based on active tab and search
+  const executeCommand = async (cmdId: string, cmdTitle: string) => {
+    setExecutingCmdId(cmdId);
+    try {
+      const res = await fetch('/api/extensions/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command_id: cmdId })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setLastOutput({ title: cmdTitle, text: data.output || 'Executed successfully.', success: true });
+      } else {
+        setLastOutput({ title: cmdTitle, text: data.detail || data.error || 'Execution failed.', success: false });
+      }
+      await fetchActiveCapabilities();
+    } catch (e) {
+      setLastOutput({ title: cmdTitle, text: `Execution error: ${e}`, success: false });
+    } finally {
+      setExecutingCmdId(null);
+    }
+  };
+
   const displayedList = React.useMemo(() => {
     if (activeTab === 'installed') {
       if (!search.trim()) return installedExtensions.filter(e => e.installed);
@@ -179,7 +250,7 @@ export default function ExtensionsSidebar() {
       <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[#2A3146] bg-[#161922] shrink-0">
         <div className="flex items-center gap-2">
           <Puzzle className="w-4 h-4 text-purple-400" />
-          <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">Extensions</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">Extensions Engine</span>
         </div>
         <div className="flex items-center gap-1.5">
           <input
@@ -197,9 +268,9 @@ export default function ExtensionsSidebar() {
             <Upload className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={() => { fetchInstalled(); searchMarketplace(search || 'python'); }}
+            onClick={() => { fetchInstalled(); fetchActiveCapabilities(); searchMarketplace(search || 'python'); }}
             className="p-1 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-            title="Refresh Extensions"
+            title="Refresh Extensions & Capabilities"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -241,6 +312,16 @@ export default function ExtensionsSidebar() {
           Installed ({installedExtensions.filter(e => e.installed).length})
         </button>
         <button
+          onClick={() => setActiveTab('active')}
+          className={`flex-1 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+            activeTab === 'active'
+              ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/30'
+              : 'text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          Active ({activeCapabilities.length})
+        </button>
+        <button
           onClick={() => setActiveTab('marketplace')}
           className={`flex-1 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
             activeTab === 'marketplace'
@@ -252,9 +333,111 @@ export default function ExtensionsSidebar() {
         </button>
       </div>
 
-      {/* Extension List */}
+      {/* Main View Area */}
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
-        {loading && displayedList.length === 0 ? (
+        {activeTab === 'active' ? (
+          <div className="space-y-2">
+            <div className="p-2 rounded-xl bg-emerald-950/30 border border-emerald-500/20 text-emerald-300 text-[11px] flex items-center gap-2">
+              <Zap className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>
+                {activeCapabilities.length} Dynamic Extensions Active in IDE Engine
+              </span>
+            </div>
+
+            {activeCapabilities.length === 0 ? (
+              <div className="py-12 text-center text-xs text-zinc-500">
+                No active extensions loaded. Enable an installed extension to activate its capabilities.
+              </div>
+            ) : (
+              activeCapabilities.map((act) => (
+                <div
+                  key={act.id}
+                  className="p-3 rounded-xl border border-white/10 bg-white/[0.03] space-y-2.5"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-xs text-zinc-100">{act.name}</span>
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Active
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-zinc-400 mt-0.5">{act.description}</p>
+                    </div>
+                  </div>
+
+                  {/* Commands Section */}
+                  {act.commands.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-semibold text-purple-300 uppercase tracking-wider flex items-center gap-1">
+                        <Terminal className="w-3 h-3 text-purple-400" /> Contributed Commands ({act.commands.length})
+                      </span>
+                      <div className="space-y-1 pl-1">
+                        {act.commands.map((cmd) => (
+                          <div
+                            key={cmd.id}
+                            className="flex items-center justify-between p-1.5 bg-black/40 rounded-lg border border-white/5 hover:border-purple-500/30 transition-colors"
+                          >
+                            <div className="min-w-0 flex-1 pr-2">
+                              <div className="text-[11px] font-medium text-zinc-200 truncate">{cmd.title}</div>
+                              <div className="text-[9px] font-mono text-zinc-500 truncate">{cmd.id}</div>
+                            </div>
+                            <button
+                              onClick={() => executeCommand(cmd.id, cmd.title)}
+                              disabled={executingCmdId === cmd.id}
+                              className="px-2 py-1 rounded bg-purple-600/40 hover:bg-purple-600 text-purple-200 text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-colors shrink-0 disabled:opacity-50"
+                            >
+                              {executingCmdId === cmd.id ? (
+                                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                              ) : (
+                                <Play className="w-2.5 h-2.5 fill-purple-200" />
+                              )}
+                              Run
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AI Tools Section */}
+                  {act.ai_tools.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-semibold text-blue-300 uppercase tracking-wider flex items-center gap-1">
+                        <Zap className="w-3 h-3 text-blue-400" /> Contributed AI Tools ({act.ai_tools.length})
+                      </span>
+                      <div className="space-y-1 pl-1">
+                        {act.ai_tools.map((tool) => (
+                          <div key={tool.name} className="p-1.5 bg-blue-950/20 rounded-lg border border-blue-500/20 text-[10px]">
+                            <span className="font-mono text-blue-300 font-bold">{tool.name}</span>
+                            <p className="text-zinc-400 text-[9px] mt-0.5">{tool.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Snippets Section */}
+                  {act.snippets.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-semibold text-amber-300 uppercase tracking-wider flex items-center gap-1">
+                        <Code className="w-3 h-3 text-amber-400" /> Contributed Snippets ({act.snippets.length})
+                      </span>
+                      <div className="flex flex-wrap gap-1 pl-1">
+                        {act.snippets.map((snip) => (
+                          <span key={snip.name} className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[9.5px] font-mono">
+                            {snip.prefix || snip.name} ({snip.language})
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        ) : loading && displayedList.length === 0 ? (
           <div className="py-12 flex flex-col items-center justify-center text-zinc-500 space-y-2">
             <Loader2 className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin text-purple-400" />
             <span className="text-xs">Searching Open VSX Registry...</span>
@@ -276,6 +459,7 @@ export default function ExtensionsSidebar() {
             const isInstalled = ext.installed || installedExtensions.some(e => e.id === ext.id && e.installed);
             const isEnabled = ext.enabled !== false;
             const isActionLoading = actionLoadingId === ext.id;
+            const activeCap = activeCapabilities.find(a => a.id === ext.id);
 
             return (
               <div
@@ -296,14 +480,19 @@ export default function ExtensionsSidebar() {
                       <div className="flex items-center gap-1.5">
                         <span className="font-semibold text-xs text-zinc-100 truncate">{ext.name}</span>
                         <span className="text-[9px] font-mono text-zinc-500 shrink-0">v{ext.version}</span>
+                        {isInstalled && isEnabled && (
+                          <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            Active
+                          </span>
+                        )}
                       </div>
                       <p className="text-[10px] text-zinc-400 line-clamp-2 leading-relaxed mt-0.5">
                         {ext.description || 'VS Code Extension'}
                       </p>
                       <div className="flex items-center gap-2 mt-1 text-[9px] text-zinc-500">
                         <span>{ext.publisher || 'Community'}</span>
-                        {typeof ext.downloads === 'number' && ext.downloads > 0 && (
-                          <span>• {ext.downloads.toLocaleString()} downloads</span>
+                        {activeCap && activeCap.commands.length > 0 && (
+                          <span className="text-purple-400">• {activeCap.commands.length} commands</span>
                         )}
                       </div>
                     </div>
@@ -356,6 +545,31 @@ export default function ExtensionsSidebar() {
           })
         )}
       </div>
+
+      {/* Execution Output Panel */}
+      {lastOutput && (
+        <div className="p-3 border-t border-[#2A3146] bg-[#0c0e14] text-[11px] space-y-1.5 shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-purple-300 flex items-center gap-1.5">
+              {lastOutput.success ? (
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              ) : (
+                <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              )}
+              {lastOutput.title}
+            </span>
+            <button
+              onClick={() => setLastOutput(null)}
+              className="text-zinc-500 hover:text-zinc-300 text-[10px]"
+            >
+              Dismiss
+            </button>
+          </div>
+          <pre className="p-2 bg-black/60 rounded-lg text-[10px] font-mono text-zinc-300 whitespace-pre-wrap max-h-32 overflow-y-auto border border-white/5">
+            {lastOutput.text}
+          </pre>
+        </div>
+      )}
 
     </div>
   );

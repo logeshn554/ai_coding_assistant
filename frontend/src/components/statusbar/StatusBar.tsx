@@ -135,7 +135,7 @@ export const StatusBar: React.FC = () => {
             title="Active Model"
           >
             <Cpu className="w-3 h-3" style={{ color: '#4C8DFF' }} />
-            <span>{activeProfileName || 'DevPilot AI'}</span>
+            <span>{activeProfileName || 'Loopix AI'}</span>
           </div>
         )}
 

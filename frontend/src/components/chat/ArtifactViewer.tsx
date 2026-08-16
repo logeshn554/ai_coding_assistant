@@ -324,7 +324,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
             {feedbackSubmitted && (
               <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2 text-xs text-emerald-400">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>Feedback submitted! The DevPilot Agent is executing your plan.</span>
+                <span>Feedback submitted! The Loopix Agent is executing your plan.</span>
 
               </div>
             )}

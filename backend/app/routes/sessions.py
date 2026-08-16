@@ -205,15 +205,15 @@ async def touch_session_meta(
         res = await db.execute(stmt)
         session = res.scalar()
         if not session:
-            session = SessionModel(
-                id=session_id,
+            from ..db import create_new_session_record
+            session = await create_new_session_record(
+                db,
+                session_id=session_id,
                 title=title or "Conversation",
                 workspace_root=workspace_root or "",
                 mode=mode or "Ask",
-                provider=provider or "",
-                model=model or "",
             )
-            db.add(session)
+            await db.flush()
 
         if workspace_root is not None:
             session.workspace_root = workspace_root

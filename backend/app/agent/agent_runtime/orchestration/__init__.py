@@ -88,19 +88,17 @@ class TaskGraphValidator:
         if errors:
             return ValidationResult(valid=False, errors=errors, task_count=len(tasks))
 
-        # 2. Check for duplicate IDs
-        seen_ids: dict[str, int] = {}
-        for i, task in enumerate(tasks):
-            tid = task["id"]
-            if tid in seen_ids:
-                errors.append(
-                    f"Duplicate task ID '{tid}' at indices {seen_ids[tid]} and {i}"
-                )
+        # 2. Check for duplicate IDs and auto-fix them
+        seen_counts: dict[str, int] = {}
+        for task in tasks:
+            tid = str(task["id"])
+            if tid in seen_counts:
+                seen_counts[tid] += 1
+                new_id = f"{tid}_dup{seen_counts[tid]}"
+                logger.info(f"Auto-sanitizing duplicate task ID '{tid}' -> '{new_id}'")
+                task["id"] = new_id
             else:
-                seen_ids[tid] = i
-
-        if errors:
-            return ValidationResult(valid=False, errors=errors, task_count=len(tasks))
+                seen_counts[tid] = 1
 
         all_ids = set(seen_ids.keys())
         total_edges = 0

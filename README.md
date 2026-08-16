@@ -1,62 +1,119 @@
-# DevPilot — AI-Native Developer Operating System
+# DevPilot — AI-Native Developer IDE & Agentic Operating System
 
-> **An AI-native developer operating system that understands the entire software project, plans work, edits code transactionally, runs applications, uses terminals and browsers, debugs failures, runs tests, reviews its own work, repairs problems, manages Git, and produces verified results while keeping the developer in control.**
+[![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
+[![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![React + TypeScript](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-61dafb.svg)](frontend/)
+
+> **DevPilot is an AI-native developer IDE and agentic operating system that understands your entire software codebase, plans complex tasks, edits files transactionally, runs terminal commands, executes tests, and manages VS Code extensions while keeping the developer in full control.**
 
 ---
 
-## 🌟 Key Features
+## 🌟 Key Capabilities
 
-- **Universal Multi-Agent Orchestrator**: Supports 8 dedicated modes (`Ask`, `Plan`, `Assist`, `Code`, `Debug`, `Review`, `Architect`, `Autonomous`) with live visual execution timeline.
-- **Centralized Security & Permission Engine**: 14 capability categories (`READ_FILES`, `WRITE_FILES`, `RUN_COMMAND`, `BROWSER`, `DATABASE`, etc.) with `Safe`, `Balanced`, `Autonomous`, and `Custom` security policies.
-- **Transactional File System**: Pre-edit atomic snapshots, unified diff previews, and instant one-click task rollbacks.
-- **Prompt-Injection Defense**: Strict `<UNTRUSTED_CONTENT>` boundary tag isolation protecting system instructions against malicious repository inputs.
-- **Project Brain Indexing**: Continuous incremental codebase indexing, symbol graph navigation, and semantic context retrieval.
-- **Runtime Intelligence**: Integrated AI Debugger state analysis, Playwright Browser Agent with live screenshot/console/network inspection, and AI Test Lab.
-- **Developer Platform Integration**: AI Git diff analysis & conflict assistant, SQLite Database IDE, and Universal Command Center (`Ctrl+K`).
+- **Universal Multi-Agent Orchestrator**: Supports 8 specialized execution modes (`Ask`, `Plan`, `Assist`, `Code`, `Debug`, `Review`, `Architect`, `Autonomous`) with live visual execution timelines.
+- **Dynamic VS Code Extension Engine**: Native support for VS Code extension packages (`.vsix`/`ZIP`), extracting manifest commands, snippets, and registering custom AI tools dynamically.
+- **Centralized Security & Permission Engine**: Fine-grained capability security (`READ_FILES`, `WRITE_FILES`, `RUN_COMMAND`, `BROWSER`, etc.) with `Safe`, `Balanced`, `Autonomous`, and `Custom` permission policies.
+- **Transactional File System**: Pre-edit atomic snapshotting, side-by-side diff previews, and instant one-click task rollbacks.
+- **Prompt-Injection Defense**: Strict boundary tag isolation protecting system instructions against untrusted codebase inputs.
+- **Incremental Codebase Indexing**: Symbol graph navigation, fast semantic code search, and ChromaDB vector retrieval.
+- **Developer Platform Integration**: Built-in Command Palette (`Ctrl+Shift+P`), AI Git Assistant, SQLite Database IDE, and terminal integration.
 
 ---
 
 ## 🛠️ Quick Start
 
-### Backend Setup
+### 1. Prerequisites
+- **Python**: 3.10 or higher
+- **Node.js**: 18.0 or higher
+
+### 2. Backend Setup
 ```bash
-cd backend
+# Clone the repository
+git clone https://github.com/logeshn554/ai_coding_assistant.git
+cd ai_coding_assistant
+
+# Setup Virtual Environment
 python -m venv venv
-venv\Scripts\activate
+
+# Windows:
+.\venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
+
+# Install Dependencies
 pip install -r requirements.txt
-python run.py
+
+# Configure Environment
+cp .env.example .env
+
+# Run Backend Server
+python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### Frontend Setup
+### 3. Frontend Setup
 ```bash
+# Open a new terminal
 cd frontend
 npm install
 npm run dev
 ```
 
-Visit `http://localhost:5173` to launch DevPilot.
+Visit `http://localhost:5173` to launch the DevPilot IDE.
 
 ---
 
-## 📚 Technical Documentation
+## ⚡ Dynamic Extension System
 
-Explore the detailed architecture guides in `docs/`:
-
-- [System Architecture](docs/architecture.md)
-- [Security & Permissions](docs/security.md)
-- [Universal Agent System](docs/agent-system.md)
+DevPilot features a VS Code-style extension host system:
+1. Open the **Extensions Sidebar** in DevPilot.
+2. Search and install extensions from the Open VSX registry or upload a `.vsix` package.
+3. Installed extensions automatically register their contributed commands in the **Command Palette (`Ctrl+Shift+P`)** and expose AI tools directly to the assistant.
 
 ---
 
-## 🔬 Testing & Verification
+## 🔒 Security Architecture
 
-Run backend unit and integration tests:
+DevPilot operates under the core principle: **The LLM model is never trusted to make security decisions. The runtime engine enforces all security boundaries.**
+
+- **Path Traversal Protection**: Canonical realpath verification prevents escaping workspace bounds.
+- **Secret Redaction**: Automatic scrubbing of API keys, JWTs, and tokens in output logs.
+- **Terminal Execution Limits**: Subprocess execution isolation with optional interactive prompt confirmation for high-risk commands.
+
+For more details, see [SECURITY.md](SECURITY.md).
+
+---
+
+## 🧪 Testing & Quality Assurance
+
+Run the comprehensive Python test suite:
 ```bash
 pytest tests/
 ```
 
-Run frontend typecheck and build verification:
+Run frontend build and type checks:
 ```bash
 cd frontend
 npm run build
 ```
+
+---
+
+## 📖 Documentation
+
+Additional technical documentation is available in the [`docs/`](docs/) directory:
+- [System Architecture](docs/ARCHITECTURE.md)
+- [Agent Engine Specifications](docs/agent-system.md)
+- [Coding Standards](docs/CODING_STANDARDS.md)
+- [Event System Protocol](docs/EVENTS.md)
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) guide before submitting a Pull Request.
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).

@@ -644,21 +644,32 @@ class AgentRuntime:
 
                 # Persist assistant message to session history if active
                 if agent_session is not None:
-                    session_asst_msg = {
-                        "role": "assistant",
-                        "content": model_resp.text or "",
-                    }
-                    if model_resp.tool_calls:
-                        session_asst_msg["tool_calls"] = [
-                            {
-                                "id": tc.id,
-                                "name": tc.name,
-                                "input": tc.arguments,
-                                "thought_signature": getattr(tc, "thought_signature", None),
-                            }
-                            for tc in model_resp.tool_calls
-                        ]
-                    agent_session.conversation_history.append(session_asst_msg)
+                    already_appended = False
+                    if agent_session.conversation_history:
+                        last_msg = agent_session.conversation_history[-1]
+                        if last_msg.get("role") == "assistant":
+                            last_tcs = [tc.get("id") for tc in (last_msg.get("tool_calls") or []) if tc.get("id")]
+                            curr_tcs = [tc.id for tc in model_resp.tool_calls if tc.id]
+                            if curr_tcs and last_tcs == curr_tcs:
+                                already_appended = True
+                            elif not curr_tcs and not last_tcs and last_msg.get("content") == (model_resp.text or ""):
+                                already_appended = True
+                    if not already_appended:
+                        session_asst_msg: dict[str, Any] = {
+                            "role": "assistant",
+                            "content": model_resp.text or "",
+                        }
+                        if model_resp.tool_calls:
+                            session_asst_msg["tool_calls"] = [
+                                {
+                                    "id": tc.id,
+                                    "name": tc.name,
+                                    "input": tc.arguments,
+                                    "thought_signature": getattr(tc, "thought_signature", None),
+                                }
+                                for tc in model_resp.tool_calls
+                            ]
+                        agent_session.conversation_history.append(session_asst_msg)
 
                 if model_resp.text:
                     final_output += model_resp.text + "\n"
@@ -716,7 +727,7 @@ class AgentRuntime:
                             tool_name=tc.name
                         )
 
-                        entry = {
+                        entry: dict[str, Any] = {
                             "role": "tool",
                             "tool_call_id": tc.id,
                             "name": tc.name,
@@ -863,6 +874,7 @@ class AgentRuntime:
                     try:
                         import os as _os
                         _repair_timeout = float(_os.environ.get("DEVPILOT_LLM_TURN_TIMEOUT") or "600.0")
+                        assert llm_provider_func is not None, "LLM provider function is required for self-repair."
                         raw_repair_res = await asyncio.wait_for(
                             llm_provider_func(repair_messages, list(tool_schemas)),
                             timeout=_repair_timeout,

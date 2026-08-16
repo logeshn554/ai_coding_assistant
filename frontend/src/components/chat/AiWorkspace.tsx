@@ -88,7 +88,7 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
           {/* Left: Chat Title */}
           <div className="flex items-center gap-2 font-semibold text-xs text-zinc-300">
             <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse shrink-0" />
-            <span>DevPilot AI</span>
+            <span>Loopix AI</span>
           </div>
 
           {/* Right Controls: History & New Chat */}

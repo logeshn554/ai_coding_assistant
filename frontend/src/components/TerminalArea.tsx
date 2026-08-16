@@ -54,7 +54,7 @@ function TerminalPane({
 
   useEffect(() => {
     if (isAgent) {
-      setShellName('DevPilot Agent');
+      setShellName('Loopix Agent');
       return;
     }
     if (shell) {
@@ -260,7 +260,7 @@ function TerminalPane({
     if (!isAgent) {
       connectTerminal();
     } else {
-      term.write('\x1b[35m[DevPilot Agent Terminal Ready]\x1b[0m\r\n');
+      term.write('\x1b[35m[Loopix Agent Terminal Ready]\x1b[0m\r\n');
     }
 
     const checkOutputForLocalhost = (text: string) => {
@@ -574,7 +574,7 @@ export default function TerminalArea({
             setActivePaneId(newId);
           }, 0);
           setNextId(prevId => prevId + 1);
-          return [...prev, { id: newId, shell: selectedShell, name: 'DevPilot Agent', isAgent: true }];
+          return [...prev, { id: newId, shell: selectedShell, name: 'Loopix Agent', isAgent: true }];
         } else {
           const agentTerm = prev.find(t => t.isAgent);
           if (agentTerm) {
