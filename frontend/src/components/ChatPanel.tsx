@@ -17,6 +17,7 @@ import {
 import type { ChatMessage, AgentState, Session, ProcessEntry, ChatMode } from '../types/chat';
 import { MessageList } from './chat/MessageList';
 import { AgentStatusBar } from './chat/AgentStatusBar';
+
 import { useUI } from '../core/ui/UIContext';
 
 interface ChatPanelProps {
@@ -549,6 +550,8 @@ export default function ChatPanel({
                 <option value="Agent">Agent</option>
               </select>
 
+
+
               {isGenerating && !input.trim() ? (
                 <button
                   type="button"
@@ -577,6 +580,7 @@ export default function ChatPanel({
           </div>
         </form>
       </div>
+
 
     </div>
   );

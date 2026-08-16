@@ -23,6 +23,40 @@ from agent_runtime.llm import (
 logger = logging.getLogger("agent_runtime.llm.openai_provider")
 
 
+import random
+import asyncio
+import httpx
+
+async def _call_with_retry(client: httpx.AsyncClient, url: str, headers: dict, json_body: dict) -> httpx.Response:
+    max_retries = 3
+    base_delay = 1.0
+    max_delay = 10.0
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = await client.post(url, headers=headers, json=json_body)
+            resp.raise_for_status()
+            return resp
+        except Exception as e:
+            err_str = str(e).lower()
+            status_code = getattr(getattr(e, 'response', None), 'status_code', None) or getattr(e, 'status_code', None)
+            
+            is_rate_limit = status_code == 429 or any(kw in err_str for kw in ("rate limit", "rate_limit", "ratelimit", "too many requests", "429"))
+            is_server_error = (status_code is not None and status_code >= 500) or any(kw in err_str for kw in ("server error", "502 bad gateway", "503 service unavailable", "504 gateway timeout", "500 internal server error"))
+            is_timeout = isinstance(e, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)) or any(kw in err_str for kw in ("timeout", "timed out", "connecttimeout", "readtimeout"))
+            
+            if (is_rate_limit or is_server_error or is_timeout) and attempt < max_retries:
+                delay = min(base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1), max_delay)
+                logger.warning(
+                    f"LLM API call failed (attempt {attempt}/{max_retries}): {e}. "
+                    f"Retrying in {delay:.2f}s..."
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"LLM API call failed permanently after {attempt} attempts: {e}")
+                raise e
+
+
 def _estimate_cost(
     model: str,
     input_tokens: int,
@@ -177,8 +211,7 @@ class OpenAIProvider(LLMProvider):
 
         start = time.monotonic()
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(url, headers=headers, json=body)
-            resp.raise_for_status()
+            resp = await _call_with_retry(client, url, headers, body)
             data = resp.json()
 
         latency_ms = (time.monotonic() - start) * 1000

@@ -1,8 +1,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
-import { CodeBlock } from './CodeBlock';
+import { CodeBlock, extractTextFromNode } from './CodeBlock';
 
 interface MarkdownRendererProps {
   content: string;
@@ -14,10 +13,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, onR
     <div className="prose prose-invert max-w-none text-[13.5px] leading-[1.65] text-zinc-300 font-sans">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
         components={{
           code: ({ className, children, ...props }) => {
-            const isInline = !className && !String(children).includes('\n');
+            const rawText = extractTextFromNode(children);
+            const isInline = !className && !rawText.includes('\n');
             return (
               <CodeBlock
                 inline={isInline}

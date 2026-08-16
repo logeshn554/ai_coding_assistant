@@ -93,6 +93,8 @@ class ToolRegistry:
 
     @classmethod
     def get_tool(cls, name: str) -> Optional[ToolDefinition]:
+        if isinstance(name, str) and "<|channel|>" in name:
+            name = name.split("<|channel|>")[0]
         canonical = cls._aliases.get(name.lower().strip(), name.lower().strip())
         return cls._registry.get(canonical)
 
@@ -104,6 +106,8 @@ class ToolRegistry:
     def get_handler(cls, canonical_name: str) -> Callable:
         """Lazily load tool handlers to prevent circular imports."""
         name = canonical_name.lower().strip()
+        if "<|channel|>" in name:
+            name = name.split("<|channel|>")[0]
         if name == "read_file":
             from backend.app.tools.read_tool import read_file
             return read_file

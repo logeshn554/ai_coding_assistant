@@ -48,14 +48,15 @@ class ModelGateway:
         model = profile.get("model_name") or profile.get("model") or "unknown"
 
         tracer = TelemetryManager.get_tracer()
-        with tracer.start_as_current_span(
+        span = tracer.start_span(
             "model.request",
             attributes={
                 "provider": provider,
                 "model": model,
                 "task_type": task_type,
             }
-        ) as span:
+        )
+        try:
             TelemetryManager.increment_counter(
                 "model_requests_total",
                 attributes={"provider": provider, "model": model, "task_type": task_type}
@@ -66,37 +67,29 @@ class ModelGateway:
 
             while attempt <= max_retries:
                 try:
-                    # Bounded turn execution timeout (Section 11 & 16 requirements)
-                    timeout_val = float(os.environ.get("DEVPILOT_LLM_TURN_TIMEOUT") or "180.0")
-                    
-                    async def run_stream():
-                        async for chunk in adapter.stream_chat(messages, tools or [], system_prompt):
-                            if chunk.get("type") == "usage":
-                                in_tokens = chunk.get("input_tokens", 0)
-                                out_tokens = chunk.get("output_tokens", 0)
-                                cost = chunk.get("cost_usd", 0.0)
-                                TelemetryManager.increment_counter(
-                                    "model_input_tokens_total",
-                                    amount=in_tokens,
-                                    attributes={"provider": provider, "model": model}
-                                )
-                                TelemetryManager.increment_counter(
-                                    "model_output_tokens_total",
-                                    amount=out_tokens,
-                                    attributes={"provider": provider, "model": model}
-                                )
-                                TelemetryManager.record_histogram(
-                                    "model_cost_usd",
-                                    cost,
-                                    attributes={"provider": provider, "model": model}
-                                )
-                                span.set_attribute("input_tokens", in_tokens)
-                                span.set_attribute("output_tokens", out_tokens)
-                                span.set_attribute("cost_usd", cost)
-                            yield chunk
-
-                    generator = run_stream()
-                    async for chunk in generator:
+                    async for chunk in adapter.stream_chat(messages, tools or [], system_prompt):
+                        if chunk.get("type") == "usage":
+                            in_tokens = chunk.get("input_tokens", 0)
+                            out_tokens = chunk.get("output_tokens", 0)
+                            cost = chunk.get("cost_usd", 0.0)
+                            TelemetryManager.increment_counter(
+                                "model_input_tokens_total",
+                                amount=in_tokens,
+                                attributes={"provider": provider, "model": model}
+                            )
+                            TelemetryManager.increment_counter(
+                                "model_output_tokens_total",
+                                amount=out_tokens,
+                                attributes={"provider": provider, "model": model}
+                            )
+                            TelemetryManager.record_histogram(
+                                "model_cost_usd",
+                                cost,
+                                attributes={"provider": provider, "model": model}
+                            )
+                            span.set_attribute("input_tokens", in_tokens)
+                            span.set_attribute("output_tokens", out_tokens)
+                            span.set_attribute("cost_usd", cost)
                         yield chunk
                     
                     duration_ms = (time.perf_counter() - start_ts) * 1000.0
@@ -159,3 +152,5 @@ class ModelGateway:
                         attributes={"provider": provider, "model": model}
                     )
                     await asyncio.sleep(delay)
+        finally:
+            span.end()

@@ -20,6 +20,8 @@ class ToolRegistry:
 
     def get(self, name: str) -> Optional[Tool]:
         """Retrieve tool by name."""
+        if isinstance(name, str) and "<|channel|>" in name:
+            name = name.split("<|channel|>")[0]
         return self.tools.get(name)
 
     async def execute(self, name: str, **kwargs: Any) -> Dict[str, Any]:

@@ -83,6 +83,8 @@ class ToolRegistry:
 
     def get(self, name: str) -> Optional[ToolDefinition]:
         """Retrieve a tool by name."""
+        if isinstance(name, str) and "<|channel|>" in name:
+            name = name.split("<|channel|>")[0]
         return self._tools.get(name)
 
     def list_tools(self) -> list[ToolDefinition]:
@@ -105,6 +107,8 @@ class ToolRegistry:
         Returns:
             ToolResult with success/failure, output, and timing.
         """
+        if isinstance(tool_name, str) and "<|channel|>" in tool_name:
+            tool_name = tool_name.split("<|channel|>")[0]
         tool = self._tools.get(tool_name)
         if not tool:
             return ToolResult(

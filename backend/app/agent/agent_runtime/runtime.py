@@ -87,9 +87,11 @@ VALID_TRANSITIONS: Dict[AgentState, Set[AgentState]] = {
         AgentState.COMPLETED_VERIFIED,
         AgentState.COMPLETED_WITH_WARNINGS,
     },
-    AgentState.WAITING_FOR_TOOL: {AgentState.EXECUTING, AgentState.FAILED, AgentState.CANCELLED, AgentState.BLOCKED},
+    AgentState.WAITING_FOR_TOOL: {AgentState.EXECUTING, AgentState.FAILED, AgentState.CANCELLED, AgentState.BLOCKED, AgentState.VERIFYING},
     AgentState.VERIFYING: {
         AgentState.VERIFYING,
+        AgentState.EXECUTING,
+        AgentState.WAITING_FOR_TOOL,
         AgentState.COMPLETED,
         AgentState.COMPLETED_VERIFIED,
         AgentState.COMPLETED_WITH_WARNINGS,
@@ -401,6 +403,7 @@ class AgentRuntime:
                 except Exception as ex:
                     logger.warning(f"Event callback error: {ex}")
 
+        agent_context = None
         if not has_checkpoint:
             _emit(AgentEvent(session_id, EVENT_AGENT_STARTED, {"task_id": task_obj.id, "description": task_obj.description}))
 
@@ -425,44 +428,53 @@ class AgentRuntime:
             await self.transition_state(session, AgentState.EXECUTING, _emit)
 
         # Initialize mutable conversation message list for multi-turn LLM dialogue
-        if conversation_messages is None:
-            context_block = ""
-            if not has_checkpoint and 'agent_context' in locals():
-                try:
-                    ctx_parts: list[str] = []
-                    for item in agent_context.items:
-                        header = f"### {item.file}"
-                        if item.line_start and item.line_end:
-                            header += f" (lines {item.line_start}-{item.line_end})"
-                        ctx_parts.append(f"{header}\n```\n{item.content}\n```")
-                    if ctx_parts:
-                        context_block = (
-                            "\n\n<workspace_context>\n"
-                            + "\n\n".join(ctx_parts)
-                            + "\n</workspace_context>\n\n"
-                        )
-                    elif session.workspace_root and os.path.isdir(session.workspace_root):
-                        # Fallback: plain directory listing when context engine finds nothing
-                        entries: list[str] = []
-                        for root_dir, dirs, files in os.walk(session.workspace_root):
-                            dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
-                            rel = os.path.relpath(root_dir, session.workspace_root)
-                            for f in files:
-                                entries.append(os.path.join(rel, f) if rel != "." else f)
-                            if len(entries) > 200:
-                                break
-                        if entries:
-                            context_block = (
-                                "\n\n<workspace_context>\n### Workspace file listing\n"
-                                + "\n".join(f"- {e}" for e in entries[:200])
-                                + "\n</workspace_context>\n\n"
-                            )
-                except Exception as ctx_err:
-                    logger.warning(f"Failed to build context block: {ctx_err}")
+        context_block = ""
+        try:
+            ctx_parts: list[str] = []
+            if agent_context and hasattr(agent_context, "items"):
+                for item in agent_context.items:
+                    header = f"### {item.file}"
+                    if item.line_start and item.line_end:
+                        header += f" (lines {item.line_start}-{item.line_end})"
+                    ctx_parts.append(f"{header}\n```\n{item.content}\n```")
+            if ctx_parts:
+                context_block = (
+                    "\n\n<workspace_context>\n"
+                    + "\n\n".join(ctx_parts)
+                    + "\n</workspace_context>\n\n"
+                )
+            elif session.workspace_root and os.path.isdir(session.workspace_root):
+                # Fallback: plain directory listing when context engine finds nothing
+                entries: list[str] = []
+                for root_dir, dirs, files in os.walk(session.workspace_root):
+                    dirs[:] = [d for d in dirs if not d.startswith(".") and d != "node_modules"]
+                    rel = os.path.relpath(root_dir, session.workspace_root)
+                    for f in files:
+                        entries.append(os.path.join(rel, f) if rel != "." else f)
+                    if len(entries) > 200:
+                        break
+                if entries:
+                    context_block = (
+                        "\n\n<workspace_context>\n### Workspace file listing\n"
+                        + "\n".join(f"- {e}" for e in entries[:200])
+                        + "\n</workspace_context>\n\n"
+                    )
+        except Exception as ctx_err:
+            logger.warning(f"Failed to build context block: {ctx_err}")
 
+        if conversation_messages is None:
             conversation_messages = [
                 {"role": "user", "content": context_block + task_obj.description}
             ]
+        else:
+            conversation_messages = list(conversation_messages)
+            if conversation_messages and conversation_messages[-1].get("role") == "user":
+                last_content = conversation_messages[-1].get("content", "")
+                if "<workspace_context>" not in last_content and context_block:
+                    conversation_messages[-1] = {
+                        **conversation_messages[-1],
+                        "content": context_block + last_content
+                    }
 
         # Build tool schemas list from ToolRegistry if not provided
         if tool_schemas is None:

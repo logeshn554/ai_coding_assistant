@@ -85,6 +85,8 @@ async def dispatch_tool(
         NotImplementedError: If name is not a supported tool.
         ValueError: Propagated from edit uniqueness checks.
     """
+    if isinstance(name, str) and "<|channel|>" in name:
+        name = name.split("<|channel|>")[0]
     # Tool Name Normalization / Aliases for LLM compatibility
     TOOL_ALIASES = {
         # list_directory aliases

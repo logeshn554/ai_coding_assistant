@@ -113,6 +113,8 @@ class ToolExecutor:
         auto_apply: bool = True,
     ) -> ToolResult:
         """Execute a normalized tool call with bounded execution and logging."""
+        if isinstance(tool_name, str) and "<|channel|>" in tool_name:
+            tool_name = tool_name.split("<|channel|>")[0]
         tool_def = ToolRegistry.get_tool(tool_name)
         if not tool_def:
             err_payload = {
@@ -289,6 +291,8 @@ class ToolExecutor:
 
     async def _dispatch(self, tc_id: str, tool_name: str, args: Dict[str, Any], auto_apply: bool = True) -> ToolResult:
         """Internal router mapping normalized tool names to workspace operations."""
+        if isinstance(tool_name, str) and "<|channel|>" in tool_name:
+            tool_name = tool_name.split("<|channel|>")[0]
         name = tool_name.lower().strip()
 
         # Handle structural symbol tools (Step 6 & 21 requirements)

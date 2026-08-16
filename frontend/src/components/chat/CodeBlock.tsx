@@ -31,11 +31,26 @@ const LANG_COLORS: Record<string, string> = {
   sql: '#e38c00', graphql: '#e10098',
 };
 
+export const extractTextFromNode = (node: React.ReactNode): string => {
+  if (node === null || node === undefined || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(extractTextFromNode).join('');
+  if (React.isValidElement(node)) return extractTextFromNode((node.props as any)?.children);
+  if (typeof node === 'object') {
+    try {
+      return JSON.stringify(node);
+    } catch {
+      return '';
+    }
+  }
+  return '';
+};
+
 export const CodeBlock: React.FC<CodeBlockProps> = ({ inline, className, children, onRunCommand }) => {
   const [copied, setCopied] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
-  const codeString = String(children || '').replace(/\n$/, '');
+  const codeString = extractTextFromNode(children).replace(/\n$/, '');
   const match = /language-(\w+)/.exec(className || '');
   const language = match ? match[1] : 'code';
   const langLabel = LANG_LABELS[language] || language;

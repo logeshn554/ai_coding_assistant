@@ -6,7 +6,7 @@ import { MessageList } from './MessageList';
 import { useAI } from '../../core/ai/AIContext';
 import { ContextWindowModal } from './ContextWindowModal';
 import { ChatHistoryDrawer } from './ChatHistoryDrawer';
-import { ProviderSelectorModal } from './ProviderSelectorModal';
+
 
 interface AiWorkspaceProps {
   messages: ChatMessage[];
@@ -47,9 +47,7 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
   // Modals state
   const [isContextModalOpen, setIsContextModalOpen] = useState(false);
   const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
-  const [isProviderModalOpen, setIsProviderModalOpen] = useState(false);
   const [activeModelName, setActiveModelName] = useState('Select Model');
-  const [activeProviderName, setActiveProviderName] = useState('AI Provider');
 
   React.useEffect(() => {
     fetch('/api/providers/dashboard')
@@ -57,9 +55,8 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
       .then((data) => {
         if (data && data.providers && data.providers.length > 0) {
           const active = data.providers.find((p: any) => p.is_active) || data.providers[0];
-          if (active) {
-            if (active.model_name) setActiveModelName(active.model_name);
-            if (active.name) setActiveProviderName(active.name);
+          if (active && active.model_name) {
+            setActiveModelName(active.model_name);
           }
         }
       })
@@ -143,9 +140,6 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
             setMode={setMode}
             onOpenContextModal={() => setIsContextModalOpen(true)}
             contextPercentage={pct}
-            activeModelName={activeModelName}
-            activeProviderName={activeProviderName}
-            onOpenProviderModal={() => setIsProviderModalOpen(true)}
           />
         </div>
       </div>
@@ -180,37 +174,7 @@ export const AiWorkspace: React.FC<AiWorkspaceProps> = ({
         }}
       />
 
-      <ProviderSelectorModal
-        isOpen={isProviderModalOpen}
-        onClose={() => setIsProviderModalOpen(false)}
-        activeModelName={activeModelName}
-        onSelectModel={async (mId, pId) => {
-          if (!pId) {
-            setActiveModelName(mId);
-            return;
-          }
-          try {
-            // 1. Activate the chosen profile in backend config_manager
-            const actRes = await fetch('/api/profiles/active', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: pId }),
-            });
-            if (!actRes.ok) throw new Error('Failed to activate profile');
 
-            // 2. Confirm state update in UI
-            setActiveModelName(mId);
-            const profRes = await fetch('/api/profiles');
-            if (profRes.ok) {
-              const profData = await profRes.json();
-              const found = (profData.profiles || []).find((p: any) => p.id === pId);
-              if (found?.name) setActiveProviderName(found.name);
-            }
-          } catch (err) {
-            console.error('Failed to sync active provider profile:', err);
-          }
-        }}
-      />
     </div>
   );
 };

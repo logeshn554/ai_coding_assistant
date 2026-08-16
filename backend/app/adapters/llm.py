@@ -81,6 +81,36 @@ class _RpmLimiter:
                     await asyncio.sleep(sleep_time)
 
 
+import random
+
+async def _call_with_retry(func, *args, **kwargs):
+    max_retries = 3
+    base_delay = 1.0  # seconds
+    max_delay = 10.0
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            err_str = str(e).lower()
+            status_code = getattr(getattr(e, 'response', None), 'status_code', None) or getattr(e, 'status_code', None)
+            
+            is_rate_limit = status_code == 429 or any(kw in err_str for kw in ("rate limit", "rate_limit", "ratelimit", "too many requests", "429"))
+            is_server_error = (status_code is not None and status_code >= 500) or any(kw in err_str for kw in ("server error", "502 bad gateway", "503 service unavailable", "504 gateway timeout", "500 internal server error"))
+            is_timeout = isinstance(e, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)) or any(kw in err_str for kw in ("timeout", "timed out", "connecttimeout", "readtimeout"))
+            
+            if (is_rate_limit or is_server_error or is_timeout) and attempt < max_retries:
+                delay = min(base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1), max_delay)
+                logger.warning(
+                    f"LLM API call failed (attempt {attempt}/{max_retries}): {e}. "
+                    f"Retrying in {delay:.2f}s..."
+                )
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"LLM API call failed permanently after {attempt} attempts: {e}")
+                raise e
+
+
 class LLMAdapter(ModelAdapter):
     """
     Unified LLM adapter for both Anthropic and OpenAI.
@@ -190,7 +220,7 @@ class LLMAdapter(ModelAdapter):
 
 
             if not stream_setting:
-                response = await client.messages.create(**kwargs)
+                response = await _call_with_retry(client.messages.create, **kwargs)
                 if hasattr(response, "usage") and response.usage:
                     yield self.build_usage_chunk(
                         getattr(response.usage, "input_tokens", 0),
@@ -211,7 +241,7 @@ class LLMAdapter(ModelAdapter):
                     yield self.build_done_chunk("stop")
                 return
 
-            stream = await client.messages.create(**kwargs)
+            stream = await _call_with_retry(client.messages.create, **kwargs)
             current_tool_calls = {}
 
             async for chunk in stream:
@@ -374,7 +404,7 @@ class LLMAdapter(ModelAdapter):
         try:
             if not stream_setting:
                 kwargs["stream"] = False
-                response = await client.chat.completions.create(**kwargs)
+                response = await _call_with_retry(client.chat.completions.create, **kwargs)
                 if hasattr(response, "usage") and response.usage:
                     yield self.build_usage_chunk(
                         getattr(response.usage, "prompt_tokens", 0),
@@ -404,7 +434,7 @@ class LLMAdapter(ModelAdapter):
             kwargs["stream_options"] = {"include_usage": True}
             tool_calls_accum = {}
             try:
-                response = await client.chat.completions.create(**kwargs)
+                response = await _call_with_retry(client.chat.completions.create, **kwargs)
                 async for chunk in response:
                     if hasattr(chunk, "usage") and chunk.usage:
                         yield self.build_usage_chunk(
@@ -476,7 +506,7 @@ class LLMAdapter(ModelAdapter):
                     # Non-streaming fallback for tool continuation
                     kwargs["stream"] = False
                     kwargs.pop("stream_options", None)
-                    fb_response = await client.chat.completions.create(**kwargs)
+                    fb_response = await _call_with_retry(client.chat.completions.create, **kwargs)
                     if hasattr(fb_response, "usage") and fb_response.usage:
                         yield self.build_usage_chunk(
                             getattr(fb_response.usage, "prompt_tokens", 0),
@@ -524,7 +554,7 @@ class LLMAdapter(ModelAdapter):
                     logger.warning(f"Provider rejected stream_options ({stream_err}), retrying stream without stream_options.")
                     kwargs.pop("stream_options", None)
                     try:
-                        response = await client.chat.completions.create(**kwargs)
+                        response = await _call_with_retry(client.chat.completions.create, **kwargs)
                         async for chunk in response:
                             if hasattr(chunk, "usage") and chunk.usage:
                                 yield self.build_usage_chunk(
@@ -589,7 +619,7 @@ class LLMAdapter(ModelAdapter):
                     kwargs["stream"] = False
                     kwargs.pop("stream_options", None)
                     try:
-                        non_stream_resp = await client.chat.completions.create(**kwargs)
+                        non_stream_resp = await _call_with_retry(client.chat.completions.create, **kwargs)
                         if hasattr(non_stream_resp, "usage") and non_stream_resp.usage:
                             yield self.build_usage_chunk(
                                 getattr(non_stream_resp.usage, "prompt_tokens", 0),

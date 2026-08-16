@@ -73,3 +73,27 @@ async def test_agent_dict_provider_creates_hello_py():
         assert (ws_path / "hello.py").exists()
         assert (ws_path / "hello.py").read_text().strip() == "print('Hello World')"
         assert "hello.py" in result.changed_files["created_files"]
+
+
+def test_normalize_dirty_tool_names():
+    dirty_calls = [
+        {
+            "id": "call_123",
+            "name": "read_file<|channel|>commentary",
+            "arguments": {"path": "hello.py"},
+        },
+        {
+            "id": "call_456",
+            "name": "apply_patch<|channel|>commentary",
+            "arguments": {"path": "hello.py", "patch": ""},
+        },
+        {
+            "id": "call_789",
+            "name": "read_file<|channel|>analysisjson",
+            "arguments": {"path": "hello.py"},
+        }
+    ]
+    for call in dirty_calls:
+        res = ModelResponseNormalizer.normalize_tool_call(call)
+        assert "<|channel|>" not in res.name
+        assert res.name in ("read_file", "apply_patch")

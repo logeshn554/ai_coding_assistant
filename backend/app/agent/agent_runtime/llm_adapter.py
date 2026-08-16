@@ -65,6 +65,8 @@ class ModelResponseNormalizer:
         if isinstance(raw, dict):
             tc_id = raw.get("id") or raw.get("tool_call_id") or f"tc_{hash(str(raw))}"
             tc_name = raw.get("name") or raw.get("function", {}).get("name") or ""
+            if isinstance(tc_name, str) and "<|channel|>" in tc_name:
+                tc_name = tc_name.split("<|channel|>")[0]
             args = raw.get("arguments") or raw.get("input") or raw.get("function", {}).get("arguments") or {}
             sig = raw.get("thought_signature") or (raw.get("extra_content", {}).get("google", {}).get("thought_signature") if isinstance(raw.get("extra_content"), dict) else None)
 
@@ -79,6 +81,8 @@ class ModelResponseNormalizer:
         # Handle object attributes (e.g. LangChain / OpenAI SDK objects)
         tc_id = getattr(raw, "id", None) or f"tc_{id(raw)}"
         tc_name = getattr(raw, "name", None) or getattr(getattr(raw, "function", None), "name", "")
+        if isinstance(tc_name, str) and "<|channel|>" in tc_name:
+            tc_name = tc_name.split("<|channel|>")[0]
         args = getattr(raw, "arguments", None) or getattr(raw, "input", None) or getattr(getattr(raw, "function", None), "arguments", {})
         sig = getattr(raw, "thought_signature", None)
 
@@ -207,9 +211,12 @@ class ModelResponseNormalizer:
                     args = data.get("arguments") or data.get("input") or data.get("action_input") or {}
                     if name:
                         import uuid
+                        name_str = str(name)
+                        if "<|channel|>" in name_str:
+                            name_str = name_str.split("<|channel|>")[0]
                         return ToolCall(
                             id=f"fallback_{uuid.uuid4().hex[:8]}",
-                            name=str(name),
+                            name=name_str,
                             arguments=args if isinstance(args, dict) else {"input": args},
                         )
                 except Exception:

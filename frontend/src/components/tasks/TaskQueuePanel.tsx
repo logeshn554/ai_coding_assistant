@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ListChecks,
   Clock,
@@ -8,9 +8,13 @@ import {
   XCircle,
   Trash2,
   Terminal,
-  Activity
+  Activity,
+  X,
+  Sparkles,
+  Zap,
+  Layers,
+  Send
 } from 'lucide-react';
-
 
 import { useAI } from '../../core/ai/AIContext';
 
@@ -31,6 +35,14 @@ export const TaskQueuePanel: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<QueueTask | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [procInfo, setProcInfo] = useState({ cpu: '1.8%', memory: '176 MB', status: 'Healthy' });
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [taskPrompt, setTaskPrompt] = useState('');
+  const [taskMode, setTaskMode] = useState('Agent');
+  const [taskPriority, setTaskPriority] = useState('medium');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { handleSendMessage } = useAI();
 
@@ -58,27 +70,58 @@ export const TaskQueuePanel: React.FC = () => {
     }
   };
 
-
   useEffect(() => {
     fetchTasks();
     const interval = setInterval(fetchTasks, 2500);
     return () => clearInterval(interval);
   }, []);
 
-  const handleAddNewTask = async () => {
-    const title = prompt('Enter task prompt for Agent queue:');
-    if (!title) return;
+  useEffect(() => {
+    if (isModalOpen) {
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }
+  }, [isModalOpen]);
 
+  const handleOpenModal = () => {
+    setTaskPrompt('');
+    setTaskMode('Agent');
+    setTaskPriority('medium');
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setTaskPrompt('');
+  };
+
+  const handleSubmitTask = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const title = taskPrompt.trim();
+    if (!title || isSubmitting) return;
+
+    setIsSubmitting(true);
     try {
       await fetch('/api/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, mode: 'Agent', priority: 'medium' })
+        body: JSON.stringify({ title, mode: taskMode, priority: taskPriority })
       });
-      handleSendMessage(title, 'Goal', false);
+      handleSendMessage(title, taskMode === 'Goal' ? 'Goal' : 'Agent', false);
+      handleCloseModal();
       fetchTasks();
     } catch (e) {
       console.error('Failed to queue task:', e);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSubmitTask();
+    } else if (e.key === 'Escape') {
+      handleCloseModal();
     }
   };
 
@@ -140,7 +183,7 @@ export const TaskQueuePanel: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-transparent text-xs font-sans overflow-hidden border border-[var(--dp-border)] rounded-[4px] p-3 space-y-3">
+    <div className="h-full flex flex-col bg-transparent text-xs font-sans overflow-hidden border border-[var(--dp-border)] rounded-[4px] p-3 space-y-3 relative">
       {/* ── Header ── */}
       <div className="flex items-center justify-between pb-2 border-b border-[var(--dp-border)]">
         <div className="flex items-center gap-2">
@@ -164,8 +207,8 @@ export const TaskQueuePanel: React.FC = () => {
             </button>
           )}
           <button
-            onClick={handleAddNewTask}
-            className="flex items-center gap-1 text-[11px] font-bold text-white bg-[#4C8DFF] hover:bg-[#6AA3FF] px-2.5 py-1 rounded-[4px] transition-colors cursor-pointer"
+            onClick={handleOpenModal}
+            className="flex items-center gap-1 text-[11px] font-bold text-white bg-[#4C8DFF] hover:bg-[#6AA3FF] px-2.5 py-1 rounded-[4px] shadow-sm hover:shadow transition-all cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" /> Queue Task
           </button>
@@ -276,9 +319,117 @@ export const TaskQueuePanel: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ── Sleek Queue Task Modal ── */}
+      {isModalOpen && (
+        <div 
+          className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) handleCloseModal();
+          }}
+        >
+          <div className="bg-[#1e1e24] border border-[#3c3f4e] rounded-xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col animate-[fadeIn_150ms_ease-out]">
+            {/* Modal Header */}
+            <div className="px-5 py-3.5 bg-[#252836] border-b border-[#3c3f4e] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#4C8DFF]/15 border border-[#4C8DFF]/30 flex items-center justify-center text-[#4C8DFF]">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white tracking-wide">Queue New Agent Task</h3>
+                  <p className="text-[11px] text-zinc-400">Dispatch an autonomous goal or task to the queue pipeline</p>
+                </div>
+              </div>
+              <button
+                onClick={handleCloseModal}
+                className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Form Body */}
+            <form onSubmit={handleSubmitTask} className="p-5 space-y-4">
+              {/* Task Prompt Input */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-zinc-300 flex items-center justify-between">
+                  <span>Task Prompt / Instruction</span>
+                  <span className="text-[10px] text-zinc-500 font-normal">Press Ctrl+Enter to submit</span>
+                </label>
+                <textarea
+                  ref={textareaRef}
+                  value={taskPrompt}
+                  onChange={(e) => setTaskPrompt(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  rows={4}
+                  placeholder="e.g., Audit project dependencies, refactor authentication endpoints, and add unit tests..."
+                  className="w-full bg-[#14151b] border border-[#3c3f4e] focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] text-white text-xs rounded-lg p-3 outline-none resize-none placeholder:text-zinc-600 transition-all font-sans leading-relaxed"
+                />
+              </div>
+
+              {/* Mode & Priority Settings */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Agent Mode */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-zinc-300 flex items-center gap-1">
+                    <Layers className="w-3.5 h-3.5 text-[#4C8DFF]" /> Mode
+                  </label>
+                  <select
+                    value={taskMode}
+                    onChange={(e) => setTaskMode(e.target.value)}
+                    className="w-full bg-[#14151b] border border-[#3c3f4e] focus:border-[#4C8DFF] text-zinc-200 text-xs rounded-lg px-2.5 py-2 outline-none cursor-pointer"
+                  >
+                    <option value="Agent">Agent (Autonomous)</option>
+                    <option value="Goal">Goal (Multi-step Deep)</option>
+                    <option value="Architect">Architect (System Plan)</option>
+                    <option value="Reviewer">Reviewer (Audit Code)</option>
+                  </select>
+                </div>
+
+                {/* Priority */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-zinc-300 flex items-center gap-1">
+                    <Zap className="w-3.5 h-3.5 text-amber-400" /> Priority
+                  </label>
+                  <select
+                    value={taskPriority}
+                    onChange={(e) => setTaskPriority(e.target.value)}
+                    className="w-full bg-[#14151b] border border-[#3c3f4e] focus:border-[#4C8DFF] text-zinc-200 text-xs rounded-lg px-2.5 py-2 outline-none cursor-pointer"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Modal Footer Buttons */}
+              <div className="pt-2 border-t border-[#3c3f4e] flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleCloseModal}
+                  className="px-3.5 py-1.5 text-xs text-zinc-400 hover:text-white hover:bg-white/5 border border-transparent rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!taskPrompt.trim() || isSubmitting}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-[#4C8DFF] hover:bg-[#6AA3FF] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow transition-all cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {isSubmitting ? 'Enqueuing...' : 'Queue Task'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
 
 
 

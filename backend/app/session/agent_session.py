@@ -84,7 +84,7 @@ class AgentSession:
         session_id=None,
     ):
         self.workspace_root = workspace_root
-        self.profile = profile
+        self.profile = profile if isinstance(profile, dict) else {}
         self.send_ws_message = send_ws_message
         self.permission_manager = permission_manager
         from ..agent.agent_runtime import AgentRuntime
@@ -92,7 +92,7 @@ class AgentSession:
         self.orchestrator = AgentOrchestrator(session=self)
         self.conversation_history = []
         self.pending_confirmations = {}  # tool_call_id -> {"event": asyncio.Event(), "approved": bool}
-        max_turns_config = profile.get("max_turns") or profile.get("max_orchestrator_steps") or 25
+        max_turns_config = self.profile.get("max_turns") or self.profile.get("max_orchestrator_steps") or 25
         self.max_turns = int(max_turns_config)
         self.audit_log = []
         self.is_running = False
@@ -1156,6 +1156,23 @@ class AgentSession:
                             "arguments": json.dumps(tc["input"]) if isinstance(tc["input"], dict) else tc["input"]
                         })
 
+                    # Handle empty model response when no tool calls were made
+                    if not response_text and not tool_calls_to_run:
+                        fallback_msg = (
+                            "\n\n> ⚠️ **No Content Generated**\n\n"
+                            "The model provider returned an empty response or failed to generate text.\n\n"
+                            "**Common Causes & Fixes:**\n"
+                            "- **API Key / Quota**: Free-tier API rate limit or quota exceeded.\n"
+                            "- **Model Selection**: The selected provider or model may be temporarily unavailable.\n"
+                            "- **Safety Filter**: The prompt content was filtered by provider safety guardrails.\n\n"
+                            "💡 *Try resending your request, switching to another model profile in Settings, or starting a new session.*"
+                        )
+                        await self.send_ws_message({
+                            "type": "text_delta",
+                            "content": fallback_msg
+                        })
+                        response_text = fallback_msg
+
                     # Record assistant message in the conversation history
                     assistant_msg = {
                         "role": "assistant",
@@ -1890,6 +1907,24 @@ class AgentSession:
                 self.conversation_history.append({
                     "role": "assistant",
                     "content": response_text
+                })
+            else:
+                fallback_msg = (
+                    "\n\n> ⚠️ **No Content Generated**\n\n"
+                    "The model provider returned an empty response or failed to generate text.\n\n"
+                    "**Common Causes & Fixes:**\n"
+                    "- **API Key / Quota**: Free-tier API rate limit or quota exceeded.\n"
+                    "- **Model Selection**: The selected provider or model may be temporarily unavailable.\n"
+                    "- **Safety Filter**: The prompt content was filtered by provider safety guardrails.\n\n"
+                    "💡 *Try resending your request, switching to another model profile in Settings, or starting a new session.*"
+                )
+                await self.send_ws_message({
+                    "type": "text_delta",
+                    "content": fallback_msg
+                })
+                self.conversation_history.append({
+                    "role": "assistant",
+                    "content": fallback_msg
                 })
         except Exception as e:
             import traceback

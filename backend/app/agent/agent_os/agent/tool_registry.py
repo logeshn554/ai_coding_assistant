@@ -692,6 +692,8 @@ class ToolRegistry:
 
     def get(self, name: str) -> Optional[ToolDefinition]:
         """Get a tool by name."""
+        if isinstance(name, str) and "<|channel|>" in name:
+            name = name.split("<|channel|>")[0]
         return self._tools.get(name)
 
     def get_all(self) -> Dict[str, ToolDefinition]:
