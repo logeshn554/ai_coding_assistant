@@ -7,13 +7,11 @@ with output capture, timeout enforcement, and working directory constraints.
 
 from __future__ import annotations
 
-import os
-import asyncio
-import logging
 import functools
-from typing import Optional
+import logging
+import os
 
-from agent_runtime.tools import ToolDefinition, ToolResult, RiskLevel
+from agent_runtime.tools import RiskLevel, ToolDefinition, ToolResult
 
 logger = logging.getLogger("agent_runtime.tools.terminal")
 
@@ -48,7 +46,6 @@ async def _run_command(
             )
 
     try:
-        from backend.app.processes import kill_process_tree
         from backend.app.tools.terminal_tool import run_shell_command
 
         class DummySession:

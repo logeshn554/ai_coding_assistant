@@ -8,9 +8,8 @@ and ensures prompt instructions embedded in data cannot override runtime policy.
 from __future__ import annotations
 
 import re
-from typing import List, Tuple
 
-INJECTION_PATTERNS: List[re.Pattern] = [
+INJECTION_PATTERNS: list[re.Pattern] = [
     re.compile(r"ignore\s+(?:previous|all)\s+(?:instructions|policies|rules|directives|guidelines)", re.IGNORECASE),
     re.compile(r"system\s+prompt\s+override", re.IGNORECASE),
     re.compile(r"(?:read|upload|leak|show|exfiltrate)\s+\.env", re.IGNORECASE),
@@ -23,7 +22,7 @@ class PromptInjectionGuard:
     """Detects and isolates prompt-injection attempts in untrusted content."""
 
     @classmethod
-    def scan_untrusted_content(cls, content: str) -> Tuple[bool, List[str]]:
+    def scan_untrusted_content(cls, content: str) -> tuple[bool, list[str]]:
         """Scan untrusted content for malicious prompt-injection directives."""
         if not content or not isinstance(content, str):
             return False, []

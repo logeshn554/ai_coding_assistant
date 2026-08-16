@@ -1,9 +1,8 @@
 import os
 import socket
-from typing import Any
 
-from parallel_agent_system.runtime.agent_runtime import DockerWorkspace
 from parallel_agent_system.core.state import SubTask
+from parallel_agent_system.runtime.agent_runtime import DockerWorkspace
 
 
 def find_free_port() -> int:
@@ -29,8 +28,9 @@ class WorkspaceFactory:
         Spins up an isolated DockerWorkspace container for the agent subtask.
         """
         import asyncio
-        import shutil
         import logging
+        import shutil
+        import tempfile
         logger = logging.getLogger("parallel_agent_system.runtime.workspace_factory")
 
         port = find_free_port()

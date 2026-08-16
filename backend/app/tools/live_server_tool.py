@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import asyncio
 import os
-import socket
 import random
-from typing import Any, Dict
+import socket
+from typing import Any
 
 
 def find_free_port(start_port: int = 5500) -> int:
@@ -26,7 +26,7 @@ def find_free_port(start_port: int = 5500) -> int:
     return start_port
 
 
-async def open_with_live_server(session: Any, args: Dict[str, Any]) -> str:
+async def open_with_live_server(session: Any, args: dict[str, Any]) -> str:
     """Launch or reuse a Live Server for an HTML file or static site in the workspace.
 
     Args:

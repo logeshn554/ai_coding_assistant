@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
 
 from ..security.permission_engine import PermissionEngine
 
@@ -29,9 +28,9 @@ class PluginManifest:
     name: str
     version: str
     description: str
-    capabilities: List[str] = field(default_factory=list)
-    permissions_required: List[str] = field(default_factory=list)
-    dependencies: List[str] = field(default_factory=list)
+    capabilities: list[str] = field(default_factory=list)
+    permissions_required: list[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -46,7 +45,7 @@ class PluginManager:
 
     def __init__(self, workspace_root: str) -> None:
         self.workspace_root = workspace_root
-        self.plugins: Dict[str, PluginRegistration] = {}
+        self.plugins: dict[str, PluginRegistration] = {}
         self.permission_engine = PermissionEngine.get_instance(workspace_root)
 
     def install_plugin(self, manifest: PluginManifest) -> PluginRegistration:

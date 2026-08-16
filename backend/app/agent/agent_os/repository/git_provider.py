@@ -1,6 +1,7 @@
 import subprocess
-import os
+
 from agent_os.repository.interfaces import ISourceControl
+
 
 class GitSourceControl(ISourceControl):
     """Git tracking operations runner."""

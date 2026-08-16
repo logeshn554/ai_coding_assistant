@@ -10,21 +10,17 @@ Handles:
 """
 
 import asyncio
-import os
-import subprocess
-import shutil
-import tempfile
-from typing import Any, Dict, Optional, Tuple
-from dataclasses import dataclass
-from datetime import datetime
 import logging
+import os
+import shutil
+from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class WorkspaceError(Exception):
     """Workspace-related error."""
-    pass
 
 
 @dataclass
@@ -51,9 +47,9 @@ class Workspace:
         """
         self.root_path = os.path.abspath(root_path)
         self._is_initialized = False
-        self._health: Optional[WorkspaceHealth] = None
+        self._health: WorkspaceHealth | None = None
 
-    async def initialize(self) -> Tuple[bool, str]:
+    async def initialize(self) -> tuple[bool, str]:
         """
         Initialize workspace with validation.
 
@@ -81,7 +77,7 @@ class Workspace:
             return True, "Workspace initialized"
 
         except Exception as e:
-            return False, f"Failed to initialize workspace: {str(e)}"
+            return False, f"Failed to initialize workspace: {e!s}"
 
     async def health_check(self) -> WorkspaceHealth:
         """
@@ -125,7 +121,7 @@ class Workspace:
             if free_space_mb < 100:
                 issues.append(f"Low disk space: {free_space_mb:.1f} MB")
         except Exception as e:
-            issues.append(f"Cannot check disk space: {str(e)}")
+            issues.append(f"Cannot check disk space: {e!s}")
             free_space_mb = 0
 
         # 6. Check Python available
@@ -170,8 +166,8 @@ class Workspace:
         self,
         command: str,
         timeout: int = 30,
-        env: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, Any]:
+        env: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         """
         Execute a command in the workspace.
 
@@ -257,7 +253,7 @@ class Workspace:
             self._is_initialized = False
             logger.info(f"Workspace cleaned up: {self.root_path}")
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get workspace status."""
         return {
             "root_path": self.root_path,
@@ -273,7 +269,7 @@ class WorkspaceManager:
     """Manages multiple workspaces."""
 
     def __init__(self):
-        self._workspaces: Dict[str, Workspace] = {}
+        self._workspaces: dict[str, Workspace] = {}
 
     def get_or_create_workspace(self, workspace_id: str, root_path: str) -> Workspace:
         """Get or create a workspace."""
@@ -281,7 +277,7 @@ class WorkspaceManager:
             self._workspaces[workspace_id] = Workspace(root_path)
         return self._workspaces[workspace_id]
 
-    def get_workspace(self, workspace_id: str) -> Optional[Workspace]:
+    def get_workspace(self, workspace_id: str) -> Workspace | None:
         """Get an existing workspace."""
         return self._workspaces.get(workspace_id)
 

@@ -4,16 +4,16 @@ Agent factory for creating agents with proper configuration.
 Handles agent instantiation, tool registry wiring, and agent type routing.
 """
 
-from typing import Dict, Optional
-from .interfaces import IAgent, IAgentFactory, ToolDefinition
+
 from .base_agent import BaseAgent
+from .interfaces import IAgent, IAgentFactory, ToolDefinition
 from .tool_registry import ToolRegistry
 
 
 class AgentFactory(IAgentFactory):
     """Creates agents with proper tool registry and configuration."""
 
-    def __init__(self, model_router, tool_registry: Optional[ToolRegistry] = None):
+    def __init__(self, model_router, tool_registry: ToolRegistry | None = None):
         """
         Args:
             model_router: LLM model router for agent LLM calls
@@ -70,11 +70,11 @@ class AgentFactory(IAgentFactory):
         """Return list of supported agent types."""
         return list(self._agent_type_tools.keys())
 
-    def get_tools_for_type(self, agent_type: str) -> Dict[str, ToolDefinition]:
+    def get_tools_for_type(self, agent_type: str) -> dict[str, ToolDefinition]:
         """Get tools available for an agent type."""
         return self._agent_type_tools.get(agent_type, {})
 
-    def _get_coding_tools(self) -> Dict[str, ToolDefinition]:
+    def _get_coding_tools(self) -> dict[str, ToolDefinition]:
         """Tools for coding agent."""
         tool_names = [
             "read_file",
@@ -95,7 +95,7 @@ class AgentFactory(IAgentFactory):
         ]
         return self._get_tools_by_names(tool_names)
 
-    def _get_testing_tools(self) -> Dict[str, ToolDefinition]:
+    def _get_testing_tools(self) -> dict[str, ToolDefinition]:
         """Tools for testing agent."""
         tool_names = [
             "read_file",
@@ -114,7 +114,7 @@ class AgentFactory(IAgentFactory):
         ]
         return self._get_tools_by_names(tool_names)
 
-    def _get_review_tools(self) -> Dict[str, ToolDefinition]:
+    def _get_review_tools(self) -> dict[str, ToolDefinition]:
         """Tools for review agent."""
         tool_names = [
             "read_file",
@@ -128,7 +128,7 @@ class AgentFactory(IAgentFactory):
         ]
         return self._get_tools_by_names(tool_names)
 
-    def _get_analysis_tools(self) -> Dict[str, ToolDefinition]:
+    def _get_analysis_tools(self) -> dict[str, ToolDefinition]:
         """Tools for analysis agent."""
         tool_names = [
             "read_file",
@@ -141,7 +141,7 @@ class AgentFactory(IAgentFactory):
         ]
         return self._get_tools_by_names(tool_names)
 
-    def _get_refactor_tools(self) -> Dict[str, ToolDefinition]:
+    def _get_refactor_tools(self) -> dict[str, ToolDefinition]:
         """Tools for refactoring agent."""
         tool_names = [
             "read_file",
@@ -161,7 +161,7 @@ class AgentFactory(IAgentFactory):
         ]
         return self._get_tools_by_names(tool_names)
 
-    def _get_tools_by_names(self, names: list[str]) -> Dict[str, ToolDefinition]:
+    def _get_tools_by_names(self, names: list[str]) -> dict[str, ToolDefinition]:
         """Get tools by name list."""
         tools = {}
         all_tools = self.tool_registry.get_all()

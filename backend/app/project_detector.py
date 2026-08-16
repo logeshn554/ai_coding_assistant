@@ -10,7 +10,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 logger = logging.getLogger("devpilot.project_detector")
 
@@ -79,15 +79,15 @@ Rules:
 """
 
 
-def _collect_workspace_snapshot(workspace_root: str) -> tuple[List[str], Dict[str, str]]:
+def _collect_workspace_snapshot(workspace_root: str) -> tuple[list[str], dict[str, str]]:
     """
     Returns (files_list, key_file_contents).
     files_list  – relative paths of every non-skipped file (max 400).
     key_file_contents – content of important config files (package.json, requirements.txt, etc.).
     """
     root = Path(workspace_root)
-    files: List[str] = []
-    key_contents: Dict[str, str] = {}
+    files: list[str] = []
+    key_contents: dict[str, str] = {}
 
     KEY_FILES = {
         "package.json", "requirements.txt", "pyproject.toml",
@@ -156,14 +156,14 @@ def _build_user_prompt(workspace_root: str) -> str:
     )
 
 
-async def detect_project_metadata_async(workspace_root: str) -> Dict[str, Any]:
+async def detect_project_metadata_async(workspace_root: str) -> dict[str, Any]:
     """
     Ask the LLM to analyse the workspace and return project metadata.
     Falls back to a minimal unknown-project response if the LLM call fails.
     """
     proj_name = Path(workspace_root).name if workspace_root else "Project"
 
-    _fallback: Dict[str, Any] = {
+    _fallback: dict[str, Any] = {
         "projectId": f"proj_{abs(hash(workspace_root or ''))}",
         "name": proj_name,
         "framework": "Unknown — click ↻ to re-analyse",
@@ -207,7 +207,7 @@ async def detect_project_metadata_async(workspace_root: str) -> Dict[str, Any]:
 
         parsed: dict = json.loads(clean)
 
-        metadata: Dict[str, Any] = {
+        metadata: dict[str, Any] = {
             "projectId": f"proj_{abs(hash(workspace_root))}",
             "name": parsed.get("name") or proj_name,
             "framework": parsed.get("framework") or "Unknown",
@@ -243,7 +243,7 @@ async def detect_project_metadata_async(workspace_root: str) -> Dict[str, Any]:
 # This version returns the cached .devpilot/project.json if present, otherwise
 # a stub that tells the user to click ↻ to trigger the async detection.
 
-def detect_project_metadata(workspace_root: str) -> Dict[str, Any]:
+def detect_project_metadata(workspace_root: str) -> dict[str, Any]:
     """
     Sync shim: reads the last AI-generated project.json if it exists,
     otherwise returns a stub telling the user to trigger re-analysis.

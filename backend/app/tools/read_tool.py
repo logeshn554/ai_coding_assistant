@@ -4,12 +4,12 @@ Exposes ``read_file(session, args)`` as the agent-facing async function.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from ..async_files import async_read_workspace_file
 
 
-async def read_file(session: Any, args: Dict[str, Any]) -> str:
+async def read_file(session: Any, args: dict[str, Any]) -> str:
     """Read a file relative to the workspace root.
 
     Args:

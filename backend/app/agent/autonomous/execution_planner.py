@@ -9,8 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .task_contract import AgentTaskContract
 
@@ -30,12 +29,12 @@ class PlanStep:
     id: str
     description: str
     step_type: str  # investigate | implementation | testing | verification
-    dependencies: List[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
     status: StepStatus = StepStatus.PENDING
-    expected_changes: List[str] = field(default_factory=list)
+    expected_changes: list[str] = field(default_factory=list)
     verification: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "description": self.description,
@@ -47,7 +46,7 @@ class PlanStep:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "PlanStep":
+    def from_dict(cls, data: dict[str, Any]) -> PlanStep:
         return cls(
             id=data.get("id", ""),
             description=data.get("description", ""),
@@ -63,10 +62,10 @@ class PlanStep:
 class ExecutionPlan:
     """Canonical multi-step plan executed by AgentRuntime."""
     contract_goal: str
-    steps: List[PlanStep] = field(default_factory=list)
-    current_step_id: Optional[str] = None
+    steps: list[PlanStep] = field(default_factory=list)
+    current_step_id: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "contract_goal": self.contract_goal,
             "steps": [s.to_dict() for s in self.steps],
@@ -74,7 +73,7 @@ class ExecutionPlan:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "ExecutionPlan":
+    def from_dict(cls, data: dict[str, Any]) -> ExecutionPlan:
         return cls(
             contract_goal=data.get("contract_goal", ""),
             steps=[PlanStep.from_dict(s) for s in data.get("steps", [])],
@@ -87,7 +86,7 @@ class ExecutionPlan:
                 s.status = status
                 break
 
-    def get_next_step(self) -> Optional[PlanStep]:
+    def get_next_step(self) -> PlanStep | None:
         for s in self.steps:
             if s.status == StepStatus.PENDING:
                 return s

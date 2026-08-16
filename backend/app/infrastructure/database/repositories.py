@@ -1,19 +1,27 @@
 import datetime
-from typing import List, Optional, Any
+
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
+
 from backend.app.infrastructure.database.models import (
-    Organization, User, Membership, Project, Workspace,
-    Conversation, Message, AgentRun, AgentTask, AgentStep,
-    AgentCheckpoint, ToolCall, Approval, AuditEvent, UsageRecord, Artifact
+    AgentRun,
+    Approval,
+    Conversation,
+    Membership,
+    Message,
+    Organization,
+    Project,
+    User,
+    Workspace,
 )
+
 
 class BaseRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
 class OrganizationRepository(BaseRepository):
-    async def create(self, name: str, id: Optional[str] = None) -> Organization:
+    async def create(self, name: str, id: str | None = None) -> Organization:
         org = Organization(name=name)
         if id:
             org.id = id
@@ -21,11 +29,11 @@ class OrganizationRepository(BaseRepository):
         await self.db.flush()
         return org
 
-    async def get_by_id(self, org_id: str) -> Optional[Organization]:
+    async def get_by_id(self, org_id: str) -> Organization | None:
         res = await self.db.execute(select(Organization).where(Organization.id == org_id))
         return res.scalars().first()
 
-    async def get(self, org_id: str) -> Optional[Organization]:
+    async def get(self, org_id: str) -> Organization | None:
         return await self.get_by_id(org_id)
 
 class UserRepository(BaseRepository):
@@ -34,9 +42,9 @@ class UserRepository(BaseRepository):
         email: str,
         full_name: str = "",
         hashed_password: str = "",
-        organization_id: Optional[str] = None,
-        name: Optional[str] = None,
-        id: Optional[str] = None
+        organization_id: str | None = None,
+        name: str | None = None,
+        id: str | None = None
     ) -> User:
         user = User(
             email=email,
@@ -53,15 +61,15 @@ class UserRepository(BaseRepository):
             await self.db.flush()
         return user
 
-    async def get_by_email(self, email: str) -> Optional[User]:
+    async def get_by_email(self, email: str) -> User | None:
         res = await self.db.execute(select(User).where(User.email == email))
         return res.scalars().first()
 
-    async def get_by_id(self, user_id: str) -> Optional[User]:
+    async def get_by_id(self, user_id: str) -> User | None:
         res = await self.db.execute(select(User).where(User.id == user_id))
         return res.scalars().first()
 
-    async def get(self, user_id: str) -> Optional[User]:
+    async def get(self, user_id: str) -> User | None:
         return await self.get_by_id(user_id)
 
 class MembershipRepository(BaseRepository):
@@ -71,7 +79,7 @@ class MembershipRepository(BaseRepository):
         await self.db.flush()
         return membership
 
-    async def get_membership(self, org_id: str, user_id: str) -> Optional[Membership]:
+    async def get_membership(self, org_id: str, user_id: str) -> Membership | None:
         res = await self.db.execute(
             select(Membership).where(
                 Membership.organization_id == org_id,
@@ -81,13 +89,13 @@ class MembershipRepository(BaseRepository):
         return res.scalars().first()
 
 class ProjectRepository(BaseRepository):
-    async def create(self, org_id: str, name: str, description: Optional[str] = None) -> Project:
+    async def create(self, org_id: str, name: str, description: str | None = None) -> Project:
         proj = Project(organization_id=org_id, name=name, description=description)
         self.db.add(proj)
         await self.db.flush()
         return proj
 
-    async def get_project(self, org_id: str, project_id: str) -> Optional[Project]:
+    async def get_project(self, org_id: str, project_id: str) -> Project | None:
         res = await self.db.execute(
             select(Project).where(
                 Project.organization_id == org_id,
@@ -96,7 +104,7 @@ class ProjectRepository(BaseRepository):
         )
         return res.scalars().first()
 
-    async def list_by_org(self, org_id: str) -> List[Project]:
+    async def list_by_org(self, org_id: str) -> list[Project]:
         res = await self.db.execute(select(Project).where(Project.organization_id == org_id))
         return list(res.scalars().all())
 
@@ -107,7 +115,7 @@ class WorkspaceRepository(BaseRepository):
         await self.db.flush()
         return ws
 
-    async def get_workspace(self, org_id: str, workspace_id: str) -> Optional[Workspace]:
+    async def get_workspace(self, org_id: str, workspace_id: str) -> Workspace | None:
         res = await self.db.execute(
             select(Workspace).where(
                 Workspace.organization_id == org_id,
@@ -116,7 +124,7 @@ class WorkspaceRepository(BaseRepository):
         )
         return res.scalars().first()
 
-    async def get_by_root(self, org_id: str, root_identifier: str) -> Optional[Workspace]:
+    async def get_by_root(self, org_id: str, root_identifier: str) -> Workspace | None:
         res = await self.db.execute(
             select(Workspace).where(
                 Workspace.organization_id == org_id,
@@ -125,7 +133,7 @@ class WorkspaceRepository(BaseRepository):
         )
         return res.scalars().first()
 
-    async def list_by_project(self, org_id: str, project_id: str) -> List[Workspace]:
+    async def list_by_project(self, org_id: str, project_id: str) -> list[Workspace]:
         res = await self.db.execute(
             select(Workspace).where(
                 Workspace.organization_id == org_id,
@@ -135,7 +143,7 @@ class WorkspaceRepository(BaseRepository):
         return list(res.scalars().all())
 
 class ConversationRepository(BaseRepository):
-    async def create(self, org_id: str, user_id: str, workspace_id: str, title: str, id: Optional[str] = None) -> Conversation:
+    async def create(self, org_id: str, user_id: str, workspace_id: str, title: str, id: str | None = None) -> Conversation:
         conv = Conversation(organization_id=org_id, user_id=user_id, workspace_id=workspace_id, title=title)
         if id:
             conv.id = id
@@ -143,7 +151,7 @@ class ConversationRepository(BaseRepository):
         await self.db.flush()
         return conv
 
-    async def get_conversation(self, org_id: str, conversation_id: str) -> Optional[Conversation]:
+    async def get_conversation(self, org_id: str, conversation_id: str) -> Conversation | None:
         res = await self.db.execute(
             select(Conversation).where(
                 Conversation.organization_id == org_id,
@@ -152,7 +160,7 @@ class ConversationRepository(BaseRepository):
         )
         return res.scalars().first()
 
-    async def get_last_for_workspace(self, org_id: str, workspace_id: str) -> Optional[Conversation]:
+    async def get_last_for_workspace(self, org_id: str, workspace_id: str) -> Conversation | None:
         res = await self.db.execute(
             select(Conversation)
             .where(
@@ -163,7 +171,7 @@ class ConversationRepository(BaseRepository):
         )
         return res.scalars().first()
 
-    async def list_by_workspace(self, org_id: str, workspace_id: str) -> List[Conversation]:
+    async def list_by_workspace(self, org_id: str, workspace_id: str) -> list[Conversation]:
         res = await self.db.execute(
             select(Conversation)
             .where(
@@ -174,7 +182,7 @@ class ConversationRepository(BaseRepository):
         )
         return list(res.scalars().all())
 
-    async def list_all(self, org_id: str) -> List[Conversation]:
+    async def list_all(self, org_id: str) -> list[Conversation]:
         res = await self.db.execute(
             select(Conversation)
             .where(Conversation.organization_id == org_id)
@@ -199,7 +207,7 @@ class ConversationRepository(BaseRepository):
         )
 
 class MessageRepository(BaseRepository):
-    async def create(self, conversation_id: str, role: str, content: str, sequence: int, metadata_json: Optional[str] = "{}") -> Message:
+    async def create(self, conversation_id: str, role: str, content: str, sequence: int, metadata_json: str | None = "{}") -> Message:
         msg = Message(
             conversation_id=conversation_id,
             role=role,
@@ -211,7 +219,7 @@ class MessageRepository(BaseRepository):
         await self.db.flush()
         return msg
 
-    async def get_by_conversation(self, conversation_id: str) -> List[Message]:
+    async def get_by_conversation(self, conversation_id: str) -> list[Message]:
         res = await self.db.execute(
             select(Message)
             .where(Message.conversation_id == conversation_id)
@@ -229,9 +237,9 @@ class AgentRunRepository(BaseRepository):
         conversation_id: str,
         task_description: str,
         mode: str,
-        id: Optional[str] = None,
-        workspace_root: Optional[str] = None,
-        profile_name: Optional[str] = None,
+        id: str | None = None,
+        workspace_root: str | None = None,
+        profile_name: str | None = None,
     ) -> AgentRun:
         run = AgentRun(
             organization_id=org_id,
@@ -251,7 +259,7 @@ class AgentRunRepository(BaseRepository):
         await self.db.flush()
         return run
 
-    async def get_run(self, org_id: str, run_id: str) -> Optional[AgentRun]:
+    async def get_run(self, org_id: str, run_id: str) -> AgentRun | None:
         from sqlalchemy.orm import selectinload
         res = await self.db.execute(
             select(AgentRun)
@@ -263,7 +271,7 @@ class AgentRunRepository(BaseRepository):
         )
         return res.scalars().first()
 
-    async def update_status(self, org_id: str, run_id: str, status: str, state: Optional[str] = None) -> None:
+    async def update_status(self, org_id: str, run_id: str, status: str, state: str | None = None) -> None:
         stmt = update(AgentRun).where(
             AgentRun.organization_id == org_id,
             AgentRun.id == run_id
@@ -279,7 +287,7 @@ class ApprovalRepository(BaseRepository):
         user_id: str,
         workspace_id: str,
         run_id: str,
-        tool_call_id: Optional[str],
+        tool_call_id: str | None,
         capability: str
     ) -> Approval:
         appr = Approval(
@@ -301,7 +309,7 @@ class ApprovalRepository(BaseRepository):
         approval_id: str,
         status: str,
         resolved_by: str,
-        reason: Optional[str] = None
+        reason: str | None = None
     ) -> None:
         await self.db.execute(
             update(Approval)
@@ -317,7 +325,7 @@ class ApprovalRepository(BaseRepository):
             )
         )
 
-    async def get_approval(self, org_id: str, approval_id: str) -> Optional[Approval]:
+    async def get_approval(self, org_id: str, approval_id: str) -> Approval | None:
         res = await self.db.execute(
             select(Approval).where(
                 Approval.organization_id == org_id,

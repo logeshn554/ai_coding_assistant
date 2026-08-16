@@ -1,28 +1,29 @@
-import os
-import time
-import logging
 import asyncio
 import datetime
+import logging
+import os
 import subprocess
-from typing import Optional, Counter
+import time
 from collections import Counter
+
 from fastapi import APIRouter, HTTPException
-from ..state import workspace_state, get_permission_manager, config_manager
+
 from ..schemas.workspace import (
+    DetectCommandRequest,
+    DetectCommandResponse,
+    HealthCheckResponse,
+    RootsAddResponse,
+    RootsResponse,
+    ShellNameResponse,
+    SSHHostRequest,
+    SSHHostResponse,
+    SSHHostsResponse,
     WorkspaceChangeRequest,
     WorkspaceChangeResponse,
     WorkspaceInfoResponse,
-    DetectCommandRequest,
-    DetectCommandResponse,
-    ShellNameResponse,
     WorkspaceStatsResponse,
-    SSHHostRequest,
-    SSHHostResponse,
-    RootsResponse,
-    RootsAddResponse,
-    SSHHostsResponse,
-    HealthCheckResponse,
 )
+from ..state import config_manager, get_permission_manager, workspace_state
 
 _SERVER_START_TIME = time.time()
 
@@ -84,6 +85,7 @@ async def get_shell_name():
 
 
 from pathlib import Path
+
 
 def validate_workspace_path(path_str: str) -> str:
     """
@@ -357,6 +359,7 @@ def _get_stats_sync(root: str) -> dict:
 
 from ..cache import cached
 
+
 @cached(ttl=60)
 async def _get_cached_stats(root: str) -> dict:
     return await asyncio.to_thread(_get_stats_sync, root)
@@ -424,6 +427,7 @@ async def add_ssh_host(req: SSHHostRequest):
 async def get_health():
     """Returns server health status, uptime, and Redis connectivity."""
     from pathlib import Path as _Path
+
     from ..state import redis_client
 
     db_file = _Path.home() / ".devpilot" / "history.db"

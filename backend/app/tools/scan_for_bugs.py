@@ -15,17 +15,17 @@ for any legacy callers that might invoke the function without ``await``.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any
 
 __all__ = [
-    "scan_for_bugs",
-    "scan_for_bugs_sync",
     "generate_bug_report_async",
     "generate_bug_report_sync",
+    "scan_for_bugs",
+    "scan_for_bugs_sync",
 ]
 
 
-def _empty_report() -> Dict[str, Any]:
+def _empty_report() -> dict[str, Any]:
     """Return a canonical empty bug report.
 
     The structure mirrors what a real implementation would produce – a mapping
@@ -35,7 +35,7 @@ def _empty_report() -> Dict[str, Any]:
     return {"bugs": []}
 
 
-async def scan_for_bugs(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+async def scan_for_bugs(*args: Any, **kwargs: Any) -> dict[str, Any]:
     """Asynchronous stub for bug scanning.
 
     The function accepts arbitrary positional and keyword arguments to remain
@@ -49,7 +49,7 @@ async def scan_for_bugs(*args: Any, **kwargs: Any) -> Dict[str, Any]:
     return _empty_report()
 
 
-def scan_for_bugs_sync(*args: Any, **kwargs: Any) -> Dict[str, Any]:
+def scan_for_bugs_sync(*args: Any, **kwargs: Any) -> dict[str, Any]:
     """Synchronous wrapper for environments that call the function without ``await``.
 
     It simply returns the canonical empty report.
@@ -57,7 +57,7 @@ def scan_for_bugs_sync(*args: Any, **kwargs: Any) -> Dict[str, Any]:
     return _empty_report()
 
 
-def format_bug_report(report_dict: Dict[str, Any]) -> str:
+def format_bug_report(report_dict: dict[str, Any]) -> str:
     """Formats a bug report dictionary into a concise text summary."""
     if not isinstance(report_dict, dict):
         return "No bugs found."

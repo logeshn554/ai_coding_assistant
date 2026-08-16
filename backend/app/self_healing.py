@@ -1,17 +1,17 @@
 """Self-Healing Workspace Engine — Automatically diagnoses runtime failures and proposes candidate repair patches."""
 import logging
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger("devpilot.self_healing")
 
 class SelfHealingEngine:
-    def diagnose_and_heal(self, error_message: str, workspace_root: str = "") -> Dict[str, Any]:
+    def diagnose_and_heal(self, error_message: str, workspace_root: str = "") -> dict[str, Any]:
         """Diagnose a runtime failure or test assertion error and return a recommended fix patch."""
         if not error_message:
             return {"status": "no_error", "diagnosis": "No error provided.", "patch_suggested": False}
 
         lower_err = error_message.lower()
-        patches: List[Dict[str, str]] = []
+        patches: list[dict[str, str]] = []
 
         if "module_not_found" in lower_err or "no module named" in lower_err or "cannot find module" in lower_err:
             patches.append({

@@ -1,15 +1,19 @@
-from typing import Any
 
-from parallel_agent_system.runtime.agent_runtime import Agent, Conversation, LLM, Tool, LLMSummarizingCondenser
 from parallel_agent_system.core.config import SystemConfig
-from parallel_agent_system.core.state import SubTask, AgentResult
-from parallel_agent_system.core.errors import StuckError, BudgetExceeded
-from parallel_agent_system.runtime.workspace_factory import WorkspaceFactory
+from parallel_agent_system.core.errors import BudgetExceeded, StuckError
+from parallel_agent_system.core.state import AgentResult, SubTask
+from parallel_agent_system.monitor.stuck_detector import AgentMonitor
+from parallel_agent_system.runtime.agent_runtime import (
+    LLM,
+    Agent,
+    Conversation,
+    LLMSummarizingCondenser,
+    Tool,
+)
 from parallel_agent_system.runtime.event_store import RedisEventStore
 from parallel_agent_system.runtime.secret_registry import SecretRegistry
 from parallel_agent_system.runtime.skills_loader import SkillsLoader
-from parallel_agent_system.monitor.stuck_detector import AgentMonitor
-
+from parallel_agent_system.runtime.workspace_factory import WorkspaceFactory
 
 BASE_SYSTEM_PROMPT = """You are a specialist '{agent_type}' agent operating inside an isolated Docker workspace.
 
@@ -151,7 +155,7 @@ class BaseParallelAgent:
                 subtask_id=subtask.id,
                 agent_type=self.agent_type,
                 status="failed",
-                output=f"Agent execution encountered an unhandled error: {str(e)}",
+                output=f"Agent execution encountered an unhandled error: {e!s}",
                 cost_usd=monitor.cost,
                 iterations=monitor.iterations,
                 event_log_key=event_store.key,

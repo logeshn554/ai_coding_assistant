@@ -12,9 +12,9 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger("agentos.gateway.rate_limiter")
 
@@ -32,7 +32,7 @@ class RateLimitRule:
 
 
 # Tier-based default limits
-_TIER_DEFAULTS: Dict[str, Dict[str, int]] = {
+_TIER_DEFAULTS: dict[str, dict[str, int]] = {
     "free": {
         "chat": 20,
         "completion": 30,
@@ -87,7 +87,7 @@ class SlidingWindowCounter:
 
     def __init__(self, window_seconds: float = 60.0):
         self._window = window_seconds
-        self._entries: List[_WindowEntry] = []
+        self._entries: list[_WindowEntry] = []
 
     def _prune(self, now: float) -> None:
         cutoff = now - self._window
@@ -123,9 +123,9 @@ class RateLimiter:
 
     def __init__(self):
         # Key: (tenant_id, user_id, endpoint_category)
-        self._windows: Dict[Tuple[str, str, str], SlidingWindowCounter] = defaultdict(SlidingWindowCounter)
-        self._cooldowns: Dict[str, float] = {}  # key -> cooldown_until timestamp
-        self._custom_rules: Dict[str, RateLimitRule] = {}
+        self._windows: dict[tuple[str, str, str], SlidingWindowCounter] = defaultdict(SlidingWindowCounter)
+        self._cooldowns: dict[str, float] = {}  # key -> cooldown_until timestamp
+        self._custom_rules: dict[str, RateLimitRule] = {}
 
     def add_rule(self, rule: RateLimitRule) -> None:
         """Register a custom rate limit rule for an endpoint pattern."""
@@ -247,9 +247,9 @@ class RateLimiter:
         for k in keys_to_remove:
             del self._windows[k]
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get current rate limiter statistics."""
-        stats: Dict[str, Any] = {
+        stats: dict[str, Any] = {
             "active_windows": len(self._windows),
             "active_cooldowns": sum(
                 1 for t in self._cooldowns.values() if t > time.time()

@@ -1,7 +1,7 @@
 """Artifacts and Slash Commands API routes for Antigravity AI IDE."""
 import os
-from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Query
+
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/artifacts", tags=["artifacts"])
@@ -20,12 +20,12 @@ class ArtifactItem(BaseModel):
 class FeedbackRequest(BaseModel):
     artifact_id: str
     action: str  # approve, request_changes
-    comments: Optional[str] = None
+    comments: str | None = None
 
-@router.get("", response_model=List[ArtifactItem])
-async def list_artifacts(workspace_root: Optional[str] = Query(None)):
+@router.get("", response_model=list[ArtifactItem])
+async def list_artifacts(workspace_root: str | None = Query(None)):
     """List active artifacts in the workspace or session."""
-    artifacts: List[ArtifactItem] = []
+    artifacts: list[ArtifactItem] = []
     
     # Check workspace root or brain dir for artifacts
     target_dirs = []

@@ -1,7 +1,8 @@
 import os
 import sqlite3
 import threading
-from typing import Any, Dict, List
+from typing import Any
+
 
 class DatabaseManager:
     """SQLite Database manager handling repository metadata storage and symbol queries."""
@@ -86,9 +87,8 @@ class DatabaseManager:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);")
 
     def clear_file_metadata(self, path: str) -> None:
-        with self._lock:
-            with self._get_connection() as conn:
-                conn.execute("DELETE FROM files WHERE path = ?;", (path,))
+        with self._lock, self._get_connection() as conn:
+            conn.execute("DELETE FROM files WHERE path = ?;", (path,))
 
     def insert_file(self, path: str, language: str, size: int, mtime: int, content_hash: str) -> int:
         with self._lock:
@@ -108,7 +108,7 @@ class DatabaseManager:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?);
                 """, (file_id, name, sym_type, start_line, start_col, end_line, end_col, signature))
 
-    def insert_symbols_batch(self, file_id: int, symbols: List[Any]) -> None:
+    def insert_symbols_batch(self, file_id: int, symbols: list[Any]) -> None:
         """Batch insert symbol objects."""
         if not symbols:
             return
@@ -133,14 +133,13 @@ class DatabaseManager:
                 """, data)
 
     def insert_reference(self, file_id: int, symbol_name: str, line: int, col: int) -> None:
-        with self._lock:
-            with self._get_connection() as conn:
-                conn.execute("""
+        with self._lock, self._get_connection() as conn:
+            conn.execute("""
                     INSERT INTO symbol_references (file_id, symbol_name, line, col)
                     VALUES (?, ?, ?, ?);
                 """, (file_id, symbol_name, line, col))
 
-    def insert_references_batch(self, file_id: int, references: List[Any]) -> None:
+    def insert_references_batch(self, file_id: int, references: list[Any]) -> None:
         """Batch insert reference objects."""
         if not references:
             return
@@ -153,19 +152,18 @@ class DatabaseManager:
             else:
                 data.append(ref)
 
-        with self._lock:
-            with self._get_connection() as conn:
-                conn.executemany("""
+        with self._lock, self._get_connection() as conn:
+            conn.executemany("""
                     INSERT INTO symbol_references (file_id, symbol_name, line, col)
                     VALUES (?, ?, ?, ?);
                 """, data)
 
-    def query_files(self, pattern: str) -> List[Dict[str, Any]]:
+    def query_files(self, pattern: str) -> list[dict[str, Any]]:
         conn = self._get_connection()
         rows = conn.execute("SELECT * FROM files WHERE path LIKE ?;", (f"%{pattern}%",)).fetchall()
         return [dict(r) for r in rows]
 
-    def query_symbols(self, name: str, sym_type: str) -> List[Dict[str, Any]]:
+    def query_symbols(self, name: str, sym_type: str) -> list[dict[str, Any]]:
         conn = self._get_connection()
         rows = conn.execute("""
             SELECT s.*, f.path as file_path, f.language
@@ -175,7 +173,7 @@ class DatabaseManager:
         """, (name, sym_type)).fetchall()
         return [dict(r) for r in rows]
 
-    def query_references(self, symbol_name: str) -> List[Dict[str, Any]]:
+    def query_references(self, symbol_name: str) -> list[dict[str, Any]]:
         conn = self._get_connection()
         rows = conn.execute("""
             SELECT r.*, f.path as file_path
@@ -186,9 +184,8 @@ class DatabaseManager:
         return [dict(r) for r in rows]
 
     def clear_diagnostics(self, file_id: int) -> None:
-        with self._lock:
-            with self._get_connection() as conn:
-                conn.execute("DELETE FROM lsp_diagnostics WHERE file_id = ?;", (file_id,))
+        with self._lock, self._get_connection() as conn:
+            conn.execute("DELETE FROM lsp_diagnostics WHERE file_id = ?;", (file_id,))
 
     def insert_diagnostic(self, file_id: int, message: str, severity: int, line: int, character: int, code: str = None, source: str = "LSP") -> None:
         with self._lock:
@@ -198,7 +195,7 @@ class DatabaseManager:
                     VALUES (?, ?, ?, ?, ?, ?, ?);
                 """, (file_id, message, severity, line, character, code, source))
 
-    def query_diagnostics_for_file(self, file_path: str) -> List[Dict[str, Any]]:
+    def query_diagnostics_for_file(self, file_path: str) -> list[dict[str, Any]]:
         conn = self._get_connection()
         rows = conn.execute("""
             SELECT d.*, f.path as file_path
@@ -208,7 +205,7 @@ class DatabaseManager:
         """, (file_path,)).fetchall()
         return [dict(r) for r in rows]
 
-    def query_diagnostics_for_symbol(self, symbol_name: str) -> List[Dict[str, Any]]:
+    def query_diagnostics_for_symbol(self, symbol_name: str) -> list[dict[str, Any]]:
         conn = self._get_connection()
         symbol_rows = conn.execute("""
             SELECT s.file_id, s.start_line, s.end_line, f.path as file_path

@@ -1,20 +1,20 @@
 import os
-import logging
-from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from ..state import workspace_state, logger
-from ..project_detector import detect_project_metadata, detect_project_metadata_async
+
 from ..processes import global_process_manager
+from ..project_detector import detect_project_metadata, detect_project_metadata_async
+from ..state import workspace_state
 
 router = APIRouter()
 
 
 class UpdateProjectMetadataRequest(BaseModel):
-    installCommand: Optional[str] = None
-    runCommand: Optional[str] = None
-    buildCommand: Optional[str] = None
-    testCommand: Optional[str] = None
+    installCommand: str | None = None
+    runCommand: str | None = None
+    buildCommand: str | None = None
+    testCommand: str | None = None
 
 
 @router.get("/api/project/metadata")
@@ -107,4 +107,4 @@ async def run_project():
             "pid": proc.pid,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to launch project: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to launch project: {e!s}")

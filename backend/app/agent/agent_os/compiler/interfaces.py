@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any
+
 
 class ICompiler(ABC):
     """Abstract syntax tree and semantic parsing compiler."""
@@ -25,10 +26,10 @@ class IPromptCompiler(ABC):
     def compile_prompt(
         self,
         task: str,
-        repository_objects: List[Dict[str, Any]],
+        repository_objects: list[dict[str, Any]],
         context: str,
-        artifacts: Dict[str, Any],
-        diagnostics: List[Dict[str, Any]],
+        artifacts: dict[str, Any],
+        diagnostics: list[dict[str, Any]],
         system_prompt: str,
         model_name: str = "default"
     ) -> str:

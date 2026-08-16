@@ -6,8 +6,8 @@ tool operations are never re-executed due to LLM transport or continuation timeo
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger("devpilot.agent.llm_retry")
 
@@ -16,7 +16,7 @@ logger = logging.getLogger("devpilot.agent.llm_retry")
 class ToolExecutionRecord:
     tool_call_id: str
     tool_name: str
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
     status: str
     result: Any
     error: str = ""
@@ -26,13 +26,13 @@ class ToolIdempotencyRegistry:
     """Tracks completed tool executions per session to prevent duplicate execution during retries."""
 
     def __init__(self) -> None:
-        self._records: Dict[str, ToolExecutionRecord] = {}
+        self._records: dict[str, ToolExecutionRecord] = {}
 
     def record_execution(
         self,
         tool_call_id: str,
         tool_name: str,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         status: str,
         result: Any,
         error: str = "",
@@ -49,7 +49,7 @@ class ToolIdempotencyRegistry:
             error=error,
         )
 
-    def get_completed_record(self, tool_call_id: str) -> Optional[ToolExecutionRecord]:
+    def get_completed_record(self, tool_call_id: str) -> ToolExecutionRecord | None:
         """Retrieve completed record if tool was already executed."""
         return self._records.get(tool_call_id)
 

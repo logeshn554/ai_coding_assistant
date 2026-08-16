@@ -7,10 +7,9 @@ Classifies task complexity (FAST, MEDIUM, DEEP) and tracks performance metrics
 
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List
+from typing import Any
 
 
 class TaskComplexity(str, Enum):
@@ -35,7 +34,7 @@ class CostAnalyticsTracker:
     """Tracks latency, token usage, cost, and task metrics across task complexity tiers."""
 
     def __init__(self) -> None:
-        self.metrics: List[ExecutionMetric] = []
+        self.metrics: list[ExecutionMetric] = []
 
     def record_execution(
         self,
@@ -62,7 +61,7 @@ class CostAnalyticsTracker:
         self.metrics.append(metric)
         return metric
 
-    def get_dashboard_summary(self) -> Dict[str, Any]:
+    def get_dashboard_summary(self) -> dict[str, Any]:
         total = len(self.metrics)
         if total == 0:
             return {

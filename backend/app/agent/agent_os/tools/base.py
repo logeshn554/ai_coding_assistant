@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 @dataclass
@@ -14,8 +14,8 @@ class ToolResult:
     """The outcome result of executing a tool."""
     success: bool
     output: str
-    error: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    error: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class Tool(ABC):
@@ -25,26 +25,22 @@ class Tool(ABC):
     @abstractmethod
     def name(self) -> str:
         """Unique tool name slug."""
-        pass
 
     @property
     @abstractmethod
     def description(self) -> str:
         """Detailed description of when/how the tool should be used by the LLM."""
-        pass
 
     @property
     @abstractmethod
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         """JSON Schema defining arguments acceptable by the tool."""
-        pass
 
     @abstractmethod
     async def execute(self, **kwargs: Any) -> ToolResult:
         """Perform the actual action associated with this tool."""
-        pass
 
-    def to_schema(self) -> Dict[str, Any]:
+    def to_schema(self) -> dict[str, Any]:
         """Format the tool description and schema for LLM function calling."""
         return {
             "name": self.name,

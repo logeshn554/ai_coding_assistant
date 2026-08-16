@@ -1,11 +1,13 @@
-from typing import Any, Dict, List
+from typing import Any
+
 from agent_os.learning.interfaces import IPerformanceOptimizer
+
 
 class PerformanceOptimizer(IPerformanceOptimizer):
     """Performance Optimizer tracking runtime metrics and recommending configurations."""
     
     def __init__(self) -> None:
-        self._metrics: Dict[str, List[float]] = {
+        self._metrics: dict[str, list[float]] = {
             "prompt_size": [],
             "latency": [],
             "success_rate": [],
@@ -24,7 +26,7 @@ class PerformanceOptimizer(IPerformanceOptimizer):
         vals = self._metrics.get(key, [])
         return sum(vals) / len(vals) if vals else 0.0
 
-    def get_recommendations(self) -> List[Dict[str, Any]]:
+    def get_recommendations(self) -> list[dict[str, Any]]:
         recommendations = []
 
         # 1. Prompt Size Warning

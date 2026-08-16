@@ -1,8 +1,10 @@
-import os
 import json
+import os
 import tempfile
-from typing import Any, Dict, List
+from typing import Any
+
 from agent_os.learning.interfaces import IMemoryManager
+
 
 class MemoryKernelManager(IMemoryManager):
     """Concrete Memory Kernel managing structured agent execution states independently of chat transcripts."""
@@ -15,43 +17,43 @@ class MemoryKernelManager(IMemoryManager):
     def get_current_task(self) -> str | None:
         return self._current_task
 
-    def set_current_plan(self, plan: Dict[str, Any]) -> None:
+    def set_current_plan(self, plan: dict[str, Any]) -> None:
         self._current_plan = plan
 
-    def get_current_plan(self) -> Dict[str, Any] | None:
+    def get_current_plan(self) -> dict[str, Any] | None:
         return self._current_plan
 
-    def set_repository_state(self, state: Dict[str, Any]) -> None:
+    def set_repository_state(self, state: dict[str, Any]) -> None:
         self._repository_state = state
 
-    def get_repository_state(self) -> Dict[str, Any] | None:
+    def get_repository_state(self) -> dict[str, Any] | None:
         return self._repository_state
 
-    def add_artifact(self, name: str, artifact: Dict[str, Any]) -> None:
+    def add_artifact(self, name: str, artifact: dict[str, Any]) -> None:
         self._artifacts[name] = artifact
 
-    def get_artifacts(self) -> Dict[str, Any]:
+    def get_artifacts(self) -> dict[str, Any]:
         return self._artifacts
 
-    def add_event(self, event_type: str, payload: Dict[str, Any]) -> None:
+    def add_event(self, event_type: str, payload: dict[str, Any]) -> None:
         self._events.append({
             "type": event_type,
             "payload": payload
         })
 
-    def get_events(self) -> List[Dict[str, Any]]:
+    def get_events(self) -> list[dict[str, Any]]:
         return self._events
 
-    def set_current_patch(self, patch: Dict[str, Any]) -> None:
+    def set_current_patch(self, patch: dict[str, Any]) -> None:
         self._current_patch = patch
 
-    def get_current_patch(self) -> Dict[str, Any] | None:
+    def get_current_patch(self) -> dict[str, Any] | None:
         return self._current_patch
 
-    def set_diagnostics(self, diagnostics: List[Dict[str, Any]]) -> None:
+    def set_diagnostics(self, diagnostics: list[dict[str, Any]]) -> None:
         self._diagnostics = diagnostics
 
-    def get_diagnostics(self) -> List[Dict[str, Any]]:
+    def get_diagnostics(self) -> list[dict[str, Any]]:
         return self._diagnostics
 
     def clear_all(self) -> None:

@@ -1,10 +1,10 @@
+import functools
 import json
 import logging
-import functools
-from typing import Any, Optional
 
-from backend.app.shared_memory import sm_set, sm_get, sm_get_all
-from agent_runtime.tools import ToolDefinition, ToolResult, RiskLevel
+from agent_runtime.tools import RiskLevel, ToolDefinition, ToolResult
+
+from backend.app.shared_memory import sm_get, sm_get_all, sm_set
 
 logger = logging.getLogger("agent_runtime.tools.shared_memory")
 

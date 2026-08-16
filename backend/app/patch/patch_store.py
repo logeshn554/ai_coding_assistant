@@ -4,8 +4,8 @@ Patch Store — Persistent database of proposed patches and diffs before they ar
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from dataclasses import dataclass
+
 from .patch_metadata import PatchMetadata
 
 logger = logging.getLogger("devpilot.patch.patch_store")
@@ -24,7 +24,7 @@ class PatchStore:
     """Stores patches produced by agent workers before transaction commit."""
 
     def __init__(self) -> None:
-        self._patches: Dict[str, ProposedPatch] = {}
+        self._patches: dict[str, ProposedPatch] = {}
 
     def add_patch(self, patch_id: str, file_path: str, diff_content: str, metadata: PatchMetadata) -> ProposedPatch:
         patch = ProposedPatch(
@@ -37,10 +37,10 @@ class PatchStore:
         logger.info(f"Added proposed patch '{patch_id}' for file '{file_path}' (symbols={metadata.changed_symbols})")
         return patch
 
-    def get_patch(self, patch_id: str) -> Optional[ProposedPatch]:
+    def get_patch(self, patch_id: str) -> ProposedPatch | None:
         return self._patches.get(patch_id)
 
-    def list_patches_for_file(self, file_path: str) -> List[ProposedPatch]:
+    def list_patches_for_file(self, file_path: str) -> list[ProposedPatch]:
         return [p for p in self._patches.values() if p.file_path == file_path]
 
     def update_status(self, patch_id: str, status: str) -> None:

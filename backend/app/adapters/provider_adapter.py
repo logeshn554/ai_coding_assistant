@@ -6,12 +6,12 @@ metadata endpoints, or user configurations.
 """
 
 from __future__ import annotations
-from abc import ABC, abstractmethod
-import time
-import httpx
-import json
+
 import logging
-from typing import Dict, Any, List, Optional
+import time
+from abc import ABC, abstractmethod
+
+import httpx
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("devpilot.provider_adapter")
@@ -21,15 +21,15 @@ class DynamicModelProfile(BaseModel):
     provider_name: str
     model_id: str
     model_name: str
-    created_date: Optional[int] = None
-    owned_by: Optional[str] = None
-    context_window: Optional[int] = None           # None = "Unavailable"
-    max_output_tokens: Optional[int] = None        # None = "Unavailable"
-    input_price_per_m: Optional[float] = None       # None = "Unavailable"
-    output_price_per_m: Optional[float] = None      # None = "Unavailable"
-    rpm_limit: Optional[int] = None                # None = "Not provided by provider"
-    tpm_limit: Optional[int] = None                # None = "Not provided by provider"
-    capabilities: Dict[str, bool] = Field(default_factory=dict)
+    created_date: int | None = None
+    owned_by: str | None = None
+    context_window: int | None = None           # None = "Unavailable"
+    max_output_tokens: int | None = None        # None = "Unavailable"
+    input_price_per_m: float | None = None       # None = "Unavailable"
+    output_price_per_m: float | None = None      # None = "Unavailable"
+    rpm_limit: int | None = None                # None = "Not provided by provider"
+    tpm_limit: int | None = None                # None = "Not provided by provider"
+    capabilities: dict[str, bool] = Field(default_factory=dict)
     api_status: str = "Connected"                  # Connected, Rate Limited, Auth Failed, Offline
     metadata_source: str = "Provider metadata"     # Provider Reported, Observed by IDE, User Configured, Unknown
     last_updated: int = Field(default_factory=lambda: int(time.time()))
@@ -40,11 +40,11 @@ class ProviderUsageInfo(BaseModel):
     output_tokens_today: int = 0
     observed_rpm: int = 0
     observed_tpm: int = 0
-    last_request_latency_ms: Optional[float] = None
-    last_request_timestamp: Optional[int] = None
+    last_request_latency_ms: float | None = None
+    last_request_timestamp: int | None = None
 
 class BaseProviderAdapter(ABC):
-    def __init__(self, provider_id: str, name: str, base_url: str, api_key: str = "", extra_headers: Optional[Dict[str, str]] = None):
+    def __init__(self, provider_id: str, name: str, base_url: str, api_key: str = "", extra_headers: dict[str, str] | None = None):
         self.provider_id = provider_id
         self.name = name
         self.base_url = base_url.rstrip("/") if base_url else ""
@@ -56,17 +56,14 @@ class BaseProviderAdapter(ABC):
     @abstractmethod
     async def connect(self) -> bool:
         """Validate credentials & test API connection."""
-        pass
 
     @abstractmethod
-    async def list_models(self) -> List[DynamicModelProfile]:
+    async def list_models(self) -> list[DynamicModelProfile]:
         """Dynamically discover models and retrieve metadata from provider endpoint."""
-        pass
 
     @abstractmethod
     async def get_model_metadata(self, model_id: str) -> DynamicModelProfile:
         """Retrieve dynamic metadata profile for a specific model."""
-        pass
 
 
 class OpenAICompatibleAdapter(BaseProviderAdapter):
@@ -100,13 +97,13 @@ class OpenAICompatibleAdapter(BaseProviderAdapter):
                 self.status = "Disconnected"
             return False
 
-    async def list_models(self) -> List[DynamicModelProfile]:
+    async def list_models(self) -> list[DynamicModelProfile]:
         models_url = f"{self.base_url}/models" if not self.base_url.endswith("/models") else self.base_url
         headers = {"Content-Type": "application/json", "User-Agent": "DevPilot/1.0", **self.extra_headers}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        profiles: List[DynamicModelProfile] = []
+        profiles: list[DynamicModelProfile] = []
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(models_url, headers=headers)
@@ -201,15 +198,15 @@ class DynamicProviderManager:
     """Manager for registering and running provider adapters dynamically."""
 
     def __init__(self):
-        self._adapters: Dict[str, BaseProviderAdapter] = {}
+        self._adapters: dict[str, BaseProviderAdapter] = {}
 
     def register_provider(self, provider_id: str, adapter: BaseProviderAdapter):
         self._adapters[provider_id] = adapter
 
-    def get_adapter(self, provider_id: str) -> Optional[BaseProviderAdapter]:
+    def get_adapter(self, provider_id: str) -> BaseProviderAdapter | None:
         return self._adapters.get(provider_id)
 
-    def list_adapters(self) -> List[BaseProviderAdapter]:
+    def list_adapters(self) -> list[BaseProviderAdapter]:
         return list(self._adapters.values())
 
 provider_manager = DynamicProviderManager()

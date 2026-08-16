@@ -1,11 +1,11 @@
 import asyncio
-from typing import List
+
 from .files import (
-    read_workspace_file,
-    write_workspace_file,
+    get_codebase_contents,
     list_workspace_dir,
+    read_workspace_file,
     search_workspace_codebase,
-    get_codebase_contents
+    write_workspace_file,
 )
 
 
@@ -30,9 +30,9 @@ async def async_read_workspace_file(
             timeout=10.0
         )
     except asyncio.TimeoutError:
-        raise IOError(f"Read operation timed out for file: {relative_path}")
+        raise OSError(f"Read operation timed out for file: {relative_path}")
     except Exception as e:
-        raise IOError(f"Failed to read file: {str(e)}")
+        raise OSError(f"Failed to read file: {e!s}")
 
 
 async def async_write_workspace_file(workspace_root: str, relative_path: str, content: str) -> None:
@@ -49,7 +49,7 @@ async def async_write_workspace_file(workspace_root: str, relative_path: str, co
     )
 
 
-async def async_list_workspace_dir(workspace_root: str, relative_path: str = "") -> List[dict]:
+async def async_list_workspace_dir(workspace_root: str, relative_path: str = "") -> list[dict]:
     """
     Asynchronously lists workspace folder contents.
     """
@@ -62,7 +62,7 @@ async def async_list_workspace_dir(workspace_root: str, relative_path: str = "")
     )
 
 
-async def async_search_workspace_codebase(workspace_root: str, query: str) -> List[dict]:
+async def async_search_workspace_codebase(workspace_root: str, query: str) -> list[dict]:
     """
     Asynchronously searches the workspace codebase.
     """

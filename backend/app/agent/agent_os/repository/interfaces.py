@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, List, Dict
+from typing import Any
+
 
 class IRepository(ABC):
     """File access and workspace indexing interface."""
@@ -20,7 +21,7 @@ class IRepository(ABC):
         pass
 
     @abstractmethod
-    def list_files(self) -> List[str]:
+    def list_files(self) -> list[str]:
         pass
 
     @abstractmethod
@@ -28,44 +29,44 @@ class IRepository(ABC):
         pass
 
     @abstractmethod
-    def find_file(self, pattern: str) -> List[Dict[str, Any]]:
+    def find_file(self, pattern: str) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod
-    def find_function(self, name: str) -> List[Dict[str, Any]]:
+    def find_function(self, name: str) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod
-    def find_class(self, name: str) -> List[Dict[str, Any]]:
+    def find_class(self, name: str) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod
-    def find_references(self, symbol: str) -> List[Dict[str, Any]]:
+    def find_references(self, symbol: str) -> list[dict[str, Any]]:
         pass
 
-    def store_lsp_diagnostics(self, path: str, diagnostics: List[Dict[str, Any]]) -> None:
+    def store_lsp_diagnostics(self, path: str, diagnostics: list[dict[str, Any]]) -> None:
         pass
 
-    def get_lsp_diagnostics(self, path: str) -> List[Dict[str, Any]]:
+    def get_lsp_diagnostics(self, path: str) -> list[dict[str, Any]]:
         return []
 
-    def get_symbol_diagnostics(self, symbol_name: str) -> List[Dict[str, Any]]:
+    def get_symbol_diagnostics(self, symbol_name: str) -> list[dict[str, Any]]:
         return []
 
     # camelCase compatibility aliases
     def scanWorkspace(self, workspace_root: str) -> None:
         return self.scan_workspace(workspace_root)
 
-    def findFile(self, pattern: str) -> List[Dict[str, Any]]:
+    def findFile(self, pattern: str) -> list[dict[str, Any]]:
         return self.find_file(pattern)
 
-    def findFunction(self, name: str) -> List[Dict[str, Any]]:
+    def findFunction(self, name: str) -> list[dict[str, Any]]:
         return self.find_function(name)
 
-    def findClass(self, name: str) -> List[Dict[str, Any]]:
+    def findClass(self, name: str) -> list[dict[str, Any]]:
         return self.find_class(name)
 
-    def findReferences(self, symbol: str) -> List[Dict[str, Any]]:
+    def findReferences(self, symbol: str) -> list[dict[str, Any]]:
         return self.find_references(symbol)
 
 
@@ -83,18 +84,18 @@ class ISourceControl(ABC):
 class IRepositoryKnowledgeGraph(ABC):
     """Repository Knowledge Graph interface querying dependencies, call graphs, and impact maps."""
     @abstractmethod
-    def get_dependencies(self, path: str) -> Dict[str, List[str]]:
+    def get_dependencies(self, path: str) -> dict[str, list[str]]:
         pass
 
     @abstractmethod
-    def get_call_graph(self, function_name: str) -> Dict[str, List[Dict[str, Any]]]:
+    def get_call_graph(self, function_name: str) -> dict[str, list[dict[str, Any]]]:
         pass
 
     @abstractmethod
-    def get_impact_analysis(self, symbol_name: str) -> Dict[str, List[str]]:
+    def get_impact_analysis(self, symbol_name: str) -> dict[str, list[str]]:
         pass
 
     @abstractmethod
-    def get_related_symbols(self, symbol_name: str) -> List[str]:
+    def get_related_symbols(self, symbol_name: str) -> list[str]:
         pass
 

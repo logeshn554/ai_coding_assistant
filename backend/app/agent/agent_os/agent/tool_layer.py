@@ -15,16 +15,15 @@ Key features:
 import asyncio
 import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
+from typing import Any
 
 from .interfaces import (
+    IToolExecutor,
+    IToolValidator,
     ToolCall,
     ToolDefinition,
     ToolResult,
-    IToolValidator,
-    IToolExecutor,
-    ToolCallError,
 )
 
 
@@ -42,9 +41,9 @@ class PathValidator:
     @staticmethod
     def is_within_allowed_paths(
         file_path: str, 
-        allowed_paths: List[str],
-        workspace_root: Optional[str] = None
-    ) -> Tuple[bool, Optional[str]]:
+        allowed_paths: list[str],
+        workspace_root: str | None = None
+    ) -> tuple[bool, str | None]:
         """
         Check if file_path is within one of the allowed paths.
 
@@ -104,15 +103,15 @@ class PathValidator:
             )
 
         except Exception as e:
-            return False, f"PATH_VALIDATION_ERROR: {str(e)}"
+            return False, f"PATH_VALIDATION_ERROR: {e!s}"
 
     @staticmethod
     def validate_write_safety(
         file_path: str, 
-        allowed_paths: List[str],
-        workspace_root: Optional[str] = None,
-        forbidden_patterns: Optional[List[str]] = None
-    ) -> Tuple[bool, Optional[str]]:
+        allowed_paths: list[str],
+        workspace_root: str | None = None,
+        forbidden_patterns: list[str] | None = None
+    ) -> tuple[bool, str | None]:
         """
         Comprehensive write safety validation.
 
@@ -167,9 +166,9 @@ class ToolValidator(IToolValidator):
         self, 
         tool_call: ToolCall, 
         tool_def: ToolDefinition, 
-        allowed_paths: List[str],
-        workspace_root: Optional[str] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        allowed_paths: list[str],
+        workspace_root: str | None = None,
+    ) -> tuple[bool, str | None]:
         """
         Comprehensive validation of a tool call.
 
@@ -218,9 +217,9 @@ class ToolValidator(IToolValidator):
         self, 
         tool_call: ToolCall, 
         tool_def: ToolDefinition,
-        allowed_paths: List[str],
-        workspace_root: Optional[str] = None,
-    ) -> Tuple[bool, Optional[str]]:
+        allowed_paths: list[str],
+        workspace_root: str | None = None,
+    ) -> tuple[bool, str | None]:
         """
         Validate file paths in tool arguments against allowed paths.
 
@@ -262,7 +261,7 @@ class ToolValidator(IToolValidator):
 
         return True, None
 
-    def _validate_schema(self, arguments: Dict[str, Any], schema: Dict[str, Any]) -> str:
+    def _validate_schema(self, arguments: dict[str, Any], schema: dict[str, Any]) -> str:
         """Validate arguments against JSON schema."""
         required = schema.get("required", [])
         properties = schema.get("properties", {})
@@ -311,7 +310,7 @@ class ToolValidator(IToolValidator):
 class ToolExecutor(IToolExecutor):
     """Executes validated tool calls."""
 
-    def __init__(self, tools_registry: Dict[str, ToolDefinition], workspace_root: Optional[str] = None):
+    def __init__(self, tools_registry: dict[str, ToolDefinition], workspace_root: str | None = None):
         self.tools = tools_registry
         self.validator = ToolValidator()
         self.workspace_root = workspace_root
@@ -319,7 +318,7 @@ class ToolExecutor(IToolExecutor):
     async def execute(
         self, 
         tool_call: ToolCall, 
-        allowed_paths: List[str]
+        allowed_paths: list[str]
     ) -> ToolResult:
         """
         Execute a tool call with validation and error handling.
@@ -367,7 +366,7 @@ class ToolExecutor(IToolExecutor):
         return result
 
     async def _execute_tool(
-        self, tool_def: ToolDefinition, arguments: Dict[str, Any]
+        self, tool_def: ToolDefinition, arguments: dict[str, Any]
     ) -> Any:
         """Execute the actual tool function."""
         # Check if executor is async or sync

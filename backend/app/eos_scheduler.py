@@ -10,7 +10,7 @@ even though nothing was executing. This has been corrected: the queue now
 starts empty and only contains tasks enqueued explicitly by the application.
 """
 import logging
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger("devpilot.eos_scheduler")
 
@@ -20,13 +20,13 @@ class EOSScheduler:
         # B5: The previous version pre-populated the queue with three fake tasks
         # one permanently in 'running' status. We now mark them clearly as "inactive"
         # and set "is_stub": True to be honest with the user.
-        self.queue: List[Dict[str, Any]] = [
+        self.queue: list[dict[str, Any]] = [
             {"id": "task-101", "name": "Continuous Security Scan", "agent": "Security Agent", "priority": "high", "status": "inactive", "is_stub": True},
             {"id": "task-102", "name": "Refactoring Agent", "agent": "Refactor Agent", "priority": "medium", "status": "inactive", "is_stub": True},
             {"id": "task-103", "name": "Test Gap Filler", "agent": "Testing Agent", "priority": "low", "status": "inactive", "is_stub": True},
         ]
 
-    def enqueue_task(self, name: str, agent_role: str, priority: str = "medium") -> Dict[str, Any]:
+    def enqueue_task(self, name: str, agent_role: str, priority: str = "medium") -> dict[str, Any]:
         """Enqueue an autonomous engineering background task into the EOS priority scheduler."""
         task = {
             "id": f"task-{len(self.queue) + 101}",
@@ -39,7 +39,7 @@ class EOSScheduler:
         logger.info(f"EOS: Enqueued task '{name}' ({agent_role}, priority={priority})")
         return {"status": "enqueued", "task": task}
 
-    def list_queue(self) -> List[Dict[str, Any]]:
+    def list_queue(self) -> list[dict[str, Any]]:
         return self.queue
 
 

@@ -4,7 +4,6 @@ Summary Generator — Generates human-readable descriptions of committed code up
 from __future__ import annotations
 
 import logging
-from typing import List
 
 logger = logging.getLogger("devpilot.release.summary_generator")
 
@@ -12,15 +11,15 @@ logger = logging.getLogger("devpilot.release.summary_generator")
 class SummaryGenerator:
     """Creates clear changelogs and release documentation from task metadata."""
 
-    def generate_summary(self, files_changed: List[str], goal: str, risk: str) -> str:
+    def generate_summary(self, files_changed: list[str], goal: str, risk: str) -> str:
         """Construct a markdown summary describing the completed execution details."""
         lines = [
-            f"# Execution Summary",
-            f"",
+            "# Execution Summary",
+            "",
             f"**Goal**: {goal}",
             f"**Assessed Risk**: {risk.upper()}",
-            f"",
-            f"### Changes Made",
+            "",
+            "### Changes Made",
         ]
         
         for f in files_changed:

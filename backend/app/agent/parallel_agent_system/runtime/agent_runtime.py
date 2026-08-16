@@ -1,6 +1,7 @@
-from typing import Any, AsyncGenerator
-from pydantic import BaseModel, Field
+from collections.abc import AsyncGenerator
+from typing import Any
 
+from pydantic import BaseModel, Field
 
 # --- Native Event and Action Models ---
 
@@ -56,9 +57,9 @@ class DockerWorkspace:
     async def cleanup(self) -> None:
         """Cleans up host mounts and terminates execution containers."""
         import asyncio
-        import shutil
-        import os
         import logging as _logging
+        import os
+        import shutil
         logger = _logging.getLogger("parallel_agent_system.runtime")
 
         # 1. Stop and remove the Docker container
@@ -159,8 +160,9 @@ class Conversation:
             return
 
         # Check if we should run mock/simulated mode
-        from parallel_agent_system.runtime.secret_registry import SecretRegistry
         import os as _os
+
+        from parallel_agent_system.runtime.secret_registry import SecretRegistry
         api_key = self.agent.llm.api_key or SecretRegistry.get("LLM_API_KEY")
         mock_mode = _os.environ.get("AGENT_RUNTIME_MODE", "").lower() == "mock"
 
@@ -213,8 +215,8 @@ class Conversation:
         # Setup real tools based on requested tools
         from agent_runtime.tools import ToolRegistry
         from agent_runtime.tools.filesystem import create_filesystem_tools
-        from agent_runtime.tools.terminal import create_terminal_tools
         from agent_runtime.tools.search import create_search_tools
+        from agent_runtime.tools.terminal import create_terminal_tools
 
         tool_registry = ToolRegistry()
         req_tool_names = {t.name for t in self.agent.tools}
@@ -239,14 +241,17 @@ class Conversation:
             import logging
             logging.getLogger("parallel_agent_system.runtime").warning("Failed to register shared memory tools: %s", e)
 
-        from agent_runtime.loop import agent_loop, LoopConfig
+        from agent_runtime.loop import LoopConfig, agent_loop
         config = LoopConfig(
             max_iterations=50,
             max_cost_usd=5.0,
             temperature=0.0
         )
 
-        from agent_runtime.workspace.changes import get_workspace_snapshot, detect_changed_files
+        from agent_runtime.workspace.changes import (
+            detect_changed_files,
+            get_workspace_snapshot,
+        )
         before_snapshot = get_workspace_snapshot(workspace_root)
 
         # Run real loop

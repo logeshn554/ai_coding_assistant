@@ -1,12 +1,14 @@
-import re
+import asyncio
 import json
-import sqlite3
 import os
+import re
+import sqlite3
 import threading
 import time
-import asyncio
-from typing import Any, Dict, List
+from typing import Any
+
 from agent_os.learning.interfaces import ILearningEngine
+
 
 class LearningEngine(ILearningEngine):
     """SQLite-backed structured learning engine with ChromaDB embedding similarity and Jaccard fallback."""
@@ -41,9 +43,8 @@ class LearningEngine(ILearningEngine):
             return None
 
     def _init_db(self) -> None:
-        with self._lock:
-            with self._conn:
-                self._conn.execute("""
+        with self._lock, self._conn:
+            self._conn.execute("""
                     CREATE TABLE IF NOT EXISTS successful_fixes (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         error_type TEXT,
@@ -52,14 +53,14 @@ class LearningEngine(ILearningEngine):
                         solution_diff TEXT
                     );
                 """)
-                self._conn.execute("""
+            self._conn.execute("""
                     CREATE TABLE IF NOT EXISTS repo_summaries (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         repo_path TEXT UNIQUE,
                         summary_json TEXT
                     );
                 """)
-                self._conn.execute("""
+            self._conn.execute("""
                     CREATE TABLE IF NOT EXISTS patterns (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         pattern_name TEXT UNIQUE,
@@ -67,14 +68,14 @@ class LearningEngine(ILearningEngine):
                         code_snippet TEXT
                     );
                 """)
-                self._conn.execute("""
+            self._conn.execute("""
                     CREATE TABLE IF NOT EXISTS conventions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         convention_name TEXT UNIQUE,
                         rule TEXT
                     );
                 """)
-                self._conn.execute("""
+            self._conn.execute("""
                     CREATE TABLE IF NOT EXISTS performance_stats (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         operation TEXT,
@@ -109,16 +110,15 @@ class LearningEngine(ILearningEngine):
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.store_fix, error_type, file_path, error_msg, solution_diff)
 
-    def store_summary(self, repo_path: str, summary: Dict[str, Any]) -> None:
+    def store_summary(self, repo_path: str, summary: dict[str, Any]) -> None:
         summary_str = json.dumps(summary, ensure_ascii=False)
-        with self._lock:
-            with self._conn:
-                self._conn.execute("""
+        with self._lock, self._conn:
+            self._conn.execute("""
                     INSERT OR REPLACE INTO repo_summaries (repo_path, summary_json)
                     VALUES (?, ?);
                 """, (repo_path, summary_str))
 
-    async def async_store_summary(self, repo_path: str, summary: Dict[str, Any]) -> None:
+    async def async_store_summary(self, repo_path: str, summary: dict[str, Any]) -> None:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.store_summary, repo_path, summary)
 
@@ -149,9 +149,8 @@ class LearningEngine(ILearningEngine):
         await loop.run_in_executor(None, self.store_pattern, pattern_name, pattern_type, code_snippet)
 
     def store_convention(self, convention_name: str, rule: str) -> None:
-        with self._lock:
-            with self._conn:
-                self._conn.execute("""
+        with self._lock, self._conn:
+            self._conn.execute("""
                     INSERT OR REPLACE INTO conventions (convention_name, rule)
                     VALUES (?, ?);
                 """, (convention_name, rule))
@@ -161,9 +160,8 @@ class LearningEngine(ILearningEngine):
         await loop.run_in_executor(None, self.store_convention, convention_name, rule)
 
     def store_performance(self, operation: str, duration_sec: float, token_count: int) -> None:
-        with self._lock:
-            with self._conn:
-                self._conn.execute("""
+        with self._lock, self._conn:
+            self._conn.execute("""
                     INSERT INTO performance_stats (operation, duration_sec, token_count)
                     VALUES (?, ?, ?);
                 """, (operation, duration_sec, token_count))
@@ -180,7 +178,7 @@ class LearningEngine(ILearningEngine):
         intersection = query_words.intersection(text_words)
         return len(intersection) / len(query_words)
 
-    def find_similar_fixes(self, query: str) -> List[Dict[str, Any]]:
+    def find_similar_fixes(self, query: str) -> list[dict[str, Any]]:
         # Attempt Chroma retrieval
         col = self._get_chroma_collection("successful_fixes")
         if col:
@@ -223,11 +221,11 @@ class LearningEngine(ILearningEngine):
         matches.sort(key=lambda x: x["similarity_score"], reverse=True)
         return matches
 
-    async def async_find_similar_fixes(self, query: str) -> List[Dict[str, Any]]:
+    async def async_find_similar_fixes(self, query: str) -> list[dict[str, Any]]:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.find_similar_fixes, query)
 
-    def find_similar_patterns(self, query: str) -> List[Dict[str, Any]]:
+    def find_similar_patterns(self, query: str) -> list[dict[str, Any]]:
         # Attempt Chroma retrieval
         col = self._get_chroma_collection("patterns")
         if col:
@@ -269,6 +267,6 @@ class LearningEngine(ILearningEngine):
         matches.sort(key=lambda x: x["similarity_score"], reverse=True)
         return matches
 
-    async def async_find_similar_patterns(self, query: str) -> List[Dict[str, Any]]:
+    async def async_find_similar_patterns(self, query: str) -> list[dict[str, Any]]:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.find_similar_patterns, query)

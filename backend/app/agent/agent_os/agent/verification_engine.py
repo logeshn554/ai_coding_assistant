@@ -14,14 +14,11 @@ Verifies:
 NEVER returns fake success - all checks actually run.
 """
 
-import asyncio
-import os
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .workspace import Workspace
 from .interfaces import Task
+from .workspace import Workspace
 
 
 class CheckStatus(str, Enum):
@@ -37,7 +34,7 @@ class CheckResult:
     """Result of a single verification check."""
     name: str
     status: CheckStatus
-    exit_code: Optional[int] = None
+    exit_code: int | None = None
     stdout: str = ""
     stderr: str = ""
     duration_ms: float = 0.0
@@ -48,9 +45,9 @@ class CheckResult:
 class VerificationResult:
     """Result of full verification."""
     passed: bool
-    checks: List[CheckResult] = field(default_factory=list)
-    failed_checks: List[str] = field(default_factory=list)
-    skipped_checks: List[str] = field(default_factory=list)
+    checks: list[CheckResult] = field(default_factory=list)
+    failed_checks: list[str] = field(default_factory=list)
+    skipped_checks: list[str] = field(default_factory=list)
     details: str = ""
 
     def add_check(self, check: CheckResult) -> None:

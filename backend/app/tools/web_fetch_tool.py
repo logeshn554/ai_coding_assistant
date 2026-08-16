@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger("devpilot.tools.web_fetch")
 
@@ -26,7 +26,7 @@ REQUEST_TIMEOUT = 20  # seconds for raw httpx fallback
 
 def _strip_html(html: str) -> str:
     """Basic HTML â†’ plaintext conversion."""
-    html = re.sub(r"<(script|style)[^>]*>.*?</(script|style)>", " ", html, flags=re.S | re.I)
+    html = re.sub(r"<(script|style)[^>]*>.*?</(script|style)>", " ", html, flags=re.DOTALL | re.IGNORECASE)
     html = re.sub(r"<[^>]+>", " ", html)
     html = html.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
     html = html.replace("&quot;", '"').replace("&#39;", "'").replace("&nbsp;", " ")
@@ -113,7 +113,7 @@ async def _fetch_via_httpx(url: str) -> str:
 # Public tool function
 # ---------------------------------------------------------------------------
 
-async def web_fetch(session: Any, args: Dict[str, Any]) -> str:
+async def web_fetch(session: Any, args: dict[str, Any]) -> str:
     """Fetch a URL and return its content as readable text.
 
     Uses Tavily Extract as the primary engine (same API key as web search).

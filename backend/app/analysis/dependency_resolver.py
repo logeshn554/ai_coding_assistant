@@ -4,7 +4,7 @@ Dependency Resolver — Resolves transitive dependencies and component boundarie
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Set
+
 from ..brain.dependency_graph import dependency_graph
 
 logger = logging.getLogger("devpilot.analysis.dependency_resolver")
@@ -13,11 +13,11 @@ logger = logging.getLogger("devpilot.analysis.dependency_resolver")
 class DependencyResolver:
     """Computes the topological sorting of modules for execution/validation pipelines."""
 
-    def resolve_transitive_deps(self, files: List[str]) -> List[str]:
+    def resolve_transitive_deps(self, files: list[str]) -> list[str]:
         """Produce a topological ordering of files so dependencies are processed first."""
-        order: List[str] = []
-        visited: Set[str] = set()
-        temp_visited: Set[str] = set()
+        order: list[str] = []
+        visited: set[str] = set()
+        temp_visited: set[str] = set()
 
         def visit(node: str):
             if node in visited:

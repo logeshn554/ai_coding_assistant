@@ -4,6 +4,7 @@ Release Gate — Decides whether to auto release changes or request explicit hum
 from __future__ import annotations
 
 import logging
+
 from .outcome_classifier import OutcomeClassification, OutcomeGrade
 
 logger = logging.getLogger("devpilot.outcome.release_gate")

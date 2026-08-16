@@ -10,10 +10,9 @@ Classifies failures and determines recovery strategy:
   - STUCK: Stop and escalate
 """
 
-from enum import Enum
-from typing import Optional
-from dataclasses import dataclass
 import hashlib
+from dataclasses import dataclass
+from enum import Enum
 
 
 class FailureType(str, Enum):
@@ -49,9 +48,9 @@ class FailureFingerprint:
     """Fingerprint to detect repeated failures."""
     failure_type: str
     normalized_error: str
-    file_path: Optional[str]
-    line_number: Optional[int]
-    command: Optional[str]
+    file_path: str | None
+    line_number: int | None
+    command: str | None
 
     def hash(self) -> str:
         """Get consistent hash of fingerprint."""
@@ -71,7 +70,7 @@ class FailureClassifier:
     """Classify failures and determine recovery."""
 
     @staticmethod
-    def classify(error_message: str, context: Optional[dict] = None) -> FailureType:
+    def classify(error_message: str, context: dict | None = None) -> FailureType:
         """
         Classify an error into a FailureType.
 
@@ -201,9 +200,9 @@ class FailureClassifier:
     def create_fingerprint(
         failure_type: FailureType,
         error_message: str,
-        file_path: Optional[str] = None,
-        line_number: Optional[int] = None,
-        command: Optional[str] = None,
+        file_path: str | None = None,
+        line_number: int | None = None,
+        command: str | None = None,
     ) -> FailureFingerprint:
         """Create a fingerprint for a failure."""
         # Normalize error message (remove changing parts)

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Any
-from agent_os.core.interfaces import IServiceRegistry, IEventBus, IConfig, ILogger
+
+from agent_os.core.interfaces import IConfig, IEventBus, ILogger, IServiceRegistry
+
 
 class IKernelService(ABC):
     """Lifecycle service managed by the kernel."""

@@ -1,9 +1,10 @@
 import asyncio
 import json
 import secrets
-from typing import Optional
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from ..state import workspace_state, SESSION_TOKEN, logger
+
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+
+from ..state import SESSION_TOKEN, logger, workspace_state
 from ..terminal import TerminalManager
 
 router = APIRouter()
@@ -11,19 +12,17 @@ router = APIRouter()
 @router.websocket("/ws/terminal")
 async def websocket_terminal(
     websocket: WebSocket,
-    ticket: Optional[str] = Query(None),
-    token: Optional[str] = Query(None),
-    shell: Optional[str] = Query(None),
-    session_id: Optional[str] = Query(None),
+    ticket: str | None = Query(None),
+    token: str | None = Query(None),
+    shell: str | None = Query(None),
+    session_id: str | None = Query(None),
 ):
     await websocket.accept()
-    from ..state import verify_ws_ticket, SESSION_TOKEN
     from ..config import settings
+    from ..state import verify_ws_ticket
     is_prod_server = (settings.ENVIRONMENT.lower() == "production" and settings.MODE == "server")
     is_authenticated = False
-    if ticket and await verify_ws_ticket(ticket):
-        is_authenticated = True
-    elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+    if ticket and await verify_ws_ticket(ticket) or token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         is_authenticated = True
     elif not is_prod_server:
         # In desktop / development mode, local IDE connections are authenticated by default
@@ -108,7 +107,7 @@ async def websocket_terminal(
     except WebSocketDisconnect:
         logger.info("Terminal WebSocket disconnected")
     except Exception as e:
-        logger.error(f"Terminal WebSocket error: {str(e)}")
+        logger.error(f"Terminal WebSocket error: {e!s}")
     finally:
         hb_task.cancel()
         await term_manager.stop()

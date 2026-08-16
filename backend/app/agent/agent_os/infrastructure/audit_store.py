@@ -7,7 +7,7 @@ import hashlib
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("agentos.infrastructure.audit_store")
 
@@ -20,7 +20,7 @@ class AuditRecord:
     target: str                 # file path, command string, etc.
     status: str                 # approved, denied, error
     timestamp: float = field(default_factory=time.time)
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
     record_hash: str = ""
 
 
@@ -28,10 +28,10 @@ class AuditStore:
     """Provides tamper-evident record tracking for compliance auditing."""
 
     def __init__(self) -> None:
-        self._records: List[AuditRecord] = []
+        self._records: list[AuditRecord] = []
         self._last_hash = "genesis"
 
-    def log_action(self, action: str, actor: str, target: str, status: str, details: Optional[Dict[str, Any]] = None) -> AuditRecord:
+    def log_action(self, action: str, actor: str, target: str, status: str, details: dict[str, Any] | None = None) -> AuditRecord:
         """Append a new record to the audit chain."""
         now = time.time()
         record_details = details or {}
@@ -67,7 +67,7 @@ class AuditStore:
             current_hash = record.record_hash
         return True
 
-    def get_records(self) -> List[AuditRecord]:
+    def get_records(self) -> list[AuditRecord]:
         return list(self._records)
 
     def clear(self) -> None:

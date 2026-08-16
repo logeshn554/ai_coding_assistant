@@ -10,7 +10,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("devpilot.debate.debate_engine")
 
@@ -29,10 +29,10 @@ class Critique:
     score: int  # 1 to 10
     feedback: str
     is_blocking: bool = False
-    issues: List[Dict[str, Any]] = field(default_factory=list)
+    issues: list[dict[str, Any]] = field(default_factory=list)
 
 
-def _resolve_critic_profile(explicit: Optional[dict] = None) -> Optional[dict]:
+def _resolve_critic_profile(explicit: dict | None = None) -> dict | None:
     """Build critic profile from explicit arg, settings, or named config profile.
 
     Never invents a model name — returns None when critic is not configured.
@@ -41,7 +41,7 @@ def _resolve_critic_profile(explicit: Optional[dict] = None) -> Optional[dict]:
         return dict(explicit)
 
     try:
-        from ..config import settings, config_manager
+        from ..config import config_manager, settings
     except Exception:
         return None
 
@@ -84,7 +84,7 @@ def _resolve_critic_profile(explicit: Optional[dict] = None) -> Optional[dict]:
     }
 
 
-def _extract_json(text: str) -> Optional[dict]:
+def _extract_json(text: str) -> dict | None:
     """Parse JSON from model output, tolerating fenced markdown wrappers."""
     raw = (text or "").strip()
     if not raw:
@@ -111,10 +111,10 @@ def _extract_json(text: str) -> Optional[dict]:
 class DebateEngine:
     """Invokes a configured critic LLM prior to merge / verification acceptance."""
 
-    def __init__(self, critic_profile: Optional[dict] = None) -> None:
+    def __init__(self, critic_profile: dict | None = None) -> None:
         self.critic_profile = critic_profile
 
-    async def hold_debate(self, patch_diff: str) -> List[Critique]:
+    async def hold_debate(self, patch_diff: str) -> list[Critique]:
         """Gather critique reports from the configured critic model.
 
         Returns an empty list when no critic is configured or the response is

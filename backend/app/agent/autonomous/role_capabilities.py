@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 
 class AgentRole(str, Enum):
@@ -35,11 +35,11 @@ class RoleBudget:
 @dataclass
 class RoleContract:
     role: AgentRole
-    allowed_tools: Set[str]
+    allowed_tools: set[str]
     expected_output_type: str
     budget: RoleBudget = field(default_factory=RoleBudget)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "role": self.role.value,
             "allowed_tools": list(self.allowed_tools),
@@ -55,7 +55,7 @@ class RoleContract:
 
 
 # Canonical Role Contracts Definitions
-ROLE_CONTRACTS: Dict[AgentRole, RoleContract] = {
+ROLE_CONTRACTS: dict[AgentRole, RoleContract] = {
     AgentRole.PLANNER: RoleContract(
         role=AgentRole.PLANNER,
         allowed_tools={"list_directory", "read_file", "search_files", "symbol_lookup"},
@@ -98,7 +98,7 @@ class DebateReviewLoop:
     """Manages debate and review between Coder and Reviewer capabilities."""
 
     @classmethod
-    def evaluate_proposal(cls, proposal_diff: str, acceptance_criteria: List[str]) -> Tuple[bool, str]:
+    def evaluate_proposal(cls, proposal_diff: str, acceptance_criteria: list[str]) -> tuple[bool, str]:
         """Review Coder proposal against task criteria."""
         if not proposal_diff or not proposal_diff.strip():
             return False, "Empty proposal diff"

@@ -1,15 +1,12 @@
-import logging
-import urllib.request
-import urllib.error
-import json
-import socket
 import ipaddress
+import socket
 from urllib.parse import urlparse
-from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from ..state import config_manager, logger
+
 from ..config import settings
+from ..state import config_manager, logger
 
 router = APIRouter()
 
@@ -63,7 +60,7 @@ def _is_masked_key(key: str) -> bool:
     return any(c in key for c in ("\u2022", "...", "*"))
 
 
-def _resolve_api_key(req_key: str, profile_id: Optional[str] = None) -> str:
+def _resolve_api_key(req_key: str, profile_id: str | None = None) -> str:
     """
     Resolves the actual API key to use:
     1. If the key is not masked -> use it as-is (user typed it directly).
@@ -91,21 +88,21 @@ def _resolve_api_key(req_key: str, profile_id: Optional[str] = None) -> str:
     return ""  # could not resolve — return empty so provider gives clear error
 
 class ProfileSaveRequest(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     name: str
-    api_key: Optional[str] = ""
+    api_key: str | None = ""
     base_url: str
-    model_name: Optional[str] = ""
-    api_format: Optional[str] = "openai"
+    model_name: str | None = ""
+    api_format: str | None = "openai"
 
 class ProfileSelectRequest(BaseModel):
     id: str
 
 class ModelsFetchRequest(BaseModel):
-    profile_id: Optional[str] = None
+    profile_id: str | None = None
     api_key: str
     base_url: str
-    api_format: Optional[str] = "openai"
+    api_format: str | None = "openai"
 
 @router.get("/api/profiles")
 def get_profiles():
@@ -131,11 +128,11 @@ def save_profile(profile: ProfileSaveRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 class ProfilePatchRequest(BaseModel):
-    name: Optional[str] = None
-    base_url: Optional[str] = None
-    model_name: Optional[str] = None
-    api_format: Optional[str] = None
-    api_key: Optional[str] = None
+    name: str | None = None
+    base_url: str | None = None
+    model_name: str | None = None
+    api_format: str | None = None
+    api_key: str | None = None
 
 @router.patch("/api/profiles/{profile_id}")
 def patch_profile(profile_id: str, patch_data: ProfilePatchRequest):
@@ -145,7 +142,7 @@ def patch_profile(profile_id: str, patch_data: ProfilePatchRequest):
             raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
         
         updates = patch_data.model_dump(exclude_unset=True)
-        if "base_url" in updates and updates["base_url"]:
+        if updates.get("base_url"):
             validate_provider_url(updates["base_url"])
 
         # If api_key is None, retain current stored key
@@ -177,7 +174,8 @@ def delete_profile(profile_id: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-from ..adapters.provider_adapter import OpenAICompatibleAdapter, DynamicModelProfile
+from ..adapters.provider_adapter import OpenAICompatibleAdapter
+
 
 @router.post("/api/models/fetch")
 async def fetch_models(req: ModelsFetchRequest):
@@ -212,7 +210,7 @@ async def fetch_models(req: ModelsFetchRequest):
 
 
 @router.get("/api/models/metadata")
-async def get_model_info(model_id: str, provider: Optional[str] = None):
+async def get_model_info(model_id: str, provider: str | None = None):
     adapter = OpenAICompatibleAdapter(
         provider_id="temp",
         name=provider or "AI Provider",

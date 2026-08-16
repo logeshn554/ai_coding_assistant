@@ -1,11 +1,11 @@
 import logging
-import asyncio
-from typing import Any, Dict, List, Optional, Callable, Coroutine
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 from agent_os.core.interfaces import IServiceRegistry
-from agent_os.kernel.interfaces import IKernel
 from agent_os.kernel.scheduler import DependencyScheduler
-from agent_os.repository.interfaces import IRepository, ISourceControl
 from agent_os.learning.interfaces import IMemoryManager, IPerformanceOptimizer
+from agent_os.repository.interfaces import IRepository, ISourceControl
 
 logger = logging.getLogger("agentos.kernel.reasoning")
 
@@ -13,17 +13,17 @@ class ReasoningEngine:
     """Coordinates the Agent Reasoning Loop implementing the stages:
     Goal -> Understand -> Inspect -> Plan -> Build DAG -> Execute -> Observe -> Evaluate -> Repair -> Verify -> Commit
     """
-    def __init__(self, registry: Optional[IServiceRegistry] = None) -> None:
+    def __init__(self, registry: IServiceRegistry | None = None) -> None:
         self.registry = registry
-        self._history: List[Dict[str, Any]] = []
+        self._history: list[dict[str, Any]] = []
 
     async def run_goal(
         self,
         goal: str,
-        task_graph: Optional[List[Dict[str, Any]]] = None,
-        execute_task_fn: Optional[Callable[[Dict[str, Any]], Coroutine[Any, Any, Any]]] = None,
-        repair_fn: Optional[Callable[[Dict[str, Any], Exception], Coroutine[Any, Any, Any]]] = None
-    ) -> Dict[str, Any]:
+        task_graph: list[dict[str, Any]] | None = None,
+        execute_task_fn: Callable[[dict[str, Any]], Coroutine[Any, Any, Any]] | None = None,
+        repair_fn: Callable[[dict[str, Any], Exception], Coroutine[Any, Any, Any]] | None = None
+    ) -> dict[str, Any]:
         import time
         start_time = time.monotonic()
         
@@ -219,7 +219,7 @@ class ReasoningEngine:
                     logger.info(f"Verification succeeded: {verification_result.summary}")
             except Exception as ve_err:
                 logger.warning(f"Verification engine failed to run: {ve_err}")
-                run_record["phases"]["verify"] = f"Fallback verification passed: {str(ve_err)}"
+                run_record["phases"]["verify"] = f"Fallback verification passed: {ve_err!s}"
                 logger.info("Verification succeeded (fallback).")
 
             # Commit changes using Git
@@ -265,5 +265,5 @@ class ReasoningEngine:
         self._history.append(run_record)
         return run_record
 
-    def get_history(self) -> List[Dict[str, Any]]:
+    def get_history(self) -> list[dict[str, Any]]:
         return list(self._history)

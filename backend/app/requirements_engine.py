@@ -1,11 +1,11 @@
 """AI Requirements Engine — Parses user stories, transcripts, and specifications into structured technical user stories."""
 import logging
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger("devpilot.requirements_engine")
 
 class AIRequirementsEngine:
-    def parse_requirements(self, raw_input: str) -> Dict[str, Any]:
+    def parse_requirements(self, raw_input: str) -> dict[str, Any]:
         """Extract features, APIs, database schemas, and acceptance criteria from unstructured specs."""
         if not raw_input:
             raw_input = "Sample Feature Spec"

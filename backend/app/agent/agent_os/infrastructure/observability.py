@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any
 
 logger = logging.getLogger("agentos.infrastructure.observability")
 
@@ -15,10 +16,10 @@ class Observability:
     """Collects spans, logs, and execution summaries for agent activity."""
 
     def __init__(self) -> None:
-        self._spans: List[Dict[str, Any]] = []
+        self._spans: list[dict[str, Any]] = []
 
     @contextmanager
-    def span(self, name: str, attributes: Optional[Dict[str, Any]] = None) -> Generator[None, None, None]:
+    def span(self, name: str, attributes: dict[str, Any] | None = None) -> Generator[None, None, None]:
         """Context manager to measure execution time of a code block."""
         start = time.perf_counter()
         span_id = f"span_{int(start * 1000)}"
@@ -37,7 +38,7 @@ class Observability:
             })
             logger.debug(f"[Span End] {name} ({span_id}) completed in {duration:.2f}ms")
 
-    def get_spans(self) -> List[Dict[str, Any]]:
+    def get_spans(self) -> list[dict[str, Any]]:
         return list(self._spans)
 
     def clear_spans(self) -> None:

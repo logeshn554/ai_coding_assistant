@@ -9,11 +9,9 @@ and BackgroundIndexer for non-blocking incremental repository index updates.
 from __future__ import annotations
 
 import ast
-import asyncio
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 @dataclass
@@ -23,8 +21,8 @@ class SymbolDefinition:
     file_path: str
     start_line: int
     end_line: int
-    docstring: Optional[str] = None
-    decorators: List[str] = field(default_factory=list)
+    docstring: str | None = None
+    decorators: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -40,9 +38,9 @@ class SymbolRelation:
 class ImpactReport:
     target_symbol: str
     file_path: str
-    affected_callers: List[str] = field(default_factory=list)
-    affected_dependents: List[str] = field(default_factory=list)
-    affected_tests: List[str] = field(default_factory=list)
+    affected_callers: list[str] = field(default_factory=list)
+    affected_dependents: list[str] = field(default_factory=list)
+    affected_tests: list[str] = field(default_factory=list)
     impact_score: float = 0.0
 
 
@@ -50,8 +48,8 @@ class SymbolGraph:
     """Directed graph representing semantic symbol relationships across files."""
 
     def __init__(self) -> None:
-        self.symbols: Dict[str, SymbolDefinition] = {}
-        self.relations: List[SymbolRelation] = []
+        self.symbols: dict[str, SymbolDefinition] = {}
+        self.relations: list[SymbolRelation] = []
 
     def add_symbol(self, symbol: SymbolDefinition) -> None:
         key = f"{symbol.file_path}::{symbol.name}"
@@ -60,13 +58,13 @@ class SymbolGraph:
     def add_relation(self, relation: SymbolRelation) -> None:
         self.relations.append(relation)
 
-    def find_references(self, symbol_name: str) -> List[SymbolRelation]:
+    def find_references(self, symbol_name: str) -> list[SymbolRelation]:
         return [r for r in self.relations if r.target_symbol == symbol_name and r.relation_type in ("references", "calls")]
 
-    def find_callers(self, function_name: str) -> List[SymbolRelation]:
+    def find_callers(self, function_name: str) -> list[SymbolRelation]:
         return [r for r in self.relations if r.target_symbol == function_name and r.relation_type == "calls"]
 
-    def find_dependents(self, file_path: str) -> List[str]:
+    def find_dependents(self, file_path: str) -> list[str]:
         return list({r.file_path for r in self.relations if r.target_symbol.startswith(file_path)})
 
 
@@ -74,9 +72,9 @@ class ASTAnalyzer:
     """Parses source files into AST symbols and relationship edges."""
 
     @classmethod
-    def analyze_python_file(cls, file_path: str, content: str) -> Tuple[List[SymbolDefinition], List[SymbolRelation]]:
-        symbols: List[SymbolDefinition] = []
-        relations: List[SymbolRelation] = []
+    def analyze_python_file(cls, file_path: str, content: str) -> tuple[list[SymbolDefinition], list[SymbolRelation]]:
+        symbols: list[SymbolDefinition] = []
+        relations: list[SymbolRelation] = []
 
         try:
             tree = ast.parse(content, filename=file_path)

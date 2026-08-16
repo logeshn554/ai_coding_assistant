@@ -1,13 +1,12 @@
 """Central Normalization Engine — Standardizes prompts, workspace paths, tool outputs, model responses, and errors."""
-import os
-import re
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Any
 
 logger = logging.getLogger("devpilot.normalization_engine")
 
 class NormalizationEngine:
-    def normalize_prompt(self, raw_prompt: str) -> Dict[str, Any]:
+    def normalize_prompt(self, raw_prompt: str) -> dict[str, Any]:
         """Normalize raw user prompt text into structured intent & target module metadata."""
         if not raw_prompt:
             return {"intent": "general_query", "module": "workspace", "priority": "normal"}
@@ -39,7 +38,7 @@ class NormalizationEngine:
             "priority": priority
         }
 
-    def normalize_tool_output(self, tool_name: str, raw_payload: Any, status: str = "success") -> Dict[str, Any]:
+    def normalize_tool_output(self, tool_name: str, raw_payload: Any, status: str = "success") -> dict[str, Any]:
         """Wrap tool outputs into a unified execution response envelope."""
         return {
             "tool": tool_name,
@@ -48,7 +47,7 @@ class NormalizationEngine:
             "metadata": {"timestamp_epoch": os.environ.get("TIMESTAMP", "1785170000")}
         }
 
-    def normalize_model_output(self, summary: str = "", edits: List[Any] = None, tool_calls: List[Any] = None) -> Dict[str, Any]:
+    def normalize_model_output(self, summary: str = "", edits: list[Any] = None, tool_calls: list[Any] = None) -> dict[str, Any]:
         """Normalize multi-provider LLM outputs (GPT, Claude, Gemini, DeepSeek, Qwen) into a standard schema."""
         return {
             "summary": summary,
@@ -57,7 +56,7 @@ class NormalizationEngine:
             "warnings": []
         }
 
-    def normalize_error(self, exc: Exception, error_type: str = "runtime") -> Dict[str, Any]:
+    def normalize_error(self, exc: Exception, error_type: str = "runtime") -> dict[str, Any]:
         """Normalize exceptions into a unified severity & recovery envelope."""
         msg = str(exc)
         severity = "medium"

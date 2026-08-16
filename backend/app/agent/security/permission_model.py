@@ -7,9 +7,9 @@ and PermissionDecision records.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class RiskLevel(str, Enum):
@@ -50,7 +50,7 @@ class Permission:
     risk: RiskLevel = RiskLevel.LOW
     scope: str = "workspace"  # workspace | session | global
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "resource": self.resource.value,
             "action": self.action.value,
@@ -66,10 +66,10 @@ class PermissionDecision:
     allowed: bool
     requires_approval: bool = False
     reason: str = ""
-    permission: Optional[Permission] = None
+    permission: Permission | None = None
     risk_level: RiskLevel = RiskLevel.LOW
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "allowed": self.allowed,
             "requires_approval": self.requires_approval,

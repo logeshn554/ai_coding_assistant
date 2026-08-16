@@ -1,11 +1,13 @@
-import os
-import hashlib
 import asyncio
 import concurrent.futures
-from typing import Any, List, Dict
-from agent_os.repository.interfaces import IRepository
+import hashlib
+import os
+from typing import Any
+
 from agent_os.repository.db import DatabaseManager
+from agent_os.repository.interfaces import IRepository
 from agent_os.repository.parser import detect_language, parse_code
+
 
 class RepositoryKernel(IRepository):
     """Concrete Repository Kernel scanning the workspace and storing metadata in SQLite."""
@@ -26,7 +28,7 @@ class RepositoryKernel(IRepository):
         ops = FileOperations(self.workspace_root)
         result = ops.write_file(path, content)
         if not result.success:
-            raise IOError(result.message)
+            raise OSError(result.message)
 
     def create_file(self, file_path: str, content: str = "") -> bool:
         from agent_os.repository.file_operations import FileOperations
@@ -40,7 +42,7 @@ class RepositoryKernel(IRepository):
         result = ops.edit_file(file_path, target, replacement)
         return result.success
 
-    def list_files(self) -> List[str]:
+    def list_files(self) -> list[str]:
         if not self.workspace_root:
             return []
         files = []
@@ -116,19 +118,19 @@ class RepositoryKernel(IRepository):
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.scan_workspace_sync, workspace_root)
 
-    def find_file(self, pattern: str) -> List[Dict[str, Any]]:
+    def find_file(self, pattern: str) -> list[dict[str, Any]]:
         return self.db.query_files(pattern)
 
-    def find_function(self, name: str) -> List[Dict[str, Any]]:
+    def find_function(self, name: str) -> list[dict[str, Any]]:
         return self.db.query_symbols(name, "function")
 
-    def find_class(self, name: str) -> List[Dict[str, Any]]:
+    def find_class(self, name: str) -> list[dict[str, Any]]:
         return self.db.query_symbols(name, "class")
 
-    def find_references(self, symbol: str) -> List[Dict[str, Any]]:
+    def find_references(self, symbol: str) -> list[dict[str, Any]]:
         return self.db.query_references(symbol)
 
-    def store_lsp_diagnostics(self, path: str, diagnostics: List[Dict[str, Any]]) -> None:
+    def store_lsp_diagnostics(self, path: str, diagnostics: list[dict[str, Any]]) -> None:
         """Stores active LSP diagnostics for the given relative file path in the repository database."""
         files = self.db.query_files(path)
         if not files:
@@ -146,8 +148,8 @@ class RepositoryKernel(IRepository):
                 source=diag.get("source", "LSP")
             )
 
-    def get_lsp_diagnostics(self, path: str) -> List[Dict[str, Any]]:
+    def get_lsp_diagnostics(self, path: str) -> list[dict[str, Any]]:
         return self.db.query_diagnostics_for_file(path)
 
-    def get_symbol_diagnostics(self, symbol_name: str) -> List[Dict[str, Any]]:
+    def get_symbol_diagnostics(self, symbol_name: str) -> list[dict[str, Any]]:
         return self.db.query_diagnostics_for_symbol(symbol_name)

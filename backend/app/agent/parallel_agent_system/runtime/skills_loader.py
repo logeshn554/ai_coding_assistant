@@ -8,7 +8,6 @@ adapter that bridges the workspace root to the parallel agent runtime.
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -60,10 +59,10 @@ class SkillsLoader:
         """
         try:
             from app.skills_loader import (
+                _LANGUAGE_ALIASES,
+                format_skills_for_prompt,
                 load_skills,
                 select_relevant_sections,
-                format_skills_for_prompt,
-                _LANGUAGE_ALIASES,
             )
         except ImportError:
             logger.warning(

@@ -1,6 +1,5 @@
 """Custom exception classes for DevPilot IDE Backend."""
 
-from typing import Optional
 
 
 class DevPilotError(Exception):
@@ -88,7 +87,7 @@ class LLMProviderError(DevPilotError):
 
 class LLMAuthError(LLMProviderError):
     """Raised when the API key is missing, invalid, or revoked."""
-    def __init__(self, provider: str = "", message: Optional[str] = None):
+    def __init__(self, provider: str = "", message: str | None = None):
         super().__init__(
             code="LLM_AUTH_ERROR",
             message=message or f"Authentication failed for provider '{provider}'. Check API key.",
@@ -100,7 +99,7 @@ class LLMAuthError(LLMProviderError):
 
 class LLMRateLimitError(LLMProviderError):
     """Raised when the provider's rate limit (RPM/TPM) is exceeded."""
-    def __init__(self, provider: str = "", retry_after_seconds: float = 0.0, message: Optional[str] = None):
+    def __init__(self, provider: str = "", retry_after_seconds: float = 0.0, message: str | None = None):
         super().__init__(
             code="LLM_RATE_LIMIT",
             message=message or f"Rate limit exceeded for provider '{provider}'.",
@@ -114,7 +113,7 @@ class LLMRateLimitError(LLMProviderError):
 
 class LLMTimeoutError(LLMProviderError):
     """Raised when the provider request times out."""
-    def __init__(self, provider: str = "", timeout_seconds: float = 0.0, message: Optional[str] = None):
+    def __init__(self, provider: str = "", timeout_seconds: float = 0.0, message: str | None = None):
         super().__init__(
             code="LLM_TIMEOUT",
             message=message or f"Request to provider '{provider}' timed out after {timeout_seconds:.0f}s.",
@@ -127,7 +126,7 @@ class LLMTimeoutError(LLMProviderError):
 
 class LLMBudgetExceededError(LLMProviderError):
     """Raised when account balance, credits, or max_tokens budget is exceeded."""
-    def __init__(self, provider: str = "", message: Optional[str] = None):
+    def __init__(self, provider: str = "", message: str | None = None):
         super().__init__(
             code="LLM_BUDGET_EXCEEDED",
             message=message or f"Credit balance or token budget exceeded for provider '{provider}'.",
@@ -139,7 +138,7 @@ class LLMBudgetExceededError(LLMProviderError):
 
 class LLMThoughtSignatureError(LLMProviderError):
     """Raised when a thought_signature or tool reasoning format issue occurs."""
-    def __init__(self, provider: str = "", message: Optional[str] = None):
+    def __init__(self, provider: str = "", message: str | None = None):
         super().__init__(
             code="LLM_THOUGHT_SIGNATURE_ERROR",
             message=message or f"Missing or invalid thought signature for provider '{provider}'.",
@@ -151,7 +150,7 @@ class LLMThoughtSignatureError(LLMProviderError):
 
 class LLMNetworkError(LLMProviderError):
     """Raised for network/connectivity failures reaching the provider."""
-    def __init__(self, provider: str = "", message: Optional[str] = None):
+    def __init__(self, provider: str = "", message: str | None = None):
         super().__init__(
             code="LLM_NETWORK_ERROR",
             message=message or f"Network error connecting to provider '{provider}'.",
@@ -163,7 +162,7 @@ class LLMNetworkError(LLMProviderError):
 
 class LLMInvalidResponseError(LLMProviderError):
     """Raised when the provider returns a malformed or unparseable response."""
-    def __init__(self, provider: str = "", message: Optional[str] = None):
+    def __init__(self, provider: str = "", message: str | None = None):
         super().__init__(
             code="LLM_INVALID_RESPONSE",
             message=message or f"Provider '{provider}' returned an invalid/unparseable response.",
@@ -175,7 +174,7 @@ class LLMInvalidResponseError(LLMProviderError):
 
 class LLMConfigurationError(LLMProviderError):
     """Raised when the LLM adapter is misconfigured (missing base URL, model, etc.)."""
-    def __init__(self, provider: str = "", message: Optional[str] = None):
+    def __init__(self, provider: str = "", message: str | None = None):
         super().__init__(
             code="LLM_CONFIGURATION_ERROR",
             message=message or f"Provider '{provider}' is not correctly configured.",

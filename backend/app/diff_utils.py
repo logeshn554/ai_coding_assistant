@@ -1,6 +1,7 @@
-import re
 import difflib
+import re
 import uuid
+
 
 def generate_hunks(original_content: str, proposed_content: str) -> list:
     """
@@ -75,9 +76,7 @@ def apply_hunks(original_content: str, hunks: list, decisions: dict) -> str:
             # Keep lines starting with '+' (remove the '+') and lines starting with ' ' (remove the ' ')
             new_lines = []
             for hl in hunk["lines"]:
-                if hl.startswith('+'):
-                    new_lines.append(hl[1:])
-                elif hl.startswith(' '):
+                if hl.startswith('+') or hl.startswith(' '):
                     new_lines.append(hl[1:])
             # Replace old range with new lines
             lines[old_idx : old_idx + old_len] = new_lines

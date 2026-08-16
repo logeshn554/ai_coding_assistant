@@ -4,10 +4,9 @@ Agent Loop — Main execution loop for the real coding agent.
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from typing import Any
 
 from agent_os.providers.model_router import ModelRouter
 from agent_os.tools.registry import ToolRegistry
@@ -16,11 +15,11 @@ from agent_os.tools.registry import ToolRegistry
 @dataclass
 class AgentState:
     """State of the agent execution."""
-    messages: List[Dict[str, Any]] = field(default_factory=list)
-    tool_results: List[Dict[str, Any]] = field(default_factory=list)
+    messages: list[dict[str, Any]] = field(default_factory=list)
+    tool_results: list[dict[str, Any]] = field(default_factory=list)
     step_count: int = 0
     failed: bool = False
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class AgentLoop:

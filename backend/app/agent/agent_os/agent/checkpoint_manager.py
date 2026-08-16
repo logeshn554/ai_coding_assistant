@@ -9,16 +9,14 @@ Features:
   - Efficient incremental snapshots
 """
 
-import json
-import os
 import hashlib
-from typing import Any, Dict, Optional, List
-from dataclasses import dataclass, asdict
+import json
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-from .interfaces import Task, AgentContext, AgentResult
-from .event_system import Event
+from .interfaces import AgentContext
 
 
 @dataclass
@@ -26,15 +24,15 @@ class ExecutionCheckpoint:
     """Single checkpoint in execution history."""
     checkpoint_id: str
     run_id: str
-    task_id: Optional[str]
-    agent_id: Optional[str]
-    attempt_id: Optional[str]
+    task_id: str | None
+    agent_id: str | None
+    attempt_id: str | None
     timestamp: datetime
     state: str  # Agent state
-    files_modified: List[str]
+    files_modified: list[str]
     events_count: int
     conversation_history_len: int
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class CheckpointManager:
@@ -53,15 +51,15 @@ class CheckpointManager:
     def save_checkpoint(
         self,
         run_id: str,
-        task_id: Optional[str],
-        agent_id: Optional[str],
-        attempt_id: Optional[str],
+        task_id: str | None,
+        agent_id: str | None,
+        attempt_id: str | None,
         state: str,
-        agent_context: Optional[AgentContext],
-        execution_log: List[Dict[str, Any]],
-        conversation_history: List[Any],
-        files_modified: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        agent_context: AgentContext | None,
+        execution_log: list[dict[str, Any]],
+        conversation_history: list[Any],
+        files_modified: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ExecutionCheckpoint:
         """
         Save execution checkpoint.
@@ -138,7 +136,7 @@ class CheckpointManager:
     def load_checkpoint(
         self,
         checkpoint_id: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Load checkpoint data.
 
@@ -183,7 +181,7 @@ class CheckpointManager:
             "agent_context": agent_context,
         }
 
-    def get_latest_checkpoint(self, run_id: str) -> Optional[ExecutionCheckpoint]:
+    def get_latest_checkpoint(self, run_id: str) -> ExecutionCheckpoint | None:
         """Get the latest checkpoint for a run."""
         run_dir = self.checkpoint_dir / run_id
         if not run_dir.exists():
@@ -204,7 +202,7 @@ class CheckpointManager:
         latest = max(checkpoints, key=lambda c: c["timestamp"])
         return latest
 
-    def list_checkpoints(self, run_id: str) -> List[Dict[str, Any]]:
+    def list_checkpoints(self, run_id: str) -> list[dict[str, Any]]:
         """List all checkpoints for a run."""
         run_dir = self.checkpoint_dir / run_id
         if not run_dir.exists():
@@ -292,7 +290,7 @@ class CheckpointManager:
         self,
         checkpoint_id_1: str,
         checkpoint_id_2: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get differences between two checkpoints.
 
@@ -316,7 +314,7 @@ class CheckpointManager:
             "conversation_turns_added": cp2["metadata"]["conversation_history_len"] - cp1["metadata"]["conversation_history_len"],
         }
 
-    def _generate_checkpoint_id(self, run_id: str, task_id: Optional[str], agent_id: Optional[str]) -> str:
+    def _generate_checkpoint_id(self, run_id: str, task_id: str | None, agent_id: str | None) -> str:
         """Generate unique checkpoint ID."""
         content = f"{run_id}:{task_id}:{agent_id}:{datetime.utcnow().isoformat()}"
         hash_val = hashlib.sha256(content.encode()).hexdigest()[:8]
@@ -344,7 +342,7 @@ class ExecutionReplayer:
         latest = self.checkpoint_manager.get_latest_checkpoint(run_id)
         return latest is not None
 
-    def get_resume_point(self, run_id: str) -> Dict[str, Any]:
+    def get_resume_point(self, run_id: str) -> dict[str, Any]:
         """
         Get resume point for a run.
 
@@ -408,7 +406,7 @@ class ExecutionReplayer:
 
         return True
 
-    def get_audit_trail(self, run_id: str) -> List[Dict[str, Any]]:
+    def get_audit_trail(self, run_id: str) -> list[dict[str, Any]]:
         """Get complete audit trail for a run (newest first)."""
         checkpoints = self.checkpoint_manager.list_checkpoints(run_id)
 

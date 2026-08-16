@@ -1,14 +1,14 @@
 """Cognitive Core Brain — Manages self-learning, predictive estimates, and live software health metrics."""
-import os
-import json
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Any
+
 from ..digital_twin import digital_twin_analyzer
 
 logger = logging.getLogger("devpilot.brain.cognition")
 
 class CognitiveBrain:
-    def get_cognitive_summary(self, workspace_root: str = "") -> Dict[str, Any]:
+    def get_cognitive_summary(self, workspace_root: str = "") -> dict[str, Any]:
         """Compute cognitive health score and workspace intelligence summary."""
         # Retrieve actual analysis from digital twin to generate honest metrics
         if workspace_root and os.path.isdir(workspace_root):

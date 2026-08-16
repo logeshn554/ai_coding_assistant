@@ -1,9 +1,8 @@
 import asyncio
 import logging
-from typing import Any
 
-from parallel_agent_system.core.state import SubTask, AgentResult, GraphState
 from parallel_agent_system.core.config import SystemConfig
+from parallel_agent_system.core.state import AgentResult, GraphState, SubTask
 from parallel_agent_system.monitor.stuck_detector import StuckDetector
 
 logger = logging.getLogger("parallel_agent_system.graph.nodes.router")

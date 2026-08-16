@@ -4,10 +4,10 @@ Structured Agent Events — Step 7 canonical event stream.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import datetime
 import json
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -18,12 +18,12 @@ class AgentEvent:
     """
     session_id: str
     type: str
-    payload: Dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat()
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "session_id": self.session_id,
             "timestamp": self.timestamp,

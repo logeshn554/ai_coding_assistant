@@ -6,7 +6,6 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 logger = logging.getLogger("devpilot.work_graph.lease_manager")
 
@@ -23,9 +22,9 @@ class LeaseManager:
     """Evicts stalled execution workers by expiring leases after a timeout."""
 
     def __init__(self) -> None:
-        self._leases: Dict[str, Lease] = {}
+        self._leases: dict[str, Lease] = {}
 
-    def acquire_lease(self, resource: str, owner: str, duration_seconds: float = 60.0) -> Optional[str]:
+    def acquire_lease(self, resource: str, owner: str, duration_seconds: float = 60.0) -> str | None:
         """Acquire a lease on a workspace resource."""
         now = time.time()
         existing = self._leases.get(resource)

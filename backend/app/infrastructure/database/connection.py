@@ -1,7 +1,9 @@
-import os
 import logging
-from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+import os
+from collections.abc import AsyncGenerator
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from backend.app.config import settings
 
 logger = logging.getLogger("devpilot.infrastructure.database.connection")
@@ -35,6 +37,7 @@ logger.info(f"Initializing database engine with URL: {db_url}")
 engine = create_async_engine(db_url, echo=False, **engine_kwargs)
 
 from sqlalchemy import event
+
 
 @event.listens_for(engine.sync_engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):

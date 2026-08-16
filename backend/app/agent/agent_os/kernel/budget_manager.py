@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
+
 from agent_os.kernel.interfaces import IKernelService
 
 logger = logging.getLogger("agentos.kernel.budget_manager")
@@ -102,12 +104,12 @@ class BudgetManager(IKernelService):
     """Manages budget allocations across sessions and agents."""
 
     def __init__(self):
-        self._allocations: Dict[str, BudgetAllocation] = {}
-        self._alert_callbacks: List[Callable[[BudgetAlert, BudgetAllocation], None]] = []
-        self._fired_alerts: Dict[str, set] = {}  # scope_id -> set of fired alerts
+        self._allocations: dict[str, BudgetAllocation] = {}
+        self._alert_callbacks: list[Callable[[BudgetAlert, BudgetAllocation], None]] = []
+        self._fired_alerts: dict[str, set] = {}  # scope_id -> set of fired alerts
 
         # Default budget policies per agent type
-        self._agent_defaults: Dict[str, Dict[str, Any]] = {
+        self._agent_defaults: dict[str, dict[str, Any]] = {
             "code": {"max_tokens": 500_000, "max_cost_usd": 2.0},
             "test": {"max_tokens": 200_000, "max_cost_usd": 1.0},
             "review": {"max_tokens": 150_000, "max_cost_usd": 0.5},
@@ -210,7 +212,7 @@ class BudgetManager(IKernelService):
             except Exception as e:
                 logger.error(f"Budget alert callback error: {e}")
 
-    def get_allocation(self, scope: BudgetScope, scope_id: str) -> Optional[BudgetAllocation]:
+    def get_allocation(self, scope: BudgetScope, scope_id: str) -> BudgetAllocation | None:
         key = f"{scope.value}:{scope_id}"
         return self._allocations.get(key)
 
@@ -220,7 +222,7 @@ class BudgetManager(IKernelService):
             return True
         return not allocation.is_exhausted
 
-    def get_all_stats(self) -> Dict[str, Any]:
+    def get_all_stats(self) -> dict[str, Any]:
         stats = {}
         for key, alloc in self._allocations.items():
             stats[key] = {

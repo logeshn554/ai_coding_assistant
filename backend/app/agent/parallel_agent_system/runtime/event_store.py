@@ -1,8 +1,8 @@
-import os
-import json
 import asyncio
+import json
 import logging
-from typing import AsyncGenerator
+import os
+from collections.abc import AsyncGenerator
 
 import redis.asyncio as aioredis
 from parallel_agent_system.runtime.agent_runtime import Event

@@ -15,10 +15,10 @@ is forced at runtime.  Set the corresponding env var in your .env file to overri
 from __future__ import annotations
 
 import os
-from typing import Dict
+
 from agent_os.providers.base import ProviderConfig
 
-PROVIDER_PRESETS: Dict[str, ProviderConfig] = {
+PROVIDER_PRESETS: dict[str, ProviderConfig] = {
     "openai": ProviderConfig(
         name="openai",
         model=os.environ.get("DEVPILOT_OPENAI_MODEL", "gpt-4o-mini"),

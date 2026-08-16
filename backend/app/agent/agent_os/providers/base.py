@@ -7,7 +7,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class ProviderCapability(str, Enum):
@@ -24,7 +24,7 @@ class ToolCall:
     """Represents a tool use request from the model."""
     id: str
     name: str
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
 
 
 @dataclass
@@ -38,10 +38,10 @@ class TokenUsage:
 @dataclass
 class ModelResponse:
     """Normalized response format across all model providers."""
-    content: Optional[str]
-    tool_calls: List[ToolCall] = field(default_factory=list)
-    finish_reason: Optional[str] = None
-    usage: Optional[TokenUsage] = None
+    content: str | None
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    finish_reason: str | None = None
+    usage: TokenUsage | None = None
     model: str = ""
     provider: str = ""
 
@@ -51,7 +51,7 @@ class ProviderHealth:
     """Health check outcome for a provider connection."""
     healthy: bool
     latency_ms: float
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
@@ -59,14 +59,14 @@ class ProviderConfig:
     """Generic configuration schema for any adapter."""
     name: str
     model: str
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
+    api_key: str | None = None
+    base_url: str | None = None
     protocol: str = "openai"  # "openai" or "anthropic"
     timeout: float = 60.0
     temperature: float = 0.0
     max_tokens: int = 4096
     top_p: float = 1.0
-    seed: Optional[int] = None
+    seed: int | None = None
     stream: bool = True
 
 
@@ -79,24 +79,21 @@ class ModelProvider(ABC):
     @abstractmethod
     async def generate(
         self,
-        messages: List[Dict[str, str]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> ModelResponse:
         """Execute single request/response loop."""
-        pass
 
     @abstractmethod
     async def stream(
         self,
-        messages: List[Dict[str, str]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> Any:
         """Stream chunks of responses as an async generator."""
-        pass
 
     @abstractmethod
     async def health_check(self) -> ProviderHealth:
         """Determine if provider can connect and verify API keys."""
-        pass

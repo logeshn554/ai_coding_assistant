@@ -22,7 +22,6 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 
 logger = logging.getLogger("devpilot.agent.execution_logger")
 

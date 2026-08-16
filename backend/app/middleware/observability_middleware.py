@@ -1,14 +1,15 @@
-import time
 import logging
+import time
 import uuid
+
 from fastapi import Request
+
 from backend.app.infrastructure.observability.telemetry import (
+    TelemetryManager,
     correlation_id_var,
-    run_id_var,
     organization_id_var,
     user_id_var,
     workspace_id_var,
-    TelemetryManager,
 )
 
 logger = logging.getLogger("devpilot.observability_middleware")

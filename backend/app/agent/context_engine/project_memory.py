@@ -11,7 +11,7 @@ import datetime
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 @dataclass
@@ -25,7 +25,7 @@ class ProjectFact:
     )
     is_valid: bool = True
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "fact_id": self.fact_id,
             "category": self.category,
@@ -41,7 +41,7 @@ class ProjectMemoryStore:
 
     def __init__(self, workspace_root: str) -> None:
         self.workspace_root = workspace_root
-        self.facts: Dict[str, ProjectFact] = {}
+        self.facts: dict[str, ProjectFact] = {}
         self._load_memory()
 
     def _get_memory_path(self) -> str:
@@ -76,7 +76,7 @@ class ProjectMemoryStore:
         self.save_memory()
         return fact
 
-    def invalidate_source_file(self, modified_source_file: str) -> List[str]:
+    def invalidate_source_file(self, modified_source_file: str) -> list[str]:
         """Invalidate all facts derived from modified_source_file."""
         invalidated = []
         for fid, fact in self.facts.items():
@@ -87,5 +87,5 @@ class ProjectMemoryStore:
             self.save_memory()
         return invalidated
 
-    def get_valid_facts(self) -> List[ProjectFact]:
+    def get_valid_facts(self) -> list[ProjectFact]:
         return [f for f in self.facts.values() if f.is_valid]

@@ -14,9 +14,10 @@ import logging
 import time
 import uuid
 from collections import deque
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, AsyncIterator, Callable, Deque, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("agentos.gateway.streaming")
 
@@ -85,10 +86,10 @@ class StreamChannel:
         self.channel_id = channel_id
         self.config = config or StreamConfig()
         self._state = StreamState.CREATED
-        self._buffer: Deque[StreamMessage] = deque(maxlen=self.config.buffer_size)
+        self._buffer: deque[StreamMessage] = deque(maxlen=self.config.buffer_size)
         self._sequence = 0
         self._created_at = time.time()
-        self._listeners: List[Callable[[StreamMessage], Any]] = []
+        self._listeners: list[Callable[[StreamMessage], Any]] = []
         self._event = asyncio.Event()
         self._backpressure = False
         self._total_messages = 0
@@ -197,7 +198,7 @@ class StreamChannel:
     def add_listener(self, listener: Callable[[StreamMessage], Any]) -> None:
         self._listeners.append(listener)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         return {
             "channel_id": self.channel_id,
             "state": self._state.value,
@@ -216,7 +217,7 @@ class StreamManager:
     """Manages all active streaming channels."""
 
     def __init__(self):
-        self._channels: Dict[str, StreamChannel] = {}
+        self._channels: dict[str, StreamChannel] = {}
         self._default_config = StreamConfig()
 
     def create_channel(self, channel_id: str = "", config: StreamConfig = None) -> StreamChannel:
@@ -229,7 +230,7 @@ class StreamManager:
         logger.debug(f"Created stream channel: {channel_id}")
         return channel
 
-    def get_channel(self, channel_id: str) -> Optional[StreamChannel]:
+    def get_channel(self, channel_id: str) -> StreamChannel | None:
         return self._channels.get(channel_id)
 
     def close_channel(self, channel_id: str) -> None:
@@ -254,7 +255,7 @@ class StreamManager:
             self.close_channel(cid)
         return len(stale)
 
-    def get_all_stats(self) -> List[Dict[str, Any]]:
+    def get_all_stats(self) -> list[dict[str, Any]]:
         return [ch.get_stats() for ch in self._channels.values()]
 
 

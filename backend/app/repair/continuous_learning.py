@@ -4,7 +4,7 @@ Continuous Learning — Orchestrates long term memory consolidation of bug resol
 from __future__ import annotations
 
 import logging
-from typing import Dict, Optional
+
 from ..brain.bug_history import bug_history
 
 logger = logging.getLogger("devpilot.repair.continuous_learning")
@@ -28,7 +28,7 @@ class ContinuousLearning:
         )
         logger.info(f"Learned repair convention: registered {bug_id} for error '{failure_msg[:40]}'")
 
-    def suggest_repair(self, failure_msg: str) -> Optional[str]:
+    def suggest_repair(self, failure_msg: str) -> str | None:
         """Check bug history for a previously successful resolution pattern."""
         record = bug_history.find_remediation(failure_msg)
         if record:

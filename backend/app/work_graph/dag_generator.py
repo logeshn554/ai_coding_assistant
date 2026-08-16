@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
+
 from ..intelligence.intent_compiler import CompiledIntent
 
 logger = logging.getLogger("devpilot.work_graph.dag_generator")
@@ -16,16 +16,16 @@ class DagTask:
     task_id: str
     description: str
     agent_type: str                     # code | test | review | docs
-    dependencies: List[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
     status: str = "pending"             # pending | running | success | failed
 
 
 class DagGenerator:
     """Generates task dependency graphs for multi-agent coordination."""
 
-    def generate_dag(self, intent: CompiledIntent, roles: List[str]) -> List[DagTask]:
+    def generate_dag(self, intent: CompiledIntent, roles: list[str]) -> list[DagTask]:
         """Decompose intent into sequential DagTasks based on required capabilities."""
-        tasks: List[DagTask] = []
+        tasks: list[DagTask] = []
         
         # 1. Base implementation task
         tasks.append(

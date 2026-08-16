@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
-import asyncio
-from typing import Any, Dict
-from ..files import safe_path
+from typing import Any
+
 from ..async_files import async_read_workspace_file
+from ..files import safe_path
+
 
 async def delete_file(
     session: Any,
     tc_id: str,
-    args: Dict[str, Any],
+    args: dict[str, Any],
     auto_apply: bool,
 ) -> str:
     """Delete a file or folder relative to the workspace root.
@@ -36,7 +38,7 @@ async def delete_file(
     try:
         abs_path = safe_path(session.workspace_root, path)
     except Exception as e:
-        return f"Error resolving path: {str(e)}"
+        return f"Error resolving path: {e!s}"
 
     if not os.path.exists(abs_path):
         return f"Error: Path '{path}' does not exist in workspace."
@@ -57,7 +59,7 @@ async def delete_file(
         try:
             original_content = await async_read_workspace_file(session.workspace_root, path)
         except Exception as e:
-            original_content = f"File content could not be read: {str(e)}"
+            original_content = f"File content could not be read: {e!s}"
 
     proposed_content = ""
 
@@ -106,4 +108,4 @@ async def delete_file(
         session.log_audit("delete_file", args, "success", f"Deleted {path}")
         return f"Successfully deleted '{path}'."
     except Exception as e:
-        return f"Error: Failed to delete '{path}': {str(e)}"
+        return f"Error: Failed to delete '{path}': {e!s}"

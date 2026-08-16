@@ -1,27 +1,27 @@
 import os
 import re
 import shutil
-import logging
-from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from ..state import workspace_state, logger
-from ..utils import run_cmd_async
+
 from ..files import safe_path
+from ..state import logger, workspace_state
+from ..utils import run_cmd_async
 
 router = APIRouter()
 
 class GitActionRequest(BaseModel):
     action: str
-    path: Optional[str] = None
-    message: Optional[str] = None
-    branch: Optional[str] = None
-    confirm: Optional[bool] = False
+    path: str | None = None
+    message: str | None = None
+    branch: str | None = None
+    confirm: bool | None = False
 
 class ResolveConflictRequest(BaseModel):
     path: str
     strategy: str  # 'current', 'incoming', 'both', or 'custom'
-    custom_content: Optional[str] = None
+    custom_content: str | None = None
 
 @router.get("/api/git/conflicts")
 async def get_git_conflicts():
@@ -172,8 +172,8 @@ async def get_git_history():
 
 @router.get("/api/git/diff")
 async def get_git_diff(
-    path: Optional[str] = Query(default=None),
-    staged: Optional[str] = Query(default=None),
+    path: str | None = Query(default=None),
+    staged: str | None = Query(default=None),
 ):
     """
     GET /api/git/diff?path=<file>   -> unstaged diff for a single file

@@ -7,7 +7,7 @@ import os
 import re
 import sys
 import time
-from typing import Any, Dict
+from typing import Any
 
 # A2: Pattern-matched long-running command allowlist (seconds)
 _LONG_RUNNING_PATTERNS: list = [
@@ -26,8 +26,9 @@ def is_server_start_command(command: str) -> bool:
     ])
 
 async def check_url_reachable(url: str, timeout: float = 8.0) -> bool:
-    import httpx
     import time
+
+    import httpx
     deadline = time.monotonic() + timeout
     delay = 0.2
     try:
@@ -129,7 +130,9 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
     current_dir = os.path.realpath(session.workspace_root)
     
     # Translate the command using TerminalCommandGenerator
-    from backend.app.agent.agent_runtime.command_generator import TerminalCommandGenerator
+    from backend.app.agent.agent_runtime.command_generator import (
+        TerminalCommandGenerator,
+    )
     command = TerminalCommandGenerator.generate_command(command)
 
     # Intercept dev server startup command
@@ -146,7 +149,10 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
             
         # Handle port conflict
         if proc.port_conflict and proc.port:
-            from backend.app.processes import get_process_using_port, kill_process_by_pid
+            from backend.app.processes import (
+                get_process_using_port,
+                kill_process_by_pid,
+            )
             pid, name = get_process_using_port(proc.port)
             if pid:
                 kill_process_by_pid(pid)
@@ -203,8 +209,14 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
         elif "cd .." in sub_cmd or "cd/" in sub_cmd or re.search(r'\bcd\b.*\.\.', sub_cmd):
             return "Failed to execute command: Access denied: changing directory outside the workspace root is locked."
 
-    from backend.app.agent.security import ExecutionPolicy, global_sandbox_manager, ExecutionStatus, NetworkMode
     import logging
+
+    from backend.app.agent.security import (
+        ExecutionPolicy,
+        ExecutionStatus,
+        NetworkMode,
+        global_sandbox_manager,
+    )
     logger = logging.getLogger(__name__)
 
     # A2: resolve dynamic timeout
@@ -285,7 +297,7 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
             session.last_exit_code = -1
         except Exception:
             pass
-        return f"Failed to execute command: {str(e)}"
+        return f"Failed to execute command: {e!s}"
 
     elapsed_time = round(time.time() - start_time, 2)
 
@@ -314,7 +326,7 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
             session.last_exit_code = -1
         except Exception:
             pass
-        return f"Failed to execute command: Command execution exceeded maximum output byte limits (OUTPUT_LIMIT_EXCEEDED)."
+        return "Failed to execute command: Command execution exceeded maximum output byte limits (OUTPUT_LIMIT_EXCEEDED)."
 
     elif res.status == ExecutionStatus.POLICY_DENIED:
         await session.send_ws_message({
@@ -347,7 +359,7 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
 async def run_terminal_command(
     session: Any,
     tc_id: str,
-    args: Dict[str, Any],
+    args: dict[str, Any],
     auto_apply: bool,
 ) -> str:
     """Execute run_terminal_command with permission-manager guardrails.
@@ -466,10 +478,8 @@ async def run_terminal_command(
             try:
                 response = await session._run_llm_query(system_prompt, prompt)
                 clean_res = response.strip()
-                if clean_res.startswith("```json"):
-                    clean_res = clean_res[7:]
-                if clean_res.endswith("```"):
-                    clean_res = clean_res[:-3]
+                clean_res = clean_res.removeprefix("```json")
+                clean_res = clean_res.removesuffix("```")
                 
                 parsed = json.loads(clean_res.strip())
                 root_cause = parsed.get("root_cause", "Unknown error")
@@ -556,7 +566,7 @@ async def run_terminal_command(
                     result = await run_shell_command(session, cmd, timeout_seconds=explicit_timeout)
                     session.log_audit(name, args, "success", f"Retried command stdout returned: {len(result)} bytes")
             except Exception as e:
-                logger.error(f"Failed during self-healing terminal execution: {str(e)}")
+                logger.error(f"Failed during self-healing terminal execution: {e!s}")
 
     return result
 
@@ -594,7 +604,7 @@ async def run_shell_command_silent(session: Any, command: str, timeout_seconds: 
     env["CI"] = "true"
     env["npm_config_yes"] = "true"
 
-    kwargs: Dict[str, Any] = {
+    kwargs: dict[str, Any] = {
         "stdin": asyncio.subprocess.DEVNULL,  # A3: never read from parent stdin
         "env": env,
     }
@@ -653,5 +663,5 @@ async def run_shell_command_silent(session: Any, command: str, timeout_seconds: 
         return "".join(output_chunks)
 
     except Exception as e:
-        return f"Failed to execute command: {str(e)}"
+        return f"Failed to execute command: {e!s}"
 

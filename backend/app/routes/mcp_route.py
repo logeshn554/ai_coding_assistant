@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -19,10 +19,10 @@ class MCPServerRequest(BaseModel):
 
     id: str = Field(..., description="Unique server identifier")
     name: str = Field(..., description="Display name of the MCP server")
-    command: Optional[str] = ""
-    args: Optional[List[str]] = Field(default_factory=list)
-    env: Optional[Dict[str, str]] = Field(default_factory=dict)
-    url: Optional[str] = ""
+    command: str | None = ""
+    args: list[str] | None = Field(default_factory=list)
+    env: dict[str, str] | None = Field(default_factory=dict)
+    url: str | None = ""
 
 
 @router.get("/servers")

@@ -4,13 +4,14 @@ Tool History Validation Module — Enforces message structure integrity before s
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any
+
 from ..errors import LLMProviderError
 
 
 class ToolHistoryError(LLMProviderError):
     """Raised when message history violates OpenAI/Anthropic tool call integrity."""
-    def __init__(self, message: str, details: Dict[str, Any] | None = None):
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
         super().__init__(
             code="INVALID_TOOL_HISTORY",
             message=message,
@@ -21,12 +22,12 @@ class ToolHistoryError(LLMProviderError):
         )
 
 
-def has_tool_results(messages: List[Dict[str, Any]]) -> bool:
+def has_tool_results(messages: list[dict[str, Any]]) -> bool:
     """Return True if message history contains any tool results."""
     return any(msg.get("role") == "tool" for msg in messages)
 
 
-def validate_tool_history(messages: List[Dict[str, Any]]) -> None:
+def validate_tool_history(messages: list[dict[str, Any]]) -> None:
     """Validate message history structure for OpenAI-compatible tool call rules.
 
     Raises ToolHistoryError if:
@@ -35,7 +36,7 @@ def validate_tool_history(messages: List[Dict[str, Any]]) -> None:
     - Tool result has no tool_call_id or is an orphan (not matching an assistant call).
     - Pending tool calls are not resolved before a new user message or at the end of history.
     """
-    pending: Dict[str, Dict[str, Any]] = {}
+    pending: dict[str, dict[str, Any]] = {}
 
     for idx, message in enumerate(messages):
         role = message.get("role")
@@ -90,7 +91,7 @@ def validate_tool_history(messages: List[Dict[str, Any]]) -> None:
         )
 
 
-def clean_tool_history(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def clean_tool_history(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Clean legacy, duplicate, or orphaned tool calls/results in-place to prevent API errors."""
     # Pass 1: Collect all resolved tool call IDs (those that have a corresponding tool result message)
     resolved_ids = set()

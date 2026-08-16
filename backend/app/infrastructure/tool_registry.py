@@ -1,6 +1,7 @@
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Type
+from collections.abc import Callable
+from dataclasses import dataclass
+
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("devpilot.infrastructure.tool_registry")
@@ -10,9 +11,9 @@ class ToolDefinition:
     name: str
     version: str
     description: str
-    input_schema: Type[BaseModel]
-    output_schema: Optional[Type[BaseModel]]
-    capabilities: List[str]
+    input_schema: type[BaseModel]
+    output_schema: type[BaseModel] | None
+    capabilities: list[str]
     risk_level: str  # LOW, MEDIUM, HIGH, CRITICAL
     timeout: float = 60.0
     output_limit: int = 1048576  # 1MB
@@ -38,7 +39,7 @@ class DeleteFileInput(BaseModel):
     path: str = Field(..., description="The path of the file to delete.")
 
 class ListDirectoryInput(BaseModel):
-    path: Optional[str] = Field(None, description="Optional path to list directory of. Defaults to workspace root.")
+    path: str | None = Field(None, description="Optional path to list directory of. Defaults to workspace root.")
 
 class SearchCodebaseInput(BaseModel):
     query: str = Field(..., description="The search term or pattern to look for.")
@@ -56,7 +57,7 @@ class ApplyPatchInput(BaseModel):
     patch: str = Field(..., description="The git diff patch to apply.")
 
 class TodoWriteInput(BaseModel):
-    todos: List[str] = Field(..., description="The list of todos to write.")
+    todos: list[str] = Field(..., description="The list of todos to write.")
 
 class TodoReadInput(BaseModel):
     pass
@@ -80,8 +81,8 @@ class OpenLiveServerInput(BaseModel):
 # --- Central Tool Registry ---
 
 class ToolRegistry:
-    _registry: Dict[str, ToolDefinition] = {}
-    _aliases: Dict[str, str] = {}
+    _registry: dict[str, ToolDefinition] = {}
+    _aliases: dict[str, str] = {}
 
     @classmethod
     def register(cls, tool: ToolDefinition):
@@ -92,14 +93,14 @@ class ToolRegistry:
         cls._aliases[alias.lower().strip()] = canonical_name
 
     @classmethod
-    def get_tool(cls, name: str) -> Optional[ToolDefinition]:
+    def get_tool(cls, name: str) -> ToolDefinition | None:
         if isinstance(name, str) and "<|channel|>" in name:
             name = name.split("<|channel|>")[0]
         canonical = cls._aliases.get(name.lower().strip(), name.lower().strip())
         return cls._registry.get(canonical)
 
     @classmethod
-    def get_all_tools(cls) -> List[ToolDefinition]:
+    def get_all_tools(cls) -> list[ToolDefinition]:
         return list(cls._registry.values())
 
     @classmethod

@@ -9,17 +9,15 @@ Supports the standard unified diff format produced by ``git diff`` and
 """
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
-
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Minimal unified-diff parser
 # ---------------------------------------------------------------------------
 
-def _parse_custom_patch(patch_text: str) -> List[Dict]:
+def _parse_custom_patch(patch_text: str) -> list[dict]:
     files = []
     current = None
     hunk = None
@@ -54,7 +52,7 @@ def _parse_custom_patch(patch_text: str) -> List[Dict]:
     return files
 
 
-def _parse_unified_diff(patch_text: str) -> List[Dict]:
+def _parse_unified_diff(patch_text: str) -> list[dict]:
     """Parse a unified diff into a list of file-change dicts.
 
     Each dict has:
@@ -64,9 +62,9 @@ def _parse_unified_diff(patch_text: str) -> List[Dict]:
     if "*** Add File:" in patch_text or "*** Modify File:" in patch_text or "*** Create File:" in patch_text:
         return _parse_custom_patch(patch_text)
 
-    files: List[Dict] = []
-    current: Dict | None = None
-    hunk: Dict | None = None
+    files: list[dict] = []
+    current: dict | None = None
+    hunk: dict | None = None
 
     for line in patch_text.splitlines():
         # --- a/path / +++ b/path
@@ -94,9 +92,9 @@ def _parse_unified_diff(patch_text: str) -> List[Dict]:
     return files
 
 
-def _apply_hunk(original_lines: List[str], hunk: Dict) -> List[str]:
+def _apply_hunk(original_lines: list[str], hunk: dict) -> list[str]:
     """Apply a single hunk to the original file lines (1-indexed start)."""
-    result: List[str] = []
+    result: list[str] = []
     old_idx = 0  # 0-based cursor through original_lines
     start = hunk["old_start"] - 1  # convert to 0-based
 
@@ -119,10 +117,10 @@ def _apply_hunk(original_lines: List[str], hunk: Dict) -> List[str]:
     return result
 
 
-def _apply_patch_to_content(original: str, file_patch: Dict) -> Tuple[str, List[str]]:
+def _apply_patch_to_content(original: str, file_patch: dict) -> tuple[str, list[str]]:
     """Apply all hunks for a single file. Returns (new_content, warnings)."""
     lines = original.splitlines(keepends=True)
-    warnings: List[str] = []
+    warnings: list[str] = []
     for hunk in file_patch["hunks"]:
         try:
             lines = _apply_hunk(lines, hunk)
@@ -138,7 +136,7 @@ def _apply_patch_to_content(original: str, file_patch: Dict) -> Tuple[str, List[
 async def apply_patch(
     session: Any,
     tc_id: str,
-    args: Dict[str, Any],
+    args: dict[str, Any],
     auto_apply: bool = False,
 ) -> str:
     """Apply a unified diff patch to one or more workspace files.
@@ -198,7 +196,7 @@ async def apply_patch(
                 return "apply_patch was rejected by the user."
 
     # Apply patches
-    results: List[str] = []
+    results: list[str] = []
     for fp in file_patches:
         rel_path = fp["path"].lstrip("/\\")
         if ".." in rel_path:

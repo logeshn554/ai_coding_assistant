@@ -1,14 +1,13 @@
+import logging
 import os
 import secrets
-import logging
-from typing import Optional
-from fastapi import Request, HTTPException
+
+import slowapi.extension
+from fastapi import HTTPException, Request, WebSocket
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-import slowapi.extension
-from fastapi import WebSocket
+
 slowapi.extension.Request = (Request, WebSocket)
-from .config import ConfigManager
 from .permissions import PermissionManager
 
 # Setup Logging
@@ -63,6 +62,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 # Initialize shared Redis client
 import asyncio
+
 import redis.asyncio as aioredis
 
 
@@ -110,6 +110,7 @@ class InMemoryFallbackRedis:
     def _enter_fallback(self, operation: str, exc: Exception) -> None:
         """Mark Redis as offline and log a WARNING or raise in production."""
         import time as _time
+
         from .config import settings
         is_prod = (getattr(settings, "ENVIRONMENT", "").lower() == "production" and getattr(settings, "MODE", "").lower() == "server")
         if is_prod:
@@ -329,7 +330,7 @@ class InMemoryFallbackRedis:
             bucket.append(value)
             return len(bucket)
 
-    async def rpoplpush(self, source: str, destination: str) -> Optional[str]:
+    async def rpoplpush(self, source: str, destination: str) -> str | None:
         """Atomically pop from source and push to destination list, with in-memory fallback."""
         if not await self._maybe_recover():
             src_bucket = self._fallback_hashes.setdefault(f"list:{source}", [])
@@ -432,6 +433,7 @@ INITIAL_WORKSPACE_ROOT = os.environ.get("INITIAL_WORKSPACE_ROOT") or config_mana
 
 import contextvars
 from collections import deque
+
 session_id_var = contextvars.ContextVar("session_id", default=None)
 request_latencies = deque(maxlen=100)
 
@@ -510,8 +512,8 @@ async def create_ws_ticket(
     workspace_id: str = ""
 ) -> str:
     """Create a one-time WebSocket ticket stored in Redis (with in-memory fallback)."""
-    import time
     import json as _json
+    import time
 
     ticket = secrets.token_urlsafe(32)
     payload = {
@@ -541,12 +543,12 @@ async def create_ws_ticket(
     return ticket
 
 
-async def verify_ws_ticket(ticket: str) -> Optional[dict]:
+async def verify_ws_ticket(ticket: str) -> dict | None:
     """Verify and consume a one-time WebSocket connection ticket."""
     if not ticket:
         return None
-    import time
     import json as _json
+    import time
 
     key = f"ws_ticket:{ticket}"
     try:

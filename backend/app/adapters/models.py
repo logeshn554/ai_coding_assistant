@@ -5,9 +5,10 @@ are dynamically discovered or user-configured at runtime.
 """
 
 from __future__ import annotations
-import time
+
 import logging
-from typing import Dict, Any, List, Optional
+import time
+
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("devpilot.models")
@@ -16,15 +17,15 @@ class ModelMetadata(BaseModel):
     provider: str = ""
     model_name: str = ""
     model_id: str = ""
-    context_window: Optional[int] = None           # None = "Unavailable"
-    max_output_tokens: Optional[int] = None        # None = "Unavailable"
-    input_token_limit: Optional[int] = None
-    output_token_limit: Optional[int] = None
-    input_price_per_m: Optional[float] = None       # None = "Unavailable"
-    output_price_per_m: Optional[float] = None      # None = "Unavailable"
-    rpm_limit: Optional[int] = None                # None = "Not provided by provider"
-    tpm_limit: Optional[int] = None                # None = "Not provided by provider"
-    rpd_limit: Optional[int] = None
+    context_window: int | None = None           # None = "Unavailable"
+    max_output_tokens: int | None = None        # None = "Unavailable"
+    input_token_limit: int | None = None
+    output_token_limit: int | None = None
+    input_price_per_m: float | None = None       # None = "Unavailable"
+    output_price_per_m: float | None = None      # None = "Unavailable"
+    rpm_limit: int | None = None                # None = "Not provided by provider"
+    tpm_limit: int | None = None                # None = "Not provided by provider"
+    rpd_limit: int | None = None
     streaming_supported: bool = True
     tools_supported: bool = True
     vision_supported: bool = False
@@ -41,7 +42,7 @@ class ModelMetadata(BaseModel):
     output_tokens_today: int = 0
 
 
-def get_model_metadata(model_id: str, provider_hint: Optional[str] = None) -> ModelMetadata:
+def get_model_metadata(model_id: str, provider_hint: str | None = None) -> ModelMetadata:
     """Dynamically construct model metadata for any given model_id without hardcoding."""
     clean_id = model_id.strip() if model_id else ""
     if not clean_id:

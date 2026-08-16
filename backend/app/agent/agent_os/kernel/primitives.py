@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 
 @dataclass
 class Capability:
@@ -11,7 +12,7 @@ class Agent:
     agent_id: str
     agent_type: str
     status: str = "idle"
-    capabilities: List[Capability] = field(default_factory=list)
+    capabilities: list[Capability] = field(default_factory=list)
 
 @dataclass
 class Budget:
@@ -25,29 +26,29 @@ class Task:
     task_id: str
     name: str
     status: str = "PENDING"  # PENDING, RUNNING, SUCCEEDED, FAILED
-    dependencies: List[str] = field(default_factory=list)
+    dependencies: list[str] = field(default_factory=list)
     priority: int = 0
-    budget: Optional[Budget] = None
+    budget: Budget | None = None
 
 @dataclass
 class Action:
     action_id: str
     action_type: str  # read_file, write_file, run_command, etc.
     target: str
-    payload: Dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
     status: str = "PENDING"  # PENDING, APPROVED, DENIED, SUCCESS, ERROR
 
 @dataclass
 class Resource:
     name: str
     resource_type: str  # file, directory, network, process
-    path: Optional[str] = None
+    path: str | None = None
 
 @dataclass
 class Policy:
     name: str
     policy_type: str
-    rules: Dict[str, Any] = field(default_factory=dict)
+    rules: dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class Permission:
@@ -59,17 +60,17 @@ class Permission:
 class Checkpoint:
     checkpoint_id: str
     timestamp: float
-    file_snapshots: Dict[str, str] = field(default_factory=dict) # path -> content_hash
+    file_snapshots: dict[str, str] = field(default_factory=dict) # path -> content_hash
 
 @dataclass
 class Transaction:
     transaction_id: str
     status: str = "ACTIVE"  # ACTIVE, COMMITTED, ROLLED_BACK
-    updates: Dict[str, str] = field(default_factory=dict) # file_path -> new_content
+    updates: dict[str, str] = field(default_factory=dict) # file_path -> new_content
 
 @dataclass
 class Event:
     event_id: str
     event_type: str
     timestamp: float
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)

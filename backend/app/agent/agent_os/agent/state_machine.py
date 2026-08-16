@@ -2,16 +2,14 @@
 Agent state machine with validated transitions.
 """
 
-from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
-from datetime import datetime
 import asyncio
+from dataclasses import dataclass
+from datetime import datetime
 
 from .interfaces import AgentState, IAgentStateManager
 
-
 # Valid state transitions (from -> to)
-VALID_TRANSITIONS: Dict[AgentState, List[AgentState]] = {
+VALID_TRANSITIONS: dict[AgentState, list[AgentState]] = {
     AgentState.CREATED: [AgentState.INITIALIZING, AgentState.CANCELLED],
     AgentState.INITIALIZING: [AgentState.PLANNING, AgentState.FAILED, AgentState.CANCELLED],
     AgentState.PLANNING: [AgentState.READY, AgentState.FAILED, AgentState.CANCELLED],
@@ -85,7 +83,7 @@ class StateTransition:
     from_state: AgentState
     to_state: AgentState
     timestamp: datetime
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 class AgentStateMachine(IAgentStateManager):
@@ -93,7 +91,7 @@ class AgentStateMachine(IAgentStateManager):
 
     def __init__(self, initial_state: AgentState = AgentState.CREATED):
         self._current_state = initial_state
-        self._history: List[StateTransition] = [
+        self._history: list[StateTransition] = [
             StateTransition(None, initial_state, datetime.utcnow(), "initial")
         ]
         self._lock = asyncio.Lock()
@@ -103,7 +101,7 @@ class AgentStateMachine(IAgentStateManager):
         """Get current state."""
         return self._current_state
 
-    def can_transition_to(self, new_state: AgentState) -> Tuple[bool, Optional[str]]:
+    def can_transition_to(self, new_state: AgentState) -> tuple[bool, str | None]:
         """Check if transition is valid."""
         if self._current_state == new_state:
             return True, "Already in this state"
@@ -116,7 +114,7 @@ class AgentStateMachine(IAgentStateManager):
             )
         return True, None
 
-    def transition(self, new_state: AgentState, reason: Optional[str] = None) -> None:
+    def transition(self, new_state: AgentState, reason: str | None = None) -> None:
         """Transition to new state, raising if invalid."""
         can_transition, error = self.can_transition_to(new_state)
         if not can_transition:
@@ -132,11 +130,11 @@ class AgentStateMachine(IAgentStateManager):
         """Check if current state is terminal."""
         return self._current_state in TERMINAL_STATES
 
-    def get_history(self) -> List[Tuple[AgentState, float]]:
+    def get_history(self) -> list[tuple[AgentState, float]]:
         """Get state history as (state, timestamp) tuples."""
         return [(t.to_state, t.timestamp.timestamp()) for t in self._history]
 
-    def reset_to_state(self, state: AgentState, reason: Optional[str] = None) -> None:
+    def reset_to_state(self, state: AgentState, reason: str | None = None) -> None:
         """Reset to a specific state (for testing/rollback)."""
         if state not in AgentState:
             raise ValueError(f"Invalid state: {state}")

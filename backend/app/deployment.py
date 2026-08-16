@@ -10,12 +10,12 @@ To implement real deployment:
 """
 import logging
 import os
-from typing import Dict, Any, Optional
+from typing import Any
 
 logger = logging.getLogger("devpilot.deployment")
 
 
-async def generate_deploy_command(workspace_root: str) -> Dict[str, Any]:
+async def generate_deploy_command(workspace_root: str) -> dict[str, Any]:
     """Return the deploy CLI command for the detected project type.
 
     Detects project type by inspecting the workspace root for known config
@@ -69,7 +69,7 @@ async def generate_deploy_command(workspace_root: str) -> Dict[str, Any]:
 
 
 class AIDeploymentPipeline:
-    def execute_deployment_pipeline(self, target_env: str = "production") -> Dict[str, Any]:
+    def execute_deployment_pipeline(self, target_env: str = "production") -> dict[str, Any]:
         """Deployment pipeline placeholder.
 
         IMPORTANT: This feature is not yet implemented.

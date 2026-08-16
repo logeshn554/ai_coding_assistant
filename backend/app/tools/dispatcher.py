@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
-from . import search_tool, terminal_tool, spawn_subagent as _spawn_subagent_mod
-from .read_tool import read_file as _read_file
-from .write_tool import write_or_edit_file as _write_or_edit_file
+from . import search_tool, terminal_tool
+from . import spawn_subagent as _spawn_subagent_mod
 from .list_tool import list_directory as _list_directory
 from .live_server_tool import open_with_live_server as _open_with_live_server
+from .read_tool import read_file as _read_file
+from .write_tool import write_or_edit_file as _write_or_edit_file
 
 logger = logging.getLogger("devpilot.dispatcher")
 
@@ -38,8 +39,9 @@ def _maybe_update_knowledge_store(session: Any, rel_path: str) -> None:
         logger.debug(f"KnowledgeStore update_file failed (non-fatal): {e}")
 
     try:
-        from ..cache import invalidate_pattern
         import asyncio
+
+        from ..cache import invalidate_pattern
         # Normalize paths for matching in serialized JSON keys
         norm_path = rel_path.replace("\\", "/")
         asyncio.create_task(invalidate_pattern(f"*get_symbols*{norm_path}*"))
@@ -62,7 +64,7 @@ async def dispatch_tool(
     session: Any,
     tc_id: str,
     name: str,
-    args: Dict[str, Any],
+    args: dict[str, Any],
     auto_apply: bool,
 ) -> str:
     """Dispatch a single tool call to the appropriate implementation.
@@ -270,8 +272,8 @@ async def dispatch_tool(
         return await _spawn_subagent_mod.spawn_subagent(session, prompt)
 
     if name in ("search_web", "tavily_search", "web_search"):
-        from .web_search_tool import search_web
         from ..state import config_manager
+        from .web_search_tool import search_web
 
         if not config_manager.get_web_search_fallback_enabled():
             return "Web search fallback is disabled in settings."
@@ -305,7 +307,7 @@ async def dispatch_tool(
         try:
             return await global_mcp_manager.call_tool(server_id, name, args)
         except Exception as e:
-            return f"Error executing MCP tool '{name}': {str(e)}"
+            return f"Error executing MCP tool '{name}': {e!s}"
 
     # G. Agent delegation
     if name == "delegate_to_agent":

@@ -1,5 +1,6 @@
 import os
 
+
 class SecretRegistry:
     """Manages secure resolution of API keys and credentials."""
     

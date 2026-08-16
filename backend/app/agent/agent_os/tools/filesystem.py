@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 import pathlib
-from typing import Any, Dict
+from typing import Any
 
 from agent_os.tools.base import Tool, ToolResult
 
@@ -26,7 +26,7 @@ class ReadFileTool(Tool):
         return "Read the contents of a UTF-8 text file from the workspace."
 
     @property
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -85,7 +85,7 @@ class WriteFileTool(Tool):
         return "Write content to a file in the workspace (creates or overwrites)."
 
     @property
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -156,7 +156,7 @@ class EditFileTool(Tool):
         return "Replace the first occurrence of a specific section of a file with new content."
 
     @property
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {

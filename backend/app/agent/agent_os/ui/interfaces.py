@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict
+from typing import Any
+
 
 class IAgentUX(ABC):
     """Layout manager displaying plan indicators, action steps, tool outputs, and cost metrics."""
     @abstractmethod
-    def render_plan(self, plan: Dict[str, Any]) -> None:
+    def render_plan(self, plan: dict[str, Any]) -> None:
         pass
 
     @abstractmethod

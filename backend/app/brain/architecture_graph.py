@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
 
 logger = logging.getLogger("devpilot.brain.architecture_graph")
 
@@ -14,15 +13,15 @@ logger = logging.getLogger("devpilot.brain.architecture_graph")
 class ComponentNode:
     name: str
     layer: str                          # gateway | kernel | database | frontend | agent_pool
-    sub_components: List[str] = field(default_factory=list)
-    interfaces: List[str] = field(default_factory=list)
+    sub_components: list[str] = field(default_factory=list)
+    interfaces: list[str] = field(default_factory=list)
 
 
 class ArchitectureGraph:
     """Represents the static structure of layers and component invariants."""
 
     def __init__(self) -> None:
-        self.components: Dict[str, ComponentNode] = {}
+        self.components: dict[str, ComponentNode] = {}
         self._load_base_architecture()
 
     def _load_base_architecture(self) -> None:
@@ -46,7 +45,7 @@ class ArchitectureGraph:
         self.components[node.name] = node
         logger.debug(f"Registered architecture component: {node.name} (layer={node.layer})")
 
-    def get_components_by_layer(self, layer: str) -> List[ComponentNode]:
+    def get_components_by_layer(self, layer: str) -> list[ComponentNode]:
         return [c for c in self.components.values() if c.layer == layer]
 
 

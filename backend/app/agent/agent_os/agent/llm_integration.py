@@ -11,13 +11,13 @@ Handles:
 import asyncio
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .interfaces import (
+    ILLMIntegration,
     LLMMessage,
     ToolCall,
     ToolDefinition,
-    ILLMIntegration,
 )
 
 
@@ -32,12 +32,12 @@ class LLMIntegration(ILLMIntegration):
             model_router: ModelRouter instance for calling LLM providers
         """
         self.model_router = model_router
-        self._active_requests: Dict[str, asyncio.Task] = {}
+        self._active_requests: dict[str, asyncio.Task] = {}
 
     async def generate_with_tools(
         self,
-        messages: List[LLMMessage],
-        tools: Dict[str, ToolDefinition],
+        messages: list[LLMMessage],
+        tools: dict[str, ToolDefinition],
         max_tokens: int = 2000,
     ) -> LLMMessage:
         """
@@ -77,7 +77,7 @@ class LLMIntegration(ILLMIntegration):
             else:
                 # Structured ModelResponse with tool_calls
                 import time
-                from ..providers.base import ModelResponse
+
                 
                 content = response.content or ""
                 tool_calls = []
@@ -102,7 +102,7 @@ class LLMIntegration(ILLMIntegration):
             # Return error as assistant message
             return LLMMessage(
                 role="assistant",
-                content=f"Error calling LLM: {str(e)}",
+                content=f"Error calling LLM: {e!s}",
                 tool_calls=[],
             )
 
@@ -113,7 +113,7 @@ class LLMIntegration(ILLMIntegration):
             task.cancel()
             del self._active_requests[request_id]
 
-    def _build_tool_schemas(self, tools: Dict[str, ToolDefinition]) -> List[Dict]:
+    def _build_tool_schemas(self, tools: dict[str, ToolDefinition]) -> list[dict]:
         """Convert tool definitions to LLM tool schema format."""
         schemas = []
         for name, tool_def in tools.items():
@@ -128,7 +128,7 @@ class LLMIntegration(ILLMIntegration):
             schemas.append(schema)
         return schemas
 
-    def _build_provider_messages(self, messages: List[LLMMessage]) -> List[Dict[str, str]]:
+    def _build_provider_messages(self, messages: list[LLMMessage]) -> list[dict[str, str]]:
         """Convert LLMMessages to provider message format."""
         provider_messages = []
 
@@ -149,7 +149,7 @@ class LLMIntegration(ILLMIntegration):
 
         return provider_messages
 
-    def _build_system_prompt(self, tools: Dict[str, ToolDefinition]) -> str:
+    def _build_system_prompt(self, tools: dict[str, ToolDefinition]) -> str:
         """Build system prompt with tool descriptions."""
         tool_list = "\n".join(
             [
@@ -175,8 +175,8 @@ Remember:
 - Always verify your work before claiming completion"""
 
     def _parse_response(
-        self, response_text: str, tools: Dict[str, ToolDefinition]
-    ) -> tuple[List[ToolCall], str]:
+        self, response_text: str, tools: dict[str, ToolDefinition]
+    ) -> tuple[list[ToolCall], str]:
         """
         Parse LLM response to extract tool calls and content.
 
@@ -216,8 +216,8 @@ Remember:
         return tool_calls, content.strip()
 
     def _parse_tool_call(
-        self, call_data: Dict[str, Any], tools: Dict[str, ToolDefinition]
-    ) -> Optional[ToolCall]:
+        self, call_data: dict[str, Any], tools: dict[str, ToolDefinition]
+    ) -> ToolCall | None:
         """Parse a single tool call from LLM response."""
         tool_name = call_data.get("tool_name") or call_data.get("name")
         arguments = call_data.get("arguments") or call_data.get("args") or {}
@@ -225,8 +225,8 @@ Remember:
         if not tool_name or tool_name not in tools:
             return None
 
-        import uuid
         import time
+        import uuid
 
         return ToolCall(
             tool_name=tool_name,

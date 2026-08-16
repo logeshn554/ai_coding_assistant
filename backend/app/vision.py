@@ -12,7 +12,7 @@ import base64
 import logging
 import os
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .state import config_manager
 
@@ -27,7 +27,7 @@ class VisionResult:
     text: str
     confidence: float = 1.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 

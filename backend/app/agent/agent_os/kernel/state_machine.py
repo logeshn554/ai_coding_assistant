@@ -1,7 +1,9 @@
 import asyncio
-from typing import List, Set, Dict, Callable, Any
-from agent_os.kernel.interfaces import ITaskStateMachine, ITaskStateObserver
+from collections.abc import Callable
+
 from agent_os.core.interfaces import IEventBus
+from agent_os.kernel.interfaces import ITaskStateMachine, ITaskStateObserver
+
 
 class InvalidTransitionError(Exception):
     pass
@@ -25,7 +27,7 @@ class TaskStateMachine(ITaskStateMachine):
     ESCALATED = "ESCALATED"
 
     # Forward transitions mappings
-    _FORWARD_TRANSITIONS: Dict[str, Set[str]] = {
+    _FORWARD_TRANSITIONS: dict[str, set[str]] = {
         NEW: {UNDERSTAND, FAILED, CANCELLED, PAUSED, ESCALATED},
         UNDERSTAND: {SEARCH, FAILED, CANCELLED, PAUSED, ESCALATED},
         SEARCH: {PLAN, FAILED, CANCELLED, PAUSED, ESCALATED},
@@ -44,9 +46,9 @@ class TaskStateMachine(ITaskStateMachine):
     def __init__(self, initial_state: str = NEW, event_bus: IEventBus | None = None) -> None:
         self._current_state = initial_state
         self.event_bus = event_bus
-        self._history: List[str] = []
-        self._observers: Set[ITaskStateObserver] = set()
-        self._listeners: List[Callable[[str, str], None]] = []
+        self._history: list[str] = []
+        self._observers: set[ITaskStateObserver] = set()
+        self._listeners: list[Callable[[str, str], None]] = []
 
     @property
     def current_state(self) -> str:

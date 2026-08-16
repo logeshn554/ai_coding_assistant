@@ -8,7 +8,6 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import List, Tuple
 
 from .files import safe_path, write_workspace_file
 
@@ -21,16 +20,16 @@ class DiffHunk:
     old_lines: int
     new_start: int
     new_lines: int
-    lines: List[str]
+    lines: list[str]
 
 
 class PatchEngine:
     """Parses standard unified diff syntax and applies hunks to source files."""
 
     @staticmethod
-    def parse_hunks(diff_text: str) -> List[DiffHunk]:
+    def parse_hunks(diff_text: str) -> list[DiffHunk]:
         """Parse unified diff hunks from a diff string."""
-        hunks: List[DiffHunk] = []
+        hunks: list[DiffHunk] = []
         hunk_header_re = re.compile(r"^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@")
 
         lines = diff_text.splitlines()
@@ -78,8 +77,7 @@ class PatchEngine:
 
         for hunk in hunks:
             target_idx = hunk.old_start - 1 + line_offset
-            if target_idx < 0:
-                target_idx = 0
+            target_idx = max(target_idx, 0)
 
             # Collect new lines replacement for this hunk
             new_sub_lines = []

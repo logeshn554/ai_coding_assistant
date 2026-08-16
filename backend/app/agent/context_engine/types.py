@@ -9,9 +9,8 @@ and the canonical AgentContext payload.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 
 class SymbolKind(str, Enum):
@@ -76,36 +75,36 @@ class DiagnosticItem:
     file: str
     message: str
     severity: str = "error"  # error | warning | info
-    line: Optional[int] = None
+    line: int | None = None
     source: str = "compiler"  # typescript, pytest, flake8, linter, runtime
 
 
 @dataclass
 class EditorContext:
     """Current IDE editor state sent by frontend (Step 11)."""
-    active_file: Optional[str] = None
-    cursor: Optional[Position] = None
-    selection: Optional[SelectionRange] = None
-    selected_text: Optional[str] = None
-    open_files: List[str] = field(default_factory=list)
-    diagnostics: List[DiagnosticItem] = field(default_factory=list)
+    active_file: str | None = None
+    cursor: Position | None = None
+    selection: SelectionRange | None = None
+    selected_text: str | None = None
+    open_files: list[str] = field(default_factory=list)
+    diagnostics: list[DiagnosticItem] = field(default_factory=list)
 
 
 @dataclass
 class GitContext:
     """Repository Git state (Step 13)."""
-    branch: Optional[str] = None
-    modified_files: List[str] = field(default_factory=list)
-    staged_diff: Optional[str] = None
-    unstaged_diff: Optional[str] = None
-    recent_commits: List[Dict[str, Any]] = field(default_factory=list)
+    branch: str | None = None
+    modified_files: list[str] = field(default_factory=list)
+    staged_diff: str | None = None
+    unstaged_diff: str | None = None
+    recent_commits: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
 class WorkspaceContext:
     """Workspace metadata."""
     workspace_root: str
-    name: Optional[str] = None
+    name: str | None = None
 
 
 @dataclass
@@ -117,10 +116,10 @@ class SymbolInfo:
     language: str
     start_line: int
     end_line: int
-    parent_symbol: Optional[str] = None
-    module: Optional[str] = None
-    imports: List[str] = field(default_factory=list)
-    exports: List[str] = field(default_factory=list)
+    parent_symbol: str | None = None
+    module: str | None = None
+    imports: list[str] = field(default_factory=list)
+    exports: list[str] = field(default_factory=list)
     references_count: int = 0
 
 
@@ -130,8 +129,8 @@ class GraphNode:
     id: str
     name: str
     type: NodeType
-    path: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    path: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -140,7 +139,7 @@ class GraphEdge:
     source_id: str
     target_id: str
     edge_type: EdgeType
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -156,10 +155,10 @@ class ContextItem:
     """Single item of ranked context."""
     file: str
     content: str
-    line_start: Optional[int] = None
-    line_end: Optional[int] = None
-    symbol: Optional[str] = None
-    provenance: Optional[ContextProvenance] = None
+    line_start: int | None = None
+    line_end: int | None = None
+    symbol: str | None = None
+    provenance: ContextProvenance | None = None
 
 
 @dataclass
@@ -178,14 +177,14 @@ class AgentContext:
     """Canonical context package passed to AgentRuntime and LLM (Step 20)."""
     task_description: str
     workspace_root: str
-    editor: Optional[EditorContext] = None
-    git: Optional[GitContext] = None
-    diagnostics: List[DiagnosticItem] = field(default_factory=list)
-    items: List[ContextItem] = field(default_factory=list)
-    symbols: List[SymbolInfo] = field(default_factory=list)
-    related_tests: List[str] = field(default_factory=list)
+    editor: EditorContext | None = None
+    git: GitContext | None = None
+    diagnostics: list[DiagnosticItem] = field(default_factory=list)
+    items: list[ContextItem] = field(default_factory=list)
+    symbols: list[SymbolInfo] = field(default_factory=list)
+    related_tests: list[str] = field(default_factory=list)
     total_tokens_estimate: int = 0
-    provenance_summary: List[Dict[str, Any]] = field(default_factory=list)
+    provenance_summary: list[dict[str, Any]] = field(default_factory=list)
 
     def to_prompt_string(self) -> str:
         """Render context items into a formatted section for the system prompt."""

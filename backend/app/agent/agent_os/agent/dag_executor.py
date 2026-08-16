@@ -9,31 +9,31 @@ Ensures:
   - Parallel execution of independent tasks
 """
 
-from typing import Dict, List, Optional, Set, Callable, Any
-from dataclasses import dataclass
 import asyncio
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 from .interfaces import Task
 
 
 class DAGError(Exception):
     """DAG validation or execution error."""
-    pass
 
 
 @dataclass
 class TaskDependency:
     """Task with its dependencies resolved."""
     task: Task
-    dependencies: List[Task]
-    dependents: List[Task]
+    dependencies: list[Task]
+    dependents: list[Task]
 
 
 class TaskGraphValidator:
     """Validates task graph for correctness."""
 
     @staticmethod
-    def validate(tasks: List[Task]) -> tuple[bool, List[str]]:
+    def validate(tasks: list[Task]) -> tuple[bool, list[str]]:
         """
         Validate task graph.
 
@@ -86,10 +86,10 @@ class TaskGraphValidator:
         return len(errors) == 0, errors
 
     @staticmethod
-    def _is_acyclic(task_map: Dict[str, Task]) -> bool:
+    def _is_acyclic(task_map: dict[str, Task]) -> bool:
         """Check if task graph is acyclic using DFS."""
-        visited: Set[str] = set()
-        rec_stack: Set[str] = set()
+        visited: set[str] = set()
+        rec_stack: set[str] = set()
 
         def has_cycle(task_id: str) -> bool:
             visited.add(task_id)
@@ -114,7 +114,7 @@ class TaskGraphValidator:
         return True
 
     @staticmethod
-    def topological_sort(tasks: List[Task]) -> List[Task]:
+    def topological_sort(tasks: list[Task]) -> list[Task]:
         """
         Return tasks in topological order.
 
@@ -155,10 +155,10 @@ class DAGExecutor:
 
     async def execute_graph(
         self,
-        tasks: List[Task],
+        tasks: list[Task],
         execute_task_fn: Callable[[Task], Any],
-        on_task_completed: Optional[Callable[[Task, Any], None]] = None,
-    ) -> Dict[str, Dict[str, Any]]:
+        on_task_completed: Callable[[Task, Any], None] | None = None,
+    ) -> dict[str, dict[str, Any]]:
         """
         Execute task graph respecting dependencies.
 
@@ -181,16 +181,16 @@ class DAGExecutor:
         # 2. Build task map and dependency info
         task_map = {t.task_id: t for t in tasks}
         in_degree = {t.task_id: len(t.depends_on) for t in tasks}
-        task_results: Dict[str, Dict[str, Any]] = {}
+        task_results: dict[str, dict[str, Any]] = {}
 
         # Track which tasks failed so we can skip dependents
-        failed_tasks: Set[str] = set()
+        failed_tasks: set[str] = set()
 
         # 3. Execute with concurrency control
         semaphore = asyncio.Semaphore(self.max_concurrent)
         lock = asyncio.Lock()
-        ready_queue: List[Task] = [t for t in tasks if in_degree[t.task_id] == 0]
-        running_tasks: Set[asyncio.Task] = set()
+        ready_queue: list[Task] = [t for t in tasks if in_degree[t.task_id] == 0]
+        running_tasks: set[asyncio.Task] = set()
 
         async def execute_with_semaphore(task: Task) -> None:
             """Execute a single task with semaphore."""
@@ -206,7 +206,7 @@ class DAGExecutor:
                             task_results[task.task_id] = {
                                 "status": "skipped",
                                 "result": None,
-                                "error": f"Dependency failed or skipped",
+                                "error": "Dependency failed or skipped",
                             }
                         return
 
@@ -268,7 +268,7 @@ class DAGExecutor:
 
         return task_results
 
-    def get_execution_order(self, tasks: List[Task]) -> List[str]:
+    def get_execution_order(self, tasks: list[Task]) -> list[str]:
         """Get topologically sorted task IDs."""
         sorted_tasks = TaskGraphValidator.topological_sort(tasks)
         return [t.task_id for t in sorted_tasks]

@@ -1,17 +1,18 @@
-import os
-import sys
-import json
-import socket
-import logging
 import asyncio
+import json
+import logging
+import os
+import socket
+import sys
 import threading
 from pathlib import Path
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
 
-from ..state import workspace_state, session_id_var
 from ..processes import global_process_manager
+from ..state import session_id_var, workspace_state
 
 logger = logging.getLogger("devpilot.routes.debug")
 router = APIRouter()
@@ -19,7 +20,7 @@ router = APIRouter()
 class BreakpointItem(BaseModel):
     file: str
     line: int
-    enabled: Optional[bool] = True
+    enabled: bool | None = True
 
 class EvaluateRequest(BaseModel):
     expression: str
@@ -38,13 +39,13 @@ class DAPClient:
     """
 
     def __init__(self):
-        self._sock: Optional[socket.socket] = None
+        self._sock: socket.socket | None = None
         self._seq: int = 1
         self._lock = threading.Lock()
         self._pending: dict = {}      # seq → threading.Event | dict
-        self._reader_thread: Optional[threading.Thread] = None
+        self._reader_thread: threading.Thread | None = None
         self.connected: bool = False
-        self.port: Optional[int] = None
+        self.port: int | None = None
         self.language: str = "python"
 
     # ── Internal helpers ──────────────────────────────────────────────────────
@@ -131,7 +132,7 @@ class DAPClient:
             return False
 
     def send_request(self, command: str,
-                     args: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+                     args: dict[str, Any] | None = None) -> dict[str, Any] | None:
         """Send a DAP request and block up to 3 s for the response."""
         if not self._sock:
             return None
@@ -162,11 +163,11 @@ class DAPClient:
             result = self._pending.pop(seq, None)
         return result if isinstance(result, dict) else None
 
-    def sync_breakpoints(self, workspace_root: str, breakpoints: List[Dict[str, Any]]):
+    def sync_breakpoints(self, workspace_root: str, breakpoints: list[dict[str, Any]]):
         """Send DAP setBreakpoints requests grouped by file."""
         if not self.connected:
             return
-        files_map: Dict[str, List[int]] = {}
+        files_map: dict[str, list[int]] = {}
         for bp in breakpoints:
             if bp.get("enabled", True):
                 abs_p = str(Path(workspace_root) / bp["file"]) if not os.path.isabs(bp["file"]) else bp["file"]
@@ -199,11 +200,11 @@ class DebugSession:
     def __init__(self, session_id: str):
         self.session_id = session_id
         self.dap_client = DAPClient()
-        self.active_breakpoints: List[Dict[str, Any]] = []
-        self.watch_expressions: List[Dict[str, Any]] = []
-        self.active_debug_process_id: Optional[str] = None
+        self.active_breakpoints: list[dict[str, Any]] = []
+        self.watch_expressions: list[dict[str, Any]] = []
+        self.active_debug_process_id: str | None = None
 
-_debug_sessions: Dict[str, DebugSession] = {}
+_debug_sessions: dict[str, DebugSession] = {}
 
 def get_debug_session() -> DebugSession:
     sid = session_id_var.get() or "default"
@@ -518,7 +519,7 @@ async def api_scan_bugs():
 
 
 @router.get("/api/context/debug")
-async def api_context_debug(query: str = "", workspace_root: Optional[str] = None):
+async def api_context_debug(query: str = "", workspace_root: str | None = None):
     """Context Engine Debug & Provenance inspection endpoint (Step 22)."""
     from ..agent.context_engine import ContextEngine
     root = workspace_root or workspace_state.root_path or os.getcwd()

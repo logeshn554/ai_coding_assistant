@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import List
 
 logger = logging.getLogger("devpilot.verification.type_checker")
 
@@ -16,14 +15,16 @@ class TypeChecker:
     def __init__(self, workspace_root: str = "") -> None:
         self.workspace_root = workspace_root
 
-    def check_types(self, files: List[str]) -> bool:
+    def check_types(self, files: list[str]) -> bool:
         """Run mypy type checking on target files."""
         if not files:
             return True
 
         # Use mypy from virtual environment if present
         cmd = ["mypy", "--ignore-missing-imports"] + files
-        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        from backend.app.agent.security.environment_isolation import (
+            EnvironmentIsolation,
+        )
         env = EnvironmentIsolation.get_isolated_env()
         try:
             logger.info(f"Running type checks: {cmd}")

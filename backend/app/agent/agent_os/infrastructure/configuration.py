@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger("agentos.infrastructure.configuration")
 
@@ -14,7 +14,7 @@ class Configuration:
     """Combines environment variables and default policies into a uniform interface."""
 
     def __init__(self) -> None:
-        self._defaults: Dict[str, Any] = {
+        self._defaults: dict[str, Any] = {
             "agent_os_mode": "sandbox",
             "max_agent_concurrency": 4,
             "cost_limit_usd": 5.0,

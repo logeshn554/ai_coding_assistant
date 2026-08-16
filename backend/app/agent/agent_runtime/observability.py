@@ -13,7 +13,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger("devpilot.observability")
 
@@ -66,7 +66,7 @@ class TraceContext:
     task_id: str
     trace_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         return {
             "session_id": self.session_id,
             "task_id": self.task_id,
@@ -82,7 +82,7 @@ class ObservabilityEngine:
         return TraceContext(session_id=session_id, task_id=task_id)
 
     @classmethod
-    def log_event(cls, trace: TraceContext, event_name: str, payload: Dict[str, Any]) -> None:
+    def log_event(cls, trace: TraceContext, event_name: str, payload: dict[str, Any]) -> None:
         entry = {
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "trace_id": trace.trace_id,

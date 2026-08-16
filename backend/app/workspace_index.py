@@ -1,8 +1,7 @@
 import os
 import re
-import subprocess
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 # ── Symbol kind constants (LSP-compatible) ──
 KIND_FILE = 1
@@ -18,7 +17,7 @@ KIND_INTERFACE = 11
 KIND_TYPE = 26
 
 # ── Per-language regex patterns: (pattern, kind, group_index_for_name) ──
-SYMBOL_PATTERNS: Dict[str, List] = {
+SYMBOL_PATTERNS: dict[str, list] = {
     "python": [
         (re.compile(r"^class\s+([A-Za-z_][A-Za-z0-9_]*)"), KIND_CLASS, 1),
         (re.compile(r"^(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)"), KIND_FUNCTION, 1),
@@ -186,7 +185,7 @@ class WorkspaceIndex:
         self._last_context_time = now
         return res
 
-    def get_symbols(self, rel_path: str) -> List[Dict[str, Any]]:
+    def get_symbols(self, rel_path: str) -> list[dict[str, Any]]:
         """
         Extract symbols from a workspace file using regex patterns.
         Returns list of {name, kind, kindName, line, col}.
@@ -244,7 +243,7 @@ class WorkspaceIndex:
 
         return symbols
 
-    def fuzzy_search_files(self, query: str, max_results: int = 50) -> List[str]:
+    def fuzzy_search_files(self, query: str, max_results: int = 50) -> list[str]:
         """
         Token-overlap fuzzy file search over the cached file list.
         Returns relative paths ranked by match quality.
@@ -254,7 +253,7 @@ class WorkspaceIndex:
 
         # Also scan flat list including uncached files
         exclude_dirs = {".git", "node_modules", "venv", ".devpilot", "__pycache__", "dist", ".pytest_cache"}
-        all_files: List[str] = []
+        all_files: list[str] = []
         root_path = Path(self.workspace_root).resolve()
         try:
             for root, dirs, files in os.walk(str(root_path)):

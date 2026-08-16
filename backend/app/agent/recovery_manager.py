@@ -21,7 +21,6 @@ Tracked failure patterns:
 from __future__ import annotations
 
 import logging
-import re
 
 logger = logging.getLogger("devpilot.agent.recovery_manager")
 
@@ -178,7 +177,7 @@ class RecoveryManager:
                 should_retry=False,
                 alternative_tool=None,
                 guidance=(
-                    f"Permission denied accessing the file. The workspace or file may be read-only. "
+                    "Permission denied accessing the file. The workspace or file may be read-only. "
                     "Check file permissions before continuing."
                 ),
             )

@@ -1,26 +1,25 @@
 from parallel_agent_system.agents.base import BaseParallelAgent
 from parallel_agent_system.agents.code_agent import CodeAgent
-from parallel_agent_system.agents.test_agent import TestAgent
 from parallel_agent_system.agents.docs_agent import DocsAgent
 from parallel_agent_system.agents.review_agent import ReviewAgent
 from parallel_agent_system.agents.specialist_agents import (
-    FrontendAgent,
-    BackendAgent,
-    SecurityAgent,
-    PerformanceAgent,
-    DebugAgent,
-    DatabaseAgent,
     ApiAgent,
-    IntegrationAgent,
-    DevOpsAgent,
-    ReleaseAgent,
-    GitAgent,
-    TerminalAgent,
-    PlannerAgent,
     ArchitectAgent,
+    BackendAgent,
+    DatabaseAgent,
+    DebugAgent,
+    DevOpsAgent,
+    FrontendAgent,
+    GitAgent,
+    IntegrationAgent,
+    PerformanceAgent,
+    PlannerAgent,
+    ReleaseAgent,
     RequirementAgent,
+    SecurityAgent,
+    TerminalAgent,
 )
-
+from parallel_agent_system.agents.test_agent import TestAgent
 
 AGENT_REGISTRY: dict[str, type[BaseParallelAgent]] = {
     "code": CodeAgent,
@@ -45,25 +44,25 @@ AGENT_REGISTRY: dict[str, type[BaseParallelAgent]] = {
 }
 
 __all__ = [
+    "AGENT_REGISTRY",
+    "ApiAgent",
+    "ArchitectAgent",
+    "BackendAgent",
     "BaseParallelAgent",
     "CodeAgent",
-    "TestAgent",
-    "DocsAgent",
-    "ReviewAgent",
-    "FrontendAgent",
-    "BackendAgent",
-    "SecurityAgent",
-    "PerformanceAgent",
-    "DebugAgent",
     "DatabaseAgent",
-    "ApiAgent",
-    "IntegrationAgent",
+    "DebugAgent",
     "DevOpsAgent",
-    "ReleaseAgent",
+    "DocsAgent",
+    "FrontendAgent",
     "GitAgent",
-    "TerminalAgent",
+    "IntegrationAgent",
+    "PerformanceAgent",
     "PlannerAgent",
-    "ArchitectAgent",
+    "ReleaseAgent",
     "RequirementAgent",
-    "AGENT_REGISTRY",
+    "ReviewAgent",
+    "SecurityAgent",
+    "TerminalAgent",
+    "TestAgent",
 ]

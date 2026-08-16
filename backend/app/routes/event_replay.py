@@ -1,11 +1,11 @@
 import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
-from typing import List, Dict, Any
 
-from backend.app.state import verify_token
 from backend.app.infrastructure.database.connection import async_session_factory
-from backend.app.infrastructure.database.models import AgentRun, AgentEvent
+from backend.app.infrastructure.database.models import AgentEvent, AgentRun
+from backend.app.state import verify_token
 
 router = APIRouter(prefix="/api/runs", tags=["runs"])
 

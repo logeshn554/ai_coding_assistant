@@ -10,32 +10,36 @@ from .reviewer import AgentReviewer, ReviewFinding, ReviewResult
 from .self_repair import RepairRoundRecord, SelfRepairLoop
 from .session_recovery import SessionRecoveryManager, SessionStateSnapshot
 from .task_contract import AgentTaskContract, TaskContractGenerator
-from .verification_engine import VerificationEngine, VerificationProfile, VerificationResult
+from .verification_engine import (
+    VerificationEngine,
+    VerificationProfile,
+    VerificationResult,
+)
 
 __all__ = [
+    "AgentReviewer",
     "AgentTaskContract",
-    "TaskContractGenerator",
+    "ChangeSetValidator",
+    "CommandRiskLevel",
+    "ExecutionMode",
     "ExecutionPlan",
     "ExecutionPlanner",
-    "PlanStep",
-    "StepStatus",
-    "VerificationEngine",
-    "VerificationProfile",
-    "VerificationResult",
     "FailureAnalyzer",
     "FailureCategory",
-    "VerificationFailure",
-    "SelfRepairLoop",
+    "PlanStep",
+    "PolicyEngine",
     "RepairRoundRecord",
-    "ChangeSetValidator",
-    "ValidationFinding",
-    "ValidationResult",
-    "AgentReviewer",
     "ReviewFinding",
     "ReviewResult",
-    "PolicyEngine",
-    "ExecutionMode",
-    "CommandRiskLevel",
+    "SelfRepairLoop",
     "SessionRecoveryManager",
     "SessionStateSnapshot",
+    "StepStatus",
+    "TaskContractGenerator",
+    "ValidationFinding",
+    "ValidationResult",
+    "VerificationEngine",
+    "VerificationFailure",
+    "VerificationProfile",
+    "VerificationResult",
 ]

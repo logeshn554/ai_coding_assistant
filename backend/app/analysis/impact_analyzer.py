@@ -4,7 +4,7 @@ Impact Analyzer — Analyzes static workspace structures to determine the blast 
 from __future__ import annotations
 
 import logging
-from typing import List, Set
+
 from ..brain.dependency_graph import dependency_graph
 from ..brain.test_graph import test_graph
 
@@ -14,7 +14,7 @@ logger = logging.getLogger("devpilot.analysis.impact_analyzer")
 class ImpactAnalyzer:
     """Calculates downstream dependencies and test files affected by source modifications."""
 
-    def analyze_file_change(self, file_path: str) -> Set[str]:
+    def analyze_file_change(self, file_path: str) -> set[str]:
         """Determine all files directly or indirectly affected by a modification to file_path."""
         affected = {file_path}
         
@@ -37,7 +37,7 @@ class ImpactAnalyzer:
         logger.info(f"Impact Analysis: Modification to '{file_path}' affects {len(affected)} total files.")
         return affected
 
-    def get_affected_tests(self, modified_files: Set[str]) -> List[str]:
+    def get_affected_tests(self, modified_files: set[str]) -> list[str]:
         """Resolve tests associated with any of the modified files."""
         affected_tests = set()
         for f in modified_files:

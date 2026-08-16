@@ -1,61 +1,61 @@
-import os
 import asyncio
 import logging
-from typing import Any, Dict, List, Callable, Coroutine, Optional, Set
+import os
+from collections.abc import Callable, Coroutine
+from typing import Any
 
-from agent_os.core.logging import StandardLogger
-from agent_os.core.config import DictionaryConfig
-from agent_os.core.event_bus import EventBus
-from agent_os.core.registry import ServiceRegistry
-from agent_os.core.di import DIContainer
+from agent_os.compiler.prompt_compiler import PromptCompiler
+
+# Subsystems
+from agent_os.context.context_manager import WorkspaceContextManager
 from agent_os.core.cache import CacheService
-
-# Kernel services
-from agent_os.kernel.kernel import Kernel
-from agent_os.kernel.scheduler import DependencyScheduler
-from agent_os.kernel.budget_manager import BudgetManager
-from agent_os.kernel.health_monitor import HealthMonitor
-from agent_os.kernel.cancellation_manager import CancellationManager
-from agent_os.kernel.policy_engine import PolicyEngine
-from agent_os.kernel.reasoning import ReasoningEngine
-
+from agent_os.core.config import DictionaryConfig
+from agent_os.core.di import DIContainer
+from agent_os.core.event_bus import EventBus
+from agent_os.core.logging import StandardLogger
+from agent_os.core.registry import ServiceRegistry
+from agent_os.execution.engine import TransactionalExecutionEngine
+from agent_os.execution.interfaces import ISandbox
+from agent_os.execution.lock_manager import FileLockManager
+from agent_os.execution.sandbox import create_sandbox
+from agent_os.infrastructure.audit_store import AuditStore
 
 # Infrastructure services
 from agent_os.infrastructure.distributed_tracing import DistributedTracer
 from agent_os.infrastructure.durable_event_bus import DurableEventBus
-from agent_os.infrastructure.workflow_store import WorkflowStore
-from agent_os.infrastructure.audit_store import AuditStore
-from agent_os.infrastructure.secret_store import SecretStore
 from agent_os.infrastructure.metrics import MetricsCollector
 from agent_os.infrastructure.observability import Observability
+from agent_os.infrastructure.secret_store import SecretStore
+from agent_os.infrastructure.workflow_store import WorkflowStore
+from agent_os.kernel.budget_manager import BudgetManager
+from agent_os.kernel.cancellation_manager import CancellationManager
+from agent_os.kernel.health_monitor import HealthMonitor
 
-# Subsystems
-from agent_os.context.context_manager import WorkspaceContextManager
-from agent_os.repository.repository import RepositoryKernel
-from agent_os.repository.file_operations import FileOperations
-from agent_os.repository.interfaces import IRepositoryKnowledgeGraph, ISourceControl
-from agent_os.repository.graph import RepositoryKnowledgeGraph
-from agent_os.repository.git_provider import GitSourceControl
+# Kernel services
+from agent_os.kernel.kernel import Kernel
+from agent_os.kernel.policy_engine import PolicyEngine
+from agent_os.kernel.reasoning import ReasoningEngine
+from agent_os.kernel.scheduler import DependencyScheduler
 from agent_os.learning.engine import LearningEngine
 from agent_os.learning.interfaces import IMemoryManager, IPerformanceOptimizer
 from agent_os.learning.memory_kernel import MemoryKernelManager
 from agent_os.learning.optimizer import PerformanceOptimizer
-from agent_os.execution.engine import TransactionalExecutionEngine
-from agent_os.execution.lock_manager import FileLockManager
-from agent_os.execution.interfaces import ISandbox
-from agent_os.execution.sandbox import create_sandbox
-from agent_os.compiler.prompt_compiler import PromptCompiler
+from agent_os.repository.file_operations import FileOperations
+from agent_os.repository.git_provider import GitSourceControl
+from agent_os.repository.graph import RepositoryKnowledgeGraph
+from agent_os.repository.interfaces import IRepositoryKnowledgeGraph, ISourceControl
+from agent_os.repository.repository import RepositoryKernel
 from agent_os.skills.orchestrator import SkillOrchestrator
 from agent_os.skills.plugins import (
-    RenameSymbolSkill,
-    GenerateTestSkill,
     FixImportSkill,
-    ReviewPatchSkill,
-    RefactorMethodSkill,
+    GenerateTestSkill,
+    IDEContext,
     OptimizeSQLSkill,
-    UpdateDependencySkill,
+    RefactorMethodSkill,
+    RenameSymbolSkill,
+    ReviewPatchSkill,
     SecurityScanSkill,
-    IDEContext
+    UpdateDependencySkill,
 )
 
 logger = logging.getLogger("agentos.facade")
@@ -143,7 +143,7 @@ class AgentOS:
         self.reasoning_engine = ReasoningEngine(self.registry)
 
         # ── Task lifecycle tracking ──
-        self._running_tasks: Set[asyncio.Task] = set()
+        self._running_tasks: set[asyncio.Task] = set()
 
         self._booted = False
 
@@ -239,7 +239,7 @@ class AgentOS:
         task.add_done_callback(self._running_tasks.discard)
         return task
 
-    async def run_skills_parallel(self, skill_names: List[str], context: IDEContext) -> IDEContext:
+    async def run_skills_parallel(self, skill_names: list[str], context: IDEContext) -> IDEContext:
         """Runs multiple skills concurrently with deep-copied contexts."""
         if not self._booted:
             raise RuntimeError("AgentOS is not booted. Call await boot() first.")
@@ -251,9 +251,9 @@ class AgentOS:
 
     async def run_tasks(
         self,
-        tasks: List[Dict[str, Any]],
-        execute_task_fn: Callable[[Dict[str, Any]], Coroutine[Any, Any, Any]]
-    ) -> Dict[str, Any]:
+        tasks: list[dict[str, Any]],
+        execute_task_fn: Callable[[dict[str, Any]], Coroutine[Any, Any, Any]]
+    ) -> dict[str, Any]:
         """Schedules and runs tasks concurrently respecting their DAG dependencies."""
         if not self._booted:
             raise RuntimeError("AgentOS is not booted. Call await boot() first.")
@@ -262,10 +262,10 @@ class AgentOS:
     async def execute_goal(
         self,
         goal: str,
-        task_graph: Optional[List[Dict[str, Any]]] = None,
-        execute_task_fn: Optional[Callable[[Dict[str, Any]], Coroutine[Any, Any, Any]]] = None,
-        repair_fn: Optional[Callable[[Dict[str, Any], Exception], Coroutine[Any, Any, Any]]] = None
-    ) -> Dict[str, Any]:
+        task_graph: list[dict[str, Any]] | None = None,
+        execute_task_fn: Callable[[dict[str, Any]], Coroutine[Any, Any, Any]] | None = None,
+        repair_fn: Callable[[dict[str, Any], Exception], Coroutine[Any, Any, Any]] | None = None
+    ) -> dict[str, Any]:
         """Runs the complete step-by-step reasoning loop for the user goal."""
         if not self._booted:
             raise RuntimeError("AgentOS is not booted. Call await boot() first.")

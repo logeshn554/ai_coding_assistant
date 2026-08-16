@@ -1,7 +1,7 @@
-import os
 import json
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException
+import os
+
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -12,9 +12,9 @@ class SnippetItem(BaseModel):
     title: str
     language: str
     code: str
-    description: Optional[str] = ""
+    description: str | None = ""
 
-def _get_snippets() -> List[dict]:
+def _get_snippets() -> list[dict]:
     os.makedirs(os.path.dirname(SNIPPETS_FILE_PATH), exist_ok=True)
     if os.path.exists(SNIPPETS_FILE_PATH):
         try:
@@ -50,7 +50,7 @@ def _get_snippets() -> List[dict]:
         json.dump(defaults, f)
     return defaults
 
-def _save_snippets(snippets: List[dict]):
+def _save_snippets(snippets: list[dict]):
     os.makedirs(os.path.dirname(SNIPPETS_FILE_PATH), exist_ok=True)
     with open(SNIPPETS_FILE_PATH, "w", encoding="utf-8") as f:
         json.dump(snippets, f)

@@ -7,11 +7,10 @@ without duplicating git history or interfering with each other's edits.
 
 from __future__ import annotations
 
-import os
-import shutil
 import asyncio
 import logging
-from typing import Optional
+import os
+import shutil
 
 logger = logging.getLogger("agent_runtime.workspace.worktree")
 
@@ -26,7 +25,7 @@ class GitWorktreeManager:
     def __init__(self, repo_root: str) -> None:
         self.repo_root = os.path.abspath(repo_root)
 
-    async def _run_git(self, args: list[str], cwd: Optional[str] = None) -> tuple[int, str, str]:
+    async def _run_git(self, args: list[str], cwd: str | None = None) -> tuple[int, str, str]:
         """Run a git command in the repository or worktree."""
         target_cwd = cwd or self.repo_root
         cmd = ["git"] + args

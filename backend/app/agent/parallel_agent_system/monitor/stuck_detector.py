@@ -1,10 +1,14 @@
 import hashlib
 import json
-from collections import deque, Counter
+from collections import Counter, deque
 from typing import Any
 
-from parallel_agent_system.runtime.agent_runtime import Event, ActionEvent, ObservationEvent
 from parallel_agent_system.core.config import SystemConfig
+from parallel_agent_system.runtime.agent_runtime import (
+    ActionEvent,
+    Event,
+    ObservationEvent,
+)
 
 
 class AgentMonitor:

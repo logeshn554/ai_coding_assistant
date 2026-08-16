@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class ActionContextType(str, Enum):
@@ -24,17 +24,17 @@ class ActionContextType(str, Enum):
 class ContextualActionRequest:
     action_type: str  # explain | optimize | refactor | generate_tests | fix_error | review
     context_type: ActionContextType
-    target_code: Optional[str] = None
-    file_path: Optional[str] = None
-    line_no: Optional[int] = None
-    error_message: Optional[str] = None
+    target_code: str | None = None
+    file_path: str | None = None
+    line_no: int | None = None
+    error_message: str | None = None
 
 
 class ActionRouter:
     """Routes contextual IDE quick actions to specialized backend engines."""
 
     @classmethod
-    def route_action(cls, request: ContextualActionRequest) -> Dict[str, Any]:
+    def route_action(cls, request: ContextualActionRequest) -> dict[str, Any]:
         act = request.action_type.lower().strip()
 
         if act == "explain":

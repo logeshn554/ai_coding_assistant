@@ -6,7 +6,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 logger = logging.getLogger("devpilot.repair.root_cause_analyzer")
 
@@ -22,7 +21,7 @@ class FailureRootCause:
 class RootCauseAnalyzer:
     """Parses verification output/stack traces to locate breaking changes."""
 
-    def analyze_failure(self, traceback_text: str) -> Optional[FailureRootCause]:
+    def analyze_failure(self, traceback_text: str) -> FailureRootCause | None:
         """Rule-based parsing of stack traces to identify error type and file location."""
         # Look for typical python traceback line: File "path", line X, in Y
         match = re.search(r'File\s+"([^"]+)",\s+line\s+(\d+)', traceback_text)

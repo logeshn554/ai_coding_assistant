@@ -9,7 +9,6 @@ and absolute path escapes.
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 
 class WorkspaceGuard:

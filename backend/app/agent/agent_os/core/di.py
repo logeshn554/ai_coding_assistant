@@ -1,5 +1,6 @@
 import inspect
-from typing import Any, Dict, Callable, Type, TypeVar
+from typing import TypeVar
+
 from agent_os.core.interfaces import IServiceRegistry
 
 T = TypeVar("T")
@@ -9,7 +10,7 @@ class DIContainer:
     def __init__(self, registry: IServiceRegistry) -> None:
         self.registry = registry
 
-    def resolve(self, cls: Type[T]) -> T:
+    def resolve(self, cls: type[T]) -> T:
         """Resolves the type using registry, falling back to constructor auto-wiring."""
         try:
             # 1. Attempt lookup from registered services
@@ -18,7 +19,7 @@ class DIContainer:
             # 2. Fall back to constructor signature auto-wiring
             return self.instantiate(cls)
 
-    def instantiate(self, cls: Type[T]) -> T:
+    def instantiate(self, cls: type[T]) -> T:
         """Instantiates a class, auto-wiring its constructor parameters via DI."""
         if not inspect.isclass(cls):
             raise TypeError(f"Target {cls} is not a class.")

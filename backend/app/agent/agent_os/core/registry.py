@@ -1,5 +1,7 @@
 import threading
-from typing import Any, Callable, Dict, Type, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
+
 from agent_os.core.interfaces import IServiceRegistry
 
 T = TypeVar("T")
@@ -13,20 +15,20 @@ class ServiceRegistry(IServiceRegistry):
     """
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._singletons: Dict[Type[Any], Any] = {}
-        self._factories: Dict[Type[Any], Callable[[], Any]] = {}
+        self._singletons: dict[type[Any], Any] = {}
+        self._factories: dict[type[Any], Callable[[], Any]] = {}
 
-    def register_singleton(self, service_type: Type[T], instance: T) -> None:
+    def register_singleton(self, service_type: type[T], instance: T) -> None:
         with self._lock:
             if not isinstance(instance, service_type) and not issubclass(type(instance), service_type):
                 raise TypeError(f"Instance is not an implementation of service type {service_type.__name__}")
             self._singletons[service_type] = instance
 
-    def register_factory(self, service_type: Type[T], factory: Callable[[], T]) -> None:
+    def register_factory(self, service_type: type[T], factory: Callable[[], T]) -> None:
         with self._lock:
             self._factories[service_type] = factory
 
-    def resolve(self, service_type: Type[T]) -> T:
+    def resolve(self, service_type: type[T]) -> T:
         with self._lock:
             if service_type in self._singletons:
                 return self._singletons[service_type]

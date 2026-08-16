@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Any, Tuple
+from typing import Any
 
 INJECTION_PATTERNS = [
     r"ignore\s+(all\s+)?(previous|prior)\s+instructions",
@@ -16,7 +16,7 @@ class PromptSecurityEngine:
     """Isolates trust boundaries and guards against prompt injection attacks."""
 
     @staticmethod
-    def inspect_untrusted_content(text: str) -> Tuple[bool, str]:
+    def inspect_untrusted_content(text: str) -> tuple[bool, str]:
         """Inspects untrusted text (repo files, web results, tool output) for injection patterns."""
         if not text:
             return False, ""
@@ -42,7 +42,7 @@ class PromptSecurityEngine:
     def construct_safe_prompt(
         system_instruction: str,
         user_request: str,
-        untrusted_contexts: list[Dict[str, Any]] = None
+        untrusted_contexts: list[dict[str, Any]] = None
     ) -> str:
         """Constructs a structured prompt with strict boundary isolation."""
         parts = [

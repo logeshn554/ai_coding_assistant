@@ -1,8 +1,8 @@
 """Proactive workspace monitoring service for continuous health checks and automated insights."""
-import os
 import json
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Any
 
 logger = logging.getLogger("devpilot.proactive_monitor")
 
@@ -13,7 +13,7 @@ class ProactiveWorkspaceMonitor:
     def set_workspace_root(self, root: str):
         self.workspace_root = root
 
-    def inspect_workspace_health(self) -> Dict[str, Any]:
+    def inspect_workspace_health(self) -> dict[str, Any]:
         """Perform comprehensive health inspection on active workspace."""
         if not self.workspace_root or not os.path.exists(self.workspace_root):
             return {
@@ -22,7 +22,7 @@ class ProactiveWorkspaceMonitor:
                 "summary": {"bugs": 0, "outdated_packages": 0, "failing_tests": 0, "security_warnings": 0}
             }
 
-        insights: List[Dict[str, Any]] = []
+        insights: list[dict[str, Any]] = []
         outdated_count = 0
         bugs_count = 0
         tests_failing = 0

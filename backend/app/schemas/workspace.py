@@ -1,11 +1,12 @@
+
 from pydantic import BaseModel, Field
-from typing import Dict, Optional, List
+
 
 class WorkspaceStatsResponse(BaseModel):
     """Schema for workspace analytics and language breakdown."""
     total_files: int = Field(..., description="Total file count in workspace")
     total_lines: int = Field(..., description="Total lines of code")
-    languages: Dict[str, float] = Field(..., description="Breakdown of language percentages in the workspace")
+    languages: dict[str, float] = Field(..., description="Breakdown of language percentages in the workspace")
     git_commits: int = Field(0, description="Total git commits in repository")
 
 
@@ -26,7 +27,7 @@ class WorkspaceChangeResponse(BaseModel):
 
 
 class WorkspaceInfoResponse(BaseModel):
-    workspace: Optional[str] = Field(None, description="The current active workspace root path")
+    workspace: str | None = Field(None, description="The current active workspace root path")
 
 
 class DetectCommandRequest(BaseModel):
@@ -54,14 +55,14 @@ class SSHHostResponse(BaseModel):
 
 
 class RootsResponse(BaseModel):
-    roots: List[str] = Field(..., description="List of secondary multi-root paths")
+    roots: list[str] = Field(..., description="List of secondary multi-root paths")
     active_root: str = Field(..., description="The currently active workspace root path")
 
 
 class RootsAddResponse(BaseModel):
     success: bool = Field(..., description="Indicates if secondary root addition succeeded")
-    roots: List[str] = Field(..., description="Updated secondary multi-root paths")
+    roots: list[str] = Field(..., description="Updated secondary multi-root paths")
 
 
 class SSHHostsResponse(BaseModel):
-    hosts: List[dict] = Field(..., description="List of configured remote SSH profiles")
+    hosts: list[dict] = Field(..., description="List of configured remote SSH profiles")

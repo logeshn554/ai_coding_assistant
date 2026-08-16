@@ -1,31 +1,34 @@
 import asyncio
-import logging
-import signal
-import sys
-import uuid
-import time
 import datetime
 import json
-from typing import Optional, Dict, Any, List
-from sqlalchemy import update, select
-from backend.app.config import settings
-from backend.app.state import redis_client, config_manager
-from backend.app.infrastructure.queue import AgentQueue
+import logging
+import os
+import signal
+import time
+import uuid
+from typing import Any
+
+from sqlalchemy import select, update
+
+from backend.app.agent.agent_runtime.llm_adapter import (
+    ModelResponse,
+    ModelResponseNormalizer,
+)
+from backend.app.agent.agent_runtime.runtime import AgentRuntime, AgentState, AgentTask
 from backend.app.infrastructure.database.connection import async_session_factory
 from backend.app.infrastructure.database.models import AgentRun
 from backend.app.infrastructure.database.repositories import AgentRunRepository
-from backend.app.agent.agent_runtime.runtime import AgentRuntime, AgentState, AgentTask
-from backend.app.agent.agent_runtime.llm_adapter import ModelResponse, ModelResponseNormalizer, ToolCall
-from backend.app.agent.agent_runtime.events import AgentEvent
 from backend.app.infrastructure.events import EventPublisher
+from backend.app.infrastructure.queue import AgentQueue
 from backend.app.session.base_session import BaseSession
+from backend.app.state import config_manager, redis_client
 
 logger = logging.getLogger("devpilot.infrastructure.worker")
 
 
 class RunLock:
     @staticmethod
-    async def acquire(run_id: str, lease_seconds: int = 60) -> Optional[str]:
+    async def acquire(run_id: str, lease_seconds: int = 60) -> str | None:
         lock_key = f"lock:agent-run:{run_id}"
         token = str(uuid.uuid4())
         if not redis_client.use_fallback:
@@ -167,7 +170,7 @@ class WorkerSessionProxy(BaseSession):
 
 
 class AgentWorker:
-    def __init__(self, worker_id: Optional[str] = None):
+    def __init__(self, worker_id: str | None = None):
         self.worker_id = worker_id or f"worker_{uuid.uuid4().hex[:8]}"
         self.should_stop = asyncio.Event()
         from backend.app.worker.retry_policy import RetryPolicy
@@ -281,7 +284,7 @@ class AgentWorker:
             "Set workspace_root on the run or configure a Workspace with a valid root_identifier."
         )
 
-    def _resolve_model_profile(self, run: AgentRun) -> Dict[str, Any]:
+    def _resolve_model_profile(self, run: AgentRun) -> dict[str, Any]:
         """
         Resolve the model profile for this run from config_manager.
 
@@ -359,7 +362,9 @@ class AgentWorker:
                 session_id=run_id,
             )
 
-            from backend.app.agent.agent_runtime.events import AgentEvent as RuntimeAgentEvent
+            from backend.app.agent.agent_runtime.events import (
+                AgentEvent as RuntimeAgentEvent,
+            )
 
             async def on_event(event):
                 if hasattr(event, "type") and hasattr(event, "payload"):
@@ -376,8 +381,8 @@ class AgentWorker:
             )
 
             # Build the real LLM provider function using ModelGateway
-            from backend.app.infrastructure.model_gateway import ModelGateway
             from backend.app.adapters.tool_history import clean_tool_history
+            from backend.app.infrastructure.model_gateway import ModelGateway
 
             async def llm_provider(messages: list, tools: list) -> ModelResponse:
                 """
@@ -427,7 +432,7 @@ class AgentWorker:
                 # Accumulate streaming chunks into a complete response
                 text_parts: list = []
                 tool_calls_raw: list = []
-                finish_reason: Optional[str] = None
+                finish_reason: str | None = None
                 total_input_tokens: int = 0
                 total_output_tokens: int = 0
 
@@ -568,8 +573,8 @@ class AgentWorker:
                     workspace_root if 'workspace_root' in locals() else "",
                     profile if 'profile' in locals() else {},
                 )
-                from backend.app.session.result_adapter import adapt_result
                 from backend.app.agent.agent_runtime.runtime import AgentResult
+                from backend.app.session.result_adapter import adapt_result
                 crash_res = AgentResult(
                     session_id=run_id,
                     task_id=run_id,
@@ -603,7 +608,10 @@ class AgentWorker:
             if existing_messages:
                 try:
                     async with async_session_factory() as db:
-                        from backend.app.infrastructure.database.models import Conversation, Message
+                        from backend.app.infrastructure.database.models import (
+                            Conversation,
+                            Message,
+                        )
                         stmt = select(Conversation).where(Conversation.id == run.conversation_id)
                         db_res = await db.execute(stmt)
                         conv = db_res.scalar()

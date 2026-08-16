@@ -1,14 +1,13 @@
-import os
-import shutil
-import re
-import hashlib
-import time
 import glob
+import hashlib
 import logging
+import os
+import re
+import shutil
 import subprocess
-from .config import config_manager
+import time
 
-from pathlib import Path
+from .config import config_manager
 
 logger = logging.getLogger("devpilot.files")
 
@@ -53,7 +52,7 @@ def list_workspace_dir(workspace_root: str, relative_path: str = "") -> list:
                 "mtime": entry.stat().st_mtime
             })
     except Exception as e:
-        raise IOError(f"Failed to list directory: {str(e)}")
+        raise OSError(f"Failed to list directory: {e!s}")
         
     # Sort: folders first, then files alphabetically
     items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
@@ -178,7 +177,6 @@ def read_workspace_file(workspace_root: str, relative_path: str, max_chars: int 
     Reads the content of a file in the workspace (using in-memory mtime cache).
     """
     from .context_config import READ_FILE_MAX_CHARS
-    from .context_helpers import truncate_text
     limit = max_chars or READ_FILE_MAX_CHARS
     
     target_file = safe_path(workspace_root, relative_path)
@@ -211,7 +209,7 @@ def read_workspace_file(workspace_root: str, relative_path: str, max_chars: int 
         file_cache.set(target_file, limit, result)
         return result
     except Exception as e:
-        raise IOError(f"Failed to read file: {str(e)}")
+        raise OSError(f"Failed to read file: {e!s}")
 
 def read_workspace_file_range(
     workspace_root: str,
@@ -262,7 +260,7 @@ def read_workspace_file_range(
             result_content = f"{result_content.rstrip()}{notice}"
         return result_content
     except Exception as e:
-        raise IOError(f"Failed to read file range: {str(e)}")
+        raise OSError(f"Failed to read file range: {e!s}")
 
 def search_workspace_file(
     workspace_root: str,
@@ -312,7 +310,7 @@ def search_workspace_file(
             
         return "".join(output)
     except Exception as e:
-        raise IOError(f"Failed to search file: {str(e)}")
+        raise OSError(f"Failed to search file: {e!s}")
 
 def write_workspace_file(workspace_root: str, relative_path: str, content: str) -> None:
     """
@@ -342,7 +340,7 @@ def write_workspace_file(workspace_root: str, relative_path: str, content: str) 
         from .workspace_index import WorkspaceIndex
         WorkspaceIndex.mark_dirty(workspace_root)
     except Exception as e:
-        raise IOError(f"Failed to write file: {str(e)}")
+        raise OSError(f"Failed to write file: {e!s}")
 
 def delete_workspace_item(workspace_root: str, relative_path: str) -> None:
     """
@@ -360,7 +358,7 @@ def delete_workspace_item(workspace_root: str, relative_path: str) -> None:
         from .workspace_index import WorkspaceIndex
         WorkspaceIndex.mark_dirty(workspace_root)
     except Exception as e:
-        raise IOError(f"Failed to delete item: {str(e)}")
+        raise OSError(f"Failed to delete item: {e!s}")
 
 def _search_with_ripgrep(workspace_root: str, query: str) -> list | None:
     """

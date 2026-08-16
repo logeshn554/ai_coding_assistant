@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Dict
+from typing import Optional
 
 logger = logging.getLogger("devpilot.work_graph.retry_planner")
 
@@ -21,8 +21,8 @@ class RetryPlanner:
     """Calculates backoffs and redirects failed tasks to alternative agent types or settings."""
 
     def __init__(self) -> None:
-        self._task_attempts: Dict[str, int] = {}
-        self._policies: Dict[str, RetryPolicy] = {
+        self._task_attempts: dict[str, int] = {}
+        self._policies: dict[str, RetryPolicy] = {
             "code": RetryPolicy(max_retries=2, alternative_agent_type="debug"),
             "test": RetryPolicy(max_retries=3, backoff_factor=1.0),
             "review": RetryPolicy(max_retries=1),

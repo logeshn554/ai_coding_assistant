@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Dict
-
+from typing import Any
 
 MAX_RESULTS = 500  # Hard cap to avoid flooding context
 
 
-async def glob_search(session: Any, args: Dict[str, Any]) -> str:
+async def glob_search(session: Any, args: dict[str, Any]) -> str:
     """Find files matching a glob pattern inside the workspace.
 
     Args:

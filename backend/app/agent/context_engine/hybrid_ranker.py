@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, List, Optional, Set
 
-from .types import ContextBudget, ContextItem, ContextProvenance, EditorContext, GitContext
+from .types import (
+    ContextBudget,
+    ContextItem,
+    EditorContext,
+    GitContext,
+)
 
 logger = logging.getLogger("devpilot.context_engine.hybrid_ranker")
 
@@ -20,7 +24,7 @@ logger = logging.getLogger("devpilot.context_engine.hybrid_ranker")
 class HybridRanker:
     """Ranks and truncates context items to satisfy token and file budgets."""
 
-    def __init__(self, budget: Optional[ContextBudget] = None) -> None:
+    def __init__(self, budget: ContextBudget | None = None) -> None:
         self.budget = budget or ContextBudget()
 
     def score_candidate(
@@ -28,8 +32,8 @@ class HybridRanker:
         file_path: str,
         content: str,
         task_query: str,
-        editor: Optional[EditorContext] = None,
-        git: Optional[GitContext] = None,
+        editor: EditorContext | None = None,
+        git: GitContext | None = None,
         is_test: bool = False,
         dependency_distance: int = 999,
         symbol_matched: bool = False,
@@ -79,9 +83,9 @@ class HybridRanker:
 
     def rank_and_truncate(
         self,
-        candidates: List[ContextItem],
-        budget: Optional[ContextBudget] = None,
-    ) -> List[ContextItem]:
+        candidates: list[ContextItem],
+        budget: ContextBudget | None = None,
+    ) -> list[ContextItem]:
         """Sort context items by score and apply budget limits (max_files, max_chars, max_tokens)."""
         b = budget or self.budget
 
@@ -92,8 +96,8 @@ class HybridRanker:
             reverse=True,
         )
 
-        ranked: List[ContextItem] = []
-        files_seen: Set[str] = set()
+        ranked: list[ContextItem] = []
+        files_seen: set[str] = set()
         total_chars = 0
 
         for item in sorted_candidates:

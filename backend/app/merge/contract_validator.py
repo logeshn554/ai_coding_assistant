@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import List
+
 from ..intelligence.contract_generator import CodeContract
 
 logger = logging.getLogger("devpilot.merge.contract_validator")
@@ -14,7 +14,7 @@ logger = logging.getLogger("devpilot.merge.contract_validator")
 class ContractValidator:
     """Verifies interface signatures and db fields are compliant with initial contracts."""
 
-    def validate_code(self, code_content: str, contract: CodeContract) -> List[str]:
+    def validate_code(self, code_content: str, contract: CodeContract) -> list[str]:
         """Validate code_content against a structural contract.
 
         Returns list of validation violation messages.

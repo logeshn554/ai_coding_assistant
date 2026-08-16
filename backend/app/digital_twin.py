@@ -6,7 +6,7 @@ import json
 import logging
 import subprocess
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger("devpilot.digital_twin")
 
@@ -21,7 +21,7 @@ class DigitalTwinAnalyzer:
     ``"READY_FOR_PRODUCTION"`` regardless of actual workspace state.
     """
 
-    def analyze_workspace(self, workspace_path: str) -> Dict[str, Any]:
+    def analyze_workspace(self, workspace_path: str) -> dict[str, Any]:
         """Run AST syntax validation + Bandit SAST on the workspace.
 
         Args:
@@ -82,7 +82,7 @@ class DigitalTwinAnalyzer:
             "workspace_path": str(root),
         }
 
-    def run_simulation(self, concurrent_users: int = 1000) -> Dict[str, Any]:
+    def run_simulation(self, concurrent_users: int = 1000) -> dict[str, Any]:
         """Lightweight simulation stub — clearly marked as non-production data.
 
         The old implementation returned fabricated production-ready metrics.

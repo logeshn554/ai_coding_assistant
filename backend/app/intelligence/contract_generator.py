@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+
 from .intent_compiler import CompiledIntent
 
 logger = logging.getLogger("devpilot.intelligence.contract_generator")
@@ -18,9 +18,9 @@ class CodeContract:
     component_name: str
     contract_type: str                  # api | db | function | event
     description: str
-    signatures: List[str]
-    properties: Dict[str, str]
-    allowed_mutations: List[str]
+    signatures: list[str]
+    properties: dict[str, str]
+    allowed_mutations: list[str]
 
 
 class ContractGenerator:

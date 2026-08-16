@@ -8,10 +8,11 @@ to run, rather than attempting to deploy itself.
 from __future__ import annotations
 
 import logging
+
 from fastapi import APIRouter, HTTPException
 
-from ..state import workspace_state
 from ..deployment import generate_deploy_command
+from ..state import workspace_state
 
 logger = logging.getLogger("devpilot.routes.deploy")
 router = APIRouter()

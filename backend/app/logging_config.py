@@ -1,8 +1,10 @@
+import json
 import logging
 import sys
 import time
-import json
+
 from .config import settings
+
 
 class JSONFormatter(logging.Formatter):
     """Formatter that outputs structured JSON log entries for production aggregators."""

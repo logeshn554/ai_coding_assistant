@@ -12,7 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from ..state import workspace_state, redis_client, SESSION_TOKEN, verify_token
+from ..state import redis_client, verify_token, workspace_state
 
 logger = logging.getLogger("devpilot.health")
 
@@ -73,8 +73,9 @@ async def health_check() -> HealthResponse:
     # Check SQLite
     db_ok = False
     try:
-        from ..db import async_session
         from sqlalchemy import text
+
+        from ..db import async_session
 
         async with async_session() as db:
             await db.execute(text("SELECT 1"))
@@ -98,8 +99,9 @@ async def health_check() -> HealthResponse:
 async def get_metrics() -> MetricsSummary:
     """Return aggregate usage metrics from the database."""
     try:
-        from ..db import async_session, SessionModel, MessageModel
-        from sqlalchemy import select, func
+        from sqlalchemy import func, select
+
+        from ..db import MessageModel, SessionModel, async_session
 
         async with async_session() as db:
             sess_count_res = await db.execute(select(func.count()).select_from(SessionModel))
@@ -143,9 +145,9 @@ class ObservabilitySummary(BaseModel):
 @router.get("/api/observability", response_model=ObservabilitySummary, tags=["health"])
 async def get_observability_summary(verify: Any = Depends(verify_token)) -> ObservabilitySummary:
     """Return live system spans and metrics."""
-    from agent_os.infrastructure.observability import observability
-    from agent_os.infrastructure.metrics import metrics_collector
     from agent_os.infrastructure.distributed_tracing import distributed_tracer
+    from agent_os.infrastructure.metrics import metrics_collector
+    from agent_os.infrastructure.observability import observability
 
     active_traces = len(distributed_tracer._spans)
     
@@ -164,8 +166,9 @@ async def health_live() -> dict[str, str]:
 async def health_ready() -> dict[str, str]:
     """Readiness probe checking database connectivity."""
     try:
-        from backend.app.infrastructure.database.connection import async_session_factory
         from sqlalchemy import text
+
+        from backend.app.infrastructure.database.connection import async_session_factory
         async with async_session_factory() as db:
             await db.execute(text("SELECT 1"))
         return {"status": "ready"}
@@ -182,8 +185,9 @@ async def health_dependencies():
     # Check PostgreSQL
     db_ok = False
     try:
-        from backend.app.infrastructure.database.connection import async_session_factory
         from sqlalchemy import text
+
+        from backend.app.infrastructure.database.connection import async_session_factory
         async with async_session_factory() as db:
             await db.execute(text("SELECT 1"))
         db_ok = True

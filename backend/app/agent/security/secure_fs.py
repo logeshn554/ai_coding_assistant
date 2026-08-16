@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import os
 import shutil
-import glob as py_glob
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
 
-from .workspace_guard import WorkspaceGuard
 from .secret_redactor import SecretRedactor
+from .workspace_guard import WorkspaceGuard
 
 
 class SecureFileSystem:
@@ -24,7 +22,7 @@ class SecureFileSystem:
         self.workspace_root = os.path.realpath(os.path.abspath(workspace_root))
         self.guard = WorkspaceGuard(self.workspace_root)
 
-    def resolve_safe_path(self, target_path: Union[str, Path]) -> str:
+    def resolve_safe_path(self, target_path: str | Path) -> str:
         """Resolve a path canonicalized within the workspace or raise PermissionError."""
         path_str = str(target_path).strip()
         if not path_str:
@@ -53,7 +51,7 @@ class SecureFileSystem:
             )
         return real_path
 
-    def read_text(self, target_path: Union[str, Path], encoding: str = "utf-8") -> str:
+    def read_text(self, target_path: str | Path, encoding: str = "utf-8") -> str:
         safe_path = self.resolve_safe_path(target_path)
         if SecretRedactor.is_secret_file(safe_path):
             raise PermissionError(f"Access to protected secret file is blocked: '{target_path}'")
@@ -62,7 +60,7 @@ class SecureFileSystem:
         with open(safe_path, "r", encoding=encoding, errors="replace") as f:
             return f.read()
 
-    def write_text(self, target_path: Union[str, Path], content: str, encoding: str = "utf-8") -> None:
+    def write_text(self, target_path: str | Path, content: str, encoding: str = "utf-8") -> None:
         safe_path = self.resolve_safe_path(target_path)
         if SecretRedactor.is_secret_file(safe_path):
             raise PermissionError(f"Modifying protected secret file is blocked: '{target_path}'")
@@ -82,7 +80,7 @@ class SecureFileSystem:
                 except Exception:
                     pass
 
-    def delete_file(self, target_path: Union[str, Path]) -> bool:
+    def delete_file(self, target_path: str | Path) -> bool:
         safe_path = self.resolve_safe_path(target_path)
         if SecretRedactor.is_secret_file(safe_path):
             raise PermissionError(f"Deleting protected secret file is blocked: '{target_path}'")
@@ -94,14 +92,14 @@ class SecureFileSystem:
             return True
         return False
 
-    def list_dir(self, target_path: Union[str, Path] = "") -> List[str]:
+    def list_dir(self, target_path: str | Path = "") -> list[str]:
         rel = str(target_path).strip() or "."
         safe_path = self.resolve_safe_path(rel)
         if not os.path.isdir(safe_path):
             raise NotADirectoryError(f"Not a directory: '{target_path}'")
         return os.listdir(safe_path)
 
-    def exists(self, target_path: Union[str, Path]) -> bool:
+    def exists(self, target_path: str | Path) -> bool:
         try:
             safe_path = self.resolve_safe_path(target_path)
             return os.path.exists(safe_path)

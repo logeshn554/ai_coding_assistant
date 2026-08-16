@@ -7,11 +7,11 @@ with actual test/lint/syntax execution that produces structured results.
 
 from __future__ import annotations
 
-import os
 import asyncio
 import logging
+import os
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("agent_runtime.verification")
 

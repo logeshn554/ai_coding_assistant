@@ -10,9 +10,10 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from .rag import Chunk, chunk_file, embed_and_index, query as rag_query
+from .rag import Chunk, chunk_file, embed_and_index
+from .rag import query as rag_query
 from .vision import VisionResult, analyze_image
 
 logger = logging.getLogger("devpilot.attachments")
@@ -29,7 +30,7 @@ class AttachmentResult:
     summary_or_chunks: str
     mode: str  # "vision_model", "ocr", "rag"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -40,10 +41,10 @@ def is_image_file(path: str) -> bool:
 
 
 async def process_attachments(
-    paths: List[str],
+    paths: list[str],
     query: str = "",
     workspace_root: str = "",
-) -> List[AttachmentResult]:
+) -> list[AttachmentResult]:
     """Process a list of attached files, routing images to vision/OCR and documents to RAG.
 
     Args:
@@ -54,7 +55,7 @@ async def process_attachments(
     Returns:
         List of AttachmentResult objects in the original order.
     """
-    results: List[AttachmentResult] = []
+    results: list[AttachmentResult] = []
 
     for path in paths or []:
         if not path:
@@ -89,7 +90,7 @@ async def process_attachments(
         else:
             # Document / Code routing -> RAG one file at a time
             try:
-                chunks: List[Chunk] = chunk_file(abs_path)
+                chunks: list[Chunk] = chunk_file(abs_path)
                 if not chunks:
                     results.append(
                         AttachmentResult(
@@ -104,7 +105,7 @@ async def process_attachments(
                 collection_name = f"attachment_{os.path.basename(path)}"
                 await embed_and_index(chunks, collection_name=collection_name, workspace_root=workspace_root)
 
-                top_chunks: List[Chunk] = await rag_query(
+                top_chunks: list[Chunk] = await rag_query(
                     collection_name=collection_name,
                     question=query,
                     top_k=5,
@@ -142,7 +143,7 @@ async def process_attachments(
     return results
 
 
-def format_attachment_prompt(results: List[AttachmentResult]) -> str:
+def format_attachment_prompt(results: list[AttachmentResult]) -> str:
     """Format attachment results into a prompt-ready markdown block with per-file headers.
 
     Args:

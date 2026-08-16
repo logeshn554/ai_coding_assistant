@@ -7,11 +7,10 @@ as executable ToolDefinitions that operate on the actual workspace filesystem.
 
 from __future__ import annotations
 
-import os
 import logging
-from typing import Optional
+import os
 
-from agent_runtime.tools import ToolDefinition, ToolResult, RiskLevel
+from agent_runtime.tools import RiskLevel, ToolDefinition, ToolResult
 
 logger = logging.getLogger("agent_runtime.tools.filesystem")
 

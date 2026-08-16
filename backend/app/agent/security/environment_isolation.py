@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, Optional, Set
 
 # Safe environment variables permitted for subprocess execution
-SAFE_ENV_VARS: Set[str] = {
+SAFE_ENV_VARS: set[str] = {
     "PATH", "HOME", "USER", "USERNAME", "LANG", "LC_ALL", "TERM",
     "PYTHONPATH", "NODE_ENV", "TEMP", "TMP", "SYSTEMROOT", "COMSPEC",
     "PWD", "SHELL", "VIRTUAL_ENV", "CI", "npm_config_yes",
@@ -14,7 +13,7 @@ SAFE_ENV_VARS: Set[str] = {
 }
 
 # Explicitly blocked secret environment variables
-BLOCKED_ENV_PATTERNS: Set[str] = {
+BLOCKED_ENV_PATTERNS: set[str] = {
     "SECRET", "TOKEN", "PASSWORD", "KEY", "CREDENTIAL", "AUTH",
     "AWS", "GITHUB", "OPENAI", "ANTHROPIC", "AZURE", "PRIVATE", "SIGNING"
 }
@@ -24,7 +23,7 @@ class EnvironmentIsolation:
     """Filters host environment variables for child processes."""
 
     @classmethod
-    def get_isolated_env(cls, extra_vars: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    def get_isolated_env(cls, extra_vars: dict[str, str] | None = None) -> dict[str, str]:
         """Produce an isolated environment dict free of host secrets."""
         isolated = {}
         for k, v in os.environ.items():

@@ -1,11 +1,12 @@
-import os
+import httpx
 import json
-import zipfile
+import os
 import tempfile
-import urllib.request
 import urllib.parse
-from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, File, UploadFile, HTTPException, Query
+import zipfile
+from typing import Any
+
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -15,18 +16,18 @@ CUSTOM_EXTENSIONS_DIR = os.path.expanduser("~/.devpilot/custom_extensions")
 
 class ExtensionActionRequest(BaseModel):
     id: str
-    name: Optional[str] = None
-    description: Optional[str] = None
-    version: Optional[str] = None
-    category: Optional[str] = None
-    publisher: Optional[str] = None
-    download_url: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    version: str | None = None
+    category: str | None = None
+    publisher: str | None = None
+    download_url: str | None = None
 
 class ToggleStateRequest(BaseModel):
     id: str
     enabled: bool
 
-def get_installed_extensions_list() -> List[Dict[str, Any]]:
+def get_installed_extensions_list() -> list[dict[str, Any]]:
     os.makedirs(os.path.dirname(EXTENSIONS_FILE_PATH), exist_ok=True)
     os.makedirs(CUSTOM_EXTENSIONS_DIR, exist_ok=True)
     if os.path.exists(EXTENSIONS_FILE_PATH):
@@ -47,7 +48,7 @@ def get_installed_extensions_list() -> List[Dict[str, Any]]:
         json.dump(initial, f, indent=2)
     return initial
 
-def save_installed_extensions_list(exts: List[Dict[str, Any]]) -> None:
+def save_installed_extensions_list(exts: list[dict[str, Any]]) -> None:
     os.makedirs(os.path.dirname(EXTENSIONS_FILE_PATH), exist_ok=True)
     with open(EXTENSIONS_FILE_PATH, "w", encoding="utf-8") as f:
         json.dump(exts, f, indent=2)
@@ -158,8 +159,10 @@ async def install_extension(req: ExtensionActionRequest):
         if ext["id"] == req.id:
             ext["installed"] = True
             ext["enabled"] = True
-            if req.version: ext["version"] = req.version
-            if req.description: ext["description"] = req.description
+            if req.version:
+                ext["version"] = req.version
+            if req.description:
+                ext["description"] = req.description
             matched = True
             break
     if not matched:
@@ -256,4 +259,4 @@ async def load_vsix_package(file: UploadFile = File(...)):
 
             return {"success": True, "extension": ext_item}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to parse VSIX package: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to parse VSIX package: {e!s}")

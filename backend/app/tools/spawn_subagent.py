@@ -10,8 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ..adapters.router import ModelRouter
 from ..adapters.base import AVAILABLE_TOOLS
+from ..adapters.router import ModelRouter
 
 logger = logging.getLogger("devpilot.tools.spawn_subagent")
 

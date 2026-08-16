@@ -1,8 +1,7 @@
-import os
-import sys
-import time
 import logging
-from typing import Any, Dict, Optional
+import time
+from typing import Any
+
 from agent_os.execution.interfaces import ISandbox
 
 logger = logging.getLogger("agentos.execution.sandbox")
@@ -24,12 +23,12 @@ def _import_docker():
 
 class DockerSandbox(ISandbox):
     """Safe docker container environment for isolated code execution."""
-    def __init__(self, image: str = "python:3.12-slim", container_name: Optional[str] = None, registry: Optional[Any] = None) -> None:
+    def __init__(self, image: str = "python:3.12-slim", container_name: str | None = None, registry: Any | None = None) -> None:
         self.image = image
         self.container_name = container_name or f"agentos_sandbox_{int(time.time())}"
         self.registry = registry
-        self.client: Optional[Any] = None
-        self.container: Optional[Any] = None
+        self.client: Any | None = None
+        self.container: Any | None = None
 
     def start(self) -> None:
         docker_mod, has_docker = _import_docker()
@@ -69,7 +68,7 @@ class DockerSandbox(ISandbox):
                 self.container = None
         self.client = None
 
-    def _vet_and_log_command(self, cmd: str) -> tuple[bool, Optional[Dict[str, Any]]]:
+    def _vet_and_log_command(self, cmd: str) -> tuple[bool, dict[str, Any] | None]:
         policy_engine = None
         audit_store = None
         if self.registry:
@@ -100,7 +99,7 @@ class DockerSandbox(ISandbox):
 
         return True, None
 
-    def run_command(self, cmd: str) -> Dict[str, Any]:
+    def run_command(self, cmd: str) -> dict[str, Any]:
         if not self.container:
             raise RuntimeError("DockerSandbox has not been started or has been stopped.")
 
@@ -158,10 +157,10 @@ class DockerSandbox(ISandbox):
 
 
 def create_sandbox(
-    use_docker: Optional[bool] = None,
+    use_docker: bool | None = None,
     image: str = "python:3.12-slim",
-    workspace_root: Optional[str] = None,
-    registry: Optional[Any] = None
+    workspace_root: str | None = None,
+    registry: Any | None = None
 ) -> ISandbox:
     """
     Factory function that creates a Docker-based isolated sandbox.

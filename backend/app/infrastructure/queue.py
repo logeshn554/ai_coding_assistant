@@ -1,11 +1,13 @@
+import datetime
 import json
 import logging
 import time
-import datetime
-from typing import Optional, Dict, Any
-from sqlalchemy import select, update
-from backend.app.state import redis_client
+from typing import Any
+
+from sqlalchemy import select
+
 from backend.app.infrastructure.database.models import AgentRun
+from backend.app.state import redis_client
 
 logger = logging.getLogger("devpilot.infrastructure.queue")
 
@@ -38,7 +40,7 @@ class AgentQueue:
         return True
 
     @staticmethod
-    async def claim_job() -> Optional[Dict[str, Any]]:
+    async def claim_job() -> dict[str, Any] | None:
         """Atomically pop from source queue and push to processing queue."""
         payload = await redis_client.rpoplpush(QUEUE_NAME, PROCESSING_QUEUE_NAME)
         if not payload:
@@ -51,13 +53,13 @@ class AgentQueue:
             return None
 
     @staticmethod
-    async def acknowledge_job(job: Dict[str, Any]) -> None:
+    async def acknowledge_job(job: dict[str, Any]) -> None:
         """Acknowledge job completion by removing it from the processing queue."""
         payload = json.dumps(job)
         await redis_client.lrem(PROCESSING_QUEUE_NAME, 0, payload)
 
     @staticmethod
-    async def requeue_job(job: Dict[str, Any]) -> None:
+    async def requeue_job(job: dict[str, Any]) -> None:
         """Remove from processing and push back to main queue with incremented attempts."""
         old_payload = json.dumps(job)
         await redis_client.lrem(PROCESSING_QUEUE_NAME, 0, old_payload)

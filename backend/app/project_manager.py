@@ -1,11 +1,11 @@
 """AI Project Manager Module — Converts high-level product intent into structured engineering execution plans."""
 import logging
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger("devpilot.project_manager")
 
 class AIProjectManager:
-    def generate_project_plan(self, goal_description: str) -> Dict[str, Any]:
+    def generate_project_plan(self, goal_description: str) -> dict[str, Any]:
         """Generate a complete multi-domain architectural engineering plan from a high-level goal."""
         if not goal_description:
             goal_description = "Software Engineering Task"

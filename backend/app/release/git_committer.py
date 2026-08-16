@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import List
 
 logger = logging.getLogger("devpilot.release.git_committer")
 
@@ -16,7 +15,7 @@ class GitCommitter:
     def __init__(self, workspace_root: str = "") -> None:
         self.workspace_root = workspace_root
 
-    def commit_changes(self, files: List[str], commit_message: str) -> bool:
+    def commit_changes(self, files: list[str], commit_message: str) -> bool:
         """Stage and commit files."""
         if not files:
             return True
@@ -24,7 +23,9 @@ class GitCommitter:
             logger.warning("No workspace root configured. Skipping git commit.")
             return False
 
-        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        from backend.app.agent.security.environment_isolation import (
+            EnvironmentIsolation,
+        )
         env = EnvironmentIsolation.get_isolated_env()
         try:
             # 1. Stage changes

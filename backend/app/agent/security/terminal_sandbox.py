@@ -8,22 +8,16 @@ and ensures complete child process tree termination on cancellation.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import re
-import signal
-import sys
-from typing import Any, Dict, List, Optional, Tuple
 
-from .environment_isolation import EnvironmentIsolation
 from .permission_model import RiskLevel
-from .secret_redactor import SecretRedactor
 
 logger = logging.getLogger("devpilot.security.terminal_sandbox")
 
 # High risk shell operators and destructive tokens
-DESTRUCTIVE_COMMAND_PATTERNS: List[re.Pattern] = [
+DESTRUCTIVE_COMMAND_PATTERNS: list[re.Pattern] = [
     re.compile(r"\brm\s+-[rf]{1,2}\b", re.IGNORECASE),
     re.compile(r"\bgit\s+reset\s+--hard\b", re.IGNORECASE),
     re.compile(r"\bgit\s+clean\s+-[fdx]{1,3}\b", re.IGNORECASE),
@@ -32,7 +26,7 @@ DESTRUCTIVE_COMMAND_PATTERNS: List[re.Pattern] = [
     re.compile(r"\bformat\s+[c-z]:", re.IGNORECASE),
 ]
 
-SHELL_INJECTION_PATTERNS: List[re.Pattern] = [
+SHELL_INJECTION_PATTERNS: list[re.Pattern] = [
     re.compile(r"\$\(.*?\)"),  # Subshell substitution $(...)
     re.compile(r"`.*?`"),      # Backtick substitution `...`
     re.compile(r";\s*[a-zA-Z]"),  # Chained command syntax with semicolon
@@ -45,7 +39,7 @@ SHELL_INJECTION_PATTERNS: List[re.Pattern] = [
 # Commands that attempt to access secret/credential files through the terminal.
 # These are CRITICAL risk regardless of execution mode — blocked before execution.
 # This closes the gap where file-API secret protection does not cover the shell.
-SECRET_FILE_ACCESS_PATTERNS: List[re.Pattern] = [
+SECRET_FILE_ACCESS_PATTERNS: list[re.Pattern] = [
     # Direct reads of secret files
     re.compile(r"\bcat\b.*\.(env|key|pem|crt|cer|p12|pfx|jks|keystore|secret)\b", re.IGNORECASE),
     re.compile(r"\btype\b.*\.(env|key|pem|crt|cer|p12|pfx|jks|keystore|secret)\b", re.IGNORECASE),
@@ -79,7 +73,7 @@ SECRET_FILE_ACCESS_PATTERNS: List[re.Pattern] = [
 
 class CommandAnalysisResult:
 
-    def __init__(self, command: str, risk: RiskLevel, is_injection: bool = False, tokens: Optional[List[str]] = None) -> None:
+    def __init__(self, command: str, risk: RiskLevel, is_injection: bool = False, tokens: list[str] | None = None) -> None:
         self.command = command
         self.risk = risk
         self.is_injection = is_injection
@@ -134,9 +128,9 @@ class TerminalSandbox:
     async def execute_sandboxed_command(
         self,
         command: str,
-        timeout: Optional[float] = None,
-        env_vars: Optional[Dict[str, str]] = None,
-    ) -> Tuple[bool, str, int]:
+        timeout: float | None = None,
+        env_vars: dict[str, str] | None = None,
+    ) -> tuple[bool, str, int]:
         """Execute command in isolated environment with process tree cleanup."""
         analysis = self.analyze_command(command)
         if analysis.is_injection:
@@ -144,8 +138,13 @@ class TerminalSandbox:
         if analysis.risk == RiskLevel.CRITICAL:
             return False, f"Command blocked by security policy: critical risk command '{command}'", 126
 
-        from backend.app.agent.security.sandbox import ExecutionPolicy, global_sandbox_manager, ExecutionStatus
         import uuid
+
+        from backend.app.agent.security.sandbox import (
+            ExecutionPolicy,
+            ExecutionStatus,
+            global_sandbox_manager,
+        )
         t_limit = timeout or self.timeout
         policy = ExecutionPolicy(
             workspace_root=self.workspace_root,

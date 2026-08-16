@@ -1,22 +1,23 @@
-import os
 import asyncio
-from typing import Optional
+import os
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
 from ..state import workspace_state
 from ..utils import run_cmd_async
 
 router = APIRouter()
 
 class TestRunRequest(BaseModel):
-    file: Optional[str] = None
+    file: str | None = None
 
 def _discover_sync(workspace_root: str) -> list[str]:
     test_files = []
     for root, dirs, files in os.walk(workspace_root):
         # Normalize slashes for comparison
         norm_root = root.replace("\\", "/")
-        if any(f"/{d}" in norm_root or norm_root.endswith(d) for d in {".git", "node_modules", "venv", "__pycache__", ".devpilot"}):
+        if any(f"/{d}" in norm_root or norm_root.endswith(d) for d in (".git", "node_modules", "venv", "__pycache__", ".devpilot")):
             continue
         for f in files:
             if "test" in f.lower() and os.path.splitext(f)[1].lower() in {".py", ".ts", ".tsx", ".js", ".jsx"}:

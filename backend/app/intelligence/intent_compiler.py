@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
 
 logger = logging.getLogger("devpilot.intelligence.intent_compiler")
 
@@ -21,11 +20,11 @@ class CompiledIntent:
     """The structured translation of user intent."""
     raw_prompt: str
     goal: str
-    constraints: List[str] = field(default_factory=list)
-    acceptance_criteria: List[str] = field(default_factory=list)
-    evidence_requirements: List[str] = field(default_factory=list)
+    constraints: list[str] = field(default_factory=list)
+    acceptance_criteria: list[str] = field(default_factory=list)
+    evidence_requirements: list[str] = field(default_factory=list)
     estimated_risk: str = "low"  # low | medium | high
-    affected_components: List[str] = field(default_factory=list)
+    affected_components: list[str] = field(default_factory=list)
 
 
 class IntentCompiler:

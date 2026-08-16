@@ -8,9 +8,9 @@ via configurable ``base_url``.
 from __future__ import annotations
 
 import json
-import time
 import logging
-from typing import Any, Optional
+import time
+from typing import Any
 
 from agent_runtime.llm import (
     LLMProvider,
@@ -23,9 +23,11 @@ from agent_runtime.llm import (
 logger = logging.getLogger("agent_runtime.llm.openai_provider")
 
 
-import random
 import asyncio
+import random
+
 import httpx
+
 
 async def _call_with_retry(client: httpx.AsyncClient, url: str, headers: dict, json_body: dict) -> httpx.Response:
     max_retries = 3

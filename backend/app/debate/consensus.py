@@ -4,7 +4,7 @@ Consensus Engine — Aggregates peer critiques and calculates a single decision 
 from __future__ import annotations
 
 import logging
-from typing import List
+
 from .debate_engine import Critique
 
 logger = logging.getLogger("devpilot.debate.consensus")
@@ -13,7 +13,7 @@ logger = logging.getLogger("devpilot.debate.consensus")
 class ConsensusEngine:
     """Combines peer critique scores to decide whether to merge, revise, or reject changes."""
 
-    def resolve_consensus(self, critiques: List[Critique]) -> bool:
+    def resolve_consensus(self, critiques: list[Critique]) -> bool:
         """Resolve agreement based on critique scores and blocking flags.
 
         Returns True if approved, False if rejected.

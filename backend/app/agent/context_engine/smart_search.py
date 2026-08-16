@@ -7,11 +7,10 @@ from backend/app/rag.py, normalizing results into a uniform SearchResult structu
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
 
 from .security_filter import SecurityFilter
 from .symbol_index import SymbolIndex
@@ -30,7 +29,7 @@ class SearchResult:
     """Normalized code search result."""
     file: str
     line: int
-    symbol: Optional[str] = None
+    symbol: str | None = None
     snippet: str = ""
     score: float = 1.0
     match_type: str = "text"  # exact | regex | symbol | semantic
@@ -48,12 +47,12 @@ class SmartSearchEngine:
         self,
         query: str,
         match_type: str = "auto",
-        path_filter: Optional[str] = None,
-        language_filter: Optional[str] = None,
+        path_filter: str | None = None,
+        language_filter: str | None = None,
         max_results: int = 20,
-    ) -> List[SearchResult]:
+    ) -> list[SearchResult]:
         """Perform unified search across exact, regex, symbol, and semantic channels."""
-        results: List[SearchResult] = []
+        results: list[SearchResult] = []
 
         # Tokenize query into distinct search terms for multi-word prompts
         words = re.findall(r"\b[A-Za-z0-9_]{3,}\b", query)
@@ -117,7 +116,7 @@ class SmartSearchEngine:
 
         return deduped
 
-    def _matches_filters(self, file_path: str, path_filter: Optional[str], language_filter: Optional[str]) -> bool:
+    def _matches_filters(self, file_path: str, path_filter: str | None, language_filter: str | None) -> bool:
         """Verify path and language filtering rules."""
         if self.security_filter.is_ignored(file_path):
             return False
@@ -139,7 +138,7 @@ class SmartSearchEngine:
 
         return True
 
-    def _grep_workspace(self, query: str, path_filter: Optional[str], language_filter: Optional[str], limit: int) -> List[SearchResult]:
+    def _grep_workspace(self, query: str, path_filter: str | None, language_filter: str | None, limit: int) -> list[SearchResult]:
         """Perform exact / regex text search across workspace files."""
         results = []
         try:

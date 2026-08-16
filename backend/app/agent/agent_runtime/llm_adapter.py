@@ -7,11 +7,11 @@ into one canonical ModelResponse and ToolCall structure.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import json
 import logging
 import re
-from typing import Any, List, Optional
+from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger("devpilot.agent_runtime.llm_adapter")
 
@@ -22,7 +22,7 @@ class ToolCall:
     id: str
     name: str
     arguments: dict[str, Any] = field(default_factory=dict)
-    thought_signature: Optional[str] = None
+    thought_signature: str | None = None
 
     @property
     def input(self) -> dict[str, Any]:
@@ -33,14 +33,14 @@ class ToolCall:
 @dataclass
 class ModelResponse:
     """Canonical model response representation."""
-    text: Optional[str]
-    tool_calls: List[ToolCall] = field(default_factory=list)
-    finish_reason: Optional[str] = None
+    text: str | None
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    finish_reason: str | None = None
     input_tokens: int = 0
     output_tokens: int = 0
 
     @property
-    def content(self) -> Optional[str]:
+    def content(self) -> str | None:
         """Alias for text to support content attribute access."""
         return self.text
 
@@ -98,12 +98,12 @@ class ModelResponseNormalizer:
     def normalize_response(
         self,
         raw_response: Any,
-        text_content: Optional[str] = None,
-        raw_tool_calls: Optional[List[Any]] = None,
-        finish_reason: Optional[str] = None,
+        text_content: str | None = None,
+        raw_tool_calls: list[Any] | None = None,
+        finish_reason: str | None = None,
     ) -> ModelResponse:
         """Construct a ModelResponse, falling back to text parsing if no native tool calls present."""
-        tool_calls: List[ToolCall] = []
+        tool_calls: list[ToolCall] = []
 
         if raw_tool_calls:
             for tc in raw_tool_calls:
@@ -195,7 +195,7 @@ class ModelResponseNormalizer:
         )
 
     @staticmethod
-    def _extract_fallback_tool_call(text: str) -> Optional[ToolCall]:
+    def _extract_fallback_tool_call(text: str) -> ToolCall | None:
         """Regex/JSON compatibility fallback for non-native function calling models."""
         patterns = [
             r"```json\s*(\{\s*\"tool\"|\{\s*\"name\"|\{\s*\"action\"[^\}]+\})\s*```",

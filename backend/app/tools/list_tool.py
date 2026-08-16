@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any
 
 from ..async_files import async_list_workspace_dir
 
@@ -20,7 +20,7 @@ _EXCLUDE = {
 MAX_ENTRIES = 2000
 
 
-def _recursive_tree(root: str, rel_base: str, depth: int, max_depth: int, entries: List[dict]) -> None:
+def _recursive_tree(root: str, rel_base: str, depth: int, max_depth: int, entries: list[dict]) -> None:
     if depth > max_depth or len(entries) >= MAX_ENTRIES:
         return
     try:
@@ -51,7 +51,7 @@ def _recursive_tree(root: str, rel_base: str, depth: int, max_depth: int, entrie
         pass
 
 
-async def list_directory(session: Any, args: Dict[str, Any]) -> str:
+async def list_directory(session: Any, args: dict[str, Any]) -> str:
     path = args.get("path") or args.get("dir") or args.get("directory") or args.get("folder") or ""
     recursive = bool(args.get("recursive", False))
     max_depth = min(int(args.get("depth") or 4), 10)
@@ -61,7 +61,7 @@ async def list_directory(session: Any, args: Dict[str, Any]) -> str:
         items = await async_list_workspace_dir(workspace_root, path)
         return json.dumps(items, indent=2)
 
-    entries: List[dict] = []
+    entries: list[dict] = []
     base_abs = os.path.join(workspace_root, path.lstrip("/\\")) if path else workspace_root
     if not os.path.isdir(base_abs):
         return json.dumps({"error": f"Directory '{path}' not found."})

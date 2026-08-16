@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
+
+from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional
+
+from ..memory_manager import MemoryManager, global_memory_manager
 from ..state import workspace_state
-from ..memory_manager import global_memory_manager, MemoryManager
 
 router = APIRouter()
 
@@ -10,7 +11,7 @@ router = APIRouter()
 class AddRuleRequest(BaseModel):
     title: str
     content: str
-    category: Optional[str] = "convention"
+    category: str | None = "convention"
 
 
 class SearchMemoryRequest(BaseModel):

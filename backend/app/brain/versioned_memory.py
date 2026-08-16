@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger("devpilot.brain.versioned_memory")
 
@@ -25,9 +25,11 @@ class VersionedMemory:
 
     def __init__(self, workspace_root: str = "") -> None:
         self._workspace_root = workspace_root
-        self._store: Dict[str, MemoryVal] = {}
+        self._store: dict[str, MemoryVal] = {}
 
-        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        from backend.app.agent.security.environment_isolation import (
+            EnvironmentIsolation,
+        )
         env = EnvironmentIsolation.get_isolated_env()
         try:
             res = subprocess.run(
@@ -51,7 +53,7 @@ class VersionedMemory:
         self._store[key] = MemoryVal(value=value, git_commit=commit, timestamp=time.time())
         logger.debug(f"Saved versioned memory key '{key}' at commit {commit[:8]}")
 
-    def get(self, key: str, specific_commit: Optional[str] = None) -> Optional[Any]:
+    def get(self, key: str, specific_commit: str | None = None) -> Any | None:
         """Retrieve a value.
 
         If specific_commit is provided, warns if the value was saved on a different commit.

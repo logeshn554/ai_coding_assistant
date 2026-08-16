@@ -1,7 +1,6 @@
+import asyncio
 import os
 import sys
-import logging
-import asyncio
 import uuid
 from contextvars import ContextVar
 
@@ -12,26 +11,30 @@ if agent_dir not in sys.path:
     sys.path.insert(0, agent_dir)
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends
+
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from .logging_config import setup_logging
+
 setup_logging()
 
 from .config import settings
-from .state import SESSION_TOKEN, verify_token, limiter, logger
 from .middleware.error_handler import global_error_middleware
 from .routes import all_routers
+from .state import limiter, logger, verify_token
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import shutil as _shutil
+
     from .db import init_db
-    from .state import check_redis_at_startup
     from .rag import _evict_old_chroma_indexes
+    from .state import check_redis_at_startup
     try:
         await init_db()
     except Exception as e:
@@ -121,10 +124,12 @@ app = FastAPI(
 
 # Register Global Error Middleware & Observability Middleware
 from .middleware.observability_middleware import observability_middleware
+
 app.middleware("http")(observability_middleware)
 app.middleware("http")(global_error_middleware)
 
 from slowapi.middleware import SlowAPIMiddleware
+
 app.add_middleware(SlowAPIMiddleware)
 
 @app.middleware("http")
@@ -164,7 +169,8 @@ async def correlation_middleware(request: Request, call_next):
         _correlation_id_var.reset(token)
 
 from .gateway.auth import auth_gateway
-from .gateway.rate_limiter import rate_limiter, RateLimitResult
+from .gateway.rate_limiter import RateLimitResult, rate_limiter
+
 
 @app.middleware("http")
 async def gateway_middleware(request: Request, call_next):
@@ -264,7 +270,9 @@ app.add_middleware(
 )
 
 import time
+
 from .state import request_latencies
+
 
 @app.middleware("http")
 async def record_request_latency(request, call_next):

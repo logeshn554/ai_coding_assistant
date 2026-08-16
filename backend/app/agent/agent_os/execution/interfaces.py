@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any
+
 
 class ISandbox(ABC):
     """Execution sandbox container lifecycle interface."""
@@ -12,7 +13,7 @@ class ISandbox(ABC):
         pass
 
     @abstractmethod
-    def run_command(self, cmd: str) -> Dict[str, Any]:
+    def run_command(self, cmd: str) -> dict[str, Any]:
         pass
 
 
@@ -51,7 +52,6 @@ class ITransactionalExecutionEngine(ABC):
     @abstractmethod
     def validate_patch(self, file_path: str, current_content: str, target_content: str, replacement_content: str) -> str:
         """Validates syntax, conflict detection, and formatting. Returns the patched code on success."""
-        pass
 
 
 class IFileLockManager(ABC):

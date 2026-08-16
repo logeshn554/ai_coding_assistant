@@ -8,25 +8,24 @@ risk level, and repair budgets.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-import json
 import re
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
 class AgentTaskContract:
     """Structured contract for autonomous coding execution."""
     goal: str
-    scope: List[str] = field(default_factory=list)
-    constraints: List[str] = field(default_factory=list)
-    acceptance_criteria: List[str] = field(default_factory=list)
-    verification_requirements: List[str] = field(default_factory=list)
+    scope: list[str] = field(default_factory=list)
+    constraints: list[str] = field(default_factory=list)
+    acceptance_criteria: list[str] = field(default_factory=list)
+    verification_requirements: list[str] = field(default_factory=list)
     risk_level: str = "LOW"  # LOW | MEDIUM | HIGH
     max_steps: int = 15
     max_repair_rounds: int = 5
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "goal": self.goal,
             "scope": self.scope,
@@ -39,7 +38,7 @@ class AgentTaskContract:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "AgentTaskContract":
+    def from_dict(cls, data: dict[str, Any]) -> AgentTaskContract:
         return cls(
             goal=data.get("goal", ""),
             scope=data.get("scope", []),
@@ -56,7 +55,7 @@ class TaskContractGenerator:
     """Generates structured task contracts from prompt analysis."""
 
     @classmethod
-    def create_contract(cls, task_description: str, workspace_root: Optional[str] = None) -> AgentTaskContract:
+    def create_contract(cls, task_description: str, workspace_root: str | None = None) -> AgentTaskContract:
         desc = task_description.strip()
         risk = "LOW"
 

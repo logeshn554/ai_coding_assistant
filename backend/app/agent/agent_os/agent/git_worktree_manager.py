@@ -8,11 +8,9 @@ Each agent gets its own worktree from a common base commit, enabling:
   - Easy rollback per agent
 """
 
-import asyncio
-from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 from .workspace import Workspace
 
@@ -40,9 +38,9 @@ class GitWorktreeManager:
         """
         self.repository_root = repository_root
         self.workspace = Workspace(repository_root)
-        self.worktrees: Dict[str, WorktreeInfo] = {}
+        self.worktrees: dict[str, WorktreeInfo] = {}
 
-    async def create_worktree(self, agent_id: str) -> Tuple[bool, str]:
+    async def create_worktree(self, agent_id: str) -> tuple[bool, str]:
         """
         Create isolated worktree for agent.
 
@@ -90,9 +88,9 @@ class GitWorktreeManager:
             return True, str(worktree_path)
 
         except Exception as e:
-            return False, f"Exception creating worktree: {str(e)}"
+            return False, f"Exception creating worktree: {e!s}"
 
-    async def remove_worktree(self, agent_id: str, prune: bool = True) -> Tuple[bool, str]:
+    async def remove_worktree(self, agent_id: str, prune: bool = True) -> tuple[bool, str]:
         """
         Remove worktree for agent.
 
@@ -128,9 +126,9 @@ class GitWorktreeManager:
             return True, "Worktree removed successfully"
 
         except Exception as e:
-            return False, f"Exception removing worktree: {str(e)}"
+            return False, f"Exception removing worktree: {e!s}"
 
-    async def merge_worktree(self, agent_id: str) -> Tuple[bool, Dict[str, any]]:
+    async def merge_worktree(self, agent_id: str) -> tuple[bool, dict[str, any]]:
         """
         Merge worktree back to main branch.
 
@@ -189,9 +187,9 @@ class GitWorktreeManager:
                     }
 
         except Exception as e:
-            return False, {"error": f"Exception during merge: {str(e)}"}
+            return False, {"error": f"Exception during merge: {e!s}"}
 
-    async def detect_conflicts(self, agent_id_1: str, agent_id_2: str) -> Tuple[bool, List[str]]:
+    async def detect_conflicts(self, agent_id_1: str, agent_id_2: str) -> tuple[bool, list[str]]:
         """
         Detect conflicts between two agents' worktrees.
 
@@ -239,14 +237,14 @@ class GitWorktreeManager:
 
             return len(conflicting_files) > 0, conflicting_files
 
-        except Exception as e:
+        except Exception:
             return False, []
 
     async def resolve_conflict_auto(
         self,
         agent_id: str,
         strategy: str = "ours"
-    ) -> Tuple[bool, str]:
+    ) -> tuple[bool, str]:
         """
         Attempt automatic conflict resolution.
 
@@ -282,9 +280,9 @@ class GitWorktreeManager:
             return True, f"Conflicts resolved using {strategy} strategy"
 
         except Exception as e:
-            return False, f"Exception resolving conflicts: {str(e)}"
+            return False, f"Exception resolving conflicts: {e!s}"
 
-    async def get_worktree_diff(self, agent_id: str) -> Tuple[bool, str]:
+    async def get_worktree_diff(self, agent_id: str) -> tuple[bool, str]:
         """
         Get diff for agent's worktree.
 
@@ -312,11 +310,11 @@ class GitWorktreeManager:
         except Exception as e:
             return False, str(e)
 
-    def get_worktree_info(self, agent_id: str) -> Optional[WorktreeInfo]:
+    def get_worktree_info(self, agent_id: str) -> WorktreeInfo | None:
         """Get information about agent's worktree."""
         return self.worktrees.get(agent_id)
 
-    def list_active_worktrees(self) -> List[WorktreeInfo]:
+    def list_active_worktrees(self) -> list[WorktreeInfo]:
         """List all active worktrees."""
         return [wt for wt in self.worktrees.values() if wt.status == "active"]
 

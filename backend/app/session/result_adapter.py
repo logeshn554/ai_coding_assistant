@@ -3,11 +3,10 @@
 ResultAdapter: centralizes translation of AgentResult into UI events.
 Ensures exactly one `session_done` event and at most one error banner per request.
 """
-import json
-from typing import Any
 
 from ..agent.agent_runtime.runtime import AgentResult, AgentState
 from .base_session import BaseSession
+
 
 async def adapt_result(
     run_res: AgentResult,

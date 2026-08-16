@@ -4,7 +4,7 @@ Team Style Memory — Tracks developer code styles, syntax conventions, and form
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 logger = logging.getLogger("devpilot.brain.team_style_memory")
 
@@ -13,7 +13,7 @@ class TeamStyleMemory:
     """Stores style guidelines (naming conventions, docstring format, test conventions)."""
 
     def __init__(self) -> None:
-        self._guidelines: Dict[str, Any] = {
+        self._guidelines: dict[str, Any] = {
             "naming_style": "snake_case",
             "docstring_format": "google",
             "class_naming": "PascalCase",
@@ -29,7 +29,7 @@ class TeamStyleMemory:
         self._guidelines[key] = value
         logger.info(f"Updated team style preference: {key} -> {value}")
 
-    def import_from_eslint_ruff(self, config_data: Dict[str, Any]) -> None:
+    def import_from_eslint_ruff(self, config_data: dict[str, Any]) -> None:
         """Parse lint configurations to populate style guidelines."""
         if "line-length" in config_data:
             self.set_preference("max_line_length", config_data["line-length"])

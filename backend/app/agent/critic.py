@@ -15,7 +15,6 @@ Critic rules:
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass
 
 from .intent_router import IntentType
@@ -162,7 +161,7 @@ class Critic:
                     should_continue=True,
                     reason=f"Unresolved errors in task memory: {unresolved[0][:100]}",
                     injected_message=(
-                        f"There are unresolved errors from previous steps:\n"
+                        "There are unresolved errors from previous steps:\n"
                         + "\n".join(f"  - {e[:200]}" for e in unresolved)
                         + "\n\nAddress these errors before completing the task."
                     ),

@@ -1,7 +1,8 @@
-import copy
 import asyncio
+import copy
 import logging
-from typing import Any, Dict, List
+from typing import Any
+
 from agent_os.skills.interfaces import ISkill
 from agent_os.skills.plugins import IDEContext
 
@@ -20,7 +21,7 @@ class SkillOrchestrator:
       - All other keys: last-writer-wins (with a warning if values differ)
     """
     def __init__(self) -> None:
-        self._skills: Dict[str, ISkill] = {}
+        self._skills: dict[str, ISkill] = {}
 
     def register_skill(self, name: str, skill: ISkill) -> None:
         self._skills[name.lower()] = skill
@@ -37,9 +38,9 @@ class SkillOrchestrator:
                 return v
         return None
 
-    async def run_parallel(self, skill_names: List[str], context: IDEContext) -> IDEContext:
+    async def run_parallel(self, skill_names: list[str], context: IDEContext) -> IDEContext:
         """Run multiple skills concurrently and merge results with conflict awareness."""
-        skills_to_run: List[ISkill] = []
+        skills_to_run: list[ISkill] = []
         for name in skill_names:
             s = self.get_skill(name)
             if s is None:
@@ -51,7 +52,7 @@ class SkillOrchestrator:
 
         loop = asyncio.get_running_loop()
 
-        def _execute_skill(skill: ISkill, ctx_copy: IDEContext) -> Dict[str, Any]:
+        def _execute_skill(skill: ISkill, ctx_copy: IDEContext) -> dict[str, Any]:
             return skill.execute(ctx_copy)
 
         futures = []
@@ -64,11 +65,11 @@ class SkillOrchestrator:
 
         # ── Reducer-based merge ──
         # Track per-skill results for introspection
-        per_skill_results: Dict[str, Dict[str, Any]] = {}
-        all_file_contents: List[str] = []
+        per_skill_results: dict[str, dict[str, Any]] = {}
+        all_file_contents: list[str] = []
         any_modified = False
-        accumulated_errors: List[Dict[str, str]] = list(context.get("errors", []))
-        accumulated_logs: List[str] = list(context.logs) if context.logs else []
+        accumulated_errors: list[dict[str, str]] = list(context.get("errors", []))
+        accumulated_logs: list[str] = list(context.logs) if context.logs else []
 
         for skill_name, res in zip(skill_names, results):
             per_skill_results[skill_name] = dict(res.items()) if hasattr(res, "items") else {}
@@ -131,7 +132,7 @@ class SkillOrchestrator:
 
         return context
 
-    async def run_pipeline(self, skill_names: List[str], context: IDEContext) -> IDEContext:
+    async def run_pipeline(self, skill_names: list[str], context: IDEContext) -> IDEContext:
         loop = asyncio.get_running_loop()
         for name in skill_names:
             s = self.get_skill(name)

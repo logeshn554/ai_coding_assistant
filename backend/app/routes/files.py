@@ -1,46 +1,46 @@
+import asyncio
+import glob
+import hashlib
 import os
+import shutil
 import uuid
 from pathlib import Path
-import shutil
-import hashlib
-import glob
-import asyncio
-import logging
-from typing import Optional, List
-from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, UploadFile, File
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from ..state import workspace_state, logger
+from pydantic import BaseModel
+
 from ..files import (
+    delete_workspace_item,
     list_workspace_dir,
     read_workspace_file,
-    write_workspace_file,
-    delete_workspace_item,
+    replace_workspace_codebase,
+    rollback_file,
     safe_path,
     search_workspace_codebase,
-    replace_workspace_codebase,
-    rollback_file
+    write_workspace_file,
 )
-from ..transactional_fs import transactional_fs
 from ..schemas.files import (
-    FileItemResponse,
+    FileContentResponse,
     FileCreateRequest,
     FileCreateResponse,
-    FileContentResponse,
-    FileSaveRequest,
-    FileSaveResponse,
     FileDeleteRequest,
     FileDeleteResponse,
+    FileItemResponse,
     FileRenameRequest,
     FileRenameResponse,
+    FileSaveRequest,
+    FileSaveResponse,
     RollbackRequest,
     RollbackResponse,
 )
+from ..state import logger, workspace_state
+from ..transactional_fs import transactional_fs
 
 router = APIRouter()
 
 
-@router.get("/api/files", response_model=List[FileItemResponse])
+@router.get("/api/files", response_model=list[FileItemResponse])
 async def get_files(path: str = ""):
     try:
         if not workspace_state.root:
@@ -162,7 +162,7 @@ class ReplaceAllRequest(BaseModel):
     case_sensitive: bool = False
     whole_word: bool = False
     is_regex: bool = False
-    target_paths: Optional[List[str]] = None
+    target_paths: list[str] | None = None
 
 @router.post("/api/files/replace-all")
 async def replace_all_in_codebase(req: ReplaceAllRequest):

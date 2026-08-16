@@ -1,8 +1,8 @@
-import os
-import re
 import json
+import re
 
 from .context_config import TOOL_RESULT_MAX_CHARS
+
 
 def truncate_text(
     text: str,
@@ -23,8 +23,7 @@ def truncate_text(
     if n <= max_chars:
         return text
 
-    if preserve_tail_chars < 0:
-        preserve_tail_chars = 0
+    preserve_tail_chars = max(preserve_tail_chars, 0)
 
     if preserve_tail_chars >= max_chars:
         preserve_tail_chars = max_chars // 2
@@ -80,7 +79,7 @@ def compact_json(value: object, max_chars: int, label: str) -> str:
     try:
         serialized = json.dumps(value, separators=(',', ':'), default=str)
     except Exception as e:
-        serialized = f"{{\"error\": \"Failed to serialize: {str(e)}\"}}"
+        serialized = f"{{\"error\": \"Failed to serialize: {e!s}\"}}"
     return truncate_text(serialized, max_chars, label=label)
 
 def is_base64_data(text: str) -> bool:
@@ -173,7 +172,7 @@ def build_memory_summary(memory: dict, max_chars: int | None = None, indent: int
         else:
             serialized = json.dumps(cleaned_memory, separators=(',', ':'), default=str)
     except Exception as e:
-        serialized = f"{{\"error\":\"Failed to serialize memory: {str(e)}\"}}"
+        serialized = f"{{\"error\":\"Failed to serialize memory: {e!s}\"}}"
 
     if omissions_occurred:
         serialized = f"{serialized[:-1]},\"_omissions\":true}}"
@@ -289,7 +288,7 @@ def build_relevant_file_context(
         window_text = "".join(window_lines)
         if current_char_count + len(window_text) > max_chars - 100:
             omitted_any = True
-            output_parts.append(f"\n... [Truncated remaining excerpts due to size limits] ...\n")
+            output_parts.append("\n... [Truncated remaining excerpts due to size limits] ...\n")
             break
             
         output_parts.append(window_text)
@@ -342,7 +341,6 @@ def deduplicate_blocks(blocks: list[dict]) -> list[dict]:
 
 class ContextBudgetError(ValueError):
     """Custom exception raised when fixed context alone exceeds prompt budget limits."""
-    pass
 
 def assemble_prompt_context(
     *,

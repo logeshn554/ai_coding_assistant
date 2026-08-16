@@ -1,0 +1,42 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = [
+    ".git",
+    ".pytest_cache",
+    ".ruff_cache",
+    "venv",
+    "dist",
+    "build",
+    "node_modules",
+    "frontend",
+    "artifacts",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes (undefined names, imports)
+]
+ignore = [
+    "E501", # line too long (handled by formatting)
+    "E402", # module level import not at top of file
+    "E722", # bare except
+    "W291", # trailing whitespace
+    "W292", # no newline at end of file
+    "W293", # blank line contains whitespace
+    "E741", # ambiguous variable name
+    "E731", # do not assign a lambda expression
+    "E712", # comparison to True/False
+    "E711", # comparison to None
+    "F841", # local variable assigned to but never used
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+ignore_errors = true

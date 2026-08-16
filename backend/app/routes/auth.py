@@ -1,5 +1,7 @@
 import os
-from fastapi import APIRouter, Request, HTTPException
+
+from fastapi import APIRouter, HTTPException, Request
+
 from ..state import SESSION_TOKEN
 
 router = APIRouter()

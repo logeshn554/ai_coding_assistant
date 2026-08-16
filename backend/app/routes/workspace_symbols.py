@@ -6,11 +6,12 @@ Routes:
   GET /api/workspace/fuzzy-files?q=<query>     -> fuzzy-ranked list of file paths
 """
 import logging
-from typing import Optional
+
 from fastapi import APIRouter, HTTPException, Query
+
+from ..cache import cached
 from ..state import workspace_state
 from ..workspace_index import WorkspaceIndex
-from ..cache import cached
 
 router = APIRouter()
 logger = logging.getLogger("devpilot.routes.workspace_symbols")
@@ -31,8 +32,8 @@ def _get_index() -> WorkspaceIndex:
 @router.get("/api/workspace/symbols")
 @cached(ttl=600)
 async def get_symbols(
-    path: Optional[str] = Query(None, description="Relative file path within workspace"),
-    file: Optional[str] = Query(None, description="Alternative relative file path parameter")
+    path: str | None = Query(None, description="Relative file path within workspace"),
+    file: str | None = Query(None, description="Alternative relative file path parameter")
 ):
     """
     Extract code symbols (classes, functions, interfaces, etc.) from a workspace file.

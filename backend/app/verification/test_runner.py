@@ -6,7 +6,6 @@ from __future__ import annotations
 import logging
 import subprocess
 from dataclasses import dataclass
-from typing import List
 
 logger = logging.getLogger("devpilot.verification.test_runner")
 
@@ -24,13 +23,15 @@ class TestRunner:
     def __init__(self, workspace_root: str = "") -> None:
         self.workspace_root = workspace_root
 
-    def run_tests(self, test_files: List[str]) -> TestResult:
+    def run_tests(self, test_files: list[str]) -> TestResult:
         """Run a list of test files using pytest."""
         if not test_files:
             return TestResult(success=True, output="No tests to run.", exit_code=0)
 
         cmd = ["venv/Scripts/pytest"] + test_files
-        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        from backend.app.agent.security.environment_isolation import (
+            EnvironmentIsolation,
+        )
         env = EnvironmentIsolation.get_isolated_env()
         try:
             logger.info(f"Running verification tests: {cmd}")

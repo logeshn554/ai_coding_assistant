@@ -12,7 +12,7 @@ import logging
 import os
 import threading
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("devpilot.memory")
 
@@ -25,7 +25,7 @@ class MemoryManager:
     to `.devpilot/memory.json`.
     """
 
-    DEFAULT_MEMORY: Dict[str, Any] = {
+    DEFAULT_MEMORY: dict[str, Any] = {
         "version": "1.0.0",
         "project_name": "DevPilot Workspace",
         "architecture": {
@@ -61,20 +61,20 @@ class MemoryManager:
         },
     }
 
-    def __init__(self, workspace_root: Optional[str] = None):
+    def __init__(self, workspace_root: str | None = None):
         self.workspace_root = workspace_root
-        self._memory_data: Dict[str, Any] = self.DEFAULT_MEMORY.copy()
+        self._memory_data: dict[str, Any] = self.DEFAULT_MEMORY.copy()
         if workspace_root:
             self.load_memory()
 
-    def _get_memory_path(self) -> Optional[Path]:
+    def _get_memory_path(self) -> Path | None:
         if not self.workspace_root or not os.path.isdir(self.workspace_root):
             return None
         devpilot_dir = Path(self.workspace_root) / ".devpilot"
         devpilot_dir.mkdir(exist_ok=True)
         return devpilot_dir / "memory.json"
 
-    def load_memory(self) -> Dict[str, Any]:
+    def load_memory(self) -> dict[str, Any]:
         """Loads memory from .devpilot/memory.json if present."""
         path = self._get_memory_path()
         if not path or not path.exists():
@@ -107,12 +107,12 @@ class MemoryManager:
                 logger.error(f"Failed to write .devpilot/memory.json: {e}")
                 return False
 
-    def get_memory(self) -> Dict[str, Any]:
+    def get_memory(self) -> dict[str, Any]:
         return self._memory_data
 
     def add_convention(
         self, title: str, content: str, category: str = "convention"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         convs = self._memory_data.setdefault("conventions", [])
         new_item = {
             "id": f"m_{abs(hash(title + content))}",
@@ -168,7 +168,7 @@ class MemoryManager:
 
         self.save_memory()
 
-    def search_memory(self, query: str) -> List[Dict[str, Any]]:
+    def search_memory(self, query: str) -> list[dict[str, Any]]:
         """Performs search across memory conventions, goals, and edits."""
         q = query.lower().strip()
         if not q:

@@ -1,11 +1,11 @@
 """DevPilot Plugin & Extension SDK Service — Generates SDK manifests and manages 3rd-party extensions."""
 import logging
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger("devpilot.devpilot_sdk")
 
 class DevPilotSDK:
-    def get_sdk_manifest(self) -> Dict[str, Any]:
+    def get_sdk_manifest(self) -> dict[str, Any]:
         """Return the official DevPilot Extension & Plugin SDK specification manifest."""
         return {
             "sdk_version": "1.0.0-eos",

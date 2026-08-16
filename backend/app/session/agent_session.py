@@ -8,13 +8,28 @@ import logging
 import os
 import re
 import uuid
+
 import httpx
-from typing import Optional
+
 from ..adapters.base import AVAILABLE_TOOLS
-from ..async_files import async_list_workspace_dir
-from ..files import safe_path
+from ..agent.confidence_scorer import ConfidenceScorer
+from ..agent.context_collector import ContextCollector
+from ..agent.critic import Critic
+from ..agent.execution_logger import ExecutionLogger
+
+# ── 14-Phase Agent Intelligence Layer ────────────────────────────────────────
+from ..agent.intent_router import IntentRouter, IntentType
+from ..agent.knowledge_store import KnowledgeStore
+from ..agent.planning_engine import PlanningEngine
+from ..agent.recovery_manager import RecoveryManager
+from ..agent.task_memory import TaskMemory
+from ..agent.tool_policy import ToolPolicy
+from ..agent.validator import Validator
+from ..agent.workflow_engine import WorkflowEngine
 from ..orchestrator import AgentOrchestrator
-from ..processes import global_process_manager, get_process_using_port, kill_process_by_pid
+from ..processes import (
+    global_process_manager,
+)
 from ..prompts.master import (
     AGENT_ORCHESTRATION_SECTION,
     render_system_prompt,
@@ -27,24 +42,10 @@ from ..prompts.modes import (
 from ..tools.dispatcher import dispatch_tool
 from ..tools.terminal_tool import run_shell_command
 
-# ── 14-Phase Agent Intelligence Layer ────────────────────────────────────────
-from ..agent.intent_router import IntentRouter, IntentType
-from ..agent.context_collector import ContextCollector
-from ..agent.task_memory import TaskMemory, TaskStatus
-from ..agent.planning_engine import PlanningEngine
-from ..agent.execution_logger import ExecutionLogger
-from ..agent.tool_policy import ToolPolicy
-from ..agent.recovery_manager import RecoveryManager
-from ..agent.knowledge_store import KnowledgeStore
-from ..agent.confidence_scorer import ConfidenceScorer
-from ..agent.validator import Validator
-from ..agent.critic import Critic
-from ..agent.workflow_engine import WorkflowEngine
-
 logger = logging.getLogger("devpilot.agent")
 
 
-def detect_contradiction(text: str) -> Optional[str]:
+def detect_contradiction(text: str) -> str | None:
     """Detect contradictory instructions in user prompts.
     
     Allows multi-language, multi-framework, and fullstack setup instructions (e.g., Python + TypeScript,
@@ -65,6 +66,7 @@ def detect_contradiction(text: str) -> Optional[str]:
 
 
 from .base_session import BaseSession
+
 
 class AgentSession(BaseSession):
     """Manages a single DevPilot agent conversation and tool execution.
@@ -137,8 +139,8 @@ class AgentSession(BaseSession):
         self._validator: Validator = Validator(workspace_root)
         self._critic: Critic = Critic()
         self._workflow_engine: WorkflowEngine = WorkflowEngine()
-        self._exec_logger: Optional[ExecutionLogger] = None
-        self._current_intent: Optional[IntentType] = None
+        self._exec_logger: ExecutionLogger | None = None
+        self._current_intent: IntentType | None = None
         self._agent_tool_call_count: int = 0  # total tool calls in current agent run
 
         # Request queue: new messages are enqueued while the agent is busy.
@@ -302,9 +304,10 @@ class AgentSession(BaseSession):
 
     async def load_history_from_db(self):
         try:
-            from ..db import async_session, SessionModel
             from sqlalchemy.future import select
             from sqlalchemy.orm import selectinload
+
+            from ..db import SessionModel, async_session
             async with async_session() as db:
                 stmt = select(SessionModel).options(selectinload(SessionModel.messages)).where(SessionModel.id == self.session_id)
                 res = await db.execute(stmt)
@@ -366,10 +369,12 @@ class AgentSession(BaseSession):
 
     async def save_history_to_db(self):
         try:
-            from ..db import async_session, SessionModel, MessageModel
-            from sqlalchemy.future import select
-            import json
             import datetime
+            import json
+
+            from sqlalchemy.future import select
+
+            from ..db import MessageModel, SessionModel, async_session
 
             async with async_session() as db:
                 async with db.begin():
@@ -1026,11 +1031,7 @@ class AgentSession(BaseSession):
                     "alright", "great", "perfect", "good", "nice", "awesome",
                     "sounds good", "makes sense", "make sense",
                 }
-                if _t in _GREETINGS:
-                    mode = "Ask"
-
-                # â”â” Very short non-action input â†’ Ask â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”
-                elif len(_t) < 12 and not any(
+                if _t in _GREETINGS or len(_t) < 12 and not any(
                     kw in _t for kw in [
                         "create", "write", "fix", "run", "build",
                         "add", "edit", "delete", "install", "refactor",
@@ -1263,7 +1264,9 @@ class AgentSession(BaseSession):
                             "status": "verifying",
                             "message": "Verifying changes...",
                         })
-                        from ..agent.agent_runtime.verification import VerificationEngine
+                        from ..agent.agent_runtime.verification import (
+                            VerificationEngine,
+                        )
                         _ve = VerificationEngine(self.workspace_root, timeout=60.0)
                         _vr = await _ve.verify()
                         _verification_evidence = _vr.to_evidence()
@@ -1554,7 +1557,7 @@ class AgentSession(BaseSession):
                                         result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
                                         status = "success"
                                     except Exception as e:
-                                        result = f"Error executing tool '{tc_name}': {str(e)}"
+                                        result = f"Error executing tool '{tc_name}': {e!s}"
                                         status = "error"
 
                                 if any(sig.lower() in result.lower() for sig in _wasted_signals):
@@ -1570,7 +1573,9 @@ class AgentSession(BaseSession):
                                     "result": result
                                 })
 
-                                from ..context_helpers import prepare_tool_result_for_history
+                                from ..context_helpers import (
+                                    prepare_tool_result_for_history,
+                                )
                                 compact_result = prepare_tool_result_for_history(result, tool_name=tc_name)
                             
                                 entry = {
@@ -1612,10 +1617,12 @@ class AgentSession(BaseSession):
                                         result = await self._execute_tool_with_guardrails(tc_id, tc_name, tc_args, auto_apply)
                                         status = "success"
                                     except Exception as e:
-                                        result = f"Error executing tool '{tc_name}': {str(e)}"
+                                        result = f"Error executing tool '{tc_name}': {e!s}"
                                         status = "error"
 
-                                from ..context_helpers import prepare_tool_result_for_history
+                                from ..context_helpers import (
+                                    prepare_tool_result_for_history,
+                                )
                                 compact_result = prepare_tool_result_for_history(result, tool_name=tc_name)
 
                                 entry = {
@@ -2039,13 +2046,14 @@ class AgentSession(BaseSession):
         - Soft limit (COST_LIMIT_USD, default $5): sends advisory once per session.
         - Hard limit (DEVPILOT_HARD_COST_LIMIT, default $10): immediately terminates.
         """
-        from ..config import settings
         from ..adapters.tool_history import clean_tool_history
+        from ..config import settings
         cleaned_messages = clean_tool_history(messages)
         soft_limit = float(getattr(settings, "COST_LIMIT_USD", 5.0))
         hard_limit = float(getattr(settings, "DEVPILOT_HARD_COST_LIMIT", 10.0))
 
         from backend.app.infrastructure.model_gateway import ModelGateway
+
         from ..state import config_manager
         active_profile = config_manager.get_active_profile() or self.profile
         async for chunk in ModelGateway.generate_stream(active_profile, cleaned_messages, tools, system_prompt):
@@ -2155,10 +2163,8 @@ class AgentSession(BaseSession):
 
         try:
             clean_res = response.strip()
-            if clean_res.startswith("```json"):
-                clean_res = clean_res[7:]
-            if clean_res.endswith("```"):
-                clean_res = clean_res[:-3]
+            clean_res = clean_res.removeprefix("```json")
+            clean_res = clean_res.removesuffix("```")
             parsed = json.loads(clean_res.strip())
 
             root_cause = parsed.get("root_cause", "Unknown error")
@@ -2166,7 +2172,7 @@ class AgentSession(BaseSession):
             fix_command = parsed.get("fix_command")
             can_auto_fix = parsed.get("can_auto_fix", False)
         except Exception as e:
-            logger.error(f"Failed to parse LLM diagnostics response: {str(e)}")
+            logger.error(f"Failed to parse LLM diagnostics response: {e!s}")
             root_cause = "Unknown startup error."
             fix_suggestion = "Inspect terminal output and dependencies."
             fix_command = None

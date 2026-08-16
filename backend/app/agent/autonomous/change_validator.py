@@ -8,8 +8,6 @@ secret leaks, generated artifacts, or lockfile mutations.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import os
-from typing import Any, Dict, List, Optional, Set
 
 from .task_contract import AgentTaskContract
 
@@ -25,7 +23,7 @@ class ValidationFinding:
 class ValidationResult:
     valid: bool
     requires_review: bool
-    findings: List[ValidationFinding] = field(default_factory=list)
+    findings: list[ValidationFinding] = field(default_factory=list)
 
 
 class ChangeSetValidator:
@@ -34,10 +32,10 @@ class ChangeSetValidator:
     @classmethod
     def validate_changes(
         self,
-        changed_files: List[str],
+        changed_files: list[str],
         contract: AgentTaskContract,
     ) -> ValidationResult:
-        findings: List[ValidationFinding] = []
+        findings: list[ValidationFinding] = []
         requires_review = False
 
         for f in changed_files:

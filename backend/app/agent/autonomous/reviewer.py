@@ -8,7 +8,7 @@ distinguishing technical verification (passing tests) from requirement satisfact
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .task_contract import AgentTaskContract
 from .verification_engine import VerificationResult
@@ -24,10 +24,10 @@ class ReviewFinding:
 @dataclass
 class ReviewResult:
     approved: bool
-    findings: List[ReviewFinding] = field(default_factory=list)
+    findings: list[ReviewFinding] = field(default_factory=list)
     confidence: float = 1.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "approved": self.approved,
             "findings": [
@@ -49,10 +49,10 @@ class AgentReviewer:
     def review_task(
         cls,
         contract: AgentTaskContract,
-        changed_files: List[str],
+        changed_files: list[str],
         verification_res: VerificationResult,
     ) -> ReviewResult:
-        findings: List[ReviewFinding] = []
+        findings: list[ReviewFinding] = []
         all_satisfied = True
 
         for criterion in contract.acceptance_criteria:

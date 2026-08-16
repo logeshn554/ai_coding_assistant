@@ -1,7 +1,9 @@
 import logging
 import uuid
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
 from ..errors import DevPilotError
 
 logger = logging.getLogger("devpilot.error_middleware")

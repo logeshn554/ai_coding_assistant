@@ -1,21 +1,23 @@
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any
+
 from agent_os.skills.interfaces import ISkill
+
 
 @dataclass
 class IDEContext:
     current_file: str = ""
     selected_symbol: str = ""
-    logs: List[str] = field(default_factory=list)
+    logs: list[str] = field(default_factory=list)
     
     # Enhanced file awareness fields
     file_content: str = ""
     file_path: str = ""
     modified: bool = False
-    errors: List[Dict[str, str]] = field(default_factory=list)
+    errors: list[dict[str, str]] = field(default_factory=list)
     workspace_root: str = ""
     
-    _extra_data: Dict[str, Any] = field(default_factory=dict)
+    _extra_data: dict[str, Any] = field(default_factory=dict)
 
     def __getitem__(self, key: str) -> Any:
         if hasattr(self, key) and key != "_extra_data":
@@ -68,7 +70,7 @@ class IDEContext:
         res.extend(self._extra_data.keys())
         return res
 
-    def update(self, other: Dict[str, Any]) -> None:
+    def update(self, other: dict[str, Any]) -> None:
         for k, v in other.items():
             self[k] = v
 
@@ -82,7 +84,7 @@ class RenameSymbolSkill(ISkill):
     def description(self) -> str:
         return "Renames a code symbol and updates references across files."
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """Rename a symbol in the file."""
         import os
         try:
@@ -134,7 +136,7 @@ class RenameSymbolSkill(ISkill):
                     except Exception as e:
                         context["errors"].append({
                             "skill": "RenameSymbolSkill",
-                            "message": f"Failed to write to file: {str(e)}"
+                            "message": f"Failed to write to file: {e!s}"
                         })
             
             return context
@@ -142,7 +144,7 @@ class RenameSymbolSkill(ISkill):
         except Exception as e:
             context["errors"].append({
                 "skill": "RenameSymbolSkill",
-                "message": f"Error: {str(e)}"
+                "message": f"Error: {e!s}"
             })
             return context
 
@@ -156,7 +158,7 @@ class GenerateTestSkill(ISkill):
     def description(self) -> str:
         return "Generates test cases for target functions/classes."
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """Generate tests for a symbol."""
         import os
         try:
@@ -213,7 +215,7 @@ class GenerateTestSkill(ISkill):
                     except Exception as e:
                         context["errors"].append({
                             "skill": "GenerateTestSkill",
-                            "message": f"Failed to write test file: {str(e)}"
+                            "message": f"Failed to write test file: {e!s}"
                         })
             else:
                 context["logs"].append("Generated test cases successfully.")
@@ -223,7 +225,7 @@ class GenerateTestSkill(ISkill):
         except Exception as e:
             context["errors"].append({
                 "skill": "GenerateTestSkill",
-                "message": f"Error: {str(e)}"
+                "message": f"Error: {e!s}"
             })
             return context
     
@@ -238,6 +240,7 @@ class GenerateTestSkill(ISkill):
 
 import ast
 
+
 class FixImportSkill(ISkill):
     @property
     def name(self) -> str:
@@ -247,7 +250,7 @@ class FixImportSkill(ISkill):
     def description(self) -> str:
         return "Resolves unused or broken imports in source files."
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """Fix imports in file."""
         import os
         try:
@@ -306,7 +309,7 @@ class FixImportSkill(ISkill):
                         except Exception as e:
                             context["errors"].append({
                                 "skill": "FixImportSkill",
-                                "message": f"Failed to write to file: {str(e)}"
+                                "message": f"Failed to write to file: {e!s}"
                             })
                 else:
                     context["logs"].append("No unused imports found")
@@ -320,11 +323,11 @@ class FixImportSkill(ISkill):
         except Exception as e:
             context["errors"].append({
                 "skill": "FixImportSkill",
-                "message": f"Error: {str(e)}"
+                "message": f"Error: {e!s}"
             })
             return context
     
-    def _find_unused_imports(self, tree: ast.AST, content: str) -> List[str]:
+    def _find_unused_imports(self, tree: ast.AST, content: str) -> list[str]:
         """Find unused imports (simplified)."""
         imported_names = {}
         used_names = set()
@@ -357,7 +360,7 @@ class ReviewPatchSkill(ISkill):
     def description(self) -> str:
         return "Reviews code change patches for style or errors."
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """Reviews code change patches."""
         try:
             context.setdefault("errors", [])
@@ -385,7 +388,7 @@ class ReviewPatchSkill(ISkill):
         except Exception as e:
             context["errors"].append({
                 "skill": "ReviewPatchSkill",
-                "message": f"Error: {str(e)}"
+                "message": f"Error: {e!s}"
             })
             return context
 
@@ -399,7 +402,7 @@ class RefactorMethodSkill(ISkill):
     def description(self) -> str:
         return "Refactors logic/complexity inside a target method."
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """Refactors logic/complexity inside a target method."""
         import os
         try:
@@ -449,7 +452,7 @@ class RefactorMethodSkill(ISkill):
                         except Exception as e:
                             context["errors"].append({
                                 "skill": "RefactorMethodSkill",
-                                "message": f"Failed to write to file: {str(e)}"
+                                "message": f"Failed to write to file: {e!s}"
                             })
                 else:
                     context["logs"].append("Refactored method complexity successfully.")
@@ -460,7 +463,7 @@ class RefactorMethodSkill(ISkill):
         except Exception as e:
             context["errors"].append({
                 "skill": "RefactorMethodSkill",
-                "message": f"Error: {str(e)}"
+                "message": f"Error: {e!s}"
             })
             return context
 
@@ -474,7 +477,7 @@ class OptimizeSQLSkill(ISkill):
     def description(self) -> str:
         return "Analyzes and optimizes slow raw SQL queries."
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """Analyzes and optimizes raw SQL queries."""
         try:
             context.setdefault("errors", [])
@@ -496,7 +499,7 @@ class OptimizeSQLSkill(ISkill):
         except Exception as e:
             context["errors"].append({
                 "skill": "OptimizeSQLSkill",
-                "message": f"Error: {str(e)}"
+                "message": f"Error: {e!s}"
             })
             return context
 
@@ -510,7 +513,7 @@ class UpdateDependencySkill(ISkill):
     def description(self) -> str:
         return "Upgrades package dependencies inside requirement manifests."
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """Upgrades package dependencies."""
         try:
             context.setdefault("errors", [])
@@ -530,7 +533,7 @@ class UpdateDependencySkill(ISkill):
         except Exception as e:
             context["errors"].append({
                 "skill": "UpdateDependencySkill",
-                "message": f"Error: {str(e)}"
+                "message": f"Error: {e!s}"
             })
             return context
 
@@ -544,7 +547,7 @@ class SecurityScanSkill(ISkill):
     def description(self) -> str:
         return "Scans source files for security vulnerabilities."
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         """Scans source files for security vulnerabilities."""
         try:
             context.setdefault("errors", [])
@@ -572,6 +575,6 @@ class SecurityScanSkill(ISkill):
         except Exception as e:
             context["errors"].append({
                 "skill": "SecurityScanSkill",
-                "message": f"Error: {str(e)}"
+                "message": f"Error: {e!s}"
             })
             return context

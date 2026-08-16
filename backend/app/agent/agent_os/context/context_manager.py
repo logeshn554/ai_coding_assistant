@@ -1,17 +1,16 @@
-import os
-from typing import Any, Dict, List, Optional
 from .virtual_memory import VirtualMemoryContextManager
+
 
 class WorkspaceContextManager(VirtualMemoryContextManager):
     """Manages workspace files, active symbols, conversation history, and editor/git states."""
     def __init__(self, workspace_root: str = "", token_budget: int = 2000) -> None:
         super().__init__(token_budget)
         self._workspace_root = workspace_root
-        self._retrieved_files: Dict[str, str] = {}
-        self._conversation_history: List[Dict[str, str]] = []
-        self._active_symbols: List[str] = []
+        self._retrieved_files: dict[str, str] = {}
+        self._conversation_history: list[dict[str, str]] = []
+        self._active_symbols: list[str] = []
         self._current_branch: str = "main"
-        self._open_editors: List[str] = []
+        self._open_editors: list[str] = []
 
     @property
     def workspace_root(self) -> str:
@@ -22,7 +21,7 @@ class WorkspaceContextManager(VirtualMemoryContextManager):
         self._workspace_root = root
 
     @property
-    def retrieved_files(self) -> Dict[str, str]:
+    def retrieved_files(self) -> dict[str, str]:
         return self._retrieved_files
 
     def add_retrieved_file(self, path: str, content: str) -> None:
@@ -30,7 +29,7 @@ class WorkspaceContextManager(VirtualMemoryContextManager):
         self.add_to_context(f"file:{path}", content)
 
     @property
-    def conversation_history(self) -> List[Dict[str, str]]:
+    def conversation_history(self) -> list[dict[str, str]]:
         return self._conversation_history
 
     def add_message(self, role: str, content: str) -> None:
@@ -38,7 +37,7 @@ class WorkspaceContextManager(VirtualMemoryContextManager):
         self.add_to_context(f"history:{len(self._conversation_history)}", f"{role.upper()}: {content}")
 
     @property
-    def active_symbols(self) -> List[str]:
+    def active_symbols(self) -> list[str]:
         return self._active_symbols
 
     def add_active_symbol(self, symbol: str) -> None:
@@ -54,7 +53,7 @@ class WorkspaceContextManager(VirtualMemoryContextManager):
         self._current_branch = branch
 
     @property
-    def open_editors(self) -> List[str]:
+    def open_editors(self) -> list[str]:
         return self._open_editors
 
     def add_open_editor(self, path: str) -> None:
@@ -82,7 +81,7 @@ class WorkspaceContextManager(VirtualMemoryContextManager):
         ops = FileOperations(self._workspace_root)
         result = ops.write_file(path, content)
         if not result.success:
-            raise IOError(result.message)
+            raise OSError(result.message)
         self.add_retrieved_file(path, content)
 
     def track_unsaved_change(self, path: str, content: str) -> None:

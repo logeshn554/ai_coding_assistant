@@ -7,13 +7,13 @@ executable function, JSON schema, risk level, and timeout.
 
 from __future__ import annotations
 
-import time
-import logging
 import asyncio
-from abc import ABC, abstractmethod
+import logging
+import time
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Coroutine, Optional
+from typing import Any
 
 logger = logging.getLogger("agent_runtime.tools")
 
@@ -31,7 +31,7 @@ class ToolResult:
     """Result of executing a tool."""
     success: bool
     output: str
-    error: Optional[str] = None
+    error: str | None = None
     duration_ms: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -81,7 +81,7 @@ class ToolRegistry:
         self._tools[tool.name] = tool
         logger.info("Registered tool: %s (risk=%s, timeout=%.0fs)", tool.name, tool.risk_level.value, tool.timeout)
 
-    def get(self, name: str) -> Optional[ToolDefinition]:
+    def get(self, name: str) -> ToolDefinition | None:
         """Retrieve a tool by name."""
         if isinstance(name, str) and "<|channel|>" in name:
             name = name.split("<|channel|>")[0]

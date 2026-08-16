@@ -16,11 +16,12 @@ The agent loop pattern:
   9. Independent verification system verifies result
 """
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
-from enum import Enum
 import asyncio
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
 
 
 class AgentState(str, Enum):
@@ -47,7 +48,6 @@ class AgentState(str, Enum):
 
 class ToolCallError(Exception):
     """Error from tool invocation."""
-    pass
 
 
 @dataclass
@@ -55,7 +55,7 @@ class ToolDefinition:
     """Complete tool definition with schema and metadata."""
     name: str
     description: str
-    input_schema: Dict[str, Any]
+    input_schema: dict[str, Any]
     executor: Callable[..., Any]
     timeout_seconds: int = 30
     permission_level: str = "user"  # user, admin, internal
@@ -68,7 +68,7 @@ class ToolDefinition:
 class ToolCall:
     """A single tool invocation request from the LLM."""
     tool_name: str
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
     tool_call_id: str  # Unique ID for this call
     timestamp: float = field(default_factory=lambda: asyncio.get_event_loop().time())
 
@@ -80,10 +80,10 @@ class ToolResult:
     tool_name: str
     status: str  # success, error, timeout, permission_denied, validation_error
     result: Any
-    error: Optional[str] = None
-    stdout: Optional[str] = None
-    stderr: Optional[str] = None
-    exit_code: Optional[int] = None
+    error: str | None = None
+    stdout: str | None = None
+    stderr: str | None = None
+    exit_code: int | None = None
     duration_ms: float = 0.0
 
 
@@ -92,8 +92,8 @@ class LLMMessage:
     """Message in the agent-LLM conversation."""
     role: str  # system, user, assistant
     content: str
-    tool_calls: List[ToolCall] = field(default_factory=list)
-    tool_results: List[ToolResult] = field(default_factory=list)
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    tool_results: list[ToolResult] = field(default_factory=list)
 
 
 @dataclass
@@ -103,12 +103,12 @@ class Task:
     title: str
     description: str
     agent_type: str  # coding, testing, review, etc.
-    depends_on: List[str] = field(default_factory=list)
-    allowed_paths: List[str] = field(default_factory=list)  # Restrict writes to these paths
-    acceptance_criteria: List[str] = field(default_factory=list)
-    verification_commands: List[str] = field(default_factory=list)
+    depends_on: list[str] = field(default_factory=list)
+    allowed_paths: list[str] = field(default_factory=list)  # Restrict writes to these paths
+    acceptance_criteria: list[str] = field(default_factory=list)
+    verification_commands: list[str] = field(default_factory=list)
     timeout_seconds: int = 300
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def validate_paths(self) -> tuple[bool, list[str]]:
         """
@@ -137,11 +137,11 @@ class AgentContext:
     workspace_root: str
     attempt_id: str = ""
     execution_id: str = ""
-    model_provider: Optional[str] = None
-    model_name: Optional[str] = None
+    model_provider: str | None = None
+    model_name: str | None = None
     budget_tokens: int = 8000
     max_retries: int = 3
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -154,15 +154,15 @@ class AgentResult:
     status: str  # success, failed, cancelled, timeout, blocked
     final_state: AgentState
     summary: str
-    files_changed: List[str] = field(default_factory=list)
+    files_changed: list[str] = field(default_factory=list)
     tool_calls_total: int = 0
     tool_calls_succeeded: int = 0
     tool_calls_failed: int = 0
     llm_calls: int = 0
     tokens_used: int = 0
     duration_ms: float = 0.0
-    error: Optional[str] = None
-    verification_results: Dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    verification_results: dict[str, Any] = field(default_factory=dict)
 
 
 class IAgent(ABC):
@@ -180,23 +180,19 @@ class IAgent(ABC):
     @abstractmethod
     def agent_id(self) -> str:
         """Unique agent identifier."""
-        pass
 
     @property
     @abstractmethod
     def current_state(self) -> AgentState:
         """Current agent state."""
-        pass
 
     @abstractmethod
     async def initialize(self, context: AgentContext) -> None:
         """Initialize agent with context and transition to READY."""
-        pass
 
     @abstractmethod
-    async def get_available_tools(self) -> Dict[str, ToolDefinition]:
+    async def get_available_tools(self) -> dict[str, ToolDefinition]:
         """Return tools this agent can use."""
-        pass
 
     @abstractmethod
     async def execute(self) -> AgentResult:
@@ -216,17 +212,14 @@ class IAgent(ABC):
           
         Then independent verification happens outside the agent loop.
         """
-        pass
 
     @abstractmethod
     async def cancel(self) -> None:
         """Cancel execution and cleanup."""
-        pass
 
     @abstractmethod
-    def get_execution_log(self) -> List[Dict[str, Any]]:
+    def get_execution_log(self) -> list[dict[str, Any]]:
         """Return detailed execution log for observability."""
-        pass
 
 
 class IAgentFactory(ABC):
@@ -235,19 +228,17 @@ class IAgentFactory(ABC):
     @abstractmethod
     async def create_agent(self, agent_type: str) -> IAgent:
         """Create an agent of the given type."""
-        pass
 
     @abstractmethod
-    def get_supported_types(self) -> List[str]:
+    def get_supported_types(self) -> list[str]:
         """Return list of supported agent types."""
-        pass
 
 
 class IToolExecutor(ABC):
     """Executes validated tool calls."""
 
     @abstractmethod
-    async def execute(self, tool_call: ToolCall, allowed_paths: List[str]) -> ToolResult:
+    async def execute(self, tool_call: ToolCall, allowed_paths: list[str]) -> ToolResult:
         """
         Execute a tool call.
         
@@ -261,7 +252,6 @@ class IToolExecutor(ABC):
         Raises:
             ToolCallError if validation or execution fails
         """
-        pass
 
 
 class IToolValidator(ABC):
@@ -272,8 +262,8 @@ class IToolValidator(ABC):
         self,
         tool_call: ToolCall,
         tool_def: ToolDefinition,
-        allowed_paths: List[str]
-    ) -> tuple[bool, Optional[str]]:
+        allowed_paths: list[str]
+    ) -> tuple[bool, str | None]:
         """
         Validate a tool call.
         
@@ -287,7 +277,6 @@ class IToolValidator(ABC):
           - Permission level
           - Timeout feasibility
         """
-        pass
 
 
 class ILLMIntegration(ABC):
@@ -296,8 +285,8 @@ class ILLMIntegration(ABC):
     @abstractmethod
     async def generate_with_tools(
         self,
-        messages: List[LLMMessage],
-        tools: Dict[str, ToolDefinition],
+        messages: list[LLMMessage],
+        tools: dict[str, ToolDefinition],
         max_tokens: int = 2000,
     ) -> LLMMessage:
         """
@@ -306,12 +295,10 @@ class ILLMIntegration(ABC):
         Returns:
             LLMMessage with response and any tool_calls
         """
-        pass
 
     @abstractmethod
     async def cancel_request(self, request_id: str) -> None:
         """Cancel an in-flight LLM request."""
-        pass
 
 
 class IAgentStateManager(ABC):
@@ -320,14 +307,11 @@ class IAgentStateManager(ABC):
     @abstractmethod
     def transition(self, new_state: AgentState) -> None:
         """Transition to new state."""
-        pass
 
     @abstractmethod
-    def can_transition_to(self, new_state: AgentState) -> tuple[bool, Optional[str]]:
+    def can_transition_to(self, new_state: AgentState) -> tuple[bool, str | None]:
         """Check if transition is valid."""
-        pass
 
     @abstractmethod
-    def get_history(self) -> List[tuple[AgentState, float]]:
+    def get_history(self) -> list[tuple[AgentState, float]]:
         """Get state transition history."""
-        pass

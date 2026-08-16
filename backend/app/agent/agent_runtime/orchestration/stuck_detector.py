@@ -7,11 +7,11 @@ encountering the same error signature repeatedly, or trapped in alternating ping
 
 from __future__ import annotations
 
-import re
 import hashlib
 import logging
+import re
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("agent_runtime.orchestration.stuck_detector")
 

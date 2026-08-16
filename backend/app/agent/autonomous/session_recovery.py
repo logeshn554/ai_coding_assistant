@@ -7,11 +7,11 @@ allowing seamless session resumption if the IDE or backend process restarts.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any
 
 logger = logging.getLogger("devpilot.autonomous.session_recovery")
 
@@ -20,15 +20,15 @@ logger = logging.getLogger("devpilot.autonomous.session_recovery")
 class SessionStateSnapshot:
     session_id: str
     task_goal: str
-    contract_data: Dict[str, Any]
-    plan_data: Dict[str, Any]
-    current_step_id: Optional[str]
+    contract_data: dict[str, Any]
+    plan_data: dict[str, Any]
+    current_step_id: str | None
     repair_rounds: int
-    changed_files: List[str]
+    changed_files: list[str]
     verification_status: str
     status: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "session_id": self.session_id,
             "task_goal": self.task_goal,
@@ -42,7 +42,7 @@ class SessionStateSnapshot:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SessionStateSnapshot":
+    def from_dict(cls, data: dict[str, Any]) -> SessionStateSnapshot:
         return cls(
             session_id=data.get("session_id", ""),
             task_goal=data.get("task_goal", ""),
@@ -69,7 +69,7 @@ class SessionRecoveryManager:
             json.dump(snapshot.to_dict(), f, indent=2)
         return filepath
 
-    def load_snapshot(self, session_id: str) -> Optional[SessionStateSnapshot]:
+    def load_snapshot(self, session_id: str) -> SessionStateSnapshot | None:
         filepath = os.path.join(self.storage_dir, f"session_{session_id}.json")
         if not os.path.exists(filepath):
             return None

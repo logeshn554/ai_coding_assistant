@@ -13,13 +13,13 @@ Provides:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
-import hashlib
 import shutil
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("devpilot.rag")
 
@@ -80,13 +80,13 @@ class Chunk:
     start_line: int
     end_line: int
     source_file: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-def chunk_file(path: str, max_tokens: int = 500, overlap: int = 50) -> List[Chunk]:
+def chunk_file(path: str, max_tokens: int = 500, overlap: int = 50) -> list[Chunk]:
     """Chunk a file into token-bounded line windows with overlap."""
     if not path or not os.path.exists(path):
         return []
@@ -101,8 +101,8 @@ def chunk_file(path: str, max_tokens: int = 500, overlap: int = 50) -> List[Chun
     if not lines:
         return []
 
-    chunks: List[Chunk] = []
-    current_lines: List[str] = []
+    chunks: list[Chunk] = []
+    current_lines: list[str] = []
     current_word_count = 0
     start_line = 1
 
@@ -128,7 +128,7 @@ def chunk_file(path: str, max_tokens: int = 500, overlap: int = 50) -> List[Chun
                         },
                     )
                 )
-            overlap_lines: List[str] = []
+            overlap_lines: list[str] = []
             overlap_words = 0
             for prev_line in reversed(current_lines):
                 p_words = len(prev_line.split())
@@ -179,7 +179,7 @@ def _use_pgvector() -> bool:
     return "postgres" in db_url or "postgresql" in db_url
 
 
-def _hash_embed(text: str, dim: int = _PGVECTOR_DIM) -> List[float]:
+def _hash_embed(text: str, dim: int = _PGVECTOR_DIM) -> list[float]:
     """Deterministic bag-of-tokens embedding (no external model dependency)."""
     vec = [0.0] * dim
     tokens = (text or "").lower().split()
@@ -206,6 +206,7 @@ async def _ensure_pgvector_schema() -> bool:
         return True
     try:
         from sqlalchemy import text
+
         from .infrastructure.database.connection import async_session_factory
 
         async with async_session_factory() as db:
@@ -241,12 +242,14 @@ async def _ensure_pgvector_schema() -> bool:
 
 
 async def _pg_embed_and_index(
-    chunks: List[Chunk],
+    chunks: list[Chunk],
     collection_name: str,
     workspace_root: str = "",
 ) -> Any:
-    from sqlalchemy import text
     import json as _json
+
+    from sqlalchemy import text
+
     from .infrastructure.database.connection import async_session_factory
 
     if not await _ensure_pgvector_schema():
@@ -292,9 +295,11 @@ async def _pg_query(
     question: str,
     top_k: int = 5,
     workspace_root: str = "",
-) -> List[Chunk]:
-    from sqlalchemy import text
+) -> list[Chunk]:
     import json as _json
+
+    from sqlalchemy import text
+
     from .infrastructure.database.connection import async_session_factory
 
     if not await _ensure_pgvector_schema():
@@ -324,7 +329,7 @@ async def _pg_query(
                 },
             )
             rows = result.fetchall()
-        out: List[Chunk] = []
+        out: list[Chunk] = []
         for content, meta in rows:
             if isinstance(meta, str):
                 try:
@@ -351,7 +356,7 @@ async def _pg_query(
 _chroma_clients: dict = {}
 
 
-def _get_chroma_client(workspace_root: Optional[str] = None):
+def _get_chroma_client(workspace_root: str | None = None):
     """Retrieve persistent ChromaDB client for the workspace with connection pooling."""
     if workspace_root and os.path.isdir(workspace_root):
         h = hashlib.sha256(os.path.abspath(workspace_root).encode("utf-8")).hexdigest()[:16]
@@ -385,7 +390,7 @@ def _get_chroma_client(workspace_root: Optional[str] = None):
 
 
 async def embed_and_index(
-    chunks: List[Chunk],
+    chunks: list[Chunk],
     collection_name: str,
     workspace_root: str = "",
 ) -> Any:
@@ -423,7 +428,7 @@ async def query(
     question: str,
     top_k: int = 5,
     workspace_root: str = "",
-) -> List[Chunk]:
+) -> list[Chunk]:
     """Query the active RAG backend for top_k relevant chunks."""
     if not question or not question.strip():
         question = "relevant code context"
@@ -451,10 +456,10 @@ async def query(
         actual_k = min(top_k, count)
         results = collection.query(query_texts=[question], n_results=actual_k)
 
-        retrieved_chunks: List[Chunk] = []
+        retrieved_chunks: list[Chunk] = []
         if results and "documents" in results and results["documents"]:
             docs = results["documents"][0]
-            metas = results["metadatas"][0] if "metadatas" in results and results["metadatas"] else [{}] * len(docs)
+            metas = results["metadatas"][0] if results.get("metadatas") else [{}] * len(docs)
             for doc, meta in zip(docs, metas):
                 retrieved_chunks.append(
                     Chunk(

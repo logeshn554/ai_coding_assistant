@@ -10,10 +10,9 @@ from __future__ import annotations
 
 import os
 import re
-from typing import List, Set
 
 # Regex patterns matching secrets
-SECRET_PATTERNS: List[re.Pattern] = [
+SECRET_PATTERNS: list[re.Pattern] = [
     re.compile(r"AKIA[0-9A-Z]{16}"),  # AWS Access Key ID
     re.compile(r"ghp_[a-zA-Z0-9]{36}"),  # GitHub Personal Access Token
     re.compile(r"gho_[a-zA-Z0-9]{36}"),  # GitHub OAuth Token
@@ -29,7 +28,7 @@ SECRET_PATTERNS: List[re.Pattern] = [
 ]
 
 # Sensitive file patterns
-PROTECTED_SECRET_FILES: Set[str] = {
+PROTECTED_SECRET_FILES: set[str] = {
     ".env", ".env.local", ".env.production", ".env.development", "secret.pem", "id_rsa", "id_ed25519", "credentials.json", "service_account.json"
 }
 

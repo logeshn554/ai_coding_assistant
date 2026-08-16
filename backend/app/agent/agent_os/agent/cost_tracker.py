@@ -9,7 +9,6 @@ Tracks:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
 from datetime import datetime
 from enum import Enum
 
@@ -29,7 +28,7 @@ class CostEntry:
     cost_type: CostType
     amount: float
     unit: str  # tokens, calls, seconds, etc.
-    metadata: Dict = field(default_factory=dict)
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -60,7 +59,7 @@ class AgentBudget:
             self.exceeded_time_budget,
         ])
 
-    def check_budgets(self) -> Dict[str, bool]:
+    def check_budgets(self) -> dict[str, bool]:
         """Check all budgets and return status."""
         return {
             "tokens": self.tokens_used <= self.max_tokens,
@@ -83,9 +82,9 @@ class CostTracker:
     ):
         """Initialize cost tracker."""
         import os
-        self.costs: Dict[str, list] = {}  # run_id -> list of CostEntry
-        self.budgets: Dict[str, AgentBudget] = {}
-        self.run_start_times: Dict[str, datetime] = {}
+        self.costs: dict[str, list] = {}  # run_id -> list of CostEntry
+        self.budgets: dict[str, AgentBudget] = {}
+        self.run_start_times: dict[str, datetime] = {}
         env_in = os.environ.get("DEVPILOT_INPUT_COST_PER_M")
         env_out = os.environ.get("DEVPILOT_OUTPUT_COST_PER_M")
         # Convert per-million → per-1k when using env defaults
@@ -225,7 +224,7 @@ class CostTracker:
             if self.budgets[agent_id].duration_seconds > self.budgets[agent_id].max_duration_seconds:
                 self.budgets[agent_id].exceeded_time_budget = True
 
-    def get_run_cost_summary(self, run_id: str) -> Dict:
+    def get_run_cost_summary(self, run_id: str) -> dict:
         """Get cost summary for a run."""
         if run_id not in self.costs:
             return {"total_cost": 0.0, "entries": []}
@@ -247,7 +246,7 @@ class CostTracker:
             "entry_count": len(entries),
         }
 
-    def get_budget_status(self, agent_id: str) -> Dict:
+    def get_budget_status(self, agent_id: str) -> dict:
         """Get budget status for agent."""
         if agent_id not in self.budgets:
             return {"error": "Budget not found"}
@@ -282,7 +281,7 @@ class CostTracker:
             "within_budget": budget.is_within_budget(),
         }
 
-    def alert_on_budget_exceeded(self, agent_id: str) -> Optional[str]:
+    def alert_on_budget_exceeded(self, agent_id: str) -> str | None:
         """Check if budget exceeded and generate alert."""
         if agent_id not in self.budgets:
             return None

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import List
 
 logger = logging.getLogger("devpilot.verification.lint_runner")
 
@@ -16,13 +15,15 @@ class LintRunner:
     def __init__(self, workspace_root: str = "") -> None:
         self.workspace_root = workspace_root
 
-    def run_linter(self, files: List[str]) -> bool:
+    def run_linter(self, files: list[str]) -> bool:
         """Run ruff linting on the target files."""
         if not files:
             return True
 
         cmd = ["ruff", "check"] + files
-        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        from backend.app.agent.security.environment_isolation import (
+            EnvironmentIsolation,
+        )
         env = EnvironmentIsolation.get_isolated_env()
         try:
             logger.info(f"Running linter check: {cmd}")

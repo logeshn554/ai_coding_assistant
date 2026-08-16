@@ -7,11 +7,11 @@ Dead Code, and Circular Dependencies. Computes overall workspace score (0-100).
 """
 
 import hashlib
+import logging
 import os
 import re
-import logging
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger("antigravity.reviewer")
 
@@ -30,7 +30,7 @@ def _make_id(file: str, category: str, title: str) -> str:
     return f"rev_{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:10]}"
 
 
-def review_workspace(workspace_root: str) -> Dict[str, Any]:
+def review_workspace(workspace_root: str) -> dict[str, Any]:
     """
     Performs full static audit of the workspace and returns structured findings.
     """
@@ -42,7 +42,7 @@ def review_workspace(workspace_root: str) -> Dict[str, Any]:
         }
 
     root_path = Path(workspace_root)
-    findings: List[Dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
 
     # Rules patterns
     ANY_ANY_REGEX = re.compile(r':\s*any\b')

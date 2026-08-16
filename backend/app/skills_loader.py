@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 logger = logging.getLogger("devpilot.skills_loader")
 

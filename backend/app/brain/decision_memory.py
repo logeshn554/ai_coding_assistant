@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List
 
 logger = logging.getLogger("devpilot.brain.decision_memory")
 
@@ -23,7 +22,7 @@ class DecisionMemory:
     """Tamper-evident record of decisions preventing logic regression or repeating failed designs."""
 
     def __init__(self) -> None:
-        self._decisions: Dict[str, ArchitectureDecision] = {}
+        self._decisions: dict[str, ArchitectureDecision] = {}
 
     def record_decision(self, decision_id: str, title: str, status: str, rationale: str) -> ArchitectureDecision:
         import time
@@ -38,10 +37,10 @@ class DecisionMemory:
         logger.info(f"[Decision Memory] Recorded: {title} ({status})")
         return decision
 
-    def get_decision(self, decision_id: str) -> Optional[ArchitectureDecision]:
+    def get_decision(self, decision_id: str) -> ArchitectureDecision | None:
         return self._decisions.get(decision_id)
 
-    def list_decisions(self) -> List[ArchitectureDecision]:
+    def list_decisions(self) -> list[ArchitectureDecision]:
         return list(self._decisions.values())
 
 

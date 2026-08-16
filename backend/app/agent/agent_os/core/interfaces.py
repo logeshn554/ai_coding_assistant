@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Coroutine, Type, TypeVar
+from collections.abc import Callable, Coroutine
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
@@ -33,7 +34,7 @@ class IConfig(ABC):
         pass
 
     @abstractmethod
-    def get_typed(self, type_cls: Type[T], key: str, default: Any = None) -> T:
+    def get_typed(self, type_cls: type[T], key: str, default: Any = None) -> T:
         pass
 
     @abstractmethod
@@ -59,15 +60,15 @@ class IEventBus(ABC):
 class IServiceRegistry(ABC):
     """Service locator registry interface."""
     @abstractmethod
-    def register_singleton(self, service_type: Type[T], instance: T) -> None:
+    def register_singleton(self, service_type: type[T], instance: T) -> None:
         pass
 
     @abstractmethod
-    def register_factory(self, service_type: Type[T], factory: Callable[[], T]) -> None:
+    def register_factory(self, service_type: type[T], factory: Callable[[], T]) -> None:
         pass
 
     @abstractmethod
-    def resolve(self, service_type: Type[T]) -> T:
+    def resolve(self, service_type: type[T]) -> T:
         pass
 
 

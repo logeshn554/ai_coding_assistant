@@ -13,12 +13,8 @@ All tools have:
 """
 
 import os
-import json
-import subprocess
-import asyncio
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Callable
-from datetime import datetime
+from collections.abc import Callable
+from typing import Any
 
 from .interfaces import ToolDefinition
 
@@ -27,7 +23,7 @@ class FileTools:
     """File operation tools."""
 
     @staticmethod
-    async def read_file(path: str, start_line: Optional[int] = None, end_line: Optional[int] = None) -> str:
+    async def read_file(path: str, start_line: int | None = None, end_line: int | None = None) -> str:
         """Read file contents."""
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -42,7 +38,7 @@ class FileTools:
 
             return content
         except Exception as e:
-            raise Exception(f"Failed to read file {path}: {str(e)}")
+            raise Exception(f"Failed to read file {path}: {e!s}")
 
     @staticmethod
     async def write_file(path: str, content: str) -> str:
@@ -53,7 +49,7 @@ class FileTools:
                 f.write(content)
             return f"File written successfully: {path}"
         except Exception as e:
-            raise Exception(f"Failed to write file {path}: {str(e)}")
+            raise Exception(f"Failed to write file {path}: {e!s}")
 
     @staticmethod
     async def create_file(path: str, content: str = "") -> str:
@@ -64,7 +60,7 @@ class FileTools:
             await FileTools.write_file(path, content)
             return f"File created successfully: {path}"
         except Exception as e:
-            raise Exception(f"Failed to create file {path}: {str(e)}")
+            raise Exception(f"Failed to create file {path}: {e!s}")
 
     @staticmethod
     async def edit_file(path: str, old_text: str, new_text: str) -> str:
@@ -82,7 +78,7 @@ class FileTools:
 
             return f"File edited successfully: {path}"
         except Exception as e:
-            raise Exception(f"Failed to edit file {path}: {str(e)}")
+            raise Exception(f"Failed to edit file {path}: {e!s}")
 
     @staticmethod
     async def delete_file(path: str) -> str:
@@ -91,7 +87,7 @@ class FileTools:
             os.remove(path)
             return f"File deleted: {path}"
         except Exception as e:
-            raise Exception(f"Failed to delete file {path}: {str(e)}")
+            raise Exception(f"Failed to delete file {path}: {e!s}")
 
     @staticmethod
     async def rename_file(old_path: str, new_path: str) -> str:
@@ -100,14 +96,14 @@ class FileTools:
             os.rename(old_path, new_path)
             return f"File renamed from {old_path} to {new_path}"
         except Exception as e:
-            raise Exception(f"Failed to rename file: {str(e)}")
+            raise Exception(f"Failed to rename file: {e!s}")
 
 
 class DirectoryTools:
     """Directory operation tools."""
 
     @staticmethod
-    async def list_directory(path: str, recursive: bool = False, max_depth: int = 2) -> Dict[str, Any]:
+    async def list_directory(path: str, recursive: bool = False, max_depth: int = 2) -> dict[str, Any]:
         """List directory contents."""
         try:
             result = {"path": path, "items": []}
@@ -126,14 +122,14 @@ class DirectoryTools:
 
             return result
         except Exception as e:
-            raise Exception(f"Failed to list directory {path}: {str(e)}")
+            raise Exception(f"Failed to list directory {path}: {e!s}")
 
 
 class SearchTools:
     """Search and analysis tools."""
 
     @staticmethod
-    async def search_text(directory: str, pattern: str, file_pattern: str = "*.py") -> List[Dict[str, Any]]:
+    async def search_text(directory: str, pattern: str, file_pattern: str = "*.py") -> list[dict[str, Any]]:
         """Search for text in files."""
         try:
             results = []
@@ -154,10 +150,10 @@ class SearchTools:
                             pass
             return results
         except Exception as e:
-            raise Exception(f"Search failed: {str(e)}")
+            raise Exception(f"Search failed: {e!s}")
 
     @staticmethod
-    async def search_files(directory: str, filename_pattern: str) -> List[str]:
+    async def search_files(directory: str, filename_pattern: str) -> list[str]:
         """Search for files by name pattern."""
         try:
             results = []
@@ -167,19 +163,19 @@ class SearchTools:
                         results.append(os.path.join(root, file))
             return results
         except Exception as e:
-            raise Exception(f"File search failed: {str(e)}")
+            raise Exception(f"File search failed: {e!s}")
 
 
 class TerminalTools:
     """Terminal and command execution tools."""
 
     @staticmethod
-    async def run_terminal_command(command: str, cwd: Optional[str] = None, timeout: int = 30) -> Dict[str, Any]:
+    async def run_terminal_command(command: str, cwd: str | None = None, timeout: int = 30) -> dict[str, Any]:
         """Execute a terminal command."""
         try:
             from backend.app.tools.terminal_tool import run_shell_command
             class DummySession:
-                def __init__(self, root: Optional[str]):
+                def __init__(self, root: str | None):
                     self.workspace_root = os.path.abspath(root or ".")
                 async def send_ws_message(self, msg: dict):
                     pass
@@ -194,14 +190,14 @@ class TerminalTools:
                 "success": not is_failed,
             }
         except Exception as e:
-            raise Exception(f"Command execution failed: {str(e)}")
+            raise Exception(f"Command execution failed: {e!s}")
 
 
 class TestTools:
     """Testing and verification tools."""
 
     @staticmethod
-    async def run_tests(cwd: Optional[str] = None, test_pattern: str = "test_*.py") -> Dict[str, Any]:
+    async def run_tests(cwd: str | None = None, test_pattern: str = "test_*.py") -> dict[str, Any]:
         """Run tests (pytest, unittest, etc.)."""
         try:
             # Try pytest first
@@ -215,10 +211,10 @@ class TestTools:
                 "success": result["exit_code"] == 0,
             }
         except Exception as e:
-            raise Exception(f"Test execution failed: {str(e)}")
+            raise Exception(f"Test execution failed: {e!s}")
 
     @staticmethod
-    async def run_linter(cwd: Optional[str] = None) -> Dict[str, Any]:
+    async def run_linter(cwd: str | None = None) -> dict[str, Any]:
         """Run code linter (ruff, pylint, etc.)."""
         try:
             # Try ruff first
@@ -232,10 +228,10 @@ class TestTools:
                 "success": result["exit_code"] == 0,
             }
         except Exception as e:
-            raise Exception(f"Linting failed: {str(e)}")
+            raise Exception(f"Linting failed: {e!s}")
 
     @staticmethod
-    async def run_typecheck(cwd: Optional[str] = None) -> Dict[str, Any]:
+    async def run_typecheck(cwd: str | None = None) -> dict[str, Any]:
         """Run type checker (pyright, mypy, etc.)."""
         try:
             # Try pyright first
@@ -249,10 +245,10 @@ class TestTools:
                 "success": result["exit_code"] == 0,
             }
         except Exception as e:
-            raise Exception(f"Type checking failed: {str(e)}")
+            raise Exception(f"Type checking failed: {e!s}")
 
     @staticmethod
-    async def run_build(cwd: Optional[str] = None) -> Dict[str, Any]:
+    async def run_build(cwd: str | None = None) -> dict[str, Any]:
         """Run build command."""
         try:
             cmd = "python setup.py build 2>&1 || npm run build"
@@ -264,14 +260,14 @@ class TestTools:
                 "success": result["exit_code"] == 0,
             }
         except Exception as e:
-            raise Exception(f"Build failed: {str(e)}")
+            raise Exception(f"Build failed: {e!s}")
 
 
 class GitTools:
     """Git operations."""
 
     @staticmethod
-    async def git_status(cwd: Optional[str] = None) -> Dict[str, Any]:
+    async def git_status(cwd: str | None = None) -> dict[str, Any]:
         """Get git status."""
         try:
             result = await TerminalTools.run_terminal_command("git status --porcelain", cwd=cwd)
@@ -280,30 +276,30 @@ class GitTools:
                 "success": result["exit_code"] == 0,
             }
         except Exception as e:
-            raise Exception(f"Git status failed: {str(e)}")
+            raise Exception(f"Git status failed: {e!s}")
 
     @staticmethod
-    async def git_diff(cwd: Optional[str] = None, file_path: Optional[str] = None) -> str:
+    async def git_diff(cwd: str | None = None, file_path: str | None = None) -> str:
         """Get git diff."""
         try:
             cmd = "git diff" + (f" {file_path}" if file_path else "")
             result = await TerminalTools.run_terminal_command(cmd, cwd=cwd)
             return result["stdout"]
         except Exception as e:
-            raise Exception(f"Git diff failed: {str(e)}")
+            raise Exception(f"Git diff failed: {e!s}")
 
     @staticmethod
-    async def git_log(cwd: Optional[str] = None, num_commits: int = 10) -> str:
+    async def git_log(cwd: str | None = None, num_commits: int = 10) -> str:
         """Get git log."""
         try:
             cmd = f"git log --oneline -n {num_commits}"
             result = await TerminalTools.run_terminal_command(cmd, cwd=cwd)
             return result["stdout"]
         except Exception as e:
-            raise Exception(f"Git log failed: {str(e)}")
+            raise Exception(f"Git log failed: {e!s}")
 
     @staticmethod
-    async def git_commit(message: str, cwd: Optional[str] = None) -> Dict[str, Any]:
+    async def git_commit(message: str, cwd: str | None = None) -> dict[str, Any]:
         """Commit changes."""
         try:
             cmd = f'git commit -m "{message}"'
@@ -313,24 +309,24 @@ class GitTools:
                 "success": result["exit_code"] == 0,
             }
         except Exception as e:
-            raise Exception(f"Git commit failed: {str(e)}")
+            raise Exception(f"Git commit failed: {e!s}")
 
     @staticmethod
-    async def git_branch(cwd: Optional[str] = None) -> List[str]:
+    async def git_branch(cwd: str | None = None) -> list[str]:
         """List git branches."""
         try:
             result = await TerminalTools.run_terminal_command("git branch", cwd=cwd)
             branches = [b.strip() for b in result["stdout"].split("\n") if b.strip()]
             return branches
         except Exception as e:
-            raise Exception(f"Git branch failed: {str(e)}")
+            raise Exception(f"Git branch failed: {e!s}")
 
 
 class ToolRegistry:
     """Central registry of all available tools."""
 
     def __init__(self):
-        self._tools: Dict[str, ToolDefinition] = {}
+        self._tools: dict[str, ToolDefinition] = {}
         self._register_default_tools()
 
     def _register_default_tools(self) -> None:
@@ -670,7 +666,7 @@ class ToolRegistry:
         self,
         name: str,
         description: str,
-        input_schema: Dict[str, Any],
+        input_schema: dict[str, Any],
         executor: Callable,
         timeout_seconds: int = 30,
         permission_level: str = "user",
@@ -690,17 +686,17 @@ class ToolRegistry:
         )
         self._tools[name] = tool_def
 
-    def get(self, name: str) -> Optional[ToolDefinition]:
+    def get(self, name: str) -> ToolDefinition | None:
         """Get a tool by name."""
         if isinstance(name, str) and "<|channel|>" in name:
             name = name.split("<|channel|>")[0]
         return self._tools.get(name)
 
-    def get_all(self) -> Dict[str, ToolDefinition]:
+    def get_all(self) -> dict[str, ToolDefinition]:
         """Get all tools."""
         return self._tools.copy()
 
-    def list_tools(self) -> List[Dict[str, str]]:
+    def list_tools(self) -> list[dict[str, str]]:
         """List all tools with descriptions."""
         return [
             {

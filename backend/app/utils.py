@@ -1,13 +1,10 @@
-import os
-import sys
 import asyncio
+import os
 import re
+import sys
 
-from typing import Union, List
 
-import shlex
-
-async def run_cmd_async(cmd: Union[str, List[str]], cwd: str) -> str:
+async def run_cmd_async(cmd: str | list[str], cwd: str) -> str:
     # Build command string
     if isinstance(cmd, list):
         cmd_str = " ".join(cmd)
@@ -38,7 +35,11 @@ async def run_cmd_async(cmd: Union[str, List[str]], cwd: str) -> str:
             )
 
         # Retrieve or create sandbox
-        from backend.app.agent.security.sandbox import global_sandbox_manager, ExecutionPolicy, ExecutionStatus
+        from backend.app.agent.security.sandbox import (
+            ExecutionPolicy,
+            ExecutionStatus,
+            global_sandbox_manager,
+        )
         
         active_sandbox = None
         for sb in list(global_sandbox_manager.active_sandboxes.values()):

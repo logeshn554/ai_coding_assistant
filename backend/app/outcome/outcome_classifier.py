@@ -6,7 +6,6 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import List
 
 logger = logging.getLogger("devpilot.outcome.outcome_classifier")
 
@@ -34,7 +33,7 @@ class OutcomeClassifier:
         lint_passed: bool,
         type_checks_passed: bool,
         security_passed: bool,
-        contract_violations: List[str]
+        contract_violations: list[str]
     ) -> OutcomeClassification:
         """Evaluate evidence parameters to produce a task outcome classification."""
         evidence_score = 1.0

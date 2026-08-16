@@ -1,18 +1,37 @@
-import os
-import json
-import uuid
-import secrets
-import datetime
 import asyncio
-from typing import Optional
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Query
+import datetime
+import json
+import os
+import secrets
+import uuid
+
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from pydantic import BaseModel
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
-from ..state import workspace_state, config_manager, get_permission_manager, SESSION_TOKEN, logger
-from ..db import async_session, SessionModel, MessageModel, get_fallback_session_id, resolve_session_for_identity
-from fastapi import Request
+
+from ..db import (
+    MessageModel,
+    SessionModel,
+    async_session,
+    get_fallback_session_id,
+    resolve_session_for_identity,
+)
 from ..session.agent_session import AgentSession
+from ..state import (
+    SESSION_TOKEN,
+    config_manager,
+    get_permission_manager,
+    logger,
+    workspace_state,
+)
 
 router = APIRouter()
 
@@ -163,7 +182,7 @@ class TokenizeRequest(BaseModel):
     messages: list
     open_files: list[str]
 
-async def resolve_session_id(request: Request = None, session_id: Optional[str] = None) -> str:
+async def resolve_session_id(request: Request = None, session_id: str | None = None) -> str:
     if session_id:
         return session_id
     if request:
@@ -209,7 +228,7 @@ async def tokenize_chat_context(req: TokenizeRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/api/chat/history")
-async def get_chat_history(request: Request, session_id: Optional[str] = None):
+async def get_chat_history(request: Request, session_id: str | None = None):
     active_id = await resolve_session_id(request, session_id)
     try:
         session = await __import__("backend.app.db", fromlist=["resolve_session_for_identity"]).resolve_session_for_identity(
@@ -294,7 +313,7 @@ async def get_chat_history(request: Request, session_id: Optional[str] = None):
         return {"messages": messages_list}
 
 @router.post("/api/chat/history")
-async def save_chat_history(req: ChatHistoryRequest, request: Request, session_id: Optional[str] = None):
+async def save_chat_history(req: ChatHistoryRequest, request: Request, session_id: str | None = None):
     active_id = await resolve_session_id(request, session_id)
     try:
         session = await __import__("backend.app.db", fromlist=["resolve_session_for_identity"]).resolve_session_for_identity(
@@ -387,8 +406,8 @@ async def save_chat_history(req: ChatHistoryRequest, request: Request, session_i
 
 @router.get("/api/chat/sessions")
 async def get_chat_sessions(request: Request):
-    from ..db import first_user_preview
     from ..config import settings
+    from ..db import first_user_preview
     is_prod_server = (settings.ENVIRONMENT.lower() == "production" and settings.MODE == "server")
 
     identity = getattr(request.state, "identity", None)
@@ -684,18 +703,17 @@ async def clear_all_sessions(request: Request):
         logger.error(f"Failed to clear sessions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-from ..state import limiter
 
 @router.websocket("/ws/chat")
 async def websocket_chat(
     request: WebSocket,
-    ticket: Optional[str] = Query(None),
-    token: Optional[str] = Query(None),
-    session_id: Optional[str] = Query(None)
+    ticket: str | None = Query(None),
+    token: str | None = Query(None),
+    session_id: str | None = Query(None)
 ):
     await request.accept()
-    from ..state import verify_ws_ticket, SESSION_TOKEN
     from ..config import settings
+    from ..state import verify_ws_ticket
     is_prod_server = (settings.ENVIRONMENT.lower() == "production" and settings.MODE == "server")
     is_authenticated = False
     ticket_identity = None
@@ -831,8 +849,8 @@ async def websocket_chat(
 
     # Restore context memory from Redis / shared_memory if available
     try:
-        from ..state import redis_client
         from ..shared_memory import sm_get_all
+        from ..state import redis_client
         workspace_id = os.path.basename(session_workspace_root) or "default"
         run_id = session.session_id or workspace_id
         raw = await redis_client.get(f"session:{workspace_id}:ctx")
@@ -863,9 +881,12 @@ async def websocket_chat(
         try:
             conv_id = run_to_conv_cache.get(run_id)
             if not conv_id:
-                from backend.app.infrastructure.database.connection import async_session_factory
-                from backend.app.infrastructure.database.models import AgentRun
                 import sqlalchemy
+
+                from backend.app.infrastructure.database.connection import (
+                    async_session_factory,
+                )
+                from backend.app.infrastructure.database.models import AgentRun
                 async with async_session_factory() as db:
                     res = await db.execute(
                         sqlalchemy.select(AgentRun.conversation_id)
@@ -1036,13 +1057,18 @@ async def websocket_chat(
     listener_task = asyncio.create_task(pubsub_listener())
 
     async def enqueue_chat_run(text: str, mode: str):
+        import sqlalchemy
+
         from backend.app.infrastructure.database.connection import async_session_factory
         from backend.app.infrastructure.database.repositories import (
-            OrganizationRepository, UserRepository, WorkspaceRepository,
-            ConversationRepository, MessageRepository, AgentRunRepository
+            AgentRunRepository,
+            ConversationRepository,
+            MessageRepository,
+            OrganizationRepository,
+            UserRepository,
+            WorkspaceRepository,
         )
         from backend.app.infrastructure.queue import AgentQueue
-        import sqlalchemy
 
         async with async_session_factory() as db:
             org_repo = OrganizationRepository(db)
@@ -1147,7 +1173,10 @@ async def websocket_chat(
                 # Process explicitly attached files via Vision / RAG pipeline
                 if attached_files and isinstance(attached_files, list):
                     try:
-                        from ..attachments import process_attachments, format_attachment_prompt
+                        from ..attachments import (
+                            format_attachment_prompt,
+                            process_attachments,
+                        )
                         att_paths = [str(x) for x in attached_files if x]
                         att_results = await process_attachments(
                             att_paths, query=text, workspace_root=session.workspace_root
@@ -1243,7 +1272,7 @@ async def websocket_chat(
             item["approved"] = False
             item["event"].set()
     except Exception as e:
-        logger.error(f"Chat WebSocket error: {str(e)}")
+        logger.error(f"Chat WebSocket error: {e!s}")
     finally:
         EventPublisher.unsubscribe_local(local_event_cb)
         listener_task.cancel()

@@ -4,7 +4,7 @@ Priority Scheduler — Priority queue with dependency-aware task scheduling.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Set
+
 from .dag_generator import DagTask
 
 logger = logging.getLogger("devpilot.work_graph.priority_scheduler")
@@ -14,12 +14,12 @@ class PriorityScheduler:
     """Schedules tasks from a dependency DAG, queuing ready tasks in priority order."""
 
     def __init__(self) -> None:
-        self._tasks: Dict[str, DagTask] = {}
+        self._tasks: dict[str, DagTask] = {}
 
-    def load_dag(self, tasks: List[DagTask]) -> None:
+    def load_dag(self, tasks: list[DagTask]) -> None:
         self._tasks = {t.task_id: t for t in tasks}
 
-    def get_ready_tasks(self) -> List[DagTask]:
+    def get_ready_tasks(self) -> list[DagTask]:
         """Find all pending tasks whose dependencies are successfully completed."""
         ready = []
         for task in self._tasks.values():
@@ -50,7 +50,7 @@ class PriorityScheduler:
             task.status = "failed"
             logger.debug(f"Task marked as FAILED in scheduler: {task_id}")
 
-    def get_all_tasks(self) -> List[DagTask]:
+    def get_all_tasks(self) -> list[DagTask]:
         return list(self._tasks.values())
 
 

@@ -8,33 +8,30 @@ normalized tool execution, transactional file tracking, cancellation, and verifi
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
 import datetime
-from enum import Enum
 import json
 import logging
 import os
 import time
-from typing import Any, Callable, Dict, List, Optional, Set
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
 
 from .events import (
-    AgentEvent,
     EVENT_AGENT_CANCELLED,
     EVENT_AGENT_COMPLETED,
-    EVENT_AGENT_ERROR,
     EVENT_AGENT_PLAN_CREATED,
     EVENT_AGENT_STARTED,
     EVENT_AGENT_STATE_CHANGED,
-    EVENT_COMMAND_COMPLETED,
-    EVENT_COMMAND_OUTPUT,
-    EVENT_COMMAND_STARTED,
     EVENT_FILE_CHANGED,
     EVENT_TOOL_COMPLETED,
     EVENT_TOOL_STARTED,
     EVENT_VERIFICATION_COMPLETED,
     EVENT_VERIFICATION_STARTED,
+    AgentEvent,
 )
-from .llm_adapter import ModelResponse, ModelResponseNormalizer, ToolCall
+from .llm_adapter import ModelResponse, ModelResponseNormalizer
 from .tool_executor import ToolExecutor, ToolResult
 from .transactional_workspace import TransactionalWorkspace
 
@@ -73,11 +70,10 @@ class VerificationStatus(str, Enum):
 
 class InvalidStateTransitionError(Exception):
     """Raised when an invalid state transition is attempted."""
-    pass
 
 
 # Allowed state transitions
-VALID_TRANSITIONS: Dict[AgentState, Set[AgentState]] = {
+VALID_TRANSITIONS: dict[AgentState, set[AgentState]] = {
     AgentState.IDLE: {AgentState.PLANNING, AgentState.EXECUTING, AgentState.CANCELLED},
     AgentState.PLANNING: {AgentState.EXECUTING, AgentState.FAILED, AgentState.CANCELLED, AgentState.WAITING_FOR_APPROVAL},
     AgentState.EXECUTING: {
@@ -141,7 +137,7 @@ class AgentTask:
     description: str
     mode: str = "Agent"
     auto_apply: bool = False
-    context: Dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -149,17 +145,17 @@ class AgentSessionState:
     """Strongly typed session state container."""
     session_id: str
     workspace_root: str
-    profile: Dict[str, Any] = field(default_factory=dict)
+    profile: dict[str, Any] = field(default_factory=dict)
     state: AgentState = AgentState.IDLE
     current_step: int = 0
-    active_task_id: Optional[str] = None
-    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
-    changed_files: Dict[str, Any] = field(default_factory=dict)
-    errors: List[str] = field(default_factory=list)
-    error_code: Optional[str] = None
+    active_task_id: str | None = None
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    changed_files: dict[str, Any] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
+    error_code: str | None = None
     verification_status: VerificationStatus = VerificationStatus.NOT_RUN
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
+    started_at: str | None = None
+    completed_at: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -186,28 +182,28 @@ class AgentResult:
     success: bool
     state: AgentState
     output: str
-    changed_files: Dict[str, Any] = field(default_factory=dict)
+    changed_files: dict[str, Any] = field(default_factory=dict)
     verification_status: VerificationStatus = VerificationStatus.NOT_RUN
-    errors: List[str] = field(default_factory=list)
-    error_code: Optional[str] = None
-    events: List[AgentEvent] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    error_code: str | None = None
+    events: list[AgentEvent] = field(default_factory=list)
 
 
 class AgentRuntime:
     """The canonical AgentRuntime orchestrating model calls, tool execution, state machine, and events."""
 
-    _sessions: Dict[str, AgentSessionState] = {}
-    _active_tasks: Dict[str, asyncio.Task] = {}
-    _cancellation_events: Dict[str, asyncio.Event] = {}
+    _sessions: dict[str, AgentSessionState] = {}
+    _active_tasks: dict[str, asyncio.Task] = {}
+    _cancellation_events: dict[str, asyncio.Event] = {}
 
-    def __init__(self, workspace_root: Optional[str] = None) -> None:
+    def __init__(self, workspace_root: str | None = None) -> None:
         self.workspace_root = workspace_root or os.getcwd()
 
     async def start_session(
         self,
         workspace_root: str,
-        profile: Optional[Dict[str, Any]] = None,
-        session_id: Optional[str] = None,
+        profile: dict[str, Any] | None = None,
+        session_id: str | None = None,
     ) -> AgentSessionState:
         """Initialize or retrieve a canonical AgentSessionState."""
         sid = session_id or f"session_{int(time.time()*1000)}"
@@ -228,7 +224,7 @@ class AgentRuntime:
         self,
         session: AgentSessionState,
         new_state: AgentState,
-        event_callback: Optional[Callable[[AgentEvent], None]] = None,
+        event_callback: Callable[[AgentEvent], None] | None = None,
     ) -> None:
         """Enforce explicit state machine transition rules."""
         curr = session.state
@@ -244,7 +240,9 @@ class AgentRuntime:
         logger.info(f"Session {session.session_id} state transition: {curr.value} -> {new_state.value}")
 
         try:
-            from backend.app.infrastructure.observability.telemetry import TelemetryManager
+            from backend.app.infrastructure.observability.telemetry import (
+                TelemetryManager,
+            )
             tracer = TelemetryManager.get_tracer()
             with tracer.start_as_current_span(
                 "agent.state_transition",
@@ -258,9 +256,10 @@ class AgentRuntime:
         except Exception:
             pass
 
+        from sqlalchemy import update
+
         from backend.app.infrastructure.database.connection import async_session_factory
         from backend.app.infrastructure.database.models import AgentRun
-        from sqlalchemy import update
         try:
             async with async_session_factory() as db:
                 await db.execute(
@@ -288,9 +287,10 @@ class AgentRuntime:
                 event_callback(ev)
 
     async def save_checkpoint(self, session: AgentSessionState, checkpoint_type: str) -> None:
+        import json
+
         from backend.app.infrastructure.database.connection import async_session_factory
         from backend.app.infrastructure.database.models import AgentCheckpoint
-        import json
         
         state_data = {
             "current_step": session.current_step,
@@ -317,11 +317,13 @@ class AgentRuntime:
         except Exception as e:
             logger.warning(f"Non-fatal: Failed to save runtime checkpoint for session {session.session_id}: {e}")
 
-    async def load_checkpoint(self, session: AgentSessionState, task_id: Optional[str] = None) -> bool:
+    async def load_checkpoint(self, session: AgentSessionState, task_id: str | None = None) -> bool:
+        import json
+
+        from sqlalchemy import select
+
         from backend.app.infrastructure.database.connection import async_session_factory
         from backend.app.infrastructure.database.models import AgentCheckpoint
-        from sqlalchemy import select
-        import json
         
         try:
             async with async_session_factory() as db:
@@ -366,11 +368,11 @@ class AgentRuntime:
         state: AgentState,
         output: str,
         task_obj: AgentTask,
-        tx_workspace: Optional[TransactionalWorkspace] = None,
-        events_collected: Optional[List[AgentEvent]] = None,
-        errors: Optional[List[str]] = None,
-        error_code: Optional[str] = None,
-        emit_fn: Optional[Callable[[AgentEvent], None]] = None,
+        tx_workspace: TransactionalWorkspace | None = None,
+        events_collected: list[AgentEvent] | None = None,
+        errors: list[str] | None = None,
+        error_code: str | None = None,
+        emit_fn: Callable[[AgentEvent], None] | None = None,
     ) -> AgentResult:
         """Centralized helper that sets state, persists checkpoint, and builds the final AgentResult.
         Guarantees consistent state transitions, single terminal state, and no duplicate error events.
@@ -422,12 +424,12 @@ class AgentRuntime:
         task: str | AgentTask,
         mode: str = "Agent",
         auto_apply: bool = False,
-        event_callback: Optional[Callable[[AgentEvent], Any]] = None,
+        event_callback: Callable[[AgentEvent], Any] | None = None,
         max_turns: int = 25,
-        llm_provider_func: Optional[Callable] = None,
-        agent_session: Optional[Any] = None,  # added actual AgentSession reference
-        conversation_messages: Optional[List[Dict[str, Any]]] = None,
-        tool_schemas: Optional[List[Dict[str, Any]]] = None,
+        llm_provider_func: Callable | None = None,
+        agent_session: Any | None = None,  # added actual AgentSession reference
+        conversation_messages: list[dict[str, Any]] | None = None,
+        tool_schemas: list[dict[str, Any]] | None = None,
     ) -> AgentResult:
         """
         Execute a canonical agent coding session.
@@ -441,7 +443,7 @@ class AgentRuntime:
         cancel_event = self._cancellation_events.setdefault(session_id, asyncio.Event())
         cancel_event.clear()
         try:
-            from backend.app.state import clear_run_cancelled, is_run_cancelled
+            from backend.app.state import clear_run_cancelled
             await clear_run_cancelled(session_id)
         except Exception:
             pass
@@ -466,7 +468,7 @@ class AgentRuntime:
             session.errors.clear()
             session.tool_calls.clear()
 
-        events_collected: List[AgentEvent] = []
+        events_collected: list[AgentEvent] = []
 
         def _emit(event: AgentEvent):
             events_collected.append(event)
@@ -627,7 +629,7 @@ class AgentRuntime:
                     )
 
                 # Append assistant message to conversation history for next turn
-                asst_msg: Dict[str, Any] = {"role": "assistant", "content": model_resp.text or ""}
+                asst_msg: dict[str, Any] = {"role": "assistant", "content": model_resp.text or ""}
                 if model_resp.tool_calls:
                     asst_msg["tool_calls"] = [
                         {
@@ -706,7 +708,9 @@ class AgentRuntime:
                     }))
 
                     if agent_session is not None:
-                        from backend.app.context_helpers import prepare_tool_result_for_history
+                        from backend.app.context_helpers import (
+                            prepare_tool_result_for_history,
+                        )
                         compact_result = prepare_tool_result_for_history(
                             tool_res.output if tool_res.success else (tool_res.error or "Error executing tool"),
                             tool_name=tc.name
@@ -779,8 +783,6 @@ class AgentRuntime:
 
             from backend.app.agent.autonomous import (
                 AgentReviewer,
-                ChangeSetValidator,
-                ExecutionPlanner,
                 FailureAnalyzer,
                 SelfRepairLoop,
                 TaskContractGenerator,
@@ -868,7 +870,7 @@ class AgentRuntime:
                         repair_model_resp = ModelResponseNormalizer.normalize_response(raw_repair_res)
 
                         # Append assistant repair message to history
-                        repair_asst_msg: Dict[str, Any] = {"role": "assistant", "content": repair_model_resp.text or ""}
+                        repair_asst_msg: dict[str, Any] = {"role": "assistant", "content": repair_model_resp.text or ""}
                         if repair_model_resp.tool_calls:
                             repair_asst_msg["tool_calls"] = [
                                 {
@@ -946,7 +948,9 @@ class AgentRuntime:
                 session.verification_status = VerificationStatus.FAILED
                 
             if v_res is None:
-                from backend.app.agent.autonomous.verification_engine import VerificationResult
+                from backend.app.agent.autonomous.verification_engine import (
+                    VerificationResult,
+                )
                 v_res = VerificationResult(
                     success=all_phases_passed,
                     command="none",
@@ -959,8 +963,8 @@ class AgentRuntime:
 
             # 3b. Dual-LLM critic debate on the accumulated change set
             try:
-                from backend.app.debate.debate_engine import debate_engine
                 from backend.app.debate.consensus import consensus_engine
+                from backend.app.debate.debate_engine import debate_engine
 
                 diff_summary = json.dumps(tx_workspace.change_set.to_dict(), default=str)[:6000]
                 critiques = await debate_engine.hold_debate(diff_summary)
@@ -1082,7 +1086,7 @@ class AgentRuntime:
             session.state = AgentState.CANCELLED
             logger.info(f"AgentRuntime session {session_id} cancelled.")
 
-    async def resume(self, session_id: str, task_description: Optional[str] = None) -> AgentResult:
+    async def resume(self, session_id: str, task_description: str | None = None) -> AgentResult:
         """Resume a session from persisted state (Step 3 & 15 requirement)."""
         session = self._sessions.get(session_id)
         if not session:

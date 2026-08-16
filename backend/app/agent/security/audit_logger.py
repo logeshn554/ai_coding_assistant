@@ -7,12 +7,12 @@ permission decision, or boundary check.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import datetime
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any
 
 from .secret_redactor import SecretRedactor
 
@@ -26,17 +26,17 @@ class AuditRecord:
     resource: str
     risk: str
     decision: str  # APPROVED | DENIED | REJECTED | PENDING
-    command: Optional[str] = None
-    files_affected: List[str] = field(default_factory=list)
+    command: str | None = None
+    files_affected: list[str] = field(default_factory=list)
     tenant_id: str = "default-org"
     actor: str = "agent"
-    correlation_id: Optional[str] = None
-    arguments_hash: Optional[str] = None
+    correlation_id: str | None = None
+    arguments_hash: str | None = None
     timestamp: str = field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat()
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "timestamp": self.timestamp,
             "session_id": self.session_id,
@@ -56,12 +56,12 @@ class AuditRecord:
 class AuditLogger:
     """Records security audit entries to persistent log files and standard loggers."""
 
-    def __init__(self, log_dir: Optional[str] = None) -> None:
+    def __init__(self, log_dir: str | None = None) -> None:
         self.log_dir = log_dir
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
 
-    def log_record(self, record: AuditRecord) -> Dict[str, Any]:
+    def log_record(self, record: AuditRecord) -> dict[str, Any]:
         data = record.to_dict()
         logger.info(f"SECURITY AUDIT: [{record.decision}] {record.action} on {record.resource} (Risk: {record.risk})")
 

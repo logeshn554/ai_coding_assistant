@@ -13,14 +13,14 @@ import json
 import logging
 import os
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .state import config_manager
 
 logger = logging.getLogger("devpilot.mcp_client")
 
 # Global registry of discovered MCP tools: tool_name -> { server_id, name, description, input_schema, handler }
-MCP_DISCOVERED_TOOLS: Dict[str, Dict[str, Any]] = {}
+MCP_DISCOVERED_TOOLS: dict[str, dict[str, Any]] = {}
 
 
 @dataclass
@@ -29,10 +29,10 @@ class MCPServerConfig:
 
     id: str
     name: str
-    command: Optional[str] = ""
-    args: List[str] = None
-    env: Dict[str, str] = None
-    url: Optional[str] = ""
+    command: str | None = ""
+    args: list[str] = None
+    env: dict[str, str] = None
+    url: str | None = ""
 
     def __post_init__(self):
         if self.args is None:
@@ -40,7 +40,7 @@ class MCPServerConfig:
         if self.env is None:
             self.env = {}
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -48,10 +48,10 @@ class MCPClientManager:
     """Manages MCP server sessions and tool registration."""
 
     def __init__(self):
-        self._connected_servers: Dict[str, Dict[str, Any]] = {}
-        self._bg_tasks: Dict[str, asyncio.Task] = {}
+        self._connected_servers: dict[str, dict[str, Any]] = {}
+        self._bg_tasks: dict[str, asyncio.Task] = {}
 
-    def list_servers(self) -> List[Dict[str, Any]]:
+    def list_servers(self) -> list[dict[str, Any]]:
         """Return list of configured MCP servers with active connection status."""
         configured = config_manager.get_mcp_servers()
         result = []
@@ -64,7 +64,7 @@ class MCPClientManager:
             result.append(item)
         return result
 
-    async def _run_server(self, server_id: str, server_config: Dict[str, Any], future_conn: asyncio.Future):
+    async def _run_server(self, server_id: str, server_config: dict[str, Any], future_conn: asyncio.Future):
         server_name = server_config.get("name", server_id)
         command = server_config.get("command", "")
         args = server_config.get("args", [])
@@ -204,7 +204,7 @@ class MCPClientManager:
             for k in tools_to_remove:
                 MCP_DISCOVERED_TOOLS.pop(k, None)
 
-    async def connect_server(self, server_config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def connect_server(self, server_config: dict[str, Any]) -> list[dict[str, Any]]:
         """Connect to an MCP server using the real mcp Python SDK, discover tools,
         and register them into the dispatcher.
 
@@ -257,7 +257,7 @@ class MCPClientManager:
             self._bg_tasks.pop(server_id, None)
             raise RuntimeError(f"MCP server '{server_config.get('name', server_id)}' connection failed: {e}") from e
 
-    async def call_tool(self, server_id: str, tool_name: str, arguments: Dict[str, Any]) -> str:
+    async def call_tool(self, server_id: str, tool_name: str, arguments: dict[str, Any]) -> str:
         """Call a tool on a connected MCP server and return the result as a string.
 
         Args:

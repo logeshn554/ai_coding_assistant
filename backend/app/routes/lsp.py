@@ -24,11 +24,10 @@ import secrets
 import shutil
 import sys
 from pathlib import Path
-from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
-from ..state import workspace_state, SESSION_TOKEN
+from ..state import SESSION_TOKEN, workspace_state
 
 router = APIRouter()
 logger = logging.getLogger("devpilot.routes.lsp")
@@ -38,7 +37,7 @@ MAX_RESTARTS = 3
 
 # ── Language server command resolution ──────────────────────────────────────
 
-def _find_pyright() -> Optional[list]:
+def _find_pyright() -> list | None:
     """Locate pyright-langserver in venv/global PATH."""
     # Check venv first
     venv_root = Path(sys.executable).parent.parent
@@ -56,7 +55,7 @@ def _find_pyright() -> Optional[list]:
     return None
 
 
-def _find_ts_server() -> Optional[list]:
+def _find_ts_server() -> list | None:
     """Locate typescript-language-server in global npm or node_modules."""
     found = shutil.which("typescript-language-server")
     if found:
@@ -75,7 +74,7 @@ LANGUAGE_SERVERS = {
 }
 
 
-def _get_server_cmd(language: str) -> Optional[list]:
+def _get_server_cmd(language: str) -> list | None:
     resolver = LANGUAGE_SERVERS.get(language)
     if not resolver:
         return None
@@ -105,7 +104,7 @@ def _is_uri_confined(uri: str) -> bool:
         return True  # don't block on parse errors
 
 
-def _sanitize_message(msg_obj: dict) -> Optional[dict]:
+def _sanitize_message(msg_obj: dict) -> dict | None:
     """
     Inspect outgoing (frontend → server) LSP messages and strip or block
     any that reference files outside the workspace.
@@ -136,7 +135,7 @@ def _sanitize_message(msg_obj: dict) -> Optional[dict]:
     return msg_obj
 
 
-def _uri_to_relative_path(uri: str) -> Optional[str]:
+def _uri_to_relative_path(uri: str) -> str | None:
     """Convert a file URI to a relative workspace path, accounting for Windows drive formats."""
     if not uri.startswith("file://"):
         return None
@@ -146,9 +145,7 @@ def _uri_to_relative_path(uri: str) -> Optional[str]:
         from urllib.parse import unquote
         path_str = unquote(uri[7:])
         if os.name == "nt":
-            if path_str.startswith("/") and len(path_str) > 2 and path_str[2] == ":":
-                path_str = path_str[1:]
-            elif path_str.startswith("/") and len(path_str) > 1 and path_str[1] == ":":
+            if path_str.startswith("/") and len(path_str) > 2 and path_str[2] == ":" or path_str.startswith("/") and len(path_str) > 1 and path_str[1] == ":":
                 path_str = path_str[1:]
         
         abs_path = Path(path_str).resolve()
@@ -254,7 +251,7 @@ async def _proxy_lsp(websocket: WebSocket, language: str):
         # cannot bleed into the next one.
         header_buf = b""
         body_buf = b""
-        expected_len: Optional[int] = None
+        expected_len: int | None = None
 
         async def read_from_server():
             """Read Content-Length framed JSON-RPC from server stdout and forward to WS."""
@@ -278,18 +275,19 @@ async def _proxy_lsp(websocket: WebSocket, language: str):
                                 expected_len = int(line.split(":")[1].strip())
                                 break
 
-                            if len(available) >= expected_len:
-                                body = available[:expected_len]
-                                header_buf = available[expected_len:]
-                                expected_len = None
-                                try:
-                                    body_str = body.decode("utf-8", errors="replace")
-                                    await websocket.send_text(body_str)
-                                    _update_diagnostics_cache(body_str)
-                                except Exception:
-                                    return
-                            else:
-                                break
+                    if expected_len is not None:
+                        if len(header_buf) >= expected_len:
+                            body = header_buf[:expected_len]
+                            header_buf = header_buf[expected_len:]
+                            expected_len = None
+                            try:
+                                body_str = body.decode("utf-8", errors="replace")
+                                await websocket.send_text(body_str)
+                                _update_diagnostics_cache(body_str)
+                            except Exception:
+                                return
+                        else:
+                            break
 
         async def read_from_ws():
             """Read JSON messages from WS, sanitize, and forward to server stdin."""
@@ -350,8 +348,8 @@ async def _proxy_lsp(websocket: WebSocket, language: str):
 async def lsp_websocket(
     websocket: WebSocket,
     language: str,
-    ticket: Optional[str] = Query(None),
-    token: Optional[str] = Query(None)
+    ticket: str | None = Query(None),
+    token: str | None = Query(None)
 ):
     """
     WebSocket endpoint that proxies JSON-RPC between Monaco and a language server.
@@ -359,13 +357,11 @@ async def lsp_websocket(
     """
     await websocket.accept()
 
-    from ..state import verify_ws_ticket, SESSION_TOKEN
     from ..config import settings
+    from ..state import verify_ws_ticket
     is_prod_server = (settings.ENVIRONMENT.lower() == "production" and settings.MODE == "server")
     is_authenticated = False
-    if ticket and await verify_ws_ticket(ticket):
-        is_authenticated = True
-    elif token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
+    if ticket and await verify_ws_ticket(ticket) or token and secrets.compare_digest(token.encode(), SESSION_TOKEN.encode()):
         is_authenticated = True
     elif not is_prod_server:
         # In desktop / development mode, local IDE connections are authenticated by default

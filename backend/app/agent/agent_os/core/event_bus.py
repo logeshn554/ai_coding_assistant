@@ -1,12 +1,15 @@
-import inspect
 import asyncio
-from typing import Any, Callable, Dict, List, Set, Coroutine
+import inspect
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 from agent_os.core.interfaces import IEventBus
+
 
 class EventBus(IEventBus):
     """Asynchronous/Synchronous Event Bus implementation."""
     def __init__(self) -> None:
-        self._handlers: Dict[str, Set[Callable[[Any], Any]]] = {}
+        self._handlers: dict[str, set[Callable[[Any], Any]]] = {}
 
     def subscribe(self, event_type: str, handler: Callable[[Any], Coroutine[Any, Any, None] | None]) -> None:
         if event_type not in self._handlers:
@@ -30,7 +33,7 @@ class EventBus(IEventBus):
                 else:
                     # Run sync handlers directly on loop thread safely (or execute directly if desired)
                     handler(data)
-            except Exception as e:
+            except Exception:
                 # Standardize logging/error isolation
                 pass
         

@@ -1,11 +1,11 @@
-import os
-from typing import Optional
 import json
 import logging
-import subprocess
+import os
 from pathlib import Path
+
 import keyring
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
     """Centralized configuration management for DevPilot Backend."""
@@ -125,9 +125,9 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+from cryptography.fernet import Fernet
 from keyring.backend import KeyringBackend
 
-from cryptography.fernet import Fernet
 
 class DevPilotFileKeyring(KeyringBackend):
     """
@@ -283,7 +283,7 @@ class ConfigManager:
                 with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                     json.dump(config_data, f, indent=4)
         except Exception as e:
-            raise IOError(f"Failed to save configuration: {str(e)}")
+            raise OSError(f"Failed to save configuration: {e!s}")
 
     def list_profiles(self, mask_keys: bool = True) -> dict:
         """
@@ -800,11 +800,11 @@ class ConfigManager:
         config["max_tokens"] = int(val)
         self._save_raw_config(config)
 
-    def get_seed(self) -> Optional[int]:
+    def get_seed(self) -> int | None:
         config = self._read_raw_config()
         return config.get("seed", 42)
 
-    def set_seed(self, val: Optional[int]):
+    def set_seed(self, val: int | None):
         config = self._read_raw_config()
         config["seed"] = int(val) if val is not None else None
         self._save_raw_config(config)

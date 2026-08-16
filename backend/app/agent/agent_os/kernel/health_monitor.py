@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
+
 from agent_os.kernel.interfaces import IKernelService
 
 logger = logging.getLogger("agentos.kernel.health_monitor")
@@ -38,7 +40,7 @@ class WorkerHealth:
     heartbeat_count: int = 0
     consecutive_misses: int = 0
     current_task: str = ""
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def uptime_seconds(self) -> float:
@@ -66,9 +68,9 @@ class HealthMonitor(IKernelService):
 
     def __init__(self, config: HealthConfig = None):
         self.config = config or HealthConfig()
-        self._workers: Dict[str, WorkerHealth] = {}
-        self._termination_callbacks: List[Callable[[str, WorkerHealth], None]] = []
-        self._status_callbacks: List[Callable[[str, HealthStatus, HealthStatus], None]] = []
+        self._workers: dict[str, WorkerHealth] = {}
+        self._termination_callbacks: list[Callable[[str, WorkerHealth], None]] = []
+        self._status_callbacks: list[Callable[[str, HealthStatus, HealthStatus], None]] = []
 
     def on_init(self) -> None:
         logger.info("Initializing HealthMonitor service")
@@ -93,7 +95,7 @@ class HealthMonitor(IKernelService):
     def unregister_worker(self, worker_id: str) -> None:
         self._workers.pop(worker_id, None)
 
-    def heartbeat(self, worker_id: str, metadata: Dict[str, Any] = None) -> None:
+    def heartbeat(self, worker_id: str, metadata: dict[str, Any] = None) -> None:
         """Record a heartbeat from a worker."""
         health = self._workers.get(worker_id)
         if health is None:
@@ -117,7 +119,7 @@ class HealthMonitor(IKernelService):
         if health:
             health.current_task = task
 
-    def check_all(self) -> Dict[str, HealthStatus]:
+    def check_all(self) -> dict[str, HealthStatus]:
         """Run health check on all registered workers."""
         results = {}
         now = time.time()
@@ -171,7 +173,7 @@ class HealthMonitor(IKernelService):
     def on_status_change(self, callback: Callable[[str, HealthStatus, HealthStatus], None]) -> None:
         self._status_callbacks.append(callback)
 
-    def get_worker_health(self, worker_id: str) -> Optional[WorkerHealth]:
+    def get_worker_health(self, worker_id: str) -> WorkerHealth | None:
         return self._workers.get(worker_id)
 
     def get_overall_status(self) -> HealthStatus:
@@ -188,7 +190,7 @@ class HealthMonitor(IKernelService):
             return HealthStatus.DEGRADED
         return HealthStatus.HEALTHY
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         statuses = {}
         for h in self._workers.values():
             statuses[h.status.value] = statuses.get(h.status.value, 0) + 1

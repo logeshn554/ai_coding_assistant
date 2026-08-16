@@ -8,10 +8,9 @@ and breakpoint evaluation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import logging
-import os
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any
 
 from ..security.secret_redactor import SecretRedactor
 
@@ -23,22 +22,22 @@ class StackFrame:
     filename: str
     line_no: int
     function_name: str
-    code_context: Optional[str] = None
-    local_vars: Dict[str, Any] = field(default_factory=dict)
+    code_context: str | None = None
+    local_vars: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class DebugContext:
     process_id: int
     thread_id: int
-    exception_type: Optional[str] = None
-    exception_message: Optional[str] = None
-    stack_frames: List[StackFrame] = field(default_factory=list)
-    active_breakpoint_file: Optional[str] = None
-    active_breakpoint_line: Optional[int] = None
-    recent_changes: List[str] = field(default_factory=list)
+    exception_type: str | None = None
+    exception_message: str | None = None
+    stack_frames: list[StackFrame] = field(default_factory=list)
+    active_breakpoint_file: str | None = None
+    active_breakpoint_line: int | None = None
+    recent_changes: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "process_id": self.process_id,
             "thread_id": self.thread_id,

@@ -1,7 +1,8 @@
 import logging
-from typing import Dict, Any, List, Optional
-from .llm import LLMAdapter
+from typing import Any
+
 from ..tools.scan_for_bugs import generate_bug_report_async
+from .llm import LLMAdapter
 
 logger = logging.getLogger("devpilot.router")
 
@@ -20,7 +21,7 @@ class MockLLMAdapter:
         yield {"type": "text", "content": mock_response}
 
 
-def get_model_capabilities(model_name: str) -> Dict[str, Any]:
+def get_model_capabilities(model_name: str) -> dict[str, Any]:
     """Dynamically construct capabilities for any model name without hardcoded lists."""
     if not model_name:
         return {"context_window": 8192, "vision": False, "tool_calling": True}
@@ -35,9 +36,7 @@ def get_model_capabilities(model_name: str) -> Dict[str, Any]:
         context_window = 200_000
     elif "gpt-4o" in model_name_lower or "o1" in model_name_lower or "o3" in model_name_lower:
         context_window = 128_000
-    elif "gpt-4" in model_name_lower:
-        context_window = 32_000
-    elif "llama" in model_name_lower or "qwen" in model_name_lower or "mistral" in model_name_lower or "deepseek" in model_name_lower:
+    elif "gpt-4" in model_name_lower or "llama" in model_name_lower or "qwen" in model_name_lower or "mistral" in model_name_lower or "deepseek" in model_name_lower:
         context_window = 32_000
     else:
         # Default safe fallback — avoids NoneType comparison errors
@@ -165,7 +164,7 @@ class ModelRouter:
                 if chunk["type"] == "text":
                     response_text += chunk["content"]
         except Exception as e:
-            logger.error(f"ModelRouter: Primary model path failed: {str(e)}")
+            logger.error(f"ModelRouter: Primary model path failed: {e!s}")
             self.notify_fallback(str(e))
             raise e
         return response_text
@@ -180,7 +179,7 @@ class ModelRouter:
             logger.info("ModelRouter: Bug scan completed successfully.")
             return report.strip()
         except Exception as e:
-            logger.error(f"ModelRouter: Bug scan failed: {str(e)}")
+            logger.error(f"ModelRouter: Bug scan failed: {e!s}")
             raise e
 
 # NOTE: Previous versions contained AgentReputationEngine, CostOptimizer,

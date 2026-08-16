@@ -7,13 +7,12 @@ that operate on the workspace filesystem.
 
 from __future__ import annotations
 
+import functools
+import logging
 import os
 import re
-import logging
-import functools
-from typing import Optional
 
-from agent_runtime.tools import ToolDefinition, ToolResult, RiskLevel
+from agent_runtime.tools import RiskLevel, ToolDefinition, ToolResult
 
 logger = logging.getLogger("agent_runtime.tools.search")
 

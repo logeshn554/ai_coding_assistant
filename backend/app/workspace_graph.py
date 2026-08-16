@@ -5,16 +5,17 @@ Parses workspace files to construct a dependency node-edge graph tracking
 file nodes, components, hooks, contexts, APIs, services, databases, imports, exports, and circular dependencies.
 """
 
-import os
-import sys
-import re
 import ast
-import json
 import hashlib
+import json
 import logging
+import os
+import re
 import subprocess
+import sys
 from pathlib import Path
-from typing import Dict, Any, List, Set, Tuple, Optional
+from typing import Any
+
 from .state import config_manager
 
 logger = logging.getLogger("antigravity.graph")
@@ -25,11 +26,11 @@ _SKIP_DIRS = {
 }
 
 
-def extract_database_models(content: str, ext: str) -> List[Dict[str, Any]]:
+def extract_database_models(content: str, ext: str) -> list[dict[str, Any]]:
     """
     Detect ORM models and schemas (SQLAlchemy, Django, Mongoose, Prisma) and return schema details.
     """
-    models: List[Dict[str, Any]] = []
+    models: list[dict[str, Any]] = []
 
     if ext == ".py":
         try:
@@ -43,7 +44,7 @@ def extract_database_models(content: str, ext: str) -> List[Dict[str, Any]]:
                     )
                     if is_orm:
                         table_name = node.name.lower()
-                        fields: List[str] = []
+                        fields: list[str] = []
                         for item in node.body:
                             if isinstance(item, ast.Assign):
                                 for target in item.targets:
@@ -103,7 +104,7 @@ def extract_database_models(content: str, ext: str) -> List[Dict[str, Any]]:
     return models
 
 
-def categorize_node(rel_path: str, content: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+def categorize_node(rel_path: str, content: str) -> tuple[str, dict[str, Any] | None]:
     """
     Categorize node_type based on actual code structure:
     - database: ORM models/schemas with table names & fields
@@ -158,13 +159,13 @@ def categorize_node(rel_path: str, content: str) -> Tuple[str, Optional[Dict[str
     return "file", None
 
 
-def parse_python_imports(content: str) -> List[Tuple[str, int, str]]:
+def parse_python_imports(content: str) -> list[tuple[str, int, str]]:
     """
     Walk Python AST to extract all imports.
     Returns tuples of (module_name, level, imported_name).
     level > 0 indicates relative import (e.g. from . import x).
     """
-    imports: List[Tuple[str, int, str]] = []
+    imports: list[tuple[str, int, str]] = []
     try:
         tree = ast.parse(content)
         for node in ast.walk(tree):
@@ -188,7 +189,7 @@ def parse_python_imports(content: str) -> List[Tuple[str, int, str]]:
     return imports
 
 
-def parse_js_ts_imports_batch(workspace_root: str, js_ts_files: List[str]) -> Dict[str, List[str]]:
+def parse_js_ts_imports_batch(workspace_root: str, js_ts_files: list[str]) -> dict[str, list[str]]:
     """
     Invokes js_ast_parser.js Node script to get real AST imports + tsconfig path alias resolution.
     """
@@ -223,7 +224,7 @@ def parse_js_ts_imports_batch(workspace_root: str, js_ts_files: List[str]) -> Di
     return {}
 
 
-def build_workspace_graph(workspace_root: str) -> Dict[str, Any]:
+def build_workspace_graph(workspace_root: str) -> dict[str, Any]:
     """
     Scans the workspace and builds a node/edge dependency graph using real AST parsing.
     Detects circular imports and exposes content-based categorization & Database node types.
@@ -246,14 +247,14 @@ def build_workspace_graph(workspace_root: str) -> Dict[str, Any]:
         }
 
     root_path = Path(workspace_root)
-    nodes: List[Dict[str, Any]] = []
-    edges: List[Dict[str, Any]] = []
-    file_map: Dict[str, str] = {}  # rel_path -> node_id
-    adjacency: Dict[str, Set[str]] = {}  # node_id -> set of target node_ids
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    file_map: dict[str, str] = {}  # rel_path -> node_id
+    adjacency: dict[str, set[str]] = {}  # node_id -> set of target node_ids
 
     # 1. Collect all code files
     code_extensions = {".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".java", ".prisma"}
-    rel_files: List[str] = []
+    rel_files: list[str] = []
 
     for path in root_path.rglob("*"):
         if any(part in _SKIP_DIRS for part in path.parts):
@@ -280,7 +281,7 @@ def build_workspace_graph(workspace_root: str) -> Dict[str, Any]:
 
         node_type, db_info = categorize_node(rel, content)
 
-        node_dict: Dict[str, Any] = {
+        node_dict: dict[str, Any] = {
             "id": node_id,
             "label": file_name,
             "path": rel,
@@ -321,7 +322,7 @@ def build_workspace_graph(workspace_root: str) -> Dict[str, Any]:
                 if imp in file_map:
                     resolved_target = file_map[imp]
                 else:
-                    candidates: List[str] = []
+                    candidates: list[str] = []
                     if imp.startswith("."):
                         cand = os.path.normpath(os.path.join(curr_dir, imp)).replace("\\", "/")
                     else:
@@ -408,10 +409,10 @@ def build_workspace_graph(workspace_root: str) -> Dict[str, Any]:
                         })
 
     # 4. Detect Circular Imports (Tarjan / Cycle DFS)
-    circular_imports: List[List[str]] = []
-    visited: Set[str] = set()
-    rec_stack: Set[str] = set()
-    curr_path: List[str] = []
+    circular_imports: list[list[str]] = []
+    visited: set[str] = set()
+    rec_stack: set[str] = set()
+    curr_path: list[str] = []
 
     def dfs(node_id: str):
         visited.add(node_id)
@@ -450,7 +451,7 @@ def build_workspace_graph(workspace_root: str) -> Dict[str, Any]:
     }
 
 
-async def get_or_generate_node_summary(workspace_root: str, node_id: str) -> Dict[str, Any]:
+async def get_or_generate_node_summary(workspace_root: str, node_id: str) -> dict[str, Any]:
     """
     Lazily generates a 1-2 sentence description for a node in the graph.
     Caches summary in .devpilot/graph_cache.json keyed by file content hash.
@@ -478,7 +479,7 @@ async def get_or_generate_node_summary(workspace_root: str, node_id: str) -> Dic
     cache_file = cache_dir / "graph_cache.json"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    cache_data: Dict[str, Any] = {}
+    cache_data: dict[str, Any] = {}
     if cache_file.is_file():
         try:
             cache_data = json.loads(cache_file.read_text(encoding="utf-8"))

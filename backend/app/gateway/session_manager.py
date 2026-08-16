@@ -14,7 +14,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("agentos.gateway.session_manager")
 
@@ -46,7 +46,7 @@ class SessionRecord:
     total_tokens: int = 0
     total_cost_usd: float = 0.0
     error_count: int = 0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def duration_seconds(self) -> float:
@@ -65,7 +65,7 @@ class GatewaySessionManager:
     """Manages session lifecycle across the gateway."""
 
     def __init__(self, session_ttl: float = 7200.0, max_sessions_per_user: int = 10):
-        self._sessions: Dict[str, SessionRecord] = {}
+        self._sessions: dict[str, SessionRecord] = {}
         self._session_ttl = session_ttl
         self._max_sessions_per_user = max_sessions_per_user
 
@@ -75,7 +75,7 @@ class GatewaySessionManager:
         user_id: str,
         workspace_root: str = "",
         model_name: str = "",
-        metadata: Dict[str, Any] = None,
+        metadata: dict[str, Any] = None,
     ) -> SessionRecord:
         """Create a new session."""
         session_id = f"sess-{uuid.uuid4().hex[:16]}"
@@ -101,7 +101,7 @@ class GatewaySessionManager:
         logger.info(f"Session created: {session_id} (user={user_id}, workspace={workspace_root})")
         return session
 
-    def activate_session(self, session_id: str) -> Optional[SessionRecord]:
+    def activate_session(self, session_id: str) -> SessionRecord | None:
         """Transition a session to active state."""
         session = self._sessions.get(session_id)
         if session and session.state in (SessionState.CREATED, SessionState.PAUSED):
@@ -110,7 +110,7 @@ class GatewaySessionManager:
             return session
         return None
 
-    def pause_session(self, session_id: str) -> Optional[SessionRecord]:
+    def pause_session(self, session_id: str) -> SessionRecord | None:
         """Pause an active session."""
         session = self._sessions.get(session_id)
         if session and session.state == SessionState.ACTIVE:
@@ -119,11 +119,11 @@ class GatewaySessionManager:
             return session
         return None
 
-    def resume_session(self, session_id: str) -> Optional[SessionRecord]:
+    def resume_session(self, session_id: str) -> SessionRecord | None:
         """Resume a paused session."""
         return self.activate_session(session_id)
 
-    def terminate_session(self, session_id: str, reason: str = "") -> Optional[SessionRecord]:
+    def terminate_session(self, session_id: str, reason: str = "") -> SessionRecord | None:
         """Terminate a session."""
         session = self._sessions.get(session_id)
         if session:
@@ -135,7 +135,7 @@ class GatewaySessionManager:
             return session
         return None
 
-    def get_session(self, session_id: str) -> Optional[SessionRecord]:
+    def get_session(self, session_id: str) -> SessionRecord | None:
         """Get a session by ID."""
         session = self._sessions.get(session_id)
         if session:
@@ -146,14 +146,14 @@ class GatewaySessionManager:
                 logger.info(f"Session expired: {session_id}")
         return session
 
-    def get_user_sessions(self, user_id: str, alive_only: bool = False) -> List[SessionRecord]:
+    def get_user_sessions(self, user_id: str, alive_only: bool = False) -> list[SessionRecord]:
         """Get all sessions for a user."""
         sessions = [s for s in self._sessions.values() if s.user_id == user_id]
         if alive_only:
             sessions = [s for s in sessions if s.is_alive]
         return sessions
 
-    def get_tenant_sessions(self, tenant_id: str, alive_only: bool = False) -> List[SessionRecord]:
+    def get_tenant_sessions(self, tenant_id: str, alive_only: bool = False) -> list[SessionRecord]:
         """Get all sessions for a tenant."""
         sessions = [s for s in self._sessions.values() if s.tenant_id == tenant_id]
         if alive_only:
@@ -199,7 +199,7 @@ class GatewaySessionManager:
 
         return len(to_remove)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """Get overall session statistics."""
         alive = sum(1 for s in self._sessions.values() if s.is_alive)
         return {

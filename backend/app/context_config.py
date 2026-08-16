@@ -1,5 +1,6 @@
 import os
 
+
 def get_positive_int_env(name: str, default: int) -> int:
     """Safely retrieves a positive integer value from environment variables."""
     value = os.getenv(name)

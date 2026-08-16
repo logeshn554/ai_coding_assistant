@@ -4,7 +4,7 @@ Capability Planner — Maps intent features and code changes to the required spe
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Set
+
 from ..intelligence.intent_compiler import CompiledIntent
 
 logger = logging.getLogger("devpilot.work_graph.capability_planner")
@@ -14,7 +14,7 @@ class CapabilityPlanner:
     """Selects which agent types (code, test, review, docs, security) are needed for a task."""
 
     def __init__(self) -> None:
-        self._agent_capabilities: Dict[str, Set[str]] = {
+        self._agent_capabilities: dict[str, set[str]] = {
             "code": {"write_code", "refactor_code", "implement_feature"},
             "test": {"write_tests", "run_tests", "verify_fixes"},
             "review": {"review_code", "audit_quality"},
@@ -22,7 +22,7 @@ class CapabilityPlanner:
             "docs": {"write_docs", "generate_diagrams"},
         }
 
-    def plan_capabilities(self, intent: CompiledIntent) -> List[str]:
+    def plan_capabilities(self, intent: CompiledIntent) -> list[str]:
         """Determine agent roles required to satisfy the compiled intent."""
         needed_roles = {"code"}  # code is always required
         goal_lower = intent.goal.lower()

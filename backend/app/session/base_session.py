@@ -5,7 +5,7 @@ It provides abstract methods for sending WebSocket messages and any shared utili
 """
 
 import abc
-from typing import Any, Dict
+from typing import Any
 
 
 class BaseSession(abc.ABC):
@@ -18,7 +18,7 @@ class BaseSession(abc.ABC):
     total_cost_usd: float = 0.0
     wasted_turns: int = 0
 
-    async def send_ws_message(self, message: Dict[str, Any]) -> None:
+    async def send_ws_message(self, message: dict[str, Any]) -> None:
         """Send a message to the UI/WS client.
 
         Args:

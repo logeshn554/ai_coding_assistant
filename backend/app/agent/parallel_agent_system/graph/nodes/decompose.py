@@ -1,11 +1,11 @@
-from uuid import uuid4
 from typing import Literal
-from pydantic import BaseModel, Field
-from langchain_core.prompts import ChatPromptTemplate
+from uuid import uuid4
 
+from langchain_core.prompts import ChatPromptTemplate
 from parallel_agent_system.core.config import SystemConfig
-from parallel_agent_system.core.state import SubTask, GraphState
+from parallel_agent_system.core.state import GraphState, SubTask
 from parallel_agent_system.runtime.secret_registry import SecretRegistry
+from pydantic import BaseModel, Field
 
 
 class RawSubTask(BaseModel):
@@ -103,8 +103,8 @@ async def decompose_task_node(state: GraphState) -> dict:
             text_res = response.content if hasattr(response, "content") else str(response)
             
             # Robust JSON parsing
-            import re
             import json
+            import re
             text_res = re.sub(r"```json\s*", "", text_res)
             text_res = re.sub(r"```\s*", "", text_res)
             text_res = text_res.strip()

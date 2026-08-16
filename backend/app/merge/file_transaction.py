@@ -54,7 +54,7 @@ class FileTransaction:
 
     def __init__(self) -> None:
         # Key: file_path -> original content backup
-        self._backups: Dict[str, str] = {}
+        self._backups: dict[str, str] = {}
         self._active = False
 
     def begin(self) -> None:

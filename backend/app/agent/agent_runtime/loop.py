@@ -11,14 +11,14 @@ The loop implements:
 
 from __future__ import annotations
 
-import json
-import time
 import logging
+import time
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Optional
+from typing import Any
 
-from agent_runtime.llm import LLMProvider, LLMResponse, Message, ToolCallRequest
-from agent_runtime.tools import ToolRegistry, ToolResult
+from agent_runtime.llm import LLMProvider, Message
+from agent_runtime.tools import ToolRegistry
 
 logger = logging.getLogger("agent_runtime.loop")
 
@@ -28,9 +28,9 @@ class AgentEvent:
     """Observable event emitted during the agent loop."""
     type: str  # "llm_call", "tool_call", "tool_result", "final", "error"
     content: str = ""
-    tool_name: Optional[str] = None
-    tool_args: Optional[dict[str, Any]] = None
-    tool_result: Optional[str] = None
+    tool_name: str | None = None
+    tool_args: dict[str, Any] | None = None
+    tool_result: str | None = None
     cost_usd: float = 0.0
     tokens: int = 0
     timestamp: float = field(default_factory=time.time)
@@ -57,7 +57,7 @@ class LoopResult:
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     events: list[AgentEvent] = field(default_factory=list)
-    error: Optional[str] = None
+    error: str | None = None
 
 
 async def agent_loop(
@@ -256,7 +256,9 @@ async def agent_loop(
                         gen_llm = llm
                         if secondary_model:
                             try:
-                                from agent_runtime.llm.openai_provider import OpenAIProvider
+                                from agent_runtime.llm.openai_provider import (
+                                    OpenAIProvider,
+                                )
                                 secondary_profile_name = config_manager.get_secondary_agent_profile()
                                 secondary_profile = None
                                 if secondary_profile_name:
@@ -317,9 +319,9 @@ async def agent_loop(
                         messages.append(Message(
                             role="user",
                             content=(
-                                f"System Notification: Generator LLM completed the task.\n"
-                                f"Result has been stored in shared memory under key 'generator_output'.\n"
-                                f"Please call `shared_memory_get` with key='generator_output' to inspect the results."
+                                "System Notification: Generator LLM completed the task.\n"
+                                "Result has been stored in shared memory under key 'generator_output'.\n"
+                                "Please call `shared_memory_get` with key='generator_output' to inspect the results."
                             )
                         ))
                     except Exception as gen_err:

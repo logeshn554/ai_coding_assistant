@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import logging
 import hashlib
+import logging
 import os
-from typing import Any, Dict
+from typing import Any
 
 logger = logging.getLogger("devpilot.sin_network")
 
@@ -16,7 +16,7 @@ _STUB_WARNING = (
 class SoftwareIntelligenceNetwork:
     """SIN engine bridging stubs with real AST workspace graph metadata."""
 
-    def query_global_intelligence(self, symbol_query: str) -> Dict[str, Any]:
+    def query_global_intelligence(self, symbol_query: str) -> dict[str, Any]:
         """Search global code intelligence (STUB — not yet implemented)."""
         logger.warning(_STUB_WARNING)
         return {
@@ -27,7 +27,7 @@ class SoftwareIntelligenceNetwork:
             "cross_repo_links": [],
         }
 
-    def get_engineering_genome(self, workspace_root: str = "") -> Dict[str, Any]:
+    def get_engineering_genome(self, workspace_root: str = "") -> dict[str, Any]:
         """Extract engineering genome profile dynamically using build_workspace_graph."""
         if not workspace_root or not os.path.isdir(workspace_root):
             logger.warning(_STUB_WARNING)
@@ -89,7 +89,7 @@ class SoftwareIntelligenceNetwork:
                 "workspace_root": workspace_root
             }
 
-    def evaluate_ai_quality_score(self, diff_code: str) -> Dict[str, Any]:
+    def evaluate_ai_quality_score(self, diff_code: str) -> dict[str, Any]:
         """Evaluate AI-generated code quality (STUB — not yet implemented)."""
         logger.warning(_STUB_WARNING)
         return {

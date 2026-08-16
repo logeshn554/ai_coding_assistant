@@ -9,104 +9,98 @@ This package provides:
   - LLMIntegration: Real LLM provider integration
 """
 
+from .agent_factory import AgentFactory
+from .base_agent import BaseAgent
+from .checkpoint_manager import CheckpointManager, ExecutionReplayer
+from .cost_tracker import AgentBudget, CostEntry, CostTracker, CostType
+from .dag_executor import DAGError, DAGExecutor, TaskGraphValidator
+from .event_system import Event, EventBus, EventType, Progress
+from .failure_handling import (
+    FailureClassifier,
+    FailureFingerprint,
+    FailureType,
+    RecoveryStrategy,
+    StuckDetector,
+)
+from .git_worktree_manager import GitWorktreeManager, WorktreeInfo
 from .interfaces import (
+    AgentContext,
+    AgentResult,
     AgentState,
     IAgent,
     IAgentFactory,
     ILLMIntegration,
     IToolExecutor,
     IToolValidator,
-    AgentContext,
-    AgentResult,
     LLMMessage,
     Task,
     ToolCall,
+    ToolCallError,
     ToolDefinition,
     ToolResult,
-    ToolCallError,
 )
-
-from .state_machine import AgentStateMachine, VALID_TRANSITIONS, TERMINAL_STATES
-
-from .base_agent import BaseAgent
-
-from .tool_layer import ToolExecutor, ToolValidator, PathValidator
-
 from .llm_integration import LLMIntegration
-
+from .state_machine import TERMINAL_STATES, VALID_TRANSITIONS, AgentStateMachine
+from .tool_layer import PathValidator, ToolExecutor, ToolValidator
 from .tool_registry import ToolRegistry
-
-from .agent_factory import AgentFactory
-
-from .workspace import Workspace, WorkspaceManager, WorkspaceHealth
-
-from .event_system import EventBus, Event, EventType, Progress
-
-from .dag_executor import DAGExecutor, TaskGraphValidator, DAGError
-
-from .verification_engine import VerificationEngine, VerificationResult, CheckResult, CheckStatus
-
-from .failure_handling import (
-    FailureClassifier, FailureType, RecoveryStrategy,
-    FailureFingerprint, StuckDetector
+from .verification_engine import (
+    CheckResult,
+    CheckStatus,
+    VerificationEngine,
+    VerificationResult,
 )
-
-from .checkpoint_manager import CheckpointManager, ExecutionReplayer
-
-from .git_worktree_manager import GitWorktreeManager, WorktreeInfo
-
-from .cost_tracker import CostTracker, AgentBudget, CostEntry, CostType
+from .workspace import Workspace, WorkspaceHealth, WorkspaceManager
 
 __all__ = [
+    "TERMINAL_STATES",
+    "VALID_TRANSITIONS",
+    "AgentBudget",
+    "AgentContext",
+    "AgentFactory",
+    "AgentResult",
     "AgentState",
+    "AgentStateMachine",
+    "BaseAgent",
+    "CheckResult",
+    "CheckStatus",
+    "CheckpointManager",
+    "CostEntry",
+    "CostTracker",
+    "CostType",
+    "DAGError",
+    "DAGExecutor",
+    "Event",
+    "EventBus",
+    "EventType",
+    "ExecutionReplayer",
+    "FailureClassifier",
+    "FailureFingerprint",
+    "FailureType",
+    "GitWorktreeManager",
     "IAgent",
     "IAgentFactory",
     "ILLMIntegration",
     "IToolExecutor",
     "IToolValidator",
-    "AgentContext",
-    "AgentResult",
-    "LLMMessage",
-    "Task",
-    "ToolCall",
-    "ToolDefinition",
-    "ToolResult",
-    "ToolCallError",
-    "AgentStateMachine",
-    "VALID_TRANSITIONS",
-    "TERMINAL_STATES",
-    "BaseAgent",
-    "ToolExecutor",
-    "ToolValidator",
-    "PathValidator",
     "LLMIntegration",
-    "ToolRegistry",
-    "AgentFactory",
-    "Workspace",
-    "WorkspaceManager",
-    "WorkspaceHealth",
-    "EventBus",
-    "Event",
-    "EventType",
+    "LLMMessage",
+    "PathValidator",
     "Progress",
-    "DAGExecutor",
+    "RecoveryStrategy",
+    "StuckDetector",
+    "Task",
     "TaskGraphValidator",
-    "DAGError",
+    "ToolCall",
+    "ToolCallError",
+    "ToolDefinition",
+    "ToolExecutor",
+    "ToolRegistry",
+    "ToolResult",
+    "ToolValidator",
     "VerificationEngine",
     "VerificationResult",
-    "CheckResult",
-    "CheckStatus",
-    "FailureClassifier",
-    "FailureType",
-    "RecoveryStrategy",
-    "FailureFingerprint",
-    "StuckDetector",
-    "CheckpointManager",
-    "ExecutionReplayer",
-    "GitWorktreeManager",
+    "Workspace",
+    "WorkspaceHealth",
+    "WorkspaceManager",
     "WorktreeInfo",
-    "CostTracker",
-    "AgentBudget",
-    "CostEntry",
-    "CostType",
 ]

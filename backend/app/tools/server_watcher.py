@@ -11,14 +11,14 @@ import asyncio
 import logging
 import re
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..state import config_manager
 
 logger = logging.getLogger("devpilot.tools.server_watcher")
 
 # Common dev server ready regex patterns
-SERVER_READY_PATTERNS: List[re.Pattern] = [
+SERVER_READY_PATTERNS: list[re.Pattern] = [
     re.compile(r"https?://localhost:\d+", re.IGNORECASE),
     re.compile(r"https?://127\.0\.0\.1:\d+", re.IGNORECASE),
     re.compile(r"https?://\[::1\]:\d+", re.IGNORECASE),
@@ -31,7 +31,7 @@ SERVER_READY_PATTERNS: List[re.Pattern] = [
 ]
 
 # Standard dev server ports
-COMMON_DEV_PORTS: List[int] = [3000, 5173, 8000, 8080, 4200, 5000, 5500, 8081]
+COMMON_DEV_PORTS: list[int] = [3000, 5173, 8000, 8080, 4200, 5000, 5500, 8081]
 
 
 class ServerWatcher:
@@ -40,13 +40,13 @@ class ServerWatcher:
     def __init__(self, debounce_interval: float = 15.0):
         self.debounce_interval = debounce_interval
         # Stores url -> timestamp of last detection
-        self._detected_urls: Dict[str, float] = {}
+        self._detected_urls: dict[str, float] = {}
 
     def reset(self):
         """Clear detection history."""
         self._detected_urls.clear()
 
-    def extract_url(self, line: str, default_port: int = 5173) -> Optional[str]:
+    def extract_url(self, line: str, default_port: int = 5173) -> str | None:
         """Extract a valid localhost URL from a log line, or construct one if matched."""
         # 1. Direct URL match
         url_match = re.search(r"https?://(?:localhost|127\.0\.0\.1|\[::1\]):\d+[/\w.-]*", line, re.IGNORECASE)
@@ -66,7 +66,7 @@ class ServerWatcher:
 
         return None
 
-    def check_log_line(self, line: str, session: Any = None) -> Optional[str]:
+    def check_log_line(self, line: str, session: Any = None) -> str | None:
         """Check a terminal log line for dev server activation.
 
         Returns detected URL if a NEW (non-debounced) server was found, else None.

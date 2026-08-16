@@ -15,10 +15,10 @@ from __future__ import annotations
 import asyncio
 import difflib
 import json
+import logging
 import os
 import re
-import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger("devpilot.tools.write_tool")
 
@@ -27,7 +27,6 @@ from ..async_files import (
     async_write_workspace_file,
 )
 from ..files import safe_path
-
 
 # ── A4: Node builtin module names excluded from import cross-check ────────────
 _NODE_BUILTINS = frozenset({
@@ -231,7 +230,7 @@ def check_path_casing(workspace_root: str, relative_path: str) -> tuple[str, boo
     return "/".join(resolved_parts), collision
 
 
-def validate_file_content(path: str, content: str) -> Optional[str]:
+def validate_file_content(path: str, content: str) -> str | None:
     """Validate content is not empty, is valid JSON for .json, and is syntactically valid Python for .py."""
     if not content.strip():
         if os.path.basename(path) == "__init__.py":
@@ -242,14 +241,14 @@ def validate_file_content(path: str, content: str) -> Optional[str]:
         try:
             json.loads(content)
         except json.JSONDecodeError as e:
-            return f"Invalid JSON: {str(e)}"
+            return f"Invalid JSON: {e!s}"
     elif ext == ".py":
         try:
             compile(content, path, "exec")
         except SyntaxError as e:
             return f"Python syntax error: {e.msg} (line {e.lineno})"
         except Exception as e:
-            return f"Python compilation failed: {str(e)}"
+            return f"Python compilation failed: {e!s}"
             
     # Next.js App Router Client Component validation rule
     norm_path = path.replace("\\", "/").lower()
@@ -268,7 +267,7 @@ async def write_or_edit_file(
     session: Any,
     tc_id: str,
     name: str,
-    args: Dict[str, Any],
+    args: dict[str, Any],
     auto_apply: bool,
 ) -> str:
     """Apply write_file or edit_file with user-confirmation guardrails.
@@ -303,7 +302,7 @@ async def write_or_edit_file(
         if os.path.exists(abs_path) and os.path.isfile(abs_path):
             original_content = await async_read_workspace_file(session.workspace_root, path)
     except Exception as e:
-        return f"Path verification failed: {str(e)}"
+        return f"Path verification failed: {e!s}"
 
     if name == "write_file":
         proposed_content = args.get("content", "")
@@ -388,7 +387,7 @@ async def write_or_edit_file(
     # Skip confirmation for brand-new files (no existing content to diff — nothing to lose)
     is_new_file = not os.path.exists(abs_path)
     if not auto_apply and not is_new_file:
-        from ..diff_utils import generate_hunks, apply_hunks
+        from ..diff_utils import apply_hunks, generate_hunks
         hunks = generate_hunks(original_content, proposed_content)
 
         event = asyncio.Event()

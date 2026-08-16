@@ -1,12 +1,14 @@
-from typing import Any, Dict, List
 import concurrent.futures
 from collections import defaultdict
+from typing import Any
+
 from agent_os.skills.interfaces import ISkill, ISkillScheduler
+
 
 class SkillScheduler(ISkillScheduler):
     """Skill Scheduler orchestrating skill execution based on Task State mappings, priority, and parallelism."""
     def __init__(self) -> None:
-        self._registry: Dict[str, List[ISkill]] = {}
+        self._registry: dict[str, list[ISkill]] = {}
 
     def register_skill(self, state: str, skill: ISkill) -> None:
         state_key = state.upper()
@@ -14,10 +16,10 @@ class SkillScheduler(ISkillScheduler):
             self._registry[state_key] = []
         self._registry[state_key].append(skill)
 
-    def get_skills_for_state(self, state: str) -> List[ISkill]:
+    def get_skills_for_state(self, state: str) -> list[ISkill]:
         return self._registry.get(state.upper(), [])
 
-    def schedule_skills(self, state: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    def schedule_skills(self, state: str, context: dict[str, Any]) -> dict[str, Any]:
         skills = self.get_skills_for_state(state)
         # Sort skills by priority (highest first)
         skills.sort(key=lambda s: getattr(s, "priority", 0), reverse=True)

@@ -8,16 +8,14 @@ hybrid ranking, security filtering, and context provenance.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
-import datetime
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .dependency_graph import DependencyGraph
 from .hybrid_ranker import HybridRanker
 from .security_filter import SecurityFilter
-from .smart_search import SearchResult, SmartSearchEngine
+from .smart_search import SmartSearchEngine
 from .symbol_index import SymbolIndex
 from .types import (
     AgentContext,
@@ -29,7 +27,6 @@ from .types import (
     EditorContext,
     GitContext,
     NodeType,
-    SymbolInfo,
     WorkspaceContext,
 )
 
@@ -39,7 +36,7 @@ logger = logging.getLogger("devpilot.context_engine")
 class ContextEngine:
     """Canonical Repository Intelligence & Context Engine used by AgentRuntime."""
 
-    _instances: Dict[str, "ContextEngine"] = {}
+    _instances: dict[str, ContextEngine] = {}
 
     def __init__(
         self,
@@ -60,7 +57,7 @@ class ContextEngine:
         self.status = "idle"  # idle | indexing | ready
         self.indexed_files = 0
         self.total_files = 0
-        self._background_task: Optional[asyncio.Task] = None
+        self._background_task: asyncio.Task | None = None
 
     @classmethod
     def get_instance(
@@ -69,7 +66,7 @@ class ContextEngine:
         organization_id: str = "default-org",
         project_id: str = "default-project",
         workspace_id: str = "default-workspace",
-    ) -> "ContextEngine":
+    ) -> ContextEngine:
         """Get or initialize singleton ContextEngine for a workspace."""
         root = os.path.abspath(workspace_root)
         key = f"{organization_id}:{project_id}:{workspace_id}:{root}"
@@ -144,10 +141,10 @@ class ContextEngine:
         self,
         task_description: str,
         workspace: WorkspaceContext,
-        editor: Optional[EditorContext] = None,
-        git: Optional[GitContext] = None,
-        diagnostics: Optional[List[DiagnosticItem]] = None,
-        budget: Optional[ContextBudget] = None,
+        editor: EditorContext | None = None,
+        git: GitContext | None = None,
+        diagnostics: list[DiagnosticItem] | None = None,
+        budget: ContextBudget | None = None,
     ) -> AgentContext:
         """Assemble canonical AgentContext package structured across L0-L4 layers."""
         if self.status == "idle":
@@ -156,7 +153,7 @@ class ContextEngine:
         b = budget or ContextBudget()
         diag_list = diagnostics or (editor.diagnostics if editor else [])
 
-        candidates: List[ContextItem] = []
+        candidates: list[ContextItem] = []
 
         # L0: Immediate Context (Active file & selected text)
         if editor and editor.active_file:
@@ -268,7 +265,7 @@ class ContextEngine:
             provenance_summary=provenance_summary,
         )
 
-    async def get_debug_info(self, task_description: str) -> Dict[str, Any]:
+    async def get_debug_info(self, task_description: str) -> dict[str, Any]:
         """Context debugging inspection data for /api/context/debug (Step 22)."""
         search_res = await self.search_engine.search(task_description, max_results=10)
         return {

@@ -1,6 +1,7 @@
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+
 from ..task_queue import global_task_queue
 
 router = APIRouter()
@@ -8,8 +9,8 @@ router = APIRouter()
 
 class CreateTaskRequest(BaseModel):
     title: str
-    mode: Optional[str] = "Agent"
-    priority: Optional[str] = "medium"
+    mode: str | None = "Agent"
+    priority: str | None = "medium"
 
 
 class TaskActionRequest(BaseModel):

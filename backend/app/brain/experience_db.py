@@ -1,8 +1,8 @@
 """Experience Database Service — Records bug resolutions, modified file patterns, and solution confidence scores."""
-import os
 import json
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Any
 
 logger = logging.getLogger("devpilot.brain.experience_db")
 
@@ -13,7 +13,7 @@ class ExperienceDatabase:
         else:
             self.storage_path = storage_path
 
-    def _load_data(self) -> List[Dict[str, Any]]:
+    def _load_data(self) -> list[dict[str, Any]]:
         if not os.path.exists(self.storage_path):
             # Seed with initial default data if it doesn't exist
             defaults = [
@@ -39,7 +39,7 @@ class ExperienceDatabase:
             logger.warning("Failed to load experience db: %s", e)
             return []
 
-    def _save_data(self, data: List[Dict[str, Any]]):
+    def _save_data(self, data: list[dict[str, Any]]):
         try:
             os.makedirs(os.path.dirname(self.storage_path), exist_ok=True)
             with open(self.storage_path, "w", encoding="utf-8") as f:
@@ -47,7 +47,7 @@ class ExperienceDatabase:
         except Exception as e:
             logger.warning("Failed to save experience db: %s", e)
 
-    def record_experience(self, bug_title: str, cause: str, solution: str, confidence: float = 0.95) -> Dict[str, Any]:
+    def record_experience(self, bug_title: str, cause: str, solution: str, confidence: float = 0.95) -> dict[str, Any]:
         """Record a resolution experience into the persistent knowledge store."""
         import datetime
         entry = {
@@ -62,7 +62,7 @@ class ExperienceDatabase:
         self._save_data(data)
         return {"status": "recorded", "experience": entry}
 
-    def list_experiences(self) -> List[Dict[str, Any]]:
+    def list_experiences(self) -> list[dict[str, Any]]:
         """List experiences fetched dynamically from the database file."""
         return self._load_data()
 

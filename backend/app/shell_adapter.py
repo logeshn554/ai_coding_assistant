@@ -1,6 +1,6 @@
-import sys
 import os
-import subprocess
+import sys
+
 
 class ShellAdapter:
     """
@@ -38,4 +38,4 @@ class ShellAdapter:
             from .tools.scan_for_bugs import generate_bug_report_sync
             return generate_bug_report_sync()
         except Exception as e:
-            return f"Unexpected error during bug scan: {str(e)}"
+            return f"Unexpected error during bug scan: {e!s}"

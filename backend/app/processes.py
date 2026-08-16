@@ -1,12 +1,12 @@
 import asyncio
+import ctypes
+import logging
 import os
 import re
-import sys
-import logging
 import subprocess
+import sys
 import uuid
-import ctypes
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any
 
 logger = logging.getLogger("devpilot.processes")
 
@@ -15,7 +15,7 @@ PROCESS_MAX_LOG_BYTES = 5 * 1024 * 1024
 
 _job_objects = []
 
-def confine_subprocess(pid: int) -> Optional[int]:
+def confine_subprocess(pid: int) -> int | None:
     if sys.platform == "win32":
         try:
             kernel32 = ctypes.windll.kernel32
@@ -66,20 +66,20 @@ class ActiveProcess:
         self.cwd = cwd
         self.name = name or command
         self.status = "starting"  # starting, running, stopped, failed, crashed
-        self.port: Optional[int] = None
-        self.localhost_url: Optional[str] = None
-        self.network_url: Optional[str] = None
-        self.pid: Optional[int] = None
-        self.container_pid: Optional[int] = None
-        self.sandbox_id: Optional[str] = None
+        self.port: int | None = None
+        self.localhost_url: str | None = None
+        self.network_url: str | None = None
+        self.pid: int | None = None
+        self.container_pid: int | None = None
+        self.sandbox_id: str | None = None
         self.session = session
-        self.logs: List[str] = []
-        self.process: Optional[asyncio.subprocess.Process] = None
-        self.read_task: Optional[asyncio.Task] = None
+        self.logs: list[str] = []
+        self.process: asyncio.subprocess.Process | None = None
+        self.read_task: asyncio.Task | None = None
         self.port_conflict = False
         self.conflict_details = {}
         self.startup_success_event = asyncio.Event()
-        self.win32_job_object: Optional[int] = None
+        self.win32_job_object: int | None = None
 
     async def start(self):
         logger.info(f"Starting process '{self.name}' with command: {self.command}")
@@ -100,7 +100,11 @@ class ActiveProcess:
                 return
 
             # Docker isolated execution
-            from backend.app.agent.security import ExecutionPolicy, global_sandbox_manager, NetworkMode
+            from backend.app.agent.security import (
+                ExecutionPolicy,
+                NetworkMode,
+                global_sandbox_manager,
+            )
             
             # Extract policy values from session or defaults
             net_mode = "NO_NETWORK"
@@ -157,8 +161,8 @@ class ActiveProcess:
                     raise RuntimeError(f"Failed to retrieve background process ID from sandbox: {res.stderr or res.combined_output}")
             except Exception as e:
                 self.status = "failed"
-                self.logs.append(f"Failed to spawn process in Docker sandbox: {str(e)}\n")
-                logger.error(f"Sandbox background process spawn failed: {str(e)}")
+                self.logs.append(f"Failed to spawn process in Docker sandbox: {e!s}\n")
+                logger.error(f"Sandbox background process spawn failed: {e!s}")
                 self.startup_success_event.set()
 
         else:
@@ -187,7 +191,9 @@ class ActiveProcess:
                 kwargs["start_new_session"] = True
 
             # Use isolated environment
-            from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+            from backend.app.agent.security.environment_isolation import (
+                EnvironmentIsolation,
+            )
             env = EnvironmentIsolation.get_isolated_env()
             env["CI"] = "true"
             env["npm_config_yes"] = "true"
@@ -213,8 +219,8 @@ class ActiveProcess:
                 self.read_task = asyncio.create_task(self._read_output())
             except Exception as e:
                 self.status = "failed"
-                self.logs.append(f"Failed to spawn process: {str(e)}\n")
-                logger.error(f"Process spawn failed: {str(e)}")
+                self.logs.append(f"Failed to spawn process: {e!s}\n")
+                logger.error(f"Process spawn failed: {e!s}")
                 self.startup_success_event.set()
 
     async def _read_container_logs(self, log_file_path: str):
@@ -253,7 +259,7 @@ class ActiveProcess:
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            self.logs.append(f"\nError reading sandbox output logs: {str(e)}\n")
+            self.logs.append(f"\nError reading sandbox output logs: {e!s}\n")
 
     async def _read_output(self):
         try:
@@ -277,7 +283,7 @@ class ActiveProcess:
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            self.logs.append(f"\nError reading output: {str(e)}\n")
+            self.logs.append(f"\nError reading output: {e!s}\n")
         finally:
             if self.process:
                 exit_code = await self.process.wait()
@@ -336,7 +342,7 @@ class ActiveProcess:
                 self.port = int(conf_port_match.group(1))
             self.startup_success_event.set()
 
-    async def check_tcp_readiness(self, host: str = "127.0.0.1", port: Optional[int] = None) -> bool:
+    async def check_tcp_readiness(self, host: str = "127.0.0.1", port: int | None = None) -> bool:
         target_port = port or self.port
         if not target_port:
             return False
@@ -410,7 +416,7 @@ class ActiveProcess:
 
 class ProcessManager:
     def __init__(self):
-        self.processes: Dict[str, ActiveProcess] = {}
+        self.processes: dict[str, ActiveProcess] = {}
 
     async def start_process(self, command: str, cwd: str, name: str = None, session: Any = None) -> ActiveProcess:
         # Enforce history limit of 100 non-running processes
@@ -433,23 +439,23 @@ class ProcessManager:
             # We keep stopped processes in history to preserve logs,
             # but mark status as stopped
 
-    def get_all_processes(self) -> List[ActiveProcess]:
+    def get_all_processes(self) -> list[ActiveProcess]:
         return list(self.processes.values())
 
-    def get_running_processes(self) -> List[ActiveProcess]:
+    def get_running_processes(self) -> list[ActiveProcess]:
         return [p for p in self.processes.values() if p.status in ("starting", "running")]
 
-    def get_process(self, proc_id: str) -> Optional[ActiveProcess]:
+    def get_process(self, proc_id: str) -> ActiveProcess | None:
         return self.processes.get(proc_id)
 
-    def get_process_logs(self, proc_id: str) -> List[str]:
+    def get_process_logs(self, proc_id: str) -> list[str]:
         proc = self.get_process(proc_id)
         return proc.logs if proc else []
 
 # Global instance of process manager
 global_process_manager = ProcessManager()
 
-def get_process_using_port(port: int) -> Tuple[Optional[int], Optional[str]]:
+def get_process_using_port(port: int) -> tuple[int | None, str | None]:
     """
     Returns (pid, process_name) of the process listening on the specified port.
     """
@@ -484,7 +490,7 @@ def get_process_using_port(port: int) -> Tuple[Optional[int], Optional[str]]:
                         process_name = name_parts[0] if name_parts else "Unknown"
                         return pid, process_name
     except Exception as e:
-        logger.error(f"Error checking port conflict on {port}: {str(e)}")
+        logger.error(f"Error checking port conflict on {port}: {e!s}")
     return None, None
 
 def kill_process_by_pid(pid: int) -> bool:
@@ -495,6 +501,6 @@ def kill_process_by_pid(pid: int) -> bool:
             os.kill(pid, 9)
         return True
     except Exception as e:
-        logger.error(f"Failed to kill process {pid}: {str(e)}")
+        logger.error(f"Failed to kill process {pid}: {e!s}")
         return False
 

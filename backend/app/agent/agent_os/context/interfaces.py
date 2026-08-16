@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any
+
 
 class IContextEngine(ABC):
     """Semantic context modeling and token/prompt budgeting."""
@@ -8,7 +9,7 @@ class IContextEngine(ABC):
         pass
 
     @abstractmethod
-    def allocate_budget(self, sizes: Dict[str, int]) -> Dict[str, int]:
+    def allocate_budget(self, sizes: dict[str, int]) -> dict[str, int]:
         pass
 
 

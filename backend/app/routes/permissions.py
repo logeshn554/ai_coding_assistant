@@ -1,9 +1,8 @@
-import logging
-from typing import Optional, Dict
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
-from ..state import get_permission_manager, config_manager
-from ..permissions import Capability, DEFAULT_POLICY_MATRIX
+
+from ..permissions import DEFAULT_POLICY_MATRIX, Capability
+from ..state import config_manager, get_permission_manager
 
 router = APIRouter()
 
@@ -17,7 +16,7 @@ class PermissionRevokeRequest(BaseModel):
 
 class PolicyUpdateRequest(BaseModel):
     policy: str
-    custom_matrix: Optional[Dict[str, bool]] = None
+    custom_matrix: dict[str, bool] | None = None
 
 @router.get("/api/permissions")
 def get_permissions():

@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -51,7 +51,7 @@ class SessionListResponse(BaseModel):
     """Response for GET /api/sessions."""
 
     sessions: list[SessionSummary]
-    active_session_id: Optional[str] = None
+    active_session_id: str | None = None
 
 
 class MessageOut(BaseModel):
@@ -114,7 +114,7 @@ def _session_to_summary(s: SessionModel) -> SessionSummary:
 @router.get("/api/sessions", response_model=SessionListResponse)
 async def list_sessions(
     request: Request,
-    workspace: Optional[str] = Query(
+    workspace: str | None = Query(
         None, description="Filter by workspace root; defaults to current workspace"
     ),
 ) -> SessionListResponse:
@@ -190,14 +190,14 @@ async def delete_session(session_id: str, request: Request):
 async def touch_session_meta(
     session_id: str,
     *,
-    workspace_root: Optional[str] = None,
-    mode: Optional[str] = None,
-    messages: Optional[list[dict[str, Any]]] = None,
-    title: Optional[str] = None,
-    provider: Optional[str] = None,
-    model: Optional[str] = None,
-    token_input: Optional[int] = None,
-    token_output: Optional[int] = None,
+    workspace_root: str | None = None,
+    mode: str | None = None,
+    messages: list[dict[str, Any]] | None = None,
+    title: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    token_input: int | None = None,
+    token_output: int | None = None,
 ) -> None:
     """Update session metadata after a turn (workspace, mode, provider, model, tokens, JSON snapshot)."""
     async with async_session() as db:

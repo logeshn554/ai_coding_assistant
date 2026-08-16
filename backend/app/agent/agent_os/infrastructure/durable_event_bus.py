@@ -12,8 +12,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Set
+from typing import Any
 
 logger = logging.getLogger("agentos.infrastructure.event_bus")
 
@@ -33,8 +34,8 @@ class DurableEventBus:
     """A durable event bus tracking event logs in memory with replay support."""
 
     def __init__(self) -> None:
-        self._handlers: Dict[str, Set[Callable[[Event], Any]]] = {}
-        self._event_log: List[Event] = []
+        self._handlers: dict[str, set[Callable[[Event], Any]]] = {}
+        self._event_log: list[Event] = []
         self._sequence_counter = 0
 
     def subscribe(self, event_type: str, handler: Callable[[Event], Any]) -> None:
@@ -81,14 +82,14 @@ class DurableEventBus:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    def replay(self, since_sequence_id: int = 0, since_timestamp: float = 0.0) -> List[Event]:
+    def replay(self, since_sequence_id: int = 0, since_timestamp: float = 0.0) -> list[Event]:
         """Replay and return historically recorded events."""
         return [
             event for event in self._event_log
             if event.sequence_id >= since_sequence_id and event.timestamp >= since_timestamp
         ]
 
-    def get_event_log(self) -> List[Event]:
+    def get_event_log(self) -> list[Event]:
         """Return the complete event log."""
         return list(self._event_log)
 

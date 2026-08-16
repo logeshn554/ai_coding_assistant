@@ -7,10 +7,10 @@ so the agent loop can call any model through a uniform API.
 
 from __future__ import annotations
 
-import time
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
-from typing import Any, AsyncGenerator, Optional
+from typing import Any
 
 
 @dataclass
@@ -46,8 +46,8 @@ class LLMResponse:
 class LLMChunk:
     """A single chunk from a streaming LLM response."""
     content: str = ""
-    tool_call_delta: Optional[dict[str, Any]] = None
-    finish_reason: Optional[str] = None
+    tool_call_delta: dict[str, Any] | None = None
+    finish_reason: str | None = None
 
 
 @dataclass
@@ -56,8 +56,8 @@ class Message:
     role: str  # "system", "user", "assistant", "tool"
     content: str = ""
     tool_calls: list[ToolCallRequest] = field(default_factory=list)
-    tool_call_id: Optional[str] = None  # For tool result messages
-    name: Optional[str] = None  # Tool name for tool result messages
+    tool_call_id: str | None = None  # For tool result messages
+    name: str | None = None  # Tool name for tool result messages
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to provider-agnostic dict format."""

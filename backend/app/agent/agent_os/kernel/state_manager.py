@@ -1,18 +1,20 @@
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from agent_os.kernel.interfaces import ITaskStateMachine
+
 
 class StateManager:
     """Manages the current task metadata, active agents, step progress, and execution errors."""
     def __init__(self, state_machine: ITaskStateMachine) -> None:
         self.state_machine = state_machine
-        self._current_task: Optional[str] = None
-        self._active_agents: List[str] = []
+        self._current_task: str | None = None
+        self._active_agents: list[str] = []
         self._task_status: str = "PENDING"  # PENDING, RUNNING, SUCCEEDED, FAILED
-        self._completed_steps: List[Dict[str, Any]] = []
-        self._errors: List[str] = []
+        self._completed_steps: list[dict[str, Any]] = []
+        self._errors: list[str] = []
 
     @property
-    def current_task(self) -> Optional[str]:
+    def current_task(self) -> str | None:
         return self._current_task
 
     def set_current_task(self, task: str) -> None:
@@ -20,7 +22,7 @@ class StateManager:
         self._task_status = "RUNNING"
 
     @property
-    def active_agents(self) -> List[str]:
+    def active_agents(self) -> list[str]:
         return self._active_agents
 
     def add_active_agent(self, agent_name: str) -> None:
@@ -39,7 +41,7 @@ class StateManager:
         self._task_status = status.upper()
 
     @property
-    def completed_steps(self) -> List[Dict[str, Any]]:
+    def completed_steps(self) -> list[dict[str, Any]]:
         return self._completed_steps
 
     def add_completed_step(self, step_name: str, agent: str, result: Any = None) -> None:
@@ -50,7 +52,7 @@ class StateManager:
         })
 
     @property
-    def errors(self) -> List[str]:
+    def errors(self) -> list[str]:
         return self._errors
 
     def add_error(self, error: str) -> None:

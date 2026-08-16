@@ -11,25 +11,22 @@ This is the core reasoning loop:
   7. Return to orchestrator for independent verification
 """
 
-import asyncio
-import uuid
 import time
-from typing import Any, Dict, List, Optional
 from datetime import datetime
+from typing import Any
 
 from .interfaces import (
-    IAgent,
     AgentContext,
     AgentResult,
     AgentState,
+    IAgent,
     LLMMessage,
     ToolCall,
     ToolDefinition,
-    Task,
 )
+from .llm_integration import LLMIntegration
 from .state_machine import AgentStateMachine
 from .tool_layer import ToolExecutor, ToolValidator
-from .llm_integration import LLMIntegration
 from .workspace import Workspace
 
 
@@ -59,7 +56,7 @@ class BaseAgent(IAgent):
         agent_id: str,
         agent_type: str,
         model_router,
-        tools_registry: Optional[Dict[str, ToolDefinition]] = None,
+        tools_registry: dict[str, ToolDefinition] | None = None,
     ):
         self.agent_id_val = agent_id
         self.agent_type = agent_type
@@ -71,11 +68,11 @@ class BaseAgent(IAgent):
         self._tool_executor = None  # Will be initialized in initialize()
         self._tool_validator = ToolValidator()
 
-        self._context: Optional[AgentContext] = None
-        self._conversation_history: List[LLMMessage] = []
-        self._execution_log: List[Dict[str, Any]] = []
-        self._start_time: Optional[float] = None
-        self._workspace: Optional[Workspace] = None
+        self._context: AgentContext | None = None
+        self._conversation_history: list[LLMMessage] = []
+        self._execution_log: list[dict[str, Any]] = []
+        self._start_time: float | None = None
+        self._workspace: Workspace | None = None
         self._tool_calls_total = 0
         self._tool_calls_succeeded = 0
         self._tool_calls_failed = 0
@@ -111,7 +108,7 @@ class BaseAgent(IAgent):
 
         self._state_machine.transition(AgentState.PLANNING, "initialization complete")
 
-    async def get_available_tools(self) -> Dict[str, ToolDefinition]:
+    async def get_available_tools(self) -> dict[str, ToolDefinition]:
         """Return tools this agent can use."""
         return self.tools_registry
 
@@ -159,7 +156,7 @@ class BaseAgent(IAgent):
 
         except Exception as e:
             self._add_log("ERROR", {"error": str(e)})
-            self._state_machine.transition(AgentState.FAILED, f"exception: {str(e)}")
+            self._state_machine.transition(AgentState.FAILED, f"exception: {e!s}")
             return self._build_result()
 
     async def cancel(self) -> None:
@@ -169,7 +166,7 @@ class BaseAgent(IAgent):
             self._workspace.cleanup()
         self._add_log("CANCELLED", {})
 
-    def get_execution_log(self) -> List[Dict[str, Any]]:
+    def get_execution_log(self) -> list[dict[str, Any]]:
         """Return detailed execution log."""
         return self._execution_log
 
@@ -232,7 +229,7 @@ class BaseAgent(IAgent):
             self._add_log("LLM_STEP_ERROR", {"error": str(e)})
             return False
 
-    async def _execute_tool_calls(self, tool_calls: List[ToolCall]) -> List:
+    async def _execute_tool_calls(self, tool_calls: list[ToolCall]) -> list:
         """Execute all tool calls and return results."""
         self._state_machine.transition(AgentState.EXECUTING_TOOL, "executing tools")
 
@@ -360,7 +357,7 @@ class BaseAgent(IAgent):
 
         return "Completed"
 
-    def _extract_files_changed(self) -> List[str]:
+    def _extract_files_changed(self) -> list[str]:
         """Extract file changes from tool call log."""
         files = set()
         for log in self._execution_log:
@@ -369,7 +366,7 @@ class BaseAgent(IAgent):
                 pass
         return list(files)
 
-    def _add_log(self, log_type: str, data: Dict[str, Any]) -> None:
+    def _add_log(self, log_type: str, data: dict[str, Any]) -> None:
         """Add entry to execution log."""
         self._execution_log.append(
             {

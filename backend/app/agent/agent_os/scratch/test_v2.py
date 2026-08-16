@@ -1,20 +1,20 @@
-import unittest
 import asyncio
 import os
 import shutil
 import tempfile
 import time
-from collections import OrderedDict
+import unittest
 
 from agent_os.agent_os import AgentOS
-from agent_os.kernel.scheduler import DependencyScheduler
 from agent_os.context.virtual_memory import VirtualMemoryContextManager
+from agent_os.core.cache import CacheService
+from agent_os.kernel.scheduler import DependencyScheduler
+from agent_os.learning.engine import LearningEngine
 from agent_os.repository.db import DatabaseManager
 from agent_os.repository.repository import RepositoryKernel
-from agent_os.learning.engine import LearningEngine
-from agent_os.core.cache import CacheService
 from agent_os.skills.orchestrator import SkillOrchestrator
 from agent_os.skills.plugins import IDEContext
+
 
 class TestAgentOSV2(unittest.TestCase):
     def setUp(self):
@@ -200,7 +200,7 @@ class TestAgentOSV2(unittest.TestCase):
         orchestrator = SkillOrchestrator()
         
         # Register dummy skills
-        from agent_os.skills.plugins import RenameSymbolSkill, GenerateTestSkill
+        from agent_os.skills.plugins import GenerateTestSkill, RenameSymbolSkill
         orchestrator.register_skill("rename_symbol", RenameSymbolSkill())
         orchestrator.register_skill("generate_test", GenerateTestSkill())
         
@@ -314,8 +314,8 @@ class TestAgentOSV2(unittest.TestCase):
 
     # 10. Transactional Execution & Locking tests
     def test_transactional_locking_and_optimistic_checks(self):
-        from agent_os.execution.lock_manager import FileLockManager
         from agent_os.execution.engine import TransactionError
+        from agent_os.execution.lock_manager import FileLockManager
         
         workspace = os.path.join(self.temp_dir, "tx_workspace")
         os.makedirs(workspace, exist_ok=True)
@@ -548,8 +548,8 @@ class TestAgentOSV2(unittest.TestCase):
 
     # 14. Real skill operations & transactions integration tests
     def test_real_skill_operations_and_transactions(self):
-        import os
         import asyncio
+        import os
         workspace = os.path.join(self.temp_dir, "skills_workspace_real")
         os.makedirs(workspace, exist_ok=True)
 
@@ -640,11 +640,11 @@ class TestAgentOSV2(unittest.TestCase):
 
     # 15. New agent_runtime loop, tools, verifier, and DAG validator integration tests
     def test_real_agent_loop_and_observability(self):
+        from agent_runtime.observability.events import EventTracer
+        from agent_runtime.orchestration import TaskGraphValidator
         from agent_runtime.tools import ToolRegistry
         from agent_runtime.tools.filesystem import create_filesystem_tools
         from agent_runtime.verification import VerificationEngine
-        from agent_runtime.orchestration import TaskGraphValidator
-        from agent_runtime.observability.events import EventTracer
         
         workspace = os.path.join(self.temp_dir, "agent_runtime_workspace")
         os.makedirs(workspace, exist_ok=True)

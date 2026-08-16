@@ -1,8 +1,9 @@
 import hashlib
 import os
 import threading
-from typing import Dict, List, Tuple
+
 from agent_os.execution.interfaces import IFileLockManager
+
 
 class FileLockManager(IFileLockManager):
     """Coordinates file access and prevents concurrent modifications.
@@ -14,9 +15,9 @@ class FileLockManager(IFileLockManager):
     def __init__(self) -> None:
         self._lock = threading.RLock()
         # Structure: {file_path: (holder_agent_name, exclusive_flag)}
-        self._locks: Dict[str, Tuple[str, bool]] = {}
+        self._locks: dict[str, tuple[str, bool]] = {}
         # Structure: {file_path: (hash_str, mtime_float)} for optimistic locking
-        self._file_snapshots: Dict[str, Tuple[str, float]] = {}
+        self._file_snapshots: dict[str, tuple[str, float]] = {}
 
     def acquire_lock(self, file_path: str, agent_name: str, exclusive: bool = True) -> bool:
         normalized_path = os.path.normpath(file_path).replace("\\", "/")
@@ -53,7 +54,7 @@ class FileLockManager(IFileLockManager):
         with self._lock:
             return normalized_path in self._locks
 
-    def get_all_locks(self) -> Dict[str, Tuple[str, bool]]:
+    def get_all_locks(self) -> dict[str, tuple[str, bool]]:
         """Return a snapshot of all current locks (for diagnostics)."""
         with self._lock:
             return dict(self._locks)

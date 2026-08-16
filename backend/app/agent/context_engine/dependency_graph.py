@@ -7,10 +7,7 @@ Builds and traverses an in-memory graph representing code relationships
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import os
-import re
-from typing import Dict, List, Optional, Set, Tuple
 
 from .types import EdgeType, GraphEdge, GraphNode, NodeType
 
@@ -19,14 +16,14 @@ class DependencyGraph:
     """Repository Dependency Graph tracking nodes and directional relationship edges."""
 
     def __init__(self) -> None:
-        self.nodes: Dict[str, GraphNode] = {}
-        self.edges: List[GraphEdge] = []
+        self.nodes: dict[str, GraphNode] = {}
+        self.edges: list[GraphEdge] = []
         # node_id -> list of outgoing edge indices
-        self._outgoing: Dict[str, List[GraphEdge]] = {}
+        self._outgoing: dict[str, list[GraphEdge]] = {}
         # node_id -> list of incoming edge indices
-        self._incoming: Dict[str, List[GraphEdge]] = {}
+        self._incoming: dict[str, list[GraphEdge]] = {}
 
-    def add_node(self, node_id: str, name: str, node_type: NodeType, path: Optional[str] = None, metadata: Optional[dict] = None) -> GraphNode:
+    def add_node(self, node_id: str, name: str, node_type: NodeType, path: str | None = None, metadata: dict | None = None) -> GraphNode:
         """Add or retrieve a node in the graph."""
         if node_id in self.nodes:
             return self.nodes[node_id]
@@ -37,7 +34,7 @@ class DependencyGraph:
         self._incoming[node_id] = []
         return node
 
-    def add_edge(self, source_id: str, target_id: str, edge_type: EdgeType, metadata: Optional[dict] = None) -> GraphEdge:
+    def add_edge(self, source_id: str, target_id: str, edge_type: EdgeType, metadata: dict | None = None) -> GraphEdge:
         """Add a directional edge between two nodes."""
         edge = GraphEdge(source_id=source_id, target_id=target_id, edge_type=edge_type, metadata=metadata or {})
         self.edges.append(edge)
@@ -46,7 +43,7 @@ class DependencyGraph:
         self._incoming.setdefault(target_id, []).append(edge)
         return edge
 
-    def find_callers(self, symbol_name: str) -> List[GraphNode]:
+    def find_callers(self, symbol_name: str) -> list[GraphNode]:
         """Find all nodes/symbols that call or reference symbol_name."""
         callers = []
         sym_node_id = f"sym:{symbol_name}"
@@ -57,7 +54,7 @@ class DependencyGraph:
                         callers.append(self.nodes[edge.source_id])
         return callers
 
-    def find_callees(self, symbol_name: str) -> List[GraphNode]:
+    def find_callees(self, symbol_name: str) -> list[GraphNode]:
         """Find all symbols called by symbol_name."""
         callees = []
         sym_node_id = f"sym:{symbol_name}"
@@ -68,9 +65,9 @@ class DependencyGraph:
                         callees.append(self.nodes[edge.target_id])
         return callees
 
-    def find_tests(self, file_or_symbol: str) -> List[str]:
+    def find_tests(self, file_or_symbol: str) -> list[str]:
         """Find test files covering a specific file or symbol."""
-        test_files: Set[str] = set()
+        test_files: set[str] = set()
         clean_name = os.path.basename(file_or_symbol).replace("\\", "/").split(".")[0].lower()
 
         for node_id, node in self.nodes.items():
@@ -81,14 +78,14 @@ class DependencyGraph:
 
         return sorted(list(test_files))
 
-    def find_related_files(self, file_path: str, max_depth: int = 2) -> List[str]:
+    def find_related_files(self, file_path: str, max_depth: int = 2) -> list[str]:
         """Traverse graph outward to find files directly connected via imports/calls."""
         norm_path = file_path.replace("\\", "/").strip("/")
         file_node_id = f"file:{norm_path}"
 
-        related: Set[str] = set()
-        visited: Set[str] = {file_node_id}
-        queue: List[Tuple[str, int]] = [(file_node_id, 0)]
+        related: set[str] = set()
+        visited: set[str] = {file_node_id}
+        queue: list[tuple[str, int]] = [(file_node_id, 0)]
 
         while queue:
             curr_id, depth = queue.pop(0)

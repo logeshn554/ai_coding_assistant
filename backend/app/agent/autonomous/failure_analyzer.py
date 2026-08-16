@@ -7,10 +7,10 @@ objects and maps failure details into ContextEngine search parameters.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
-import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class FailureCategory(str, Enum):
@@ -32,14 +32,14 @@ class VerificationFailure:
     """Structured representation of a verification failure."""
     command: str
     category: FailureCategory
-    file: Optional[str] = None
-    line: Optional[int] = None
-    column: Optional[int] = None
+    file: str | None = None
+    line: int | None = None
+    column: int | None = None
     message: str = ""
-    stack_trace: Optional[str] = None
-    related_symbols: List[str] = field(default_factory=list)
+    stack_trace: str | None = None
+    related_symbols: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "command": self.command,
             "category": self.category.value,

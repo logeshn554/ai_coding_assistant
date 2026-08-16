@@ -7,11 +7,10 @@ import logging
 from fastapi import APIRouter, Query
 
 from ..skills_loader import (
-    build_skills_prompt_section,
+    _LANGUAGE_ALIASES,
     format_skills_for_prompt,
     load_skills,
     select_relevant_sections,
-    _LANGUAGE_ALIASES,
 )
 from ..state import workspace_state
 

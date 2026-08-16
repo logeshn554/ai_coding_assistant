@@ -8,8 +8,6 @@ Classifies command safety risk (LOW, MEDIUM, HIGH) and enforces mode policies
 from __future__ import annotations
 
 from enum import Enum
-import re
-from typing import Any, Dict, Optional
 
 
 class ExecutionMode(str, Enum):

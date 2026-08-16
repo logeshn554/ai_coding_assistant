@@ -9,9 +9,9 @@ and infinite loops.
 from __future__ import annotations
 
 import logging
-from enum import Enum
 from dataclasses import dataclass
-from typing import Any, Optional
+from enum import Enum
+from typing import Any
 
 logger = logging.getLogger("agent_runtime.orchestration.recovery")
 
@@ -45,14 +45,14 @@ class FailureReport:
     failure_type: FailureType
     severity: str  # "low", "medium", "high", "critical"
     message: str
-    raw_error: Optional[Exception] = None
+    raw_error: Exception | None = None
     details: dict[str, Any] = None
 
 
 class FailureClassifier:
     """Classifies failures into granular types based on stdout/stderr, error messages, and context."""
 
-    def classify(self, error: Exception | str, context: Optional[dict[str, Any]] = None) -> FailureReport:
+    def classify(self, error: Exception | str, context: dict[str, Any] | None = None) -> FailureReport:
         err_msg = str(error)
         ctx = context or {}
         

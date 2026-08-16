@@ -8,7 +8,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Set, Optional
 
 
 class Capability(str, Enum):
@@ -20,7 +19,7 @@ class Capability(str, Enum):
     NETWORK_FETCH = "network.fetch"
 
 
-DEFAULT_EXCLUDE_DIRS: Set[str] = {
+DEFAULT_EXCLUDE_DIRS: set[str] = {
     ".git",
     "node_modules",
     "venv",
@@ -32,7 +31,7 @@ DEFAULT_EXCLUDE_DIRS: Set[str] = {
     ".pytest_cache",
 }
 
-DEFAULT_EXCLUDE_FILES: Set[str] = {
+DEFAULT_EXCLUDE_FILES: set[str] = {
     ".env",
     ".env.local",
     "id_rsa",
@@ -45,12 +44,12 @@ class WorkspacePolicy:
     """Canonical Workspace Security & Operation Policy."""
 
     workspace_root: str
-    exclude_dirs: Set[str] = field(default_factory=lambda: set(DEFAULT_EXCLUDE_DIRS))
-    exclude_files: Set[str] = field(default_factory=lambda: set(DEFAULT_EXCLUDE_FILES))
+    exclude_dirs: set[str] = field(default_factory=lambda: set(DEFAULT_EXCLUDE_DIRS))
+    exclude_files: set[str] = field(default_factory=lambda: set(DEFAULT_EXCLUDE_FILES))
     max_file_size_bytes: int = 10_000_000  # 10 MB
     max_output_bytes: int = 1_000_000       # 1 MB
     default_command_timeout: float = 60.0    # 60s
-    allowed_capabilities: Set[Capability] = field(
+    allowed_capabilities: set[Capability] = field(
         default_factory=lambda: {
             Capability.FILESYSTEM_READ,
             Capability.FILESYSTEM_WRITE,

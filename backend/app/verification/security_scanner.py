@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import List
 
 logger = logging.getLogger("devpilot.verification.security_scanner")
 
@@ -16,13 +15,15 @@ class SecurityScanner:
     def __init__(self, workspace_root: str = "") -> None:
         self.workspace_root = workspace_root
 
-    def scan_files(self, files: List[str]) -> bool:
+    def scan_files(self, files: list[str]) -> bool:
         """Run bandit security checker on files."""
         if not files:
             return True
 
         cmd = ["bandit", "-r"] + files
-        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        from backend.app.agent.security.environment_isolation import (
+            EnvironmentIsolation,
+        )
         env = EnvironmentIsolation.get_isolated_env()
         try:
             logger.info(f"Running security scan: {cmd}")

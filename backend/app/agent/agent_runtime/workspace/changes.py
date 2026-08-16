@@ -8,15 +8,14 @@ even if edited via shell commands or external compilers.
 
 from __future__ import annotations
 
-import os
 import asyncio
 import logging
-from typing import Any, Dict, Set
+import os
 
 logger = logging.getLogger("agent_runtime.workspace.changes")
 
 
-def get_workspace_snapshot(workspace_root: str) -> Dict[str, tuple[float, int]]:
+def get_workspace_snapshot(workspace_root: str) -> dict[str, tuple[float, int]]:
     """Generate a snapshot of the workspace files mapping relative path -> (mtime, size)."""
     snapshot = {}
     skip_dirs = {".git", "node_modules", "__pycache__", "dist", "build", "venv", ".venv", ".pytest_cache"}
@@ -35,7 +34,7 @@ def get_workspace_snapshot(workspace_root: str) -> Dict[str, tuple[float, int]]:
     return snapshot
 
 
-def compare_snapshots(before: Dict[str, tuple[float, int]], after: Dict[str, tuple[float, int]]) -> Set[str]:
+def compare_snapshots(before: dict[str, tuple[float, int]], after: dict[str, tuple[float, int]]) -> set[str]:
     """Compare before and after snapshots to find modified, added, or deleted files."""
     changed = set()
     
@@ -57,7 +56,7 @@ def compare_snapshots(before: Dict[str, tuple[float, int]], after: Dict[str, tup
     return changed
 
 
-async def get_git_modified_files(workspace_root: str) -> Set[str]:
+async def get_git_modified_files(workspace_root: str) -> set[str]:
     """Execute git status to find modified/untracked files."""
     cmd = ["git", "status", "--porcelain", "--ignored=no"]
     try:
@@ -86,7 +85,7 @@ async def get_git_modified_files(workspace_root: str) -> Set[str]:
         return set()
 
 
-async def detect_changed_files(workspace_root: str, before_snapshot: Dict[str, tuple[float, int]]) -> list[str]:
+async def detect_changed_files(workspace_root: str, before_snapshot: dict[str, tuple[float, int]]) -> list[str]:
     """Detect all changed files using both snapshot and git status queries."""
     after_snapshot = get_workspace_snapshot(workspace_root)
     snapshot_changes = compare_snapshots(before_snapshot, after_snapshot)

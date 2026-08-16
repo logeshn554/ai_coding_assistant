@@ -1,11 +1,10 @@
 import ast
 import re
-from typing import Dict, List, Any, Tuple
 
 # Optional Tree-sitter integration placeholders
 HAS_TREE_SITTER = False
 try:
-    import tree_sitter
+    import tree_sitter  # noqa: F401
     HAS_TREE_SITTER = True
 except ImportError:
     pass
@@ -54,9 +53,9 @@ def detect_language(path: str) -> str:
     }
     return mapping.get(ext, "unknown")
 
-def parse_python(code: str) -> Tuple[List[SymbolInfo], List[ReferenceInfo]]:
-    symbols: List[SymbolInfo] = []
-    references: List[ReferenceInfo] = []
+def parse_python(code: str) -> tuple[list[SymbolInfo], list[ReferenceInfo]]:
+    symbols: list[SymbolInfo] = []
+    references: list[ReferenceInfo] = []
     
     try:
         tree = ast.parse(code)
@@ -148,10 +147,10 @@ def parse_python(code: str) -> Tuple[List[SymbolInfo], List[ReferenceInfo]]:
     PythonVisitor().visit(tree)
     return symbols, references
 
-def parse_regex_based(code: str) -> Tuple[List[SymbolInfo], List[ReferenceInfo]]:
+def parse_regex_based(code: str) -> tuple[list[SymbolInfo], list[ReferenceInfo]]:
     """Generic fallback parsing using regexes."""
-    symbols: List[SymbolInfo] = []
-    references: List[ReferenceInfo] = []
+    symbols: list[SymbolInfo] = []
+    references: list[ReferenceInfo] = []
 
     lines = code.splitlines()
 
@@ -202,7 +201,7 @@ def parse_regex_based(code: str) -> Tuple[List[SymbolInfo], List[ReferenceInfo]]
 
     return symbols, references
 
-def parse_code(code: str, language: str) -> Tuple[List[SymbolInfo], List[ReferenceInfo]]:
+def parse_code(code: str, language: str) -> tuple[list[SymbolInfo], list[ReferenceInfo]]:
     # Fallback structure matching tree-sitter integration requirement
     if HAS_TREE_SITTER:
         pass

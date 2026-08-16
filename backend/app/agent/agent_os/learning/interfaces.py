@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, List, Dict
+from typing import Any
+
 
 class IMemoryStore(ABC):
     """Long-term and short-term agent memory storage."""
@@ -19,7 +20,7 @@ class ILearningEngine(ABC):
         pass
 
     @abstractmethod
-    def store_summary(self, repo_path: str, summary: Dict[str, Any]) -> None:
+    def store_summary(self, repo_path: str, summary: dict[str, Any]) -> None:
         pass
 
     @abstractmethod
@@ -35,11 +36,11 @@ class ILearningEngine(ABC):
         pass
 
     @abstractmethod
-    def find_similar_fixes(self, query: str) -> List[Dict[str, Any]]:
+    def find_similar_fixes(self, query: str) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod
-    def find_similar_patterns(self, query: str) -> List[Dict[str, Any]]:
+    def find_similar_patterns(self, query: str) -> list[dict[str, Any]]:
         pass
 
 
@@ -55,51 +56,51 @@ class IMemoryManager(ABC):
         pass
 
     @abstractmethod
-    def set_current_plan(self, plan: Dict[str, Any]) -> None:
+    def set_current_plan(self, plan: dict[str, Any]) -> None:
         pass
 
     @abstractmethod
-    def get_current_plan(self) -> Dict[str, Any] | None:
+    def get_current_plan(self) -> dict[str, Any] | None:
         pass
 
     @abstractmethod
-    def set_repository_state(self, state: Dict[str, Any]) -> None:
+    def set_repository_state(self, state: dict[str, Any]) -> None:
         pass
 
     @abstractmethod
-    def get_repository_state(self) -> Dict[str, Any] | None:
+    def get_repository_state(self) -> dict[str, Any] | None:
         pass
 
     @abstractmethod
-    def add_artifact(self, name: str, artifact: Dict[str, Any]) -> None:
+    def add_artifact(self, name: str, artifact: dict[str, Any]) -> None:
         pass
 
     @abstractmethod
-    def get_artifacts(self) -> Dict[str, Any]:
+    def get_artifacts(self) -> dict[str, Any]:
         pass
 
     @abstractmethod
-    def add_event(self, event_type: str, payload: Dict[str, Any]) -> None:
+    def add_event(self, event_type: str, payload: dict[str, Any]) -> None:
         pass
 
     @abstractmethod
-    def get_events(self) -> List[Dict[str, Any]]:
+    def get_events(self) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod
-    def set_current_patch(self, patch: Dict[str, Any]) -> None:
+    def set_current_patch(self, patch: dict[str, Any]) -> None:
         pass
 
     @abstractmethod
-    def get_current_patch(self) -> Dict[str, Any] | None:
+    def get_current_patch(self) -> dict[str, Any] | None:
         pass
 
     @abstractmethod
-    def set_diagnostics(self, diagnostics: List[Dict[str, Any]]) -> None:
+    def set_diagnostics(self, diagnostics: list[dict[str, Any]]) -> None:
         pass
 
     @abstractmethod
-    def get_diagnostics(self) -> List[Dict[str, Any]]:
+    def get_diagnostics(self) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod
@@ -122,7 +123,7 @@ class IPerformanceOptimizer(ABC):
         pass
 
     @abstractmethod
-    def get_recommendations(self) -> List[Dict[str, Any]]:
+    def get_recommendations(self) -> list[dict[str, Any]]:
         pass
 
     @abstractmethod

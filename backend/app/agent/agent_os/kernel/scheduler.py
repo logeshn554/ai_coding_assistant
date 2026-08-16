@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from typing import Any, Dict, List, Set, Callable, Coroutine
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 logger = logging.getLogger("agentos.kernel.scheduler")
 
@@ -20,9 +21,9 @@ class DependencyScheduler:
 
     async def execute_graph(
         self,
-        tasks: List[Dict[str, Any]],
-        execute_task_fn: Callable[[Dict[str, Any]], Coroutine[Any, Any, Any]]
-    ) -> Dict[str, Any]:
+        tasks: list[dict[str, Any]],
+        execute_task_fn: Callable[[dict[str, Any]], Coroutine[Any, Any, Any]]
+    ) -> dict[str, Any]:
         """
         Executes a list of task dicts respecting their DAG dependencies.
         Each task: {"id": 1, "dependencies": [], "priority": 0, ...}
@@ -36,8 +37,8 @@ class DependencyScheduler:
         task_map = {t["id"]: t for t in tasks}
 
         # Build dependency structures
-        in_degree: Dict[Any, int] = {}
-        dependents: Dict[Any, Set[Any]] = {t["id"]: set() for t in tasks}
+        in_degree: dict[Any, int] = {}
+        dependents: dict[Any, set[Any]] = {t["id"]: set() for t in tasks}
 
         for t in tasks:
             tid = t["id"]
@@ -65,13 +66,13 @@ class DependencyScheduler:
         state_lock = asyncio.Lock()
         concurrency_sem = asyncio.Semaphore(self.concurrency_limit)
 
-        completed: Set[Any] = set()
-        failed: Set[Any] = set()
-        running: Set[Any] = set()
-        results: Dict[Any, Any] = {}
+        completed: set[Any] = set()
+        failed: set[Any] = set()
+        running: set[Any] = set()
+        results: dict[Any, Any] = {}
 
         # Priority-sorted ready queue: lower priority number runs first
-        ready_queue: List[Any] = sorted(
+        ready_queue: list[Any] = sorted(
             [tid for tid, deg in in_degree.items() if deg == 0],
             key=lambda tid: task_map[tid].get("priority", 0),
         )
@@ -80,7 +81,7 @@ class DependencyScheduler:
         task_completed_event = asyncio.Event()
 
         # Keep references so we can await everything at the end
-        spawned_tasks: List[asyncio.Task] = []
+        spawned_tasks: list[asyncio.Task] = []
 
         def _cascade_failure_locked(failed_id: Any) -> None:
             """Mark all transitive dependents of *failed_id* as skipped.

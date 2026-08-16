@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from ..state import config_manager
 
@@ -25,11 +25,11 @@ class SearchResult:
     url: str
     snippet: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-async def search_web(query: str, max_results: int = 5) -> List[SearchResult]:
+async def search_web(query: str, max_results: int = 5) -> list[SearchResult]:
     """Execute a web search using Tavily API for the given query.
 
     Args:
@@ -74,7 +74,7 @@ async def search_web(query: str, max_results: int = 5) -> List[SearchResult]:
             data = resp.json()
             raw_results = data.get("results", [])
 
-        results: List[SearchResult] = []
+        results: list[SearchResult] = []
         for item in raw_results:
             results.append(
                 SearchResult(

@@ -11,8 +11,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any
+
 from agent_os.kernel.interfaces import IKernelService
 
 logger = logging.getLogger("agentos.kernel.cancellation_manager")
@@ -25,16 +27,16 @@ class CancellationToken:
     is_cancelled: bool = False
     reason: str = ""
     cancelled_at: float = 0.0
-    parent_task_id: Optional[str] = None
+    parent_task_id: str | None = None
 
 
 class CancellationManager(IKernelService):
     """Manages task cancellation tokens and propagates cancellation events."""
 
     def __init__(self) -> None:
-        self._tokens: Dict[str, CancellationToken] = {}
-        self._children: Dict[str, Set[str]] = {}  # parent_id -> set of child_ids
-        self._callbacks: Dict[str, List[Callable[[str, str], Any]]] = {}
+        self._tokens: dict[str, CancellationToken] = {}
+        self._children: dict[str, set[str]] = {}  # parent_id -> set of child_ids
+        self._callbacks: dict[str, list[Callable[[str, str], Any]]] = {}
 
     def on_init(self) -> None:
         logger.info("Initializing CancellationManager service")
@@ -45,7 +47,7 @@ class CancellationManager(IKernelService):
         self._children.clear()
         self._callbacks.clear()
 
-    def register_task(self, task_id: str, parent_task_id: Optional[str] = None) -> CancellationToken:
+    def register_task(self, task_id: str, parent_task_id: str | None = None) -> CancellationToken:
         """Register a new task with a cancellation token."""
         token = CancellationToken(task_id=task_id, parent_task_id=parent_task_id)
         self._tokens[task_id] = token
@@ -135,7 +137,7 @@ class CancellationManager(IKernelService):
 
         asyncio.create_task(_timeout_helper())
 
-    def get_token(self, task_id: str) -> Optional[CancellationToken]:
+    def get_token(self, task_id: str) -> CancellationToken | None:
         return self._tokens.get(task_id)
 
 

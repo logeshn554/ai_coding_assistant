@@ -11,18 +11,20 @@ Provides:
 from __future__ import annotations
 
 import asyncio
+import ipaddress
+import logging
 import os
 import re
+import socket
 import sys
 import time
-import logging
-import ipaddress
-import socket
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Any, Callable, Tuple
+from typing import Any
 
 from backend.app.config import settings
+
 from .environment_isolation import EnvironmentIsolation
 from .secret_redactor import SecretRedactor
 
@@ -51,11 +53,11 @@ class ExecutionPolicy:
     max_memory: int = 512 * 1024 * 1024  # 512MB
     max_cpu: float = 1.0  # 1 CPU core
     allow_network: bool = False
-    allowed_domains: Set[str] = field(default_factory=lambda: {
+    allowed_domains: set[str] = field(default_factory=lambda: {
         "pypi.org", "files.pythonhosted.org", "registry.npmjs.org",
         "github.com", "raw.githubusercontent.com", "crates.io", "proxy.golang.org"
     })
-    environment_policy: Dict[str, str] = field(default_factory=dict)
+    environment_policy: dict[str, str] = field(default_factory=dict)
     filesystem_policy: str = "read-write"
 
 @dataclass
@@ -71,9 +73,9 @@ class ExecutionResult:
     output_limit_exceeded: bool = False
     resource_limit_exceeded: bool = False
     cancelled: bool = False
-    sandbox_id: Optional[str] = None
-    process_id: Optional[int] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    sandbox_id: str | None = None
+    process_id: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 class OutputLimitExceeded(Exception):
     pass
@@ -92,22 +94,20 @@ class SandboxExecutor:
 
     async def initialize(self) -> None:
         """Set up sandbox before running any commands."""
-        pass
 
     async def execute(
         self,
         command: str,
-        timeout: Optional[float] = None,
-        environment: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        on_output_stream: Optional[Callable[[str], None]] = None,
+        timeout: float | None = None,
+        environment: dict[str, str] | None = None,
+        cwd: str | None = None,
+        on_output_stream: Callable[[str], None] | None = None,
     ) -> ExecutionResult:
         """Execute command in sandbox."""
         raise NotImplementedError()
 
     async def destroy(self) -> None:
         """Destroy the sandbox and clean up resources."""
-        pass
 
 def is_private_ip(ip_str: str) -> bool:
     """Return True if IP is private, loopback, or metadata service."""
@@ -117,7 +117,7 @@ def is_private_ip(ip_str: str) -> bool:
     except ValueError:
         return True
 
-def validate_outbound_network_hosts(command: str, allowed_domains: Set[str]) -> bool:
+def validate_outbound_network_hosts(command: str, allowed_domains: set[str]) -> bool:
     """
     Defense-in-depth domain and SSRF validator for command strings.
     Scans for URLs and raw IPs, checks domain allowlists, and blocks private target IPs.
@@ -170,15 +170,15 @@ class LocalSandboxExecutor(SandboxExecutor):
 
     def __init__(self, workspace_id: str, run_id: str, policy: ExecutionPolicy) -> None:
         super().__init__(workspace_id, run_id, policy)
-        self._active_process: Optional[asyncio.subprocess.Process] = None
+        self._active_process: asyncio.subprocess.Process | None = None
 
     async def execute(
         self,
         command: str,
-        timeout: Optional[float] = None,
-        environment: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        on_output_stream: Optional[Callable[[str], None]] = None,
+        timeout: float | None = None,
+        environment: dict[str, str] | None = None,
+        cwd: str | None = None,
+        on_output_stream: Callable[[str], None] | None = None,
     ) -> ExecutionResult:
         # Enforce network check
         if self.policy.network_mode == "ALLOWLIST":
@@ -221,7 +221,7 @@ class LocalSandboxExecutor(SandboxExecutor):
         cmd_executable = shell_executable[0]
         cmd_params = shell_executable[1:] + [command]
 
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "stdin": asyncio.subprocess.DEVNULL,
             "stdout": asyncio.subprocess.PIPE,
             "stderr": asyncio.subprocess.PIPE,
@@ -469,10 +469,10 @@ class DockerSandboxExecutor(SandboxExecutor):
     async def execute(
         self,
         command: str,
-        timeout: Optional[float] = None,
-        environment: Optional[Dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        on_output_stream: Optional[Callable[[str], None]] = None,
+        timeout: float | None = None,
+        environment: dict[str, str] | None = None,
+        cwd: str | None = None,
+        on_output_stream: Callable[[str], None] | None = None,
     ) -> ExecutionResult:
         if not self._initialized:
             await self.initialize()
@@ -669,7 +669,7 @@ class SandboxManager:
     """Manages active sandbox executor instances, coordinating initialization and teardown."""
 
     def __init__(self) -> None:
-        self.active_sandboxes: Dict[str, SandboxExecutor] = {}
+        self.active_sandboxes: dict[str, SandboxExecutor] = {}
 
     async def get_or_create(
         self,

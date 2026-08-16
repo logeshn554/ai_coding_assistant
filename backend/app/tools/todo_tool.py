@@ -10,13 +10,13 @@ list of dicts with keys ``id``, ``text``, ``status``.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 _TODO_KEY = "__agent_todos__"
 _VALID_STATUSES = {"pending", "in_progress", "done"}
 
 
-def _render_todos(todos: List[Dict]) -> str:
+def _render_todos(todos: list[dict]) -> str:
     """Format todos as a readable checklist string."""
     if not todos:
         return "Todo list is empty."
@@ -28,7 +28,7 @@ def _render_todos(todos: List[Dict]) -> str:
     return "\n".join(lines)
 
 
-async def todo_write(session: Any, args: Dict[str, Any]) -> str:
+async def todo_write(session: Any, args: dict[str, Any]) -> str:
     """Create or update the agent todo list.
 
     Args:
@@ -60,7 +60,7 @@ async def todo_write(session: Any, args: Dict[str, Any]) -> str:
 
     merge: bool = bool(args.get("merge", False))
     memory = getattr(session, "memory", {})
-    existing: List[Dict] = memory.get(_TODO_KEY, []) if merge else []
+    existing: list[dict] = memory.get(_TODO_KEY, []) if merge else []
     existing_by_id = {item["id"]: item for item in existing}
 
     # Auto-generate sequential ids
@@ -87,7 +87,7 @@ async def todo_write(session: Any, args: Dict[str, Any]) -> str:
     return f"Todo list updated ({len(final_todos)} items).\n\n" + _render_todos(final_todos)
 
 
-async def todo_read(session: Any, args: Dict[str, Any]) -> str:
+async def todo_read(session: Any, args: dict[str, Any]) -> str:
     """Read the current agent todo list.
 
     Args:
@@ -98,5 +98,5 @@ async def todo_read(session: Any, args: Dict[str, Any]) -> str:
         Rendered todo checklist, or a message if the list is empty.
     """
     memory = getattr(session, "memory", {})
-    todos: List[Dict] = memory.get(_TODO_KEY, [])
+    todos: list[dict] = memory.get(_TODO_KEY, [])
     return _render_todos(todos)

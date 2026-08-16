@@ -1,8 +1,8 @@
 """Reflection Engine — Evaluates AI task outcomes and updates system prompt strategies for continuous self-learning."""
-import os
 import json
 import logging
-from typing import Dict, Any, List
+import os
+from typing import Any
 
 logger = logging.getLogger("devpilot.brain.reflection")
 
@@ -13,7 +13,7 @@ class ReflectionEngine:
         else:
             self.storage_path = storage_path
 
-    def _load_data(self) -> List[Dict[str, Any]]:
+    def _load_data(self) -> list[dict[str, Any]]:
         if not os.path.exists(self.storage_path):
             return []
         try:
@@ -23,7 +23,7 @@ class ReflectionEngine:
             logger.warning("Failed to load reflections: %s", e)
             return []
 
-    def _save_data(self, data: List[Dict[str, Any]]):
+    def _save_data(self, data: list[dict[str, Any]]):
         try:
             os.makedirs(os.path.dirname(self.storage_path), exist_ok=True)
             with open(self.storage_path, "w", encoding="utf-8") as f:
@@ -31,7 +31,7 @@ class ReflectionEngine:
         except Exception as e:
             logger.warning("Failed to save reflections: %s", e)
 
-    def reflect_on_task(self, task_description: str, success: bool = True) -> Dict[str, Any]:
+    def reflect_on_task(self, task_description: str, success: bool = True) -> dict[str, Any]:
         """Perform post-task reflection to extract lessons learned and refine prompt context."""
         notes = "Task completed cleanly. Identified zero regression risks." if success else "Task failed. Check command parameters and file availability."
         adjustments = [

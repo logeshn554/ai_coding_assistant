@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Set
+
 from ..intelligence.intent_compiler import CompiledIntent
 from .impact_analyzer import impact_analyzer
 
@@ -14,9 +14,9 @@ logger = logging.getLogger("devpilot.analysis.prediction_engine")
 
 @dataclass
 class ChangePrediction:
-    predicted_files: List[str] = field(default_factory=list)
-    predicted_apis: List[str] = field(default_factory=list)
-    predicted_tests: List[str] = field(default_factory=list)
+    predicted_files: list[str] = field(default_factory=list)
+    predicted_apis: list[str] = field(default_factory=list)
+    predicted_tests: list[str] = field(default_factory=list)
     risk_assessment: str = "low"
     estimated_cost_usd: float = 0.05
     reassurance_reason: str = ""

@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from .audit_logger import AuditLogger, AuditRecord
 from .network_policy import NetworkMode, NetworkPolicyEngine
-from .permission_model import ActionType, Permission, PermissionDecision, ResourceType, RiskLevel
+from .permission_model import (
+    PermissionDecision,
+    RiskLevel,
+)
 from .secret_redactor import SecretRedactor
 from .terminal_sandbox import TerminalSandbox
 from .workspace_guard import WorkspaceGuard
@@ -21,7 +24,7 @@ from .workspace_guard import WorkspaceGuard
 logger = logging.getLogger("devpilot.security.permission_engine")
 
 
-TOOL_ALIASES: Dict[str, str] = {
+TOOL_ALIASES: dict[str, str] = {
     "list_files": "list_directory",
     "list_dir": "list_directory",
     "dir": "list_directory",
@@ -66,7 +69,7 @@ _TERMINAL_TOOL_NAMES = {"run_terminal_command", "run_command", "execute_command"
 class PermissionEngine:
     """Canonical Security & Permission Engine."""
 
-    _instances: Dict[Tuple[str, str], "PermissionEngine"] = {}
+    _instances: dict[tuple[str, str], PermissionEngine] = {}
 
     def __init__(self, workspace_root: str, mode: str = "Assisted") -> None:
         self.workspace_root = os.path.abspath(workspace_root)
@@ -77,7 +80,7 @@ class PermissionEngine:
         self.audit_logger = AuditLogger()
 
     @classmethod
-    def get_instance(cls, workspace_root: str, mode: str = "Assisted") -> "PermissionEngine":
+    def get_instance(cls, workspace_root: str, mode: str = "Assisted") -> PermissionEngine:
         root = os.path.abspath(workspace_root)
         key = (root, mode)
         if key not in cls._instances:
@@ -88,7 +91,7 @@ class PermissionEngine:
         self,
         session_id: str,
         tool_name: str,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
     ) -> PermissionDecision:
         """Evaluate permission for any tool execution call with fail-closed security."""
         try:

@@ -8,11 +8,11 @@ and runs task-scoped verification suites (cheap targeted tests first).
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger("devpilot.autonomous.verification_engine")
 
@@ -22,12 +22,12 @@ class VerificationProfile:
     """Project-specific verification command configuration."""
     language: str
     package_manager: str = "npm"
-    test_command: Optional[str] = None
-    typecheck_command: Optional[str] = None
-    lint_command: Optional[str] = None
-    build_command: Optional[str] = None
+    test_command: str | None = None
+    typecheck_command: str | None = None
+    lint_command: str | None = None
+    build_command: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "language": self.language,
             "package_manager": self.package_manager,
@@ -45,8 +45,8 @@ class VerificationResult:
     command: str
     output: str
     duration_seconds: float
-    failed_tests: List[str] = field(default_factory=list)
-    error_summary: Optional[str] = None
+    failed_tests: list[str] = field(default_factory=list)
+    error_summary: str | None = None
 
 
 @dataclass
@@ -66,7 +66,7 @@ class VerificationReport:
     """Formal unified Verification Report."""
     success: bool
     duration_seconds: float
-    phases: List[VerificationPhaseReport] = field(default_factory=list)
+    phases: list[VerificationPhaseReport] = field(default_factory=list)
 
 
 class VerificationEngine:
@@ -127,7 +127,7 @@ class VerificationEngine:
         # Default fallback
         return VerificationProfile(language="unknown", test_command=None)
 
-    def load_phase_state(self) -> Dict[str, Any]:
+    def load_phase_state(self) -> dict[str, Any]:
         state_path = os.path.join(self.workspace_root, ".devpilot_phase_state.json")
         if os.path.exists(state_path):
             try:
@@ -146,7 +146,7 @@ class VerificationEngine:
             "next_action": "implement"
         }
 
-    def save_phase_state(self, state: Dict[str, Any]) -> None:
+    def save_phase_state(self, state: dict[str, Any]) -> None:
         state_path = os.path.join(self.workspace_root, ".devpilot_phase_state.json")
         try:
             with open(state_path, "w", encoding="utf-8") as f:
@@ -174,7 +174,10 @@ class VerificationEngine:
 
         start_time = asyncio.get_event_loop().time()
 
-        from backend.app.agent.security.sandbox import global_sandbox_manager, ExecutionStatus
+        from backend.app.agent.security.sandbox import (
+            ExecutionStatus,
+            global_sandbox_manager,
+        )
         active_sandbox = None
         for sb in list(global_sandbox_manager.active_sandboxes.values()):
             if os.path.realpath(sb.policy.workspace_root) == os.path.realpath(self.workspace_root):
@@ -237,8 +240,8 @@ class VerificationEngine:
 
     async def run_scoped_verification(
         self,
-        target_files: Optional[List[str]] = None,
-        test_files: Optional[List[str]] = None,
+        target_files: list[str] | None = None,
+        test_files: list[str] | None = None,
     ) -> VerificationResult:
         """Execute cheap targeted verification before running broad suites."""
         cmd = self.profile.test_command
@@ -258,7 +261,10 @@ class VerificationEngine:
 
         start_time = asyncio.get_event_loop().time()
 
-        from backend.app.agent.security.sandbox import global_sandbox_manager, ExecutionStatus
+        from backend.app.agent.security.sandbox import (
+            ExecutionStatus,
+            global_sandbox_manager,
+        )
         active_sandbox = None
         for sb in list(global_sandbox_manager.active_sandboxes.values()):
             if os.path.realpath(sb.policy.workspace_root) == os.path.realpath(self.workspace_root):
@@ -322,7 +328,7 @@ class VerificationEngine:
                 error_summary=str(e),
             )
 
-    _verification_cache: Dict[str, VerificationReport] = {}
+    _verification_cache: dict[str, VerificationReport] = {}
 
     def _calculate_workspace_hash(self) -> str:
         """Calculate a quick hash representing current workspace files state."""

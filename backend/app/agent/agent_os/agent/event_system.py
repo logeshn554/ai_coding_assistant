@@ -9,12 +9,13 @@ Features:
   - Event persistence and replay
 """
 
+import asyncio
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, List, Callable
 from datetime import datetime
 from enum import Enum
-import uuid
-import asyncio
+from typing import Any
 
 
 class EventType(str, Enum):
@@ -75,14 +76,14 @@ class Event:
     event_id: str  # Unique ID for deduplication
     event_type: EventType
     run_id: str
-    task_id: Optional[str] = None
-    agent_id: Optional[str] = None
-    attempt_id: Optional[str] = None
-    execution_id: Optional[str] = None
-    tool_call_id: Optional[str] = None
+    task_id: str | None = None
+    agent_id: str | None = None
+    attempt_id: str | None = None
+    execution_id: str | None = None
+    tool_call_id: str | None = None
     sequence_number: int = 0
     timestamp: datetime = field(default_factory=datetime.utcnow)
-    payload: Dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
 
     def __hash__(self):
         return hash(self.event_id)
@@ -95,8 +96,8 @@ class Event:
 class Progress:
     """Progress tracking with monotonicity enforcement."""
     run_id: str
-    task_id: Optional[str] = None
-    attempt_id: Optional[str] = None
+    task_id: str | None = None
+    attempt_id: str | None = None
 
     # Individual progress values (0-100)
     task_progress: int = 0  # Progress on current task
@@ -148,23 +149,23 @@ class EventBus:
     """Central event bus for system-wide observability."""
 
     def __init__(self):
-        self._events: List[Event] = []
+        self._events: list[Event] = []
         self._seen_event_ids: set = set()
-        self._subscribers: Dict[EventType, List[Callable]] = {}
+        self._subscribers: dict[EventType, list[Callable]] = {}
         self._lock = asyncio.Lock()
         self._sequence_number = 0
-        self._progress_map: Dict[str, Progress] = {}
+        self._progress_map: dict[str, Progress] = {}
 
     async def emit(
         self,
         event_type: EventType,
         run_id: str,
-        task_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        attempt_id: Optional[str] = None,
-        execution_id: Optional[str] = None,
-        tool_call_id: Optional[str] = None,
-        payload: Optional[Dict[str, Any]] = None,
+        task_id: str | None = None,
+        agent_id: str | None = None,
+        attempt_id: str | None = None,
+        execution_id: str | None = None,
+        tool_call_id: str | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> Event:
         """
         Emit an event.
@@ -234,19 +235,19 @@ class EventBus:
             self._subscribers[event_type] = []
         self._subscribers[event_type].append(handler)
 
-    def get_events_for_run(self, run_id: str) -> List[Event]:
+    def get_events_for_run(self, run_id: str) -> list[Event]:
         """Get all events for a run."""
         return [e for e in self._events if e.run_id == run_id]
 
-    def get_events_for_task(self, task_id: str) -> List[Event]:
+    def get_events_for_task(self, task_id: str) -> list[Event]:
         """Get all events for a task."""
         return [e for e in self._events if e.task_id == task_id]
 
-    def get_events_for_agent(self, agent_id: str) -> List[Event]:
+    def get_events_for_agent(self, agent_id: str) -> list[Event]:
         """Get all events for an agent."""
         return [e for e in self._events if e.agent_id == agent_id]
 
-    def get_progress(self, run_id: str, task_id: Optional[str] = None) -> Optional[Progress]:
+    def get_progress(self, run_id: str, task_id: str | None = None) -> Progress | None:
         """Get progress for run/task."""
         key = f"{run_id}:{task_id}" if task_id else run_id
         return self._progress_map.get(key)
@@ -254,11 +255,11 @@ class EventBus:
     async def update_progress(
         self,
         run_id: str,
-        task_id: Optional[str] = None,
-        attempt_id: Optional[str] = None,
-        task_progress: Optional[int] = None,
-        attempt_progress: Optional[int] = None,
-        run_progress: Optional[int] = None,
+        task_id: str | None = None,
+        attempt_id: str | None = None,
+        task_progress: int | None = None,
+        attempt_progress: int | None = None,
+        run_progress: int | None = None,
     ) -> Progress:
         """Update progress with monotonicity enforcement."""
         async with self._lock:
@@ -298,7 +299,7 @@ class EventBus:
 
             return progress
 
-    def get_all_events(self) -> List[Event]:
+    def get_all_events(self) -> list[Event]:
         """Get all events."""
         return self._events.copy()
 

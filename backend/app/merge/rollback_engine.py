@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import Optional
 
 logger = logging.getLogger("devpilot.merge.rollback_engine")
 
@@ -16,11 +15,13 @@ class RollbackEngine:
     def __init__(self, workspace_root: str = "") -> None:
         self.workspace_root = workspace_root
 
-    def create_savepoint(self) -> Optional[str]:
+    def create_savepoint(self) -> str | None:
         """Record the current Git commit hash to use as a rollback target."""
         if not self.workspace_root:
             return None
-        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        from backend.app.agent.security.environment_isolation import (
+            EnvironmentIsolation,
+        )
         env = EnvironmentIsolation.get_isolated_env()
         try:
             res = subprocess.run(
@@ -43,7 +44,9 @@ class RollbackEngine:
         """Execute a git checkout or reset to return codebase to savepoint commit."""
         if not self.workspace_root or not savepoint:
             return False
-        from backend.app.agent.security.environment_isolation import EnvironmentIsolation
+        from backend.app.agent.security.environment_isolation import (
+            EnvironmentIsolation,
+        )
         env = EnvironmentIsolation.get_isolated_env()
         try:
             # First discard local uncommitted changes

@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Type, Union
 
 logger = logging.getLogger("devpilot.retry_policy")
 
@@ -16,7 +15,7 @@ DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_BACKOFF_BASE = 2.0
 DEFAULT_BACKOFF_MAX = 30.0
 
-DEFAULT_RETRYABLE: Set[str] = {
+DEFAULT_RETRYABLE: set[str] = {
     "ConnectionError",
     "TimeoutError",
     "asyncio.TimeoutError",
@@ -30,7 +29,7 @@ DEFAULT_RETRYABLE: Set[str] = {
     "RateLimitError",
 }
 
-DEFAULT_NON_RETRYABLE: Set[str] = {
+DEFAULT_NON_RETRYABLE: set[str] = {
     "ValueError",
     "KeyError",
     "TypeError",
@@ -48,17 +47,17 @@ DEFAULT_NON_RETRYABLE: Set[str] = {
 class RetryPolicy:
     """Configurable retry policy for worker job and task retries."""
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         self.config_path = config_path or self._discover_config_path()
         self.max_attempts: int = DEFAULT_MAX_ATTEMPTS
         self.backoff_base_seconds: float = DEFAULT_BACKOFF_BASE
         self.backoff_max_seconds: float = DEFAULT_BACKOFF_MAX
-        self.retryable_errors: Set[str] = set(DEFAULT_RETRYABLE)
-        self.non_retryable_errors: Set[str] = set(DEFAULT_NON_RETRYABLE)
+        self.retryable_errors: set[str] = set(DEFAULT_RETRYABLE)
+        self.non_retryable_errors: set[str] = set(DEFAULT_NON_RETRYABLE)
 
         self._load_config()
 
-    def _discover_config_path(self) -> Optional[str]:
+    def _discover_config_path(self) -> str | None:
         candidates = [
             Path("config/retry_policy.yaml"),
             Path(__file__).resolve().parent.parent.parent.parent / "config" / "retry_policy.yaml",
@@ -96,7 +95,7 @@ class RetryPolicy:
         except Exception as e:
             logger.warning(f"Failed to parse retry policy YAML from {self.config_path}: {e}. Using defaults.")
 
-    def is_retryable(self, exc: Union[Exception, Type[Exception], str], attempt: int = 1) -> bool:
+    def is_retryable(self, exc: Exception | type[Exception] | str, attempt: int = 1) -> bool:
         """Determine if an exception should trigger a retry at the given attempt index.
 
         Args:
@@ -154,6 +153,6 @@ class RetryPolicy:
 _default_policy = RetryPolicy()
 
 
-def is_retryable(exc: Union[Exception, Type[Exception], str], attempt: int = 1) -> bool:
+def is_retryable(exc: Exception | type[Exception] | str, attempt: int = 1) -> bool:
     """Convenience module-level function for checking retry eligibility."""
     return _default_policy.is_retryable(exc, attempt=attempt)

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 
 logger = logging.getLogger("devpilot.brain.api_graph")
 
@@ -15,23 +14,23 @@ class APIEndpoint:
     path: str
     method: str                         # GET | POST | PUT | DELETE | WEBSOCKET
     handler_func: str
-    request_schema: Optional[str] = None
-    response_schema: Optional[str] = None
+    request_schema: str | None = None
+    response_schema: str | None = None
 
 
 class APIGraph:
     """Graph database matching endpoint URLs to application controllers."""
 
     def __init__(self) -> None:
-        self.endpoints: Dict[str, APIEndpoint] = {}
+        self.endpoints: dict[str, APIEndpoint] = {}
 
     def register_endpoint(
         self,
         path: str,
         method: str,
         handler_func: str,
-        req_schema: Optional[str] = None,
-        resp_schema: Optional[str] = None,
+        req_schema: str | None = None,
+        resp_schema: str | None = None,
     ) -> None:
         key = f"{method}:{path}"
         self.endpoints[key] = APIEndpoint(
@@ -43,12 +42,12 @@ class APIGraph:
         )
         logger.debug(f"Registered API endpoint in brain index: {key} -> {handler_func}")
 
-    def find_handler(self, method: str, path: str) -> Optional[APIEndpoint]:
+    def find_handler(self, method: str, path: str) -> APIEndpoint | None:
         """Lookup endpoint handler function by HTTP path and method."""
         key = f"{method}:{path}"
         return self.endpoints.get(key)
 
-    def get_endpoints(self) -> List[APIEndpoint]:
+    def get_endpoints(self) -> list[APIEndpoint]:
         return list(self.endpoints.values())
 
 

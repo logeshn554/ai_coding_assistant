@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Dict, List, Set
 
 logger = logging.getLogger("devpilot.brain.dependency_graph")
 
@@ -14,7 +13,7 @@ class DependencyGraph:
     """Calculates import cycles and dependency relationships between files."""
 
     def __init__(self) -> None:
-        self._dependencies: Dict[str, Set[str]] = {}
+        self._dependencies: dict[str, set[str]] = {}
 
     def add_import(self, file_path: str, imported_module: str) -> None:
         """Add a dependency edge indicating file_path imports imported_module."""
@@ -29,15 +28,15 @@ class DependencyGraph:
         for match in matches:
             self.add_import(file_path, match)
 
-    def get_dependencies(self, file_path: str) -> List[str]:
+    def get_dependencies(self, file_path: str) -> list[str]:
         return list(self._dependencies.get(file_path, set()))
 
-    def check_for_cycles(self) -> List[List[str]]:
+    def check_for_cycles(self) -> list[list[str]]:
         """Identify dependency loops/cycles in the graph using DFS."""
-        visited: Dict[str, int] = {}  # 0=unvisited, 1=visiting, 2=visited
-        cycles: List[List[str]] = []
+        visited: dict[str, int] = {}  # 0=unvisited, 1=visiting, 2=visited
+        cycles: list[list[str]] = []
 
-        def dfs(node: str, path: List[str]):
+        def dfs(node: str, path: list[str]):
             visited[node] = 1
             path.append(node)
             for neighbor in self._dependencies.get(node, []):

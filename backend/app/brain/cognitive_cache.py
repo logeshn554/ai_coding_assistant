@@ -7,7 +7,7 @@ import collections
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger("devpilot.brain.cognitive_cache")
 
@@ -26,7 +26,7 @@ class CognitiveCache:
         # Ordered dict tracks access patterns to enable LRU eviction
         self._cache: collections.OrderedDict[str, CacheEntry] = collections.OrderedDict()
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """Get an item from cache, resetting its recency."""
         entry = self._cache.get(key)
         if entry is None:

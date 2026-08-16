@@ -17,9 +17,9 @@ from __future__ import annotations
 import logging
 import time
 from collections import deque
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Deque, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("agentos.gateway.circuit_breaker")
 
@@ -63,13 +63,13 @@ class CircuitBreaker:
         self.name = name
         self.config = config or CircuitBreakerConfig()
         self._state = CircuitState.CLOSED
-        self._failure_timestamps: Deque[float] = deque()
-        self._success_timestamps: Deque[float] = deque()
+        self._failure_timestamps: deque[float] = deque()
+        self._success_timestamps: deque[float] = deque()
         self._opened_at: float = 0.0
         self._half_open_calls: int = 0
         self._half_open_successes: int = 0
         self._metrics = CircuitMetrics()
-        self._listeners: List[Callable[[str, CircuitState, CircuitState], None]] = []
+        self._listeners: list[Callable[[str, CircuitState, CircuitState], None]] = []
 
     @property
     def state(self) -> CircuitState:
@@ -204,9 +204,9 @@ class CircuitBreakerRegistry:
     """Manages circuit breakers for all downstream providers."""
 
     def __init__(self):
-        self._breakers: Dict[str, CircuitBreaker] = {}
+        self._breakers: dict[str, CircuitBreaker] = {}
         self._default_config = CircuitBreakerConfig()
-        self._fallback_order: Dict[str, List[str]] = {}
+        self._fallback_order: dict[str, list[str]] = {}
 
     def get_or_create(self, provider_name: str, config: CircuitBreakerConfig = None) -> CircuitBreaker:
         """Get an existing circuit breaker or create a new one."""
@@ -217,11 +217,11 @@ class CircuitBreakerRegistry:
             )
         return self._breakers[provider_name]
 
-    def set_fallback_order(self, provider: str, fallbacks: List[str]) -> None:
+    def set_fallback_order(self, provider: str, fallbacks: list[str]) -> None:
         """Set the fallback order for a provider when its circuit is open."""
         self._fallback_order[provider] = fallbacks
 
-    def get_available_provider(self, preferred: str) -> Optional[str]:
+    def get_available_provider(self, preferred: str) -> str | None:
         """Get the first available provider (circuit closed or half-open)."""
         breaker = self._breakers.get(preferred)
         if breaker is None or breaker.can_execute():
@@ -238,7 +238,7 @@ class CircuitBreakerRegistry:
         logger.error(f"All providers unavailable for '{preferred}' and its fallbacks")
         return None
 
-    def get_all_metrics(self) -> Dict[str, CircuitMetrics]:
+    def get_all_metrics(self) -> dict[str, CircuitMetrics]:
         """Get metrics for all circuit breakers."""
         return {name: cb.metrics for name, cb in self._breakers.items()}
 

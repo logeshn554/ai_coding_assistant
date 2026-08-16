@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
 
 
 @dataclass
 class ChangeAttribution:
-    user_modified_files: List[str] = field(default_factory=list)
-    ai_modified_files: List[str] = field(default_factory=list)
-    generated_files: List[str] = field(default_factory=list)
+    user_modified_files: list[str] = field(default_factory=list)
+    ai_modified_files: list[str] = field(default_factory=list)
+    generated_files: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -24,8 +23,8 @@ class MergeConflictSection:
     file_path: str
     ours_content: str
     theirs_content: str
-    base_content: Optional[str] = None
-    suggested_resolution: Optional[str] = None
+    base_content: str | None = None
+    suggested_resolution: str | None = None
 
 
 @dataclass
@@ -44,8 +43,8 @@ class GitCollaborationEngine:
     @classmethod
     def attribute_changes(
         cls,
-        working_tree_files: List[str],
-        ai_tracked_files: List[str],
+        working_tree_files: list[str],
+        ai_tracked_files: list[str],
     ) -> ChangeAttribution:
         """Distinguish AI-modified files from pre-existing user modifications."""
         ai_set = set(ai_tracked_files)
@@ -88,7 +87,7 @@ class GitCollaborationEngine:
     def generate_prepare_change_summary(
         cls,
         task_goal: str,
-        files_changed: List[str],
+        files_changed: list[str],
         verification_passed: bool,
     ) -> PrepareChangeSummary:
         """Generate PR-ready summary and commit message."""

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, List
 
 logger = logging.getLogger("devpilot.brain.bug_history")
 
@@ -25,7 +24,7 @@ class BugHistory:
     """Historical index preventing the same bugs from recurring by sharing past fixes."""
 
     def __init__(self) -> None:
-        self._bugs: Dict[str, BugRecord] = {}
+        self._bugs: dict[str, BugRecord] = {}
 
     def record_bug(
         self,
@@ -50,7 +49,7 @@ class BugHistory:
         logger.info(f"[Bug History] Recorded resolution for bug: {bug_id} in {file_path}")
         return record
 
-    def find_remediation(self, error_message: str) -> Optional[BugRecord]:
+    def find_remediation(self, error_message: str) -> BugRecord | None:
         """Check if we have an existing fix for a matching error string."""
         err_lower = error_message.lower()
         for record in self._bugs.values():

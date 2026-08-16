@@ -1,15 +1,16 @@
+import difflib
 import os
 import shutil
 import time
-import difflib
-from pathlib import Path
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
 
 @dataclass
 class FileSnapshot:
     filepath: str
-    original_content: Optional[str]
+    original_content: str | None
     exists_before: bool
     modified_at: float = field(default_factory=time.time)
 
@@ -17,8 +18,8 @@ class FileSnapshot:
 class ChangeSet:
     task_id: str
     created_at: float = field(default_factory=time.time)
-    snapshots: Dict[str, FileSnapshot] = field(default_factory=dict)
-    applied_edits: Dict[str, str] = field(default_factory=dict)  # filepath -> new_content
+    snapshots: dict[str, FileSnapshot] = field(default_factory=dict)
+    applied_edits: dict[str, str] = field(default_factory=dict)  # filepath -> new_content
     is_committed: bool = False
     is_rolled_back: bool = False
 
@@ -26,14 +27,14 @@ class TransactionalFileSystem:
     """Provides atomic change sets, snapshotting, diff previews, and instant rollbacks for AI file modifications."""
 
     def __init__(self):
-        self._active_change_sets: Dict[str, ChangeSet] = {}
+        self._active_change_sets: dict[str, ChangeSet] = {}
 
     def get_or_create_change_set(self, task_id: str) -> ChangeSet:
         if task_id not in self._active_change_sets:
             self._active_change_sets[task_id] = ChangeSet(task_id=task_id)
         return self._active_change_sets[task_id]
 
-    def stage_write(self, task_id: str, filepath: str, new_content: str) -> Dict[str, Any]:
+    def stage_write(self, task_id: str, filepath: str, new_content: str) -> dict[str, Any]:
         """Stages a file edit under snapshot protection before writing to disk."""
         abs_path = str(Path(filepath).resolve())
         change_set = self.get_or_create_change_set(task_id)
@@ -71,7 +72,7 @@ class TransactionalFileSystem:
             "snapshot_recorded": True
         }
 
-    def rollback_task(self, task_id: str) -> Dict[str, Any]:
+    def rollback_task(self, task_id: str) -> dict[str, Any]:
         """Rolls back all file modifications made by a specific agent task."""
         if task_id not in self._active_change_sets:
             return {"success": False, "reason": f"No change set found for task_id {task_id}"}
@@ -107,7 +108,7 @@ class TransactionalFileSystem:
             "errors": errors
         }
 
-    def get_task_diff(self, task_id: str) -> List[Dict[str, Any]]:
+    def get_task_diff(self, task_id: str) -> list[dict[str, Any]]:
         """Generates unified diffs for all files in a change set."""
         if task_id not in self._active_change_sets:
             return []

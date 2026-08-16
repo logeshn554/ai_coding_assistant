@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Any, List, Dict, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
+
 
 class ILLMProvider(ABC):
     """Model LLM provider abstraction."""
@@ -15,7 +17,7 @@ class ILLMProvider(ABC):
 class IEmbeddingProvider(ABC):
     """Text vector representations embedding provider interface."""
     @abstractmethod
-    def embed_text(self, text: str) -> List[float]:
+    def embed_text(self, text: str) -> list[float]:
         pass
 
 

@@ -6,7 +6,6 @@ from __future__ import annotations
 import ast
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
 
 logger = logging.getLogger("devpilot.brain.symbol_graph")
 
@@ -17,14 +16,14 @@ class SymbolNode:
     symbol_type: str                   # class | function | method | variable
     file_path: str
     line_number: int
-    dependencies: Set[str] = field(default_factory=set)
+    dependencies: set[str] = field(default_factory=set)
 
 
 class SymbolGraph:
     """AST-derived graph showing relationships between classes, functions, and symbols."""
 
     def __init__(self) -> None:
-        self.nodes: Dict[str, SymbolNode] = {}
+        self.nodes: dict[str, SymbolNode] = {}
 
     def parse_file(self, file_path: str, content: str) -> None:
         """Parse AST of a python file to extract symbol references."""
@@ -56,7 +55,7 @@ class SymbolGraph:
         if src:
             src.dependencies.add(target_symbol)
 
-    def get_symbol_dependencies(self, symbol_name: str) -> List[str]:
+    def get_symbol_dependencies(self, symbol_name: str) -> list[str]:
         node = self.nodes.get(symbol_name)
         if not node:
             return []

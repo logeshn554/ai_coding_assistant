@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
 class PolicyLevel(str, Enum):
@@ -27,14 +27,14 @@ class SecurityPolicyRule:
     deny_git_push: bool = False
     deny_secret_access: bool = True
     require_command_approval: bool = False
-    allowed_domains: List[str] = field(default_factory=lambda: ["github.com", "pypi.org"])
+    allowed_domains: list[str] = field(default_factory=lambda: ["github.com", "pypi.org"])
 
 
 class EnterprisePolicyHierarchy:
     """Enforces strict multi-level enterprise security policy precedence."""
 
     def __init__(self) -> None:
-        self.policy_stack: Dict[PolicyLevel, SecurityPolicyRule] = {
+        self.policy_stack: dict[PolicyLevel, SecurityPolicyRule] = {
             PolicyLevel.GLOBAL: SecurityPolicyRule(level=PolicyLevel.GLOBAL),
             PolicyLevel.ORGANIZATION: SecurityPolicyRule(level=PolicyLevel.ORGANIZATION, deny_git_push=True),
             PolicyLevel.PROJECT: SecurityPolicyRule(level=PolicyLevel.PROJECT),
@@ -53,7 +53,7 @@ class EnterprisePolicyHierarchy:
                 return False  # Denied by policy precedence
         return True  # Allowed
 
-    def export_audit_log(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def export_audit_log(self, records: list[dict[str, Any]]) -> dict[str, Any]:
         """Export redacted audit log dataset for enterprise compliance."""
         return {
             "policy_hierarchy": "Global -> Organization -> Project -> Workspace -> Session",

@@ -4,10 +4,10 @@ Provider Registry — Manages instantiation of adapters from config.
 
 from __future__ import annotations
 
-from typing import Dict, List, Type, Optional, Any
+from typing import Any
 
 from agent_os.providers.base import ModelProvider, ProviderConfig
-from agent_os.providers.common_adapter import CommonAdapter, AnthropicAdapter
+from agent_os.providers.common_adapter import AnthropicAdapter, CommonAdapter
 from agent_os.providers.configs.providers import PROVIDER_PRESETS
 
 
@@ -15,7 +15,7 @@ class ProviderRegistry:
     """Registry of available LLM providers and adapters."""
 
     def __init__(self) -> None:
-        self._adapters: Dict[str, Type[ModelProvider]] = {
+        self._adapters: dict[str, type[ModelProvider]] = {
             "openai": CommonAdapter,
             "anthropic": AnthropicAdapter,
             "gemini": CommonAdapter,
@@ -24,7 +24,7 @@ class ProviderRegistry:
             "ollama": CommonAdapter,
         }
 
-    def create(self, provider_name: str, model: str, api_key: Optional[str] = None, **kwargs: Any) -> ModelProvider:
+    def create(self, provider_name: str, model: str, api_key: str | None = None, **kwargs: Any) -> ModelProvider:
         """Create a ModelProvider instance based on configuration and protocol."""
         provider_name = provider_name.lower()
         
@@ -80,7 +80,7 @@ class ProviderRegistry:
 
         return adapter_cls(config)
 
-    def list_providers(self) -> List[str]:
+    def list_providers(self) -> list[str]:
         """List all supported built-in providers."""
         return list(PROVIDER_PRESETS.keys())
 

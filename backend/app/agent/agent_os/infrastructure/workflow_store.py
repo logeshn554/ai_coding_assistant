@@ -5,11 +5,10 @@ Enables checkpointing and restoring state of complex workflows (e.g. LangGraph p
 """
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("agentos.infrastructure.workflow_store")
 
@@ -21,17 +20,17 @@ class WorkflowState:
     workflow_type: str
     status: str                         # running | completed | failed | paused
     current_node: str
-    state_data: Dict[str, Any] = field(default_factory=dict)
+    state_data: dict[str, Any] = field(default_factory=dict)
     updated_at: float = field(default_factory=time.time)
     created_at: float = field(default_factory=time.time)
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class WorkflowStore:
     """Stores and retrieves workflow states for checkpointing/resuming."""
 
     def __init__(self) -> None:
-        self._states: Dict[str, WorkflowState] = {}
+        self._states: dict[str, WorkflowState] = {}
 
     def save_state(
         self,
@@ -39,8 +38,8 @@ class WorkflowStore:
         workflow_type: str,
         status: str,
         current_node: str,
-        state_data: Dict[str, Any],
-        error: Optional[str] = None,
+        state_data: dict[str, Any],
+        error: str | None = None,
     ) -> WorkflowState:
         """Create or update a workflow state entry."""
         now = time.time()
@@ -69,11 +68,11 @@ class WorkflowStore:
         logger.debug(f"Workflow state checkpointed: {workflow_id} (node: {current_node}, status: {status})")
         return state
 
-    def get_state(self, workflow_id: str) -> Optional[WorkflowState]:
+    def get_state(self, workflow_id: str) -> WorkflowState | None:
         """Retrieve a workflow state by ID."""
         return self._states.get(workflow_id)
 
-    def list_workflows(self, workflow_type: Optional[str] = None, status: Optional[str] = None) -> List[WorkflowState]:
+    def list_workflows(self, workflow_type: str | None = None, status: str | None = None) -> list[WorkflowState]:
         """List workflow states filtered by type and status."""
         return [
             w for w in self._states.values()

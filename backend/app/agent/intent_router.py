@@ -16,10 +16,10 @@ Intent types:
 """
 from __future__ import annotations
 
-import re
 import logging
-from enum import Enum
+import re
 from dataclasses import dataclass
+from enum import Enum
 
 logger = logging.getLogger("devpilot.agent.intent_router")
 

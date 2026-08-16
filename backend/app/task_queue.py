@@ -5,10 +5,10 @@ Manages background AI agent task queues with support for priority, status tracki
 pause/resume, task re-ordering, retry, and cancellation across IDE sessions.
 """
 
-import uuid
-import time
 import logging
-from typing import Dict, Any, List, Optional
+import time
+import uuid
+from typing import Any
 
 logger = logging.getLogger("antigravity.tasks")
 
@@ -22,12 +22,12 @@ class TaskItem:
         self.status = "queued"     # 'queued', 'running', 'paused', 'completed', 'failed', 'cancelled'
         self.progress = 0
         self.created_at = int(time.time())
-        self.started_at: Optional[int] = None
-        self.completed_at: Optional[int] = None
-        self.affected_files: List[str] = []
-        self.logs: List[str] = [f"Task queued: '{title}'"]
+        self.started_at: int | None = None
+        self.completed_at: int | None = None
+        self.affected_files: list[str] = []
+        self.logs: list[str] = [f"Task queued: '{title}'"]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "title": self.title,
@@ -50,7 +50,7 @@ class TaskQueueManager:
     """Manages ordered queue of agent tasks with priority and controls."""
 
     def __init__(self):
-        self.tasks: List[TaskItem] = []
+        self.tasks: list[TaskItem] = []
 
     def enqueue(self, title: str, mode: str = "Agent", priority: str = "medium") -> TaskItem:
         item = TaskItem(title, mode, priority)
@@ -64,10 +64,10 @@ class TaskQueueManager:
             self.tasks.append(item)
         return item
 
-    def get_tasks(self) -> List[Dict[str, Any]]:
+    def get_tasks(self) -> list[dict[str, Any]]:
         return [t.to_dict() for t in self.tasks]
 
-    def update_status(self, task_id: str, status: str, progress: int = None, log_msg: str = None) -> Optional[TaskItem]:
+    def update_status(self, task_id: str, status: str, progress: int = None, log_msg: str = None) -> TaskItem | None:
         for t in self.tasks:
             if t.id == task_id:
                 t.status = status

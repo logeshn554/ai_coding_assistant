@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -17,7 +16,7 @@ router = APIRouter()
 _anthropic_clients: dict = {}
 _openai_clients: dict = {}
 
-def _get_anthropic_client(api_key: Optional[str] = None, base_url: Optional[str] = None):
+def _get_anthropic_client(api_key: str | None = None, base_url: str | None = None):
     key = (api_key, base_url)
     if key not in _anthropic_clients:
         import anthropic
@@ -29,7 +28,7 @@ def _get_anthropic_client(api_key: Optional[str] = None, base_url: Optional[str]
         _anthropic_clients[key] = anthropic.AsyncAnthropic(**kwargs)
     return _anthropic_clients[key]
 
-def _get_openai_client(api_key: Optional[str] = None, base_url: Optional[str] = None):
+def _get_openai_client(api_key: str | None = None, base_url: str | None = None):
     key = (api_key, base_url)
     if key not in _openai_clients:
         import openai
@@ -81,7 +80,7 @@ async def create_completion(req: CompletionRequest) -> CompletionResponse:
     if not model:
         logger.warning("No model configured for completions — returning empty completion.")
         return CompletionResponse(completion="", model="unconfigured")
-    api_key: Optional[str] = profile.get("api_key") or None
+    api_key: str | None = profile.get("api_key") or None
 
     # Build a tight fill-in-the-middle style prompt
     lang_hint = f"Language: {req.language}\n" if req.language else ""
@@ -126,7 +125,7 @@ async def _call_model(
     *,
     provider: str,
     model: str,
-    api_key: Optional[str],
+    api_key: str | None,
     system: str,
     user: str,
     max_tokens: int,
@@ -178,7 +177,7 @@ async def _call_model(
     raise HTTPException(status_code=400, detail=f"Unsupported provider for completions: {provider}")
 
 
-def profile_base_url(provider: str) -> Optional[str]:
+def profile_base_url(provider: str) -> str | None:
     """Extract a custom base_url from the active profile, if set."""
     try:
         profile = config_manager.get_active_profile()

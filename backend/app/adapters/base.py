@@ -1,8 +1,9 @@
-from typing import AsyncGenerator, List, Dict, Any, Optional, Tuple
 import asyncio
 import json
 import logging
 import os
+from collections.abc import AsyncGenerator
+from typing import Any
 
 logger = logging.getLogger("devpilot.adapters")
 
@@ -28,10 +29,10 @@ class ModelAdapter:
 
     async def stream_chat(
         self, 
-        messages: List[Dict[str, Any]], 
-        tools: List[Dict[str, Any]], 
+        messages: list[dict[str, Any]], 
+        tools: list[dict[str, Any]], 
         system_prompt: str
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """
         Yields chunks of the model response:
         - Text chunk: {"type": "text", "content": "str"}
@@ -46,7 +47,7 @@ class ModelAdapter:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def parse_tool_arguments(tool_name: str, raw_json: str) -> Tuple[Dict[str, Any], Optional[str]]:
+    def parse_tool_arguments(tool_name: str, raw_json: str) -> tuple[dict[str, Any], str | None]:
         """Common JSON parsing for tool-call arguments, with a fallback and a
         standardized error message when the model produces malformed JSON.
         Used by every provider adapter so a malformed tool call is handled
@@ -67,12 +68,12 @@ class ModelAdapter:
     def build_tool_call_chunk(
         tool_id: str,
         tool_name: str,
-        parsed_input: Dict[str, Any],
-        error_msg: Optional[str] = None,
-        thought_signature: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        parsed_input: dict[str, Any],
+        error_msg: str | None = None,
+        thought_signature: str | None = None,
+    ) -> dict[str, Any]:
         """Standard shape for a tool-call chunk, shared across all providers."""
-        chunk: Dict[str, Any] = {
+        chunk: dict[str, Any] = {
             "type": "tool_call",
             "id": tool_id,
             "name": tool_name,
@@ -85,7 +86,7 @@ class ModelAdapter:
         return chunk
 
     @staticmethod
-    def build_text_chunk(content: str) -> Dict[str, Any]:
+    def build_text_chunk(content: str) -> dict[str, Any]:
         return {"type": "text", "content": content}
 
     @staticmethod
@@ -219,7 +220,7 @@ class ModelAdapter:
         output_tokens: int,
         model_name: str = "unknown",
         profile: dict | None = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         cost, is_estimated = ModelAdapter.calculate_cost(
             model_name, input_tokens, output_tokens, profile=profile
         )
@@ -235,7 +236,7 @@ class ModelAdapter:
 
 
     @staticmethod
-    def build_done_chunk(stop_reason: str) -> Dict[str, Any]:
+    def build_done_chunk(stop_reason: str) -> dict[str, Any]:
         return {"type": "done", "stop_reason": stop_reason}
 
     async def generate_bug_report(self) -> str:

@@ -6,7 +6,6 @@ from __future__ import annotations
 import base64
 import logging
 import os
-from typing import Dict, Optional
 
 logger = logging.getLogger("agentos.infrastructure.secret_store")
 
@@ -15,7 +14,7 @@ class SecretStore:
     """Manages credentials, API keys, and workspace secrets securely."""
 
     def __init__(self) -> None:
-        self._secrets: Dict[str, str] = {}
+        self._secrets: dict[str, str] = {}
         self._xor_key = os.getenv("DEVPILOT_SECRET_KEY", "devpilot-default-secret-key-xor")
 
     def _obfuscate(self, data: str) -> str:
@@ -44,7 +43,7 @@ class SecretStore:
         """Securely store a secret."""
         self._secrets[name] = self._obfuscate(value)
 
-    def get_secret(self, name: str) -> Optional[str]:
+    def get_secret(self, name: str) -> str | None:
         """Retrieve and decrypt a stored secret. Falls back to environment variables."""
         # 1. Check in-memory secret store
         obfuscated = self._secrets.get(name)

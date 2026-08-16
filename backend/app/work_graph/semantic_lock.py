@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 logger = logging.getLogger("devpilot.work_graph.semantic_lock")
 
@@ -20,7 +19,7 @@ class SemanticLock:
     """Provides granular mutual exclusion over workspace source files and code symbols."""
 
     def __init__(self) -> None:
-        self._locks: Dict[str, LockInfo] = {}
+        self._locks: dict[str, LockInfo] = {}
 
     def acquire_lock(self, resource_uri: str, owner_task_id: str) -> bool:
         """Attempt to acquire a write lock on a resource (file or symbol)."""
@@ -56,7 +55,7 @@ class SemanticLock:
         logger.debug(f"Lock released on '{resource_uri}' by task '{owner_task_id}'")
         return True
 
-    def get_lock_owner(self, resource_uri: str) -> Optional[str]:
+    def get_lock_owner(self, resource_uri: str) -> str | None:
         info = self._locks.get(resource_uri)
         return info.owner_task_id if info else None
 

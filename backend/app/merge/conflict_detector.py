@@ -4,7 +4,7 @@ Conflict Detector — Inspects symbol updates and modifications to catch semanti
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Set
+
 from ..patch.patch_store import ProposedPatch
 
 logger = logging.getLogger("devpilot.merge.conflict_detector")
@@ -13,11 +13,11 @@ logger = logging.getLogger("devpilot.merge.conflict_detector")
 class ConflictDetector:
     """Verifies that parallel agent patches do not overwrite identical code blocks or symbols."""
 
-    def detect_conflicts(self, patches: List[ProposedPatch]) -> List[str]:
+    def detect_conflicts(self, patches: list[ProposedPatch]) -> list[str]:
         """Scans list of active proposed patches for potential symbol or file conflicts."""
         conflicts = []
-        file_modifiers: Dict[str, List[str]] = {}
-        symbol_modifiers: Dict[str, List[str]] = {}
+        file_modifiers: dict[str, list[str]] = {}
+        symbol_modifiers: dict[str, list[str]] = {}
 
         for p in patches:
             # File level tracking

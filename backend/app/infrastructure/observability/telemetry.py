@@ -1,9 +1,7 @@
-import os
+import contextvars
 import json
 import logging
-import contextvars
-import time
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 # --- Correlation ID Propagation Context Variables ---
 correlation_id_var = contextvars.ContextVar("correlation_id", default=None)
@@ -45,15 +43,15 @@ class JSONLogFormatter(logging.Formatter):
 
 # --- OpenTelemetry Wrapper Interface / Fallback Mock Telemetry ---
 try:
-    from opentelemetry import trace, metrics
-    from opentelemetry.trace import Tracer
-    from opentelemetry.metrics import Meter
+    from opentelemetry import metrics, trace
+    from opentelemetry.metrics import Meter  # noqa: F401
+    from opentelemetry.trace import Tracer  # noqa: F401
     _OTEL_AVAILABLE = True
 except ImportError:
     _OTEL_AVAILABLE = False
 
 class MockSpan:
-    def __init__(self, name: str, attributes: Optional[Dict[str, Any]] = None):
+    def __init__(self, name: str, attributes: dict[str, Any] | None = None):
         self.name = name
         self.attributes = attributes or {}
     def __enter__(self):
@@ -64,21 +62,21 @@ class MockSpan:
         self.attributes[key] = value
 
 class MockTracer:
-    def start_as_current_span(self, name: str, attributes: Optional[Dict[str, Any]] = None):
+    def start_as_current_span(self, name: str, attributes: dict[str, Any] | None = None):
         return MockSpan(name, attributes)
 
 class MockCounter:
     def __init__(self, name: str):
         self.name = name
         self.value = 0
-    def add(self, amount: int, attributes: Optional[Dict[str, Any]] = None):
+    def add(self, amount: int, attributes: dict[str, Any] | None = None):
         self.value += amount
 
 class MockHistogram:
     def __init__(self, name: str):
         self.name = name
         self.values = []
-    def record(self, amount: float, attributes: Optional[Dict[str, Any]] = None):
+    def record(self, amount: float, attributes: dict[str, Any] | None = None):
         self.values.append(amount)
 
 class MockMeter:
@@ -90,8 +88,8 @@ class MockMeter:
 class TelemetryManager:
     _tracer = None
     _meter = None
-    _counters: Dict[str, Any] = {}
-    _histograms: Dict[str, Any] = {}
+    _counters: dict[str, Any] = {}
+    _histograms: dict[str, Any] = {}
 
     @classmethod
     def get_tracer(cls):
@@ -112,14 +110,14 @@ class TelemetryManager:
         return cls._meter
 
     @classmethod
-    def increment_counter(cls, name: str, amount: int = 1, attributes: Optional[Dict[str, Any]] = None):
+    def increment_counter(cls, name: str, amount: int = 1, attributes: dict[str, Any] | None = None):
         meter = cls.get_meter()
         if name not in cls._counters:
             cls._counters[name] = meter.create_counter(name)
         cls._counters[name].add(amount, attributes)
 
     @classmethod
-    def record_histogram(cls, name: str, value: float, attributes: Optional[Dict[str, Any]] = None):
+    def record_histogram(cls, name: str, value: float, attributes: dict[str, Any] | None = None):
         meter = cls.get_meter()
         if name not in cls._histograms:
             cls._histograms[name] = meter.create_histogram(name)

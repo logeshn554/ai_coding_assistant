@@ -1,15 +1,15 @@
-import os
 import logging
-from typing import Optional, Dict, Any, List
+import os
 from dataclasses import dataclass
+
 
 @dataclass
 class FileOperationResult:
     success: bool
     message: str
-    content: Optional[str] = None
-    error: Optional[str] = None
-    file_path: Optional[str] = None
+    content: str | None = None
+    error: str | None = None
+    file_path: str | None = None
 
 class FileOperations:
     def __init__(self, workspace_root: str):
@@ -61,10 +61,10 @@ class FileOperations:
             )
             
         except Exception as e:
-            self.logger.error(f"Error reading file {file_path}: {str(e)}")
+            self.logger.error(f"Error reading file {file_path}: {e!s}")
             return FileOperationResult(
                 success=False,
-                message=f"Error reading file: {str(e)}",
+                message=f"Error reading file: {e!s}",
                 error=str(e)
             )
 
@@ -101,10 +101,10 @@ class FileOperations:
             )
             
         except Exception as e:
-            self.logger.error(f"Error writing file {file_path}: {str(e)}")
+            self.logger.error(f"Error writing file {file_path}: {e!s}")
             return FileOperationResult(
                 success=False,
-                message=f"Error writing file: {str(e)}",
+                message=f"Error writing file: {e!s}",
                 error=str(e)
             )
 
@@ -123,10 +123,10 @@ class FileOperations:
             return self.write_file(file_path, content)
             
         except Exception as e:
-            self.logger.error(f"Error creating file {file_path}: {str(e)}")
+            self.logger.error(f"Error creating file {file_path}: {e!s}")
             return FileOperationResult(
                 success=False,
-                message=f"Error creating file: {str(e)}",
+                message=f"Error creating file: {e!s}",
                 error=str(e)
             )
 
@@ -160,10 +160,10 @@ class FileOperations:
             return self.write_file(file_path, new_content)
             
         except Exception as e:
-            self.logger.error(f"Error editing file {file_path}: {str(e)}")
+            self.logger.error(f"Error editing file {file_path}: {e!s}")
             return FileOperationResult(
                 success=False,
-                message=f"Error editing file: {str(e)}",
+                message=f"Error editing file: {e!s}",
                 error=str(e)
             )
 
@@ -189,10 +189,10 @@ class FileOperations:
             )
             
         except Exception as e:
-            self.logger.error(f"Error deleting file {file_path}: {str(e)}")
+            self.logger.error(f"Error deleting file {file_path}: {e!s}")
             return FileOperationResult(
                 success=False,
-                message=f"Error deleting file: {str(e)}",
+                message=f"Error deleting file: {e!s}",
                 error=str(e)
             )
 
@@ -223,9 +223,9 @@ class FileOperations:
             )
             
         except Exception as e:
-            self.logger.error(f"Error listing directory {dir_path}: {str(e)}")
+            self.logger.error(f"Error listing directory {dir_path}: {e!s}")
             return FileOperationResult(
                 success=False,
-                message=f"Error listing directory: {str(e)}",
+                message=f"Error listing directory: {e!s}",
                 error=str(e)
             )

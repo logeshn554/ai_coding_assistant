@@ -4,10 +4,10 @@ Terminal Tool — Runs terminal commands safely in the workspace.
 
 from __future__ import annotations
 
+import asyncio
 import shlex
 import subprocess
-import asyncio
-from typing import Any, Dict
+from typing import Any
 
 from agent_os.tools.base import Tool, ToolResult
 
@@ -33,7 +33,7 @@ class RunCommandTool(Tool):
         return "Execute a shell command in the workspace (with safety restrictions)."
 
     @property
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {

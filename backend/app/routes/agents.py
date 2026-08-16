@@ -1,8 +1,8 @@
+import json
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Dict, List, Optional
-from pathlib import Path
-import json
 
 router = APIRouter()
 
@@ -132,26 +132,26 @@ async def create_agent(req: CreateAgentRequest):
 @router.get("/api/agents/prompts")
 async def get_agent_prompts():
     from ..orchestrator import (
-        planner_prompt_template,
-        frontend_planner_prompt_template,
-        backend_planner_prompt_template,
-        requirement_prompt_template,
-        architect_prompt_template,
-        coding_prompt_template,
-        frontend_dev_prompt_template,
-        backend_dev_prompt_template,
-        database_prompt_template,
-        api_agent_prompt_template,
-        integration_prompt_template,
-        security_prompt_template,
-        performance_prompt_template,
-        review_prompt_template,
         ai_reviewer_prompt_template,
-        documentation_prompt_template,
-        terminal_prompt_template,
+        api_agent_prompt_template,
+        architect_prompt_template,
+        backend_dev_prompt_template,
+        backend_planner_prompt_template,
+        coding_prompt_template,
+        database_prompt_template,
         devops_prompt_template,
-        release_prompt_template,
+        documentation_prompt_template,
+        frontend_dev_prompt_template,
+        frontend_planner_prompt_template,
+        integration_prompt_template,
         orchestrator_prompt_template,
+        performance_prompt_template,
+        planner_prompt_template,
+        release_prompt_template,
+        requirement_prompt_template,
+        review_prompt_template,
+        security_prompt_template,
+        terminal_prompt_template,
     )
     
     templates = {
@@ -206,26 +206,26 @@ async def get_agent_prompts():
 @router.post("/api/agents/prompts")
 async def update_agent_prompt(req: UpdatePromptRequest):
     from ..orchestrator import (
-        planner_prompt_template,
-        frontend_planner_prompt_template,
-        backend_planner_prompt_template,
-        requirement_prompt_template,
-        architect_prompt_template,
-        coding_prompt_template,
-        frontend_dev_prompt_template,
-        backend_dev_prompt_template,
-        database_prompt_template,
-        api_agent_prompt_template,
-        integration_prompt_template,
-        security_prompt_template,
-        performance_prompt_template,
-        review_prompt_template,
         ai_reviewer_prompt_template,
-        documentation_prompt_template,
-        terminal_prompt_template,
+        api_agent_prompt_template,
+        architect_prompt_template,
+        backend_dev_prompt_template,
+        backend_planner_prompt_template,
+        coding_prompt_template,
+        database_prompt_template,
         devops_prompt_template,
-        release_prompt_template,
+        documentation_prompt_template,
+        frontend_dev_prompt_template,
+        frontend_planner_prompt_template,
+        integration_prompt_template,
         orchestrator_prompt_template,
+        performance_prompt_template,
+        planner_prompt_template,
+        release_prompt_template,
+        requirement_prompt_template,
+        review_prompt_template,
+        security_prompt_template,
+        terminal_prompt_template,
     )
     
     templates = {

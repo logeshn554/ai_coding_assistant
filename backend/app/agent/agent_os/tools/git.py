@@ -5,7 +5,7 @@ Git Tools — Implements real git status and git diff tool executions.
 from __future__ import annotations
 
 import subprocess
-from typing import Any, Dict
+from typing import Any
 
 from agent_os.tools.base import Tool, ToolResult
 
@@ -25,7 +25,7 @@ class GitDiffTool(Tool):
         return "Get unified diff of all uncommitted changes."
 
     @property
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {},
@@ -68,7 +68,7 @@ class GitStatusTool(Tool):
         return "Get git repository status."
 
     @property
-    def input_schema(self) -> Dict[str, Any]:
+    def input_schema(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {},

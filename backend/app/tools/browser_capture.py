@@ -12,13 +12,11 @@ Guardrails:
 
 from __future__ import annotations
 
-import asyncio
-import base64
 import logging
 import os
 import time
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 logger = logging.getLogger("devpilot.tools.browser_capture")
@@ -29,13 +27,13 @@ class CaptureResult:
     """Structured result of browser visual and runtime QA capture."""
 
     screenshot_path: str
-    console_messages: List[Dict[str, Any]] = field(default_factory=list)
-    network_requests: List[Dict[str, Any]] = field(default_factory=list)
-    failed_requests: List[Dict[str, Any]] = field(default_factory=list)
+    console_messages: list[dict[str, Any]] = field(default_factory=list)
+    network_requests: list[dict[str, Any]] = field(default_factory=list)
+    failed_requests: list[dict[str, Any]] = field(default_factory=list)
     page_title: str = ""
     final_url: str = ""
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -64,7 +62,7 @@ def is_localhost_url(url: str) -> bool:
     return True
 
 
-def get_artifacts_dir(workspace_root: Optional[str] = None) -> str:
+def get_artifacts_dir(workspace_root: str | None = None) -> str:
     """Resolve artifacts directory for storing QA screenshots."""
     if workspace_root and os.path.isdir(workspace_root):
         target = os.path.join(workspace_root, "artifacts")
@@ -114,9 +112,9 @@ async def capture_page(
 
     async_pw_fn = get_async_playwright()
 
-    console_messages: List[Dict[str, Any]] = []
-    network_requests: List[Dict[str, Any]] = []
-    failed_requests: List[Dict[str, Any]] = []
+    console_messages: list[dict[str, Any]] = []
+    network_requests: list[dict[str, Any]] = []
+    failed_requests: list[dict[str, Any]] = []
     page_title = ""
     final_url = url
     screenshot_path = ""

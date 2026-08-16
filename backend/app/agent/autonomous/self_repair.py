@@ -7,11 +7,10 @@ detects repeated error loops, and prevents destructive out-of-scope edits.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import logging
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
 
-from .failure_analyzer import FailureAnalyzer, VerificationFailure
+from .failure_analyzer import VerificationFailure
 from .task_contract import AgentTaskContract
 
 logger = logging.getLogger("devpilot.autonomous.self_repair")
@@ -33,8 +32,8 @@ class SelfRepairLoop:
         self.contract = contract
         self.max_rounds = contract.max_repair_rounds
         self.current_round = 0
-        self.history: List[RepairRoundRecord] = []
-        self.seen_failures: List[str] = []
+        self.history: list[RepairRoundRecord] = []
+        self.seen_failures: list[str] = []
 
     def can_attempt_repair(self) -> bool:
         """Check if remaining repair rounds exist under the contract budget."""

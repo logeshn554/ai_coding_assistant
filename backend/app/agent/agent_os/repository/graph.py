@@ -1,7 +1,9 @@
 import os
-from typing import Any, Dict, List, Set
-from agent_os.repository.repository import RepositoryKernel
+from typing import Any
+
 from agent_os.repository.interfaces import IRepositoryKnowledgeGraph
+from agent_os.repository.repository import RepositoryKernel
+
 
 class RepositoryKnowledgeGraph(IRepositoryKnowledgeGraph):
     """Repository Knowledge Graph extracting dependency and call-graph relationships from SQLite."""
@@ -9,7 +11,7 @@ class RepositoryKnowledgeGraph(IRepositoryKnowledgeGraph):
         self.kernel = kernel
         self.db = kernel.db
 
-    def _get_all_functions(self) -> List[Dict[str, Any]]:
+    def _get_all_functions(self) -> list[dict[str, Any]]:
         with self.db._get_connection() as conn:
             rows = conn.execute("""
                 SELECT s.*, f.path as file_path
@@ -19,7 +21,7 @@ class RepositoryKnowledgeGraph(IRepositoryKnowledgeGraph):
             """).fetchall()
             return [dict(r) for r in rows]
 
-    def _get_all_classes(self) -> List[Dict[str, Any]]:
+    def _get_all_classes(self) -> list[dict[str, Any]]:
         with self.db._get_connection() as conn:
             rows = conn.execute("""
                 SELECT s.*, f.path as file_path
@@ -29,7 +31,7 @@ class RepositoryKnowledgeGraph(IRepositoryKnowledgeGraph):
             """).fetchall()
             return [dict(r) for r in rows]
 
-    def get_dependencies(self, path: str) -> Dict[str, List[str]]:
+    def get_dependencies(self, path: str) -> dict[str, list[str]]:
         """Finds files imported by the target file, and files importing it."""
         with self.db._get_connection() as conn:
             file_row = conn.execute("SELECT id FROM files WHERE path = ?;", (path,)).fetchone()
@@ -67,7 +69,7 @@ class RepositoryKnowledgeGraph(IRepositoryKnowledgeGraph):
                 "imported_by": sorted(list(set(imported_by_list)))
             }
 
-    def get_call_graph(self, function_name: str) -> Dict[str, List[Dict[str, Any]]]:
+    def get_call_graph(self, function_name: str) -> dict[str, list[dict[str, Any]]]:
         """Finds functions called by the target function and functions calling it."""
         calls = []
         called_by = []
@@ -129,11 +131,11 @@ class RepositoryKnowledgeGraph(IRepositoryKnowledgeGraph):
             "called_by": sorted(list(dedup_called_by.values()), key=lambda x: x["name"])
         }
 
-    def get_impact_analysis(self, symbol_name: str) -> Dict[str, List[str]]:
+    def get_impact_analysis(self, symbol_name: str) -> dict[str, list[str]]:
         """Finds the transitive closure of all symbols and files depending directly or indirectly on the symbol."""
-        affected_symbols: Set[str] = set()
-        affected_files: Set[str] = set()
-        visited: Set[str] = set()
+        affected_symbols: set[str] = set()
+        affected_files: set[str] = set()
+        visited: set[str] = set()
 
         def dfs(sym: str) -> None:
             if sym in visited:
@@ -170,7 +172,7 @@ class RepositoryKnowledgeGraph(IRepositoryKnowledgeGraph):
             "files": sorted(list(affected_files))
         }
 
-    def get_related_symbols(self, symbol_name: str) -> List[str]:
+    def get_related_symbols(self, symbol_name: str) -> list[str]:
         """Finds classes, functions, or imports defined in the same file, or explicitly linked by usage."""
         related = set()
         with self.db._get_connection() as conn:
@@ -197,14 +199,14 @@ class RepositoryKnowledgeGraph(IRepositoryKnowledgeGraph):
         return sorted(list(related))
 
     # camelCase compatibility aliases
-    def getDependencies(self, path: str) -> Dict[str, List[str]]:
+    def getDependencies(self, path: str) -> dict[str, list[str]]:
         return self.get_dependencies(path)
 
-    def getCallGraph(self, function_name: str) -> Dict[str, List[Dict[str, Any]]]:
+    def getCallGraph(self, function_name: str) -> dict[str, list[dict[str, Any]]]:
         return self.get_call_graph(function_name)
 
-    def getImpactAnalysis(self, symbol_name: str) -> Dict[str, List[str]]:
+    def getImpactAnalysis(self, symbol_name: str) -> dict[str, list[str]]:
         return self.get_impact_analysis(symbol_name)
 
-    def getRelatedSymbols(self, symbol_name: str) -> List[str]:
+    def getRelatedSymbols(self, symbol_name: str) -> list[str]:
         return self.get_related_symbols(symbol_name)

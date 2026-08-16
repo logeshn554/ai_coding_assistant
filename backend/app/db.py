@@ -1,30 +1,33 @@
 from __future__ import annotations
+
 import logging
-import datetime
-import os
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select, delete
+from sqlalchemy import select
+
 from backend.app.config import settings
-from backend.app.infrastructure.database.connection import async_session_factory as async_session
+from backend.app.infrastructure.database.connection import (
+    async_session_factory as async_session,
+)
 from backend.app.infrastructure.database.models import Conversation as SessionModel
-from backend.app.infrastructure.database.models import Message as MessageModel
 from backend.app.infrastructure.database.repositories import (
-    OrganizationRepository, UserRepository, WorkspaceRepository, ConversationRepository
+    ConversationRepository,
+    OrganizationRepository,
+    UserRepository,
+    WorkspaceRepository,
 )
 
 logger = logging.getLogger("devpilot.db")
 
 async def init_db() -> None:
     """Create tables, migrate columns, and seed a default session if empty."""
-    from backend.app.config import settings
     import sys
     
     # 1. Initialize tables
     if settings.MODE == "desktop" or getattr(sys, 'frozen', False):
-        from backend.app.infrastructure.database.models import Base
         from backend.app.infrastructure.database.connection import engine
+        from backend.app.infrastructure.database.models import Base
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
@@ -34,8 +37,8 @@ async def init_db() -> None:
     elif settings.ENVIRONMENT != "production":
         # Running in standard Python development mode, use Alembic CLI via subprocess
         try:
-            import subprocess
             import asyncio
+            import subprocess
             
             def run_alembic():
                 cmd = [sys.executable, "-m", "alembic", "upgrade", "head"]
@@ -58,6 +61,7 @@ async def init_db() -> None:
 
     # 1b. Safe schema migration — add new columns if absent (SQLite compatible)
     from sqlalchemy import text
+
     from backend.app.infrastructure.database.connection import engine
     _new_agent_run_cols = [
         ("workspace_root", "VARCHAR(1024)"),
@@ -117,9 +121,9 @@ async def init_db() -> None:
         await db.commit()
 
 async def get_fallback_session_id(
-    workspace_root: Optional[str] = None,
+    workspace_root: str | None = None,
     org_id: str = "default-org",
-    user_id: Optional[str] = None,
+    user_id: str | None = None,
 ) -> str:
     """Return the most recently updated session, optionally filtered by workspace, tenant, and user."""
     async with async_session() as db:
@@ -149,9 +153,9 @@ async def get_fallback_session_id(
 async def resolve_session_for_identity(
     session_id: str,
     *,
-    request: Optional[Any] = None,
-    org_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    request: Any | None = None,
+    org_id: str | None = None,
+    user_id: str | None = None,
 ) -> SessionModel:
     """Validate a session belongs to the authenticated user and tenant."""
     async with async_session() as db:
@@ -174,7 +178,7 @@ async def resolve_session_for_identity(
 
         return session
 
-async def get_last_session_for_workspace(workspace_root: str, org_id: str = "default-org") -> Optional[SessionModel]:
+async def get_last_session_for_workspace(workspace_root: str, org_id: str = "default-org") -> SessionModel | None:
     """Load the most recent session for a workspace root and organization."""
     async with async_session() as db:
         ws_repo = WorkspaceRepository(db)

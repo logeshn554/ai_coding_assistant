@@ -9,12 +9,12 @@ The user's answer is returned as a string to the agent.
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict
+from typing import Any
 
 QUESTION_TIMEOUT = 300  # seconds – 5 minutes for user to respond
 
 
-async def ask_question(session: Any, tc_id: str, args: Dict[str, Any]) -> str:
+async def ask_question(session: Any, tc_id: str, args: dict[str, Any]) -> str:
     """Ask the user a clarifying question and return their answer.
 
     The agent's execution is paused until the user submits a response

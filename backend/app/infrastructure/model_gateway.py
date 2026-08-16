@@ -1,12 +1,11 @@
-import os
-import json
 import asyncio
 import logging
 import random
 import time
-from typing import Any, Dict, List, Optional, Type, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from pydantic import BaseModel
-from backend.app.config import settings
 
 logger = logging.getLogger("devpilot.infrastructure.model_gateway")
 
@@ -17,13 +16,13 @@ class TokenUsage(BaseModel):
     total_tokens: int = 0
 
 class GatewayModelResponse(BaseModel):
-    text: Optional[str] = None
-    tool_calls: List[Dict[str, Any]] = []
-    finish_reason: Optional[str] = None
+    text: str | None = None
+    tool_calls: list[dict[str, Any]] = []
+    finish_reason: str | None = None
     usage: TokenUsage
     provider: str
     model: str
-    metadata: Dict[str, Any] = {}
+    metadata: dict[str, Any] = {}
 
 class ModelGateway:
     """Canonical model gateway implementing retry-backoff, timeouts, and provider failover."""
@@ -31,13 +30,13 @@ class ModelGateway:
     @staticmethod
     async def generate_stream(
         profile: dict,
-        messages: List[Dict[str, Any]],
-        tools: Optional[List[Dict[str, Any]]] = None,
-        system_prompt: Optional[str] = None,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        system_prompt: str | None = None,
         task_type: str = "general",
         max_retries: int = 3,
         base_delay: float = 1.0,
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Stream chunks from LLM with exponential backoff retries for transient errors."""
         from backend.app.adapters.router import ModelRouter
         from backend.app.infrastructure.observability.telemetry import TelemetryManager
@@ -144,7 +143,7 @@ class ModelGateway:
                         except Exception:
                             pass
                     elif hasattr(e, "retry_after_seconds") and getattr(e, "retry_after_seconds", 0) > 0:
-                        delay = min(getattr(e, "retry_after_seconds") + 1.0, 45.0)
+                        delay = min(e.retry_after_seconds + 1.0, 45.0)
 
                     logger.warning(f"Transient error: '{e}'. Retrying attempt {attempt}/{max_retries} in {delay:.2f}s...")
                     TelemetryManager.increment_counter(

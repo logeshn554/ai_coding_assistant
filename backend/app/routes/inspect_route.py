@@ -6,7 +6,7 @@ import base64
 import json
 import logging
 import os
-from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -21,9 +21,9 @@ class InspectRequest(BaseModel):
     """Request model for /api/inspect endpoint."""
 
     url: str = Field(..., description="Dev server localhost URL (e.g. http://localhost:5173)")
-    workspace_root: Optional[str] = ""
-    mode: Optional[str] = "Agent"
-    auto_trigger: Optional[bool] = False
+    workspace_root: str | None = ""
+    mode: str | None = "Agent"
+    auto_trigger: bool | None = False
 
 
 @router.post("/api/inspect")
@@ -103,8 +103,8 @@ async def run_inspect(req: InspectRequest, request: Request = None):
     # 5. Enqueue to session if available
     enqueued = False
     try:
-        from ..session.agent_session import AgentSession
         from ..permissions import PermissionManager
+        from ..session.agent_session import AgentSession
         from ..state import config_manager
 
         active_profile = config_manager.get_active_profile()

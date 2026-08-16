@@ -1,18 +1,19 @@
-import sqlite3
 import os
-from typing import Optional, List, Dict, Any
+import sqlite3
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
 from ..state import workspace_state
 
 router = APIRouter()
 
 class QueryExecuteRequest(BaseModel):
-    db_path: Optional[str] = "devpilot.db"
+    db_path: str | None = "devpilot.db"
     sql: str
 
 @router.get("/api/database/tables")
-def get_database_tables(db_path: Optional[str] = "devpilot.db"):
+def get_database_tables(db_path: str | None = "devpilot.db"):
     """Lists tables and schema information for a SQLite database."""
     target_db = db_path
     if not os.path.isabs(target_db) and workspace_state.root:

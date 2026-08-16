@@ -1,7 +1,9 @@
-import re
 import json
-from typing import Any, Dict, List, Set
+import re
+from typing import Any
+
 from agent_os.compiler.interfaces import IPromptCompiler
+
 
 class PromptCompiler(IPromptCompiler):
     """Prompt Compiler optimizing and formatting prompt inputs tailored to different models."""
@@ -12,10 +14,10 @@ class PromptCompiler(IPromptCompiler):
     def compile_prompt(
         self,
         task: str,
-        repository_objects: List[Dict[str, Any]],
+        repository_objects: list[dict[str, Any]],
         context: str,
-        artifacts: Dict[str, Any],
-        diagnostics: List[Dict[str, Any]],
+        artifacts: dict[str, Any],
+        diagnostics: list[dict[str, Any]],
         system_prompt: str,
         model_name: str = "default"
     ) -> str:
@@ -79,10 +81,10 @@ class PromptCompiler(IPromptCompiler):
     def _compile_xml(
         self,
         task: str,
-        objects: List[Dict[str, Any]],
+        objects: list[dict[str, Any]],
         context: str,
-        artifacts: Dict[str, Any],
-        diagnostics: List[Dict[str, Any]],
+        artifacts: dict[str, Any],
+        diagnostics: list[dict[str, Any]],
         system: str
     ) -> str:
         obj_xml = []
@@ -128,10 +130,10 @@ class PromptCompiler(IPromptCompiler):
     def _compile_markdown_json(
         self,
         task: str,
-        objects: List[Dict[str, Any]],
+        objects: list[dict[str, Any]],
         context: str,
-        artifacts: Dict[str, Any],
-        diagnostics: List[Dict[str, Any]],
+        artifacts: dict[str, Any],
+        diagnostics: list[dict[str, Any]],
         system: str
     ) -> str:
         # Compact formatting
@@ -160,10 +162,10 @@ class PromptCompiler(IPromptCompiler):
     def _compile_generic(
         self,
         task: str,
-        objects: List[Dict[str, Any]],
+        objects: list[dict[str, Any]],
         context: str,
-        artifacts: Dict[str, Any],
-        diagnostics: List[Dict[str, Any]],
+        artifacts: dict[str, Any],
+        diagnostics: list[dict[str, Any]],
         system: str
     ) -> str:
         objs_str = "\n".join(f"- [{o.get('type')}] {o.get('name')}: {o.get('signature')}" for o in objects)

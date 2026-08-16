@@ -1,7 +1,6 @@
-import logging
-from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+
 from ..state import config_manager
 
 router = APIRouter()
@@ -12,40 +11,40 @@ VALID_SHELLS = {"", "cmd", "powershell", "bash", "sh"}
 class SettingsUpdateRequest(BaseModel):
     exclude_list: list
     auto_backup_enabled: bool
-    auto_inspect_on_server_start: Optional[bool] = False
-    agent_model_name: Optional[str] = ""
-    agent_models: Optional[dict] = None
-    agent_profiles: Optional[dict] = None
-    image_analysis_model: Optional[str] = ""
-    image_analysis_mode: Optional[str] = "auto"
-    secondary_agent_model: Optional[str] = ""
-    primary_agent_profile: Optional[str] = ""
-    secondary_agent_profile: Optional[str] = ""
-    mcp_servers: Optional[list] = None
+    auto_inspect_on_server_start: bool | None = False
+    agent_model_name: str | None = ""
+    agent_models: dict | None = None
+    agent_profiles: dict | None = None
+    image_analysis_model: str | None = ""
+    image_analysis_mode: str | None = "auto"
+    secondary_agent_model: str | None = ""
+    primary_agent_profile: str | None = ""
+    secondary_agent_profile: str | None = ""
+    mcp_servers: list | None = None
     # Web Search Fallback settings
-    web_search_fallback_enabled: Optional[bool] = False
-    repeat_error_threshold: Optional[int] = Field(default=2, ge=1, le=10)
-    tavily_api_key: Optional[str] = ""
+    web_search_fallback_enabled: bool | None = False
+    repeat_error_threshold: int | None = Field(default=2, ge=1, le=10)
+    tavily_api_key: str | None = ""
     # Terminal preferences
-    default_shell: Optional[str] = ""
-    terminal_font_size: Optional[int] = Field(default=13, ge=8, le=32)
-    terminal_scrollback: Optional[int] = Field(default=5000, ge=500, le=100000)
+    default_shell: str | None = ""
+    terminal_font_size: int | None = Field(default=13, ge=8, le=32)
+    terminal_scrollback: int | None = Field(default=5000, ge=500, le=100000)
     # Agent Behavior & Local Permissions
-    artifact_review_policy: Optional[str] = "Always Ask"
-    file_access_rules: Optional[list] = None
-    network_access_rules: Optional[list] = None
-    terminal_command_rules: Optional[list] = None
-    unsandboxed_command_rules: Optional[list] = None
-    mcp_tool_rules: Optional[list] = None
-    devpilot_rpm: Optional[int] = Field(default=15, ge=1)
-    concurrency_mode: Optional[str] = "parallel"
-    temperature: Optional[float] = Field(default=1.0, ge=0.0, le=2.0)
-    top_p: Optional[float] = Field(default=1.0, ge=0.0, le=1.0)
-    max_tokens: Optional[int] = Field(default=16384, ge=1, le=1000000)
-    seed: Optional[int] = Field(default=42)
-    stream: Optional[bool] = True
-    decision_engine: Optional[str] = "rule_based"
-    dual_llm_mode: Optional[bool] = False
+    artifact_review_policy: str | None = "Always Ask"
+    file_access_rules: list | None = None
+    network_access_rules: list | None = None
+    terminal_command_rules: list | None = None
+    unsandboxed_command_rules: list | None = None
+    mcp_tool_rules: list | None = None
+    devpilot_rpm: int | None = Field(default=15, ge=1)
+    concurrency_mode: str | None = "parallel"
+    temperature: float | None = Field(default=1.0, ge=0.0, le=2.0)
+    top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
+    max_tokens: int | None = Field(default=16384, ge=1, le=1000000)
+    seed: int | None = Field(default=42)
+    stream: bool | None = True
+    decision_engine: str | None = "rule_based"
+    dual_llm_mode: bool | None = False
 
 
 @router.get("/api/config/settings")

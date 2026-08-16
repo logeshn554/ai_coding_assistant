@@ -9,12 +9,10 @@ Supports fast incremental indexing on file create/modify/delete.
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass, field
 import hashlib
 import logging
 import os
 import re
-from typing import Dict, List, Optional, Set
 
 from .security_filter import SecurityFilter
 from .types import SymbolInfo, SymbolKind
@@ -29,11 +27,11 @@ class SymbolIndex:
         self.workspace_root = workspace_root
         self.security_filter = SecurityFilter(workspace_root)
         # file_rel_path -> List[SymbolInfo]
-        self._file_symbols: Dict[str, List[SymbolInfo]] = {}
+        self._file_symbols: dict[str, list[SymbolInfo]] = {}
         # file_rel_path -> file_sha256_hash
-        self._file_hashes: Dict[str, str] = {}
+        self._file_hashes: dict[str, str] = {}
         # symbol_name -> List[SymbolInfo]
-        self._symbol_map: Dict[str, List[SymbolInfo]] = {}
+        self._symbol_map: dict[str, list[SymbolInfo]] = {}
 
     def build_full_index(self) -> None:
         """Scan workspace and index all non-ignored source files."""
@@ -52,7 +50,7 @@ class SymbolIndex:
 
         logger.info(f"SymbolIndex build complete: indexed {len(self._file_symbols)} files, {sum(len(v) for v in self._symbol_map.values())} total symbols.")
 
-    def index_file(self, relative_path: str) -> List[SymbolInfo]:
+    def index_file(self, relative_path: str) -> list[SymbolInfo]:
         """Index or re-index a single file incrementally."""
         norm_path = relative_path.replace("\\", "/").strip("/")
         abs_path = os.path.join(self.workspace_root, norm_path)
@@ -96,7 +94,7 @@ class SymbolIndex:
                 if not self._symbol_map[sym.name]:
                     del self._symbol_map[sym.name]
 
-    def find_symbols(self, name: str) -> List[SymbolInfo]:
+    def find_symbols(self, name: str) -> list[SymbolInfo]:
         """Lookup symbols by exact or case-insensitive match."""
         if name in self._symbol_map:
             return self._symbol_map[name]
@@ -108,12 +106,12 @@ class SymbolIndex:
                 matches.extend(sym_list)
         return matches
 
-    def get_file_symbols(self, relative_path: str) -> List[SymbolInfo]:
+    def get_file_symbols(self, relative_path: str) -> list[SymbolInfo]:
         """Get all symbols defined in a file."""
         norm_path = relative_path.replace("\\", "/").strip("/")
         return self._file_symbols.get(norm_path, [])
 
-    def _extract_symbols(self, path: str, content: str) -> List[SymbolInfo]:
+    def _extract_symbols(self, path: str, content: str) -> list[SymbolInfo]:
         """Extract symbols based on file extension."""
         ext = os.path.splitext(path)[1].lower()
         if ext == ".py":
@@ -122,11 +120,11 @@ class SymbolIndex:
             return self._extract_jsts_symbols(path, content)
         return []
 
-    def _extract_python_symbols(self, path: str, content: str) -> List[SymbolInfo]:
+    def _extract_python_symbols(self, path: str, content: str) -> list[SymbolInfo]:
         """Extract Python classes, functions, methods, imports, and exports via AST."""
-        symbols: List[SymbolInfo] = []
-        imports: List[str] = []
-        exports: List[str] = []
+        symbols: list[SymbolInfo] = []
+        imports: list[str] = []
+        exports: list[str] = []
 
         try:
             tree = ast.parse(content)
@@ -142,7 +140,7 @@ class SymbolIndex:
                 for alias in node.names:
                     imports.append(f"{mod}.{alias.name}" if mod else alias.name)
 
-        def _traverse(nodes: List[ast.AST], parent_name: Optional[str] = None):
+        def _traverse(nodes: list[ast.AST], parent_name: str | None = None):
             for node in nodes:
                 if isinstance(node, ast.ClassDef):
                     sym = SymbolInfo(
@@ -177,9 +175,9 @@ class SymbolIndex:
         _traverse(tree.body)
         return symbols
 
-    def _extract_jsts_symbols(self, path: str, content: str) -> List[SymbolInfo]:
+    def _extract_jsts_symbols(self, path: str, content: str) -> list[SymbolInfo]:
         """Extract JS/TS classes, functions, methods, interfaces, types using regex analysis."""
-        symbols: List[SymbolInfo] = []
+        symbols: list[SymbolInfo] = []
         lines = content.splitlines()
 
         patterns = [

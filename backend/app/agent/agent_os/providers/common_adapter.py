@@ -4,18 +4,17 @@ Common LLM Adapters — Implements OpenAI-compatible protocol adapter and Anthro
 
 from __future__ import annotations
 
-import time
-import asyncio
 import logging
-from typing import Any, Dict, List, Optional, AsyncGenerator
+import time
+from collections.abc import AsyncGenerator
+from typing import Any
 
 from agent_os.providers.base import (
     ModelProvider,
-    ProviderConfig,
     ModelResponse,
-    ToolCall,
-    TokenUsage,
     ProviderHealth,
+    TokenUsage,
+    ToolCall,
 )
 
 logger = logging.getLogger("agent_os.providers.common_adapter")
@@ -26,8 +25,8 @@ class CommonAdapter(ModelProvider):
 
     async def generate(
         self,
-        messages: List[Dict[str, str]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> ModelResponse:
         from openai import AsyncOpenAI
@@ -116,8 +115,8 @@ class CommonAdapter(ModelProvider):
 
     async def stream(
         self,
-        messages: List[Dict[str, str]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> AsyncGenerator[str, None]:
         from openai import AsyncOpenAI
@@ -193,8 +192,8 @@ class AnthropicAdapter(ModelProvider):
 
     async def generate(
         self,
-        messages: List[Dict[str, str]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> ModelResponse:
         import anthropic
@@ -279,8 +278,8 @@ class AnthropicAdapter(ModelProvider):
 
     async def stream(
         self,
-        messages: List[Dict[str, str]],
-        tools: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, str]],
+        tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> AsyncGenerator[str, None]:
         import anthropic

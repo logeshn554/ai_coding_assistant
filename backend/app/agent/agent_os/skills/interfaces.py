@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, List, Dict
+from typing import Any
+
 
 class ISkillRegistry(ABC):
     """Registry managing available specialist skills and tool descriptions."""
@@ -15,7 +16,7 @@ class ISkillRegistry(ABC):
 class ISkillManager(ABC):
     """Dynamic resolution and verification of specialist tools."""
     @abstractmethod
-    def match_skills(self, task_description: str) -> List[str]:
+    def match_skills(self, task_description: str) -> list[str]:
         pass
 
 
@@ -32,7 +33,7 @@ class ISkill(ABC):
         pass
 
     @abstractmethod
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
         pass
 
 
@@ -43,9 +44,9 @@ class ISkillScheduler(ABC):
         pass
 
     @abstractmethod
-    def get_skills_for_state(self, state: str) -> List[ISkill]:
+    def get_skills_for_state(self, state: str) -> list[ISkill]:
         pass
 
     @abstractmethod
-    def schedule_skills(self, state: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    def schedule_skills(self, state: str, context: dict[str, Any]) -> dict[str, Any]:
         pass

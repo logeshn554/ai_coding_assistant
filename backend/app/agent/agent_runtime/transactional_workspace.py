@@ -8,10 +8,9 @@ a session-level change set (created, modified, deleted files + diffs).
 from __future__ import annotations
 
 import difflib
-from dataclasses import dataclass, field
 import hashlib
 import os
-from typing import Dict, Optional, Set
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -19,17 +18,17 @@ class FileSnapshot:
     """Snapshot of a single file's state before or after a modification."""
     path: str
     exists: bool
-    content: Optional[str] = None
-    file_hash: Optional[str] = None
+    content: str | None = None
+    file_hash: str | None = None
 
 
 @dataclass
 class ChangeSet:
     """Session-level tracking of workspace file modifications."""
-    created_files: Set[str] = field(default_factory=set)
-    modified_files: Set[str] = field(default_factory=set)
-    deleted_files: Set[str] = field(default_factory=set)
-    diffs: Dict[str, str] = field(default_factory=dict)
+    created_files: set[str] = field(default_factory=set)
+    modified_files: set[str] = field(default_factory=set)
+    deleted_files: set[str] = field(default_factory=set)
+    diffs: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -46,7 +45,7 @@ class TransactionalWorkspace:
     def __init__(self, workspace_root: str) -> None:
         self.workspace_root = workspace_root
         self.change_set = ChangeSet()
-        self._snapshots: Dict[str, FileSnapshot] = {}
+        self._snapshots: dict[str, FileSnapshot] = {}
 
     def normalize_rel_path(self, file_path: str) -> str:
         """Convert any file path into a clean relative path from workspace root."""
@@ -77,7 +76,7 @@ class TransactionalWorkspace:
         self._snapshots[rel_path] = snap
         return snap
 
-    def capture_post_state(self, file_path: str, pre_snap: Optional[FileSnapshot] = None) -> Optional[str]:
+    def capture_post_state(self, file_path: str, pre_snap: FileSnapshot | None = None) -> str | None:
         """Capture post-modification file state, generate diff, and update change set."""
         rel_path = self.normalize_rel_path(file_path)
         abs_path = os.path.join(self.workspace_root, rel_path)
@@ -86,7 +85,7 @@ class TransactionalWorkspace:
             pre_snap = self._snapshots.get(rel_path) or FileSnapshot(path=rel_path, exists=False)
 
         post_exists = os.path.exists(abs_path) and os.path.isfile(abs_path)
-        post_content: Optional[str] = None
+        post_content: str | None = None
 
         if post_exists:
             try:

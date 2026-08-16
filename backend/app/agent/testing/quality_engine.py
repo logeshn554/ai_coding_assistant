@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
 
 from ..context_engine.code_intelligence import SymbolGraph
 
@@ -22,7 +21,7 @@ class TestQualityReport:
     weak_assertions_count: int = 0
     excessive_mocking: bool = False
     flaky_risk: float = 0.0
-    recommendations: List[str] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)
 
 
 class SmartTestSelector:
@@ -31,12 +30,12 @@ class SmartTestSelector:
     @classmethod
     def select_relevant_tests(
         self,
-        changed_files: List[str],
+        changed_files: list[str],
         graph: SymbolGraph,
-        all_test_files: List[str],
-    ) -> List[str]:
+        all_test_files: list[str],
+    ) -> list[str]:
         """Select minimal set of tests impacted by changed files."""
-        selected: Set[str] = set()
+        selected: set[str] = set()
 
         for cfile in changed_files:
             cfile_norm = cfile.replace("\\", "/")

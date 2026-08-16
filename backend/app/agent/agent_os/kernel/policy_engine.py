@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+
 from agent_os.kernel.interfaces import IKernelService
 
 logger = logging.getLogger("agentos.kernel.policy_engine")
@@ -25,7 +25,7 @@ class PolicyEngine(IKernelService):
         self._workspace_root = workspace_root
         
         # Tool allowlists per agent type
-        self._agent_tool_allowlists: Dict[str, Set[str]] = {
+        self._agent_tool_allowlists: dict[str, set[str]] = {
             "code": {"read_file", "write_file", "edit_file", "grep_search", "list_dir", "run_terminal_command"},
             "test": {"read_file", "run_terminal_command", "list_dir"},
             "review": {"read_file", "grep_search", "list_dir"},
@@ -38,10 +38,10 @@ class PolicyEngine(IKernelService):
         }
 
         # Global denylist of tools
-        self._global_tool_denylist: Set[str] = set()
+        self._global_tool_denylist: set[str] = set()
 
         # Restricted directories (even inside workspace root)
-        self._restricted_subdirs: Set[str] = {
+        self._restricted_subdirs: set[str] = {
             ".git", ".env", "node_modules", "venv", ".venv", "__pycache__"
         }
 
@@ -59,11 +59,11 @@ class PolicyEngine(IKernelService):
     def workspace_root(self, root: str) -> None:
         self._workspace_root = root
 
-    def set_agent_tool_policy(self, agent_type: str, allowed_tools: Set[str]) -> None:
+    def set_agent_tool_policy(self, agent_type: str, allowed_tools: set[str]) -> None:
         """Define which tools a specific agent type is allowed to call."""
         self._agent_tool_allowlists[agent_type] = allowed_tools
 
-    def set_global_tool_denylist(self, blacklisted_tools: Set[str]) -> None:
+    def set_global_tool_denylist(self, blacklisted_tools: set[str]) -> None:
         """Define tools that can never be executed under any policy."""
         self._global_tool_denylist = blacklisted_tools
 

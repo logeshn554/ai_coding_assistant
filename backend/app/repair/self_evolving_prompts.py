@@ -4,7 +4,6 @@ Self Evolving Prompts — Adjusts prompt structures based on historical success 
 from __future__ import annotations
 
 import logging
-from typing import Dict
 
 logger = logging.getLogger("devpilot.repair.self_evolving_prompts")
 
@@ -13,7 +12,7 @@ class SelfEvolvingPrompts:
     """Modifies agent system instructions dynamically to avoid repeating past mistakes."""
 
     def __init__(self) -> None:
-        self._modifications: Dict[str, str] = {
+        self._modifications: dict[str, str] = {
             "code": "Focus on complete code syntax. Do not write placeholders or empty functions.",
             "test": "Verify boundary conditions and mock network calls explicitly.",
             "review": "Enforce naming style conventions and structural code contracts strictly.",

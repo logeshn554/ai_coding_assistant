@@ -1,7 +1,7 @@
-import os
 import logging
-from .async_files import read_workspace_file
+import os
 
+from .async_files import read_workspace_file
 
 logger = logging.getLogger("devpilot.services")
 
@@ -74,7 +74,7 @@ class ContextManager:
                     total_tokens += tokens
                     formatted.append(f"--- FILE: {file_path} ---\n{content}\n")
             except Exception as e:
-                logger.error(f"ContextManager: Failed to read context file {file_path}: {str(e)}")
+                logger.error(f"ContextManager: Failed to read context file {file_path}: {e!s}")
 
         return "\n".join(formatted), total_tokens, warning
 

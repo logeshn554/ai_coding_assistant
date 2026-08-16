@@ -1,11 +1,13 @@
 import operator
 from typing import Annotated, Any, Literal, TypedDict
+
 try:
     from typing import NotRequired
 except ImportError:
     from typing_extensions import NotRequired
-from pydantic import BaseModel, Field
 from langchain_core.messages import BaseMessage
+from pydantic import BaseModel, Field
+
 try:
     from langgraph.graph.message import add_messages
 except (ImportError, ModuleNotFoundError):

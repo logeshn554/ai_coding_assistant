@@ -2,7 +2,9 @@ import argparse
 import asyncio
 import os
 import sys
+
 from agent_os.agent_os import AgentOS
+
 
 def main():
     parser = argparse.ArgumentParser(description="AgentOS CLI — High-Performance Parallel Agentic IDE OS")

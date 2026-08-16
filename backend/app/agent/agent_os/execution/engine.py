@@ -1,8 +1,10 @@
-import os
 import ast
+import os
 import tempfile
-from typing import Any, Dict, List, Optional
-from agent_os.execution.interfaces import ITransactionalExecutionEngine, ITransaction
+from typing import Any
+
+from agent_os.execution.interfaces import ITransaction, ITransactionalExecutionEngine
+
 
 class MergeConflictError(Exception):
     pass
@@ -19,9 +21,9 @@ class FileTransaction(ITransaction):
     def __init__(self, engine: "TransactionalExecutionEngine", agent_name: str = "default_agent") -> None:
         self._engine = engine
         self._agent_name = agent_name
-        self._backups: Dict[str, str] = {}
-        self._updates: Dict[str, str] = {}
-        self._acquired_locks: List[str] = []
+        self._backups: dict[str, str] = {}
+        self._updates: dict[str, str] = {}
+        self._acquired_locks: list[str] = []
         self._active = False
 
     def begin(self) -> None:
@@ -109,7 +111,7 @@ class FileTransaction(ITransaction):
                     self.rollback()
                     raise TransactionError(f"Optimistic lock verification failed: file '{os.path.basename(path)}' was modified externally.")
 
-        committed_files: List[str] = []
+        committed_files: list[str] = []
         try:
             for filepath, content in self._updates.items():
                 # Atomic write to temp file then replace
@@ -138,7 +140,7 @@ class FileTransaction(ITransaction):
                     with open(filepath, "w", encoding="utf-8") as f:
                         f.write(original)
             self.rollback()
-            raise TransactionError(f"Commit failed. Rolled back committed changes. Error: {str(e)}")
+            raise TransactionError(f"Commit failed. Rolled back committed changes. Error: {e!s}")
         finally:
             if lock_manager:
                 self._release_all_locks(lock_manager)
@@ -163,7 +165,7 @@ class FileTransaction(ITransaction):
 
 class TransactionalExecutionEngine(ITransactionalExecutionEngine):
     """Execution engine coordinating transactions, syntax validation AST, and conflicts."""
-    def __init__(self, registry: Optional[Any] = None) -> None:
+    def __init__(self, registry: Any | None = None) -> None:
         self.registry = registry
 
     def create_transaction(self, agent_name: str = "default_agent") -> ITransaction:

@@ -1,8 +1,7 @@
 import asyncio
+import logging
 import os
 import sys
-import logging
-import json
 
 logger = logging.getLogger("devpilot.terminal")
 
@@ -44,7 +43,7 @@ class TerminalManager:
                 await self._start_unix(cwd)
         except Exception as e:
             logger.error(f"Failed to start terminal: {e}")
-            await self.send_callback(f"\r\nFailed to start terminal shell: {str(e)}\r\n")
+            await self.send_callback(f"\r\nFailed to start terminal shell: {e!s}\r\n")
 
     async def _start_windows(self, cwd: str):
         """Start a ConPTY-backed PowerShell process using pywinpty."""
@@ -66,10 +65,10 @@ class TerminalManager:
 
     async def _start_unix(self, cwd: str):
         """Start a PTY-backed shell process using the pty module (Unix/macOS)."""
-        import pty
-        import subprocess
-        import struct
         import fcntl
+        import pty
+        import struct
+        import subprocess
         import termios
 
         shell_path = self.shell
@@ -280,8 +279,8 @@ class TerminalManager:
                 # winpty PtyProcess.setwinsize(rows, cols)
                 self._pty.setwinsize(rows, cols)
             else:
-                import struct
                 import fcntl
+                import struct
                 import termios
                 winsize = struct.pack("HHHH", rows, cols, 0, 0)
                 fcntl.ioctl(self._pty, termios.TIOCSWINSZ, winsize)

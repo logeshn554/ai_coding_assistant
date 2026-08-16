@@ -8,12 +8,11 @@ and tracking audit history per tool execution.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
 import datetime
 import logging
-import os
 import time
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger("devpilot.agent_runtime.tool_executor")
 
@@ -23,8 +22,8 @@ class ToolResult:
     """Structured result returned by the ToolExecutor."""
     success: bool
     output: Any
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -32,13 +31,13 @@ class ToolExecutionRecord:
     """Audit log entry for a tool execution."""
     tool_call_id: str
     tool_name: str
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
     start_time: str
     end_time: str
     duration_seconds: float
     success: bool
     output: Any
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class _SessionBridge:
@@ -96,19 +95,20 @@ class _SessionBridge:
 
 from backend.app.infrastructure.tool_registry import ToolRegistry
 
+
 class ToolExecutor:
     """One canonical tool executor handling workspace and terminal tools."""
 
     def __init__(self, workspace_root: str, session: Any = None) -> None:
         self.workspace_root = workspace_root
         self.session = session
-        self.execution_history: List[ToolExecutionRecord] = []
+        self.execution_history: list[ToolExecutionRecord] = []
 
     async def execute(
         self,
         tool_call_id: str,
         tool_name: str,
-        arguments: Dict[str, Any],
+        arguments: dict[str, Any],
         timeout: float = 60.0,
         auto_apply: bool = True,
     ) -> ToolResult:
@@ -134,7 +134,7 @@ class ToolExecutor:
             validated_args = tool_def.input_schema(**arguments).model_dump()
         except Exception as pydantic_err:
             err_payload = {
-                "error": f"Schema validation error: {str(pydantic_err)}",
+                "error": f"Schema validation error: {pydantic_err!s}",
                 "tool": tool_name,
                 "retryable": True
             }
@@ -261,7 +261,7 @@ class ToolExecutor:
                 res = ToolResult(
                     success=False,
                     output=None,
-                    error=f"Tool execution '{tool_name}' failed: {type(e).__name__}: {str(e)}",
+                    error=f"Tool execution '{tool_name}' failed: {type(e).__name__}: {e!s}",
                 )
 
             end_ts = time.time()
@@ -289,7 +289,7 @@ class ToolExecutor:
         self.execution_history.append(record)
         return res
 
-    async def _dispatch(self, tc_id: str, tool_name: str, args: Dict[str, Any], auto_apply: bool = True) -> ToolResult:
+    async def _dispatch(self, tc_id: str, tool_name: str, args: dict[str, Any], auto_apply: bool = True) -> ToolResult:
         """Internal router mapping normalized tool names to workspace operations."""
         if isinstance(tool_name, str) and "<|channel|>" in tool_name:
             tool_name = tool_name.split("<|channel|>")[0]

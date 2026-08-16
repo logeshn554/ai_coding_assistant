@@ -1,9 +1,11 @@
+import asyncio
 import json
 import logging
-import asyncio
 import os
+from collections.abc import AsyncGenerator
+from typing import Any
+
 import httpx
-from typing import AsyncGenerator, List, Dict, Any, Optional
 
 logger = logging.getLogger("devpilot.adapters.llm")
 
@@ -31,13 +33,13 @@ from .base import ModelAdapter
 _anthropic_clients: dict = {}
 _openai_clients: dict = {}
 
-def _get_anthropic_client(api_key: str, base_url: Optional[str] = None, timeout: float = 180.0):
+def _get_anthropic_client(api_key: str, base_url: str | None = None, timeout: float = 180.0):
     key = (api_key, base_url, timeout)
     if key not in _anthropic_clients:
         _anthropic_clients[key] = AsyncAnthropic(api_key=api_key, base_url=base_url, timeout=timeout)
     return _anthropic_clients[key]
 
-def _get_openai_client(api_key: str, base_url: Optional[str] = None, timeout: float = 180.0):
+def _get_openai_client(api_key: str, base_url: str | None = None, timeout: float = 180.0):
     key = (api_key, base_url, timeout)
     if key not in _openai_clients:
         _openai_clients[key] = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
@@ -45,6 +47,7 @@ def _get_openai_client(api_key: str, base_url: Optional[str] = None, timeout: fl
 
 
 import time
+
 
 class _RpmLimiter:
     def __init__(self):
@@ -82,6 +85,7 @@ class _RpmLimiter:
 
 
 import random
+
 
 async def _call_with_retry(func, *args, **kwargs):
     max_retries = 3
@@ -126,10 +130,10 @@ class LLMAdapter(ModelAdapter):
 
     async def stream_chat(
         self, 
-        messages: List[Dict[str, Any]], 
-        tools: List[Dict[str, Any]], 
+        messages: list[dict[str, Any]], 
+        tools: list[dict[str, Any]], 
         system_prompt: str
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         # Lazily initialize per-provider RPM limiter
         provider_key = self.provider or "default"
         if provider_key not in LLMAdapter._rpm_limiters:
@@ -157,10 +161,10 @@ class LLMAdapter(ModelAdapter):
 
     async def _stream_anthropic(
         self,
-        messages: List[Dict[str, Any]],
-        tools: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
         system_prompt: str
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         base_url = self.base_url
         if not base_url or "api.anthropic.com" in base_url:
             base_url = None
@@ -316,7 +320,13 @@ class LLMAdapter(ModelAdapter):
                         )
             yield self.build_done_chunk("stop")
         except Exception as e:
-            from ..errors import LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMNetworkError, LLMProviderError
+            from ..errors import (
+                LLMAuthError,
+                LLMNetworkError,
+                LLMProviderError,
+                LLMRateLimitError,
+                LLMTimeoutError,
+            )
             # Don't double-wrap already-structured errors
             if isinstance(e, LLMProviderError):
                 raise
@@ -352,10 +362,10 @@ class LLMAdapter(ModelAdapter):
 
     async def _stream_openai(
         self,
-        messages: List[Dict[str, Any]],
-        tools: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
         system_prompt: str
-    ) -> AsyncGenerator[Dict[str, Any], None]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         base_url = self.base_url if self.base_url else None
         api_key = self.api_key if self.api_key else "dummy-key"
         timeout_val = float(os.environ.get("DEVPILOT_STREAMING_TIMEOUT") or os.environ.get("OPENAI_TIMEOUT") or "180.0")
@@ -540,9 +550,7 @@ class LLMAdapter(ModelAdapter):
             except Exception as stream_err:
                 err_str = str(stream_err).lower()
                 is_timeout = False
-                if isinstance(stream_err, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)):
-                    is_timeout = True
-                elif "timeout" in err_str or "timed out" in err_str or "connecttimeout" in err_str:
+                if isinstance(stream_err, (asyncio.TimeoutError, TimeoutError, httpx.TimeoutException)) or "timeout" in err_str or "timed out" in err_str or "connecttimeout" in err_str:
                     is_timeout = True
 
                 if is_timeout:
@@ -651,8 +659,13 @@ class LLMAdapter(ModelAdapter):
                     raise stream_err
         except Exception as e:
             from ..errors import (
-                LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMNetworkError,
-                LLMBudgetExceededError, LLMThoughtSignatureError, LLMProviderError
+                LLMAuthError,
+                LLMBudgetExceededError,
+                LLMNetworkError,
+                LLMProviderError,
+                LLMRateLimitError,
+                LLMThoughtSignatureError,
+                LLMTimeoutError,
             )
             # Don't double-wrap already-structured errors
             if isinstance(e, LLMProviderError):
@@ -697,7 +710,7 @@ class LLMAdapter(ModelAdapter):
             logger.error(f"OpenAI API Error: {e}")
             raise
 
-    def _to_anthropic_messages(self, internal_messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _to_anthropic_messages(self, internal_messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         anthropic_msgs = []
         current_user_blocks = []
         
@@ -815,7 +828,7 @@ class LLMAdapter(ModelAdapter):
         flush_user_blocks()
         return anthropic_msgs
 
-    def _to_openai_messages(self, internal_messages: List[Dict[str, Any]], system_prompt: str) -> List[Dict[str, Any]]:
+    def _to_openai_messages(self, internal_messages: list[dict[str, Any]], system_prompt: str) -> list[dict[str, Any]]:
         openai_msgs = []
         if system_prompt:
             openai_msgs.append({"role": "system", "content": system_prompt})

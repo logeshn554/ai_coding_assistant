@@ -1,7 +1,7 @@
-import re
 import hashlib
+import re
 from enum import Enum
-from typing import Dict, List, Tuple, Set, Optional
+
 
 # Permission Capability Categories
 class Capability(str, Enum):
@@ -36,7 +36,7 @@ RISK_SAFE = "safe"
 RISK_MUTATIVE = "mutative"
 RISK_DESTRUCTIVE = "destructive"
 
-DEFAULT_POLICY_MATRIX: Dict[str, Dict[str, bool]] = {
+DEFAULT_POLICY_MATRIX: dict[str, dict[str, bool]] = {
     POLICY_SAFE: {
         Capability.READ_FILES: True,
         Capability.WRITE_FILES: False,
@@ -90,9 +90,9 @@ class PermissionManager:
     def __init__(self, config_manager, workspace_root: str):
         self.config_manager = config_manager
         self._workspace_root = workspace_root
-        self.session_permissions: Set[str] = set()
+        self.session_permissions: set[str] = set()
         self.active_policy: str = POLICY_BALANCED
-        self.custom_overrides: Dict[str, bool] = {}
+        self.custom_overrides: dict[str, bool] = {}
 
     @property
     def workspace_root(self) -> str:
@@ -108,14 +108,14 @@ class PermissionManager:
     def workspace_root(self, val: str) -> None:
         self._workspace_root = val
 
-    def set_policy(self, policy_name: str, custom_matrix: Optional[Dict[str, bool]] = None):
+    def set_policy(self, policy_name: str, custom_matrix: dict[str, bool] | None = None):
         """Sets the active security policy mode."""
         if policy_name in [POLICY_SAFE, POLICY_BALANCED, POLICY_AUTONOMOUS, POLICY_CUSTOM]:
             self.active_policy = policy_name
             if custom_matrix:
                 self.custom_overrides = custom_matrix
 
-    def check_capability(self, capability: Capability, details: str = "") -> Tuple[bool, str]:
+    def check_capability(self, capability: Capability, details: str = "") -> tuple[bool, str]:
         """Checks whether a specific agent capability is allowed under the current policy."""
         # 1. Custom Overrides
         if capability.value in self.custom_overrides:
@@ -178,7 +178,7 @@ class PermissionManager:
             
         return RISK_MUTATIVE
 
-    def check_permission(self, command: str) -> Tuple[bool, str, str]:
+    def check_permission(self, command: str) -> tuple[bool, str, str]:
         """Checks if a terminal command is approved under risk and policy criteria."""
         risk = self.get_command_risk(command)
         cmd_pattern = self._get_command_pattern(command)

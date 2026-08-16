@@ -6,10 +6,15 @@ Supports both legacy string completions and new structured multi-provider messag
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Dict, List, Optional, Union, AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
+from agent_os.providers.base import (
+    ModelResponse,
+    ProviderConfig,
+    ProviderHealth,
+)
 from agent_os.providers.interfaces import IModelRouter
-from agent_os.providers.base import ModelProvider, ProviderConfig, ModelResponse, ProviderHealth
 from agent_os.providers.registry import get_registry
 
 
@@ -21,7 +26,7 @@ class ModelRouter(IModelRouter):
     2. New structured message histories and tool call definitions for the real agent loop.
     """
 
-    def __init__(self, config: Optional[ProviderConfig] = None) -> None:
+    def __init__(self, config: ProviderConfig | None = None) -> None:
         self.registry = get_registry()
         
         # Load provider configuration with safe defaults
@@ -77,16 +82,17 @@ class ModelRouter(IModelRouter):
 
     async def generate(
         self,
-        messages: Union[str, List[Dict[str, str]]],
+        messages: str | list[dict[str, str]],
         system_prompt: str = "",
         model_name: str = "default",
-        tools: Optional[List[Dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
-    ) -> Union[str, ModelResponse]:
+    ) -> str | ModelResponse:
         """Generate LLM response, supporting both legacy strings and structured inputs."""
         if isinstance(messages, str):
             # Legacy format execution
             import os
+
             from agent_os.core.secret_registry import SecretRegistry
             
             resolved_provider = "openai"
@@ -131,10 +137,10 @@ class ModelRouter(IModelRouter):
 
     async def stream(
         self,
-        messages: Union[str, List[Dict[str, str]]],
+        messages: str | list[dict[str, str]],
         system_prompt: str = "",
         model_name: str = "default",
-        tools: Optional[List[Dict[str, Any]]] = None,
+        tools: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> AsyncGenerator[str, None]:
         """Stream chunks from model provider."""
@@ -152,9 +158,8 @@ class ModelRouter(IModelRouter):
 
     def cancel(self, task_id: str) -> None:
         """Cancel a running task (legacy method)."""
-        pass
 
-    def health_check(self, provider_name: Optional[str] = None) -> Any:
+    def health_check(self, provider_name: str | None = None) -> Any:
         """Check provider connection status (supports legacy boolean response or health report)."""
         if provider_name is not None:
             # Legacy boolean status check

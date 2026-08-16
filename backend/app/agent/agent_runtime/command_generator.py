@@ -1,6 +1,7 @@
-import sys
 import os
 import re
+import sys
+
 
 class TerminalCommandGenerator:
     """

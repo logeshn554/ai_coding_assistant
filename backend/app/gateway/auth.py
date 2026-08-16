@@ -17,7 +17,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger("agentos.gateway.auth")
 
@@ -42,10 +42,10 @@ class TenantContext:
     org_name: str = ""
     tier: str = "free"                # free | pro | enterprise
     rate_limit_multiplier: float = 1.0
-    allowed_models: List[str] = field(default_factory=list)
+    allowed_models: list[str] = field(default_factory=list)
     max_concurrent_sessions: int = 5
     sandbox_root: str = ""            # workspace root for this tenant
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -54,12 +54,12 @@ class AuthIdentity:
     user_id: str
     auth_method: AuthMethod
     tenant: TenantContext
-    roles: List[str] = field(default_factory=list)       # admin, developer, viewer
-    permissions: List[str] = field(default_factory=list)  # tool:execute, file:write, etc.
+    roles: list[str] = field(default_factory=list)       # admin, developer, viewer
+    permissions: list[str] = field(default_factory=list)  # tool:execute, file:write, etc.
     session_id: str = ""
     issued_at: float = 0.0
     expires_at: float = 0.0
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_expired(self) -> bool:
@@ -81,7 +81,7 @@ class AuthIdentity:
 class AuthProvider:
     """Base class for authentication providers."""
 
-    def authenticate(self, credentials: Dict[str, Any]) -> Optional[AuthIdentity]:
+    def authenticate(self, credentials: dict[str, Any]) -> AuthIdentity | None:
         raise NotImplementedError
 
 
@@ -116,7 +116,7 @@ class JWTAuthProvider(AuthProvider):
             )
 
 
-    def authenticate(self, credentials: Dict[str, Any]) -> Optional[AuthIdentity]:
+    def authenticate(self, credentials: dict[str, Any]) -> AuthIdentity | None:
         token = credentials.get("token", "")
         if not token:
             return None
@@ -158,7 +158,7 @@ class JWTAuthProvider(AuthProvider):
         }
         return self._encode_jwt(payload)
 
-    def _encode_jwt(self, payload: Dict[str, Any]) -> str:
+    def _encode_jwt(self, payload: dict[str, Any]) -> str:
         header = {"alg": "HS256", "typ": "JWT"}
         header_b64 = self._b64url_encode(json.dumps(header, separators=(",", ":")))
         payload_b64 = self._b64url_encode(json.dumps(payload, separators=(",", ":")))
@@ -169,7 +169,7 @@ class JWTAuthProvider(AuthProvider):
         sig_b64 = self._b64url_encode_bytes(signature)
         return f"{signing_input}.{sig_b64}"
 
-    def _decode_jwt(self, token: str) -> Optional[Dict[str, Any]]:
+    def _decode_jwt(self, token: str) -> dict[str, Any] | None:
         parts = token.split(".")
         if len(parts) != 3:
             logger.warning("Invalid JWT format")
@@ -230,7 +230,7 @@ class APIKeyAuthProvider(AuthProvider):
     """API key-based authentication for programmatic access."""
 
     def __init__(self):
-        self._keys: Dict[str, AuthIdentity] = {}
+        self._keys: dict[str, AuthIdentity] = {}
         self._load_keys()
 
     def _load_keys(self) -> None:
@@ -248,7 +248,7 @@ class APIKeyAuthProvider(AuthProvider):
     def register_key(self, key: str, identity: AuthIdentity) -> None:
         self._keys[key] = identity
 
-    def authenticate(self, credentials: Dict[str, Any]) -> Optional[AuthIdentity]:
+    def authenticate(self, credentials: dict[str, Any]) -> AuthIdentity | None:
         api_key = credentials.get("api_key", "")
         if not api_key:
             return None
@@ -276,7 +276,7 @@ class WebSocketTokenProvider(AuthProvider):
 
     def __init__(self, jwt_provider: JWTAuthProvider):
         self._jwt = jwt_provider
-        self._one_time_tokens: Dict[str, float] = {}
+        self._one_time_tokens: dict[str, float] = {}
 
     def generate_ws_token(self, identity: AuthIdentity) -> str:
         """Generate a short-lived one-time-use WebSocket token."""
@@ -297,7 +297,7 @@ class WebSocketTokenProvider(AuthProvider):
         for k in expired:
             del self._one_time_tokens[k]
 
-    def authenticate(self, credentials: Dict[str, Any]) -> Optional[AuthIdentity]:
+    def authenticate(self, credentials: dict[str, Any]) -> AuthIdentity | None:
         token = credentials.get("ws_token", "")
         if not token:
             return None
@@ -348,7 +348,7 @@ class AuthGateway:
     def ws_provider(self) -> WebSocketTokenProvider:
         return self._ws_provider
 
-    def authenticate(self, headers: Dict[str, str] = None, query_params: Dict[str, str] = None) -> Optional[AuthIdentity]:
+    def authenticate(self, headers: dict[str, str] = None, query_params: dict[str, str] = None) -> AuthIdentity | None:
         """Authenticate a request using available credentials.
 
         Priority order:

@@ -17,27 +17,22 @@ logger = logging.getLogger("agent_runtime.orchestration.validator")
 
 class TaskGraphError(Exception):
     """Base exception for task graph validation failures."""
-    pass
 
 
 class DuplicateTaskIdError(TaskGraphError):
     """Raised when two tasks share the same ID."""
-    pass
 
 
 class MissingDependencyError(TaskGraphError):
     """Raised when a task depends on a non-existent task."""
-    pass
 
 
 class CyclicDependencyError(TaskGraphError):
     """Raised when the task graph contains a cycle."""
-    pass
 
 
 class InvalidTaskSchemaError(TaskGraphError):
     """Raised when a task dict is missing required fields."""
-    pass
 
 
 @dataclass

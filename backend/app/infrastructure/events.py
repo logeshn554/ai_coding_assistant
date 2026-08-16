@@ -1,7 +1,9 @@
+import asyncio
 import json
 import logging
-import asyncio
-from sqlalchemy import select, func
+
+from sqlalchemy import func, select
+
 from backend.app.infrastructure.database.connection import async_session_factory
 from backend.app.infrastructure.database.models import AgentEvent
 from backend.app.state import redis_client

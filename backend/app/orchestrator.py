@@ -1,25 +1,26 @@
-import sys
-import os
+import asyncio
 import json
 import logging
-import asyncio
+import os
+import sys
 
 # Add agent subdirectory to path to support consolidated imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
 agent_dir = os.path.join(current_dir, "agent")
 if agent_dir not in sys.path:
     sys.path.insert(0, agent_dir)
-import uuid
-import time
-import re
 import os
-from typing import List, Dict, Any, TypedDict, Optional
-from pydantic import BaseModel, Field, ValidationError
-from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
+import re
+import uuid
+from typing import Any, TypedDict
+
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from pydantic import BaseModel, Field, ValidationError
+
 
 def safe_format_prompt(prompt_template: Any, **kwargs: Any) -> str:
     """Safely formats a PromptTemplate, falling back to string replace if curly braces are unescaped."""
@@ -39,7 +40,7 @@ def safe_format_prompt(prompt_template: Any, **kwargs: Any) -> str:
 # ---------------------------------------------------------------------------
 class OrchestratorDecision(BaseModel):
     """Validated schema for the orchestrator LLM routing decision."""
-    agents: List[str] = Field(
+    agents: list[str] = Field(
         default_factory=list,
         description="Agent names to invoke next"
     )
@@ -47,29 +48,29 @@ class OrchestratorDecision(BaseModel):
         default="",
         description="Why these agents were chosen"
     )
-    descriptions: List[str] = Field(
+    descriptions: list[str] = Field(
         default_factory=list,
         description="Task description per agent, index-aligned with agents list"
     )
 
 class DevPilotChatModel(BaseChatModel):
     session: Any
-    agent_name: Optional[str] = None
+    agent_name: str | None = None
     
     def _generate(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
         raise NotImplementedError("Use async generate")
         
     async def _agenerate(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
         dp_messages = []
@@ -714,7 +715,7 @@ class RequirementAnalysisAgent(BaseAgent):
                         f"relevant to read, write, or modify for implementing the task.\n\n"
                         f"Task: {task_description}\n\n"
                         f"File Paths:\n" + "\n".join(all_files_list) + "\n\n"
-                        f"Output ONLY a valid JSON array of string file paths, e.g. [\"src/main.py\", \"config.json\"]. No markdown wrapper or prose."
+                        "Output ONLY a valid JSON array of string file paths, e.g. [\"src/main.py\", \"config.json\"]. No markdown wrapper or prose."
                     )
                     try:
                         res = await llm.ainvoke([("system", "Output ONLY a valid JSON array of strings."), ("human", select_prompt)])
@@ -819,7 +820,7 @@ class RequirementAnalysisAgent(BaseAgent):
 
             # Don't save research report to avoid unwanted files
             if report:
-                await self.orchestrator.context.log(f"Requirement Analysis Agent: Analysis complete")
+                await self.orchestrator.context.log("Requirement Analysis Agent: Analysis complete")
 
             # Store both lists and the new-project flag in shared memory
             if isinstance(target_files, list):
@@ -860,9 +861,10 @@ class FileSystemAgent(BaseAgent):
             await self.orchestrator.update_task_progress(task_id, 100, session)
             return "No files to read."
 
-        from .async_files import async_read_workspace_file
-        from .context_config import READ_FILE_MAX_CHARS, MAX_TARGET_FILES_WITH_CONTENT
         import re
+
+        from .async_files import async_read_workspace_file
+        from .context_config import MAX_TARGET_FILES_WITH_CONTENT, READ_FILE_MAX_CHARS
 
         # Concurrency limit
         semaphore = asyncio.Semaphore(4)
@@ -915,7 +917,7 @@ class CodingAgent(BaseAgent):
         super().__init__("Coding Agent", orchestrator)
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
-        await self.orchestrator.context.log(f"Coding Agent: Starting parallel code generation...")
+        await self.orchestrator.context.log("Coding Agent: Starting parallel code generation...")
         await self.orchestrator.update_task_progress(task_id, 10, session)
 
         target_files = self.orchestrator.context.memory.get("target_files", [])
@@ -1067,7 +1069,7 @@ class TerminalAgent(BaseAgent):
         super().__init__("Terminal Agent", orchestrator)
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
-        await self.orchestrator.context.log(f"Terminal Agent: Coordinating system task...")
+        await self.orchestrator.context.log("Terminal Agent: Coordinating system task...")
         await self.orchestrator.update_task_progress(task_id, 20, session)
         
         chat_prompt = ChatPromptTemplate.from_messages([
@@ -1187,7 +1189,7 @@ class DebuggingAgent(BaseAgent):
         super().__init__("Debugging Agent", orchestrator)
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
-        await self.orchestrator.context.log(f"Debugging Agent: Scanning workspace for errors and warnings...")
+        await self.orchestrator.context.log("Debugging Agent: Scanning workspace for errors and warnings...")
         await self.orchestrator.update_task_progress(task_id, 30, session)
         
         build_error = "\n".join(self.orchestrator.context.collaboration_log[-5:])
@@ -1275,7 +1277,7 @@ class DocumentationAgent(BaseAgent):
         super().__init__("Documentation Agent", orchestrator)
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
-        await self.orchestrator.context.log(f"Documentation Agent: Creating notes...")
+        await self.orchestrator.context.log("Documentation Agent: Creating notes...")
         await self.orchestrator.update_task_progress(task_id, 30, session)
         
         chat_prompt = ChatPromptTemplate.from_messages([
@@ -1319,7 +1321,7 @@ class CodeReviewAgent(BaseAgent):
         super().__init__("Code Review Agent", orchestrator)
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
-        await self.orchestrator.context.log(f"Code Review Agent: Auditing codebase modifications...")
+        await self.orchestrator.context.log("Code Review Agent: Auditing codebase modifications...")
         await self.orchestrator.update_task_progress(task_id, 30, session)
         
         target_files = self.orchestrator.context.memory.get("target_files", [])
@@ -1359,7 +1361,7 @@ class GitAgent(BaseAgent):
         super().__init__("Git Agent", orchestrator)
         
     async def execute(self, task_description: str, session, task_id: int) -> str:
-        await self.orchestrator.context.log(f"Git Agent: Auditing diff status...")
+        await self.orchestrator.context.log("Git Agent: Auditing diff status...")
         await self.orchestrator.update_task_progress(task_id, 40, session)
         
         tc_id = f"git_status_{uuid.uuid4().hex[:6]}"
@@ -2283,8 +2285,9 @@ class CustomAgent(BaseAgent):
         return response.content
 
 def apply_custom_agents_and_overrides(orchestrator_instance=None):
-    from pathlib import Path
     import json
+    from pathlib import Path
+
     from langchain_core.prompts import PromptTemplate
     
     custom_agents_path = Path.home() / ".devpilot" / "custom_agents.json"
@@ -2374,6 +2377,7 @@ def extract_json(text: str) -> dict:
 
 from typing import Annotated
 
+
 def reduce_log(left: list, right: list) -> list:
     """Merge two collaboration log lists.
 
@@ -2402,13 +2406,13 @@ def reduce_subtasks(left: list, right: list) -> list:
 
 class AgentState(TypedDict):
     task_description: str
-    collaboration_log: Annotated[List[str], reduce_log]
-    memory: Dict[str, Any]
-    subtasks: Annotated[List[Dict[str, Any]], reduce_subtasks]
+    collaboration_log: Annotated[list[str], reduce_log]
+    memory: dict[str, Any]
+    subtasks: Annotated[list[dict[str, Any]], reduce_subtasks]
     active_agent: str
     active_task: str
-    next_agents: List[str]
-    agent_tasks: Dict[str, str]
+    next_agents: list[str]
+    agent_tasks: dict[str, str]
     session: Any
     task_id_counter: int
     step_count: int
@@ -2704,12 +2708,9 @@ async def orchestrator_node(state: AgentState) -> AgentState:
     try:
         # --- Strip markdown fences if present ---
         clean_res = response.strip()
-        if clean_res.startswith("```json"):
-            clean_res = clean_res[7:]
-        if clean_res.startswith("```"):
-            clean_res = clean_res[3:]
-        if clean_res.endswith("```"):
-            clean_res = clean_res[:-3]
+        clean_res = clean_res.removeprefix("```json")
+        clean_res = clean_res.removeprefix("```")
+        clean_res = clean_res.removesuffix("```")
         clean_res = clean_res.strip()
 
         # --- Parse JSON then validate with Pydantic ---
@@ -2751,14 +2752,14 @@ async def orchestrator_node(state: AgentState) -> AgentState:
         state["orchestrator"].context.collaboration_log = state["collaboration_log"]
         logger.info(log_msg)
     except (json.JSONDecodeError, ValidationError) as e:
-        log_msg = f"Orchestrator: Decision parse/validation error, defaulting to complete: {str(e)}"
+        log_msg = f"Orchestrator: Decision parse/validation error, defaulting to complete: {e!s}"
         state["collaboration_log"].append(log_msg)
         state["orchestrator"].context.collaboration_log = state["collaboration_log"]
         logger.warning(log_msg)
         selected_agents = ["Orchestrator"]
         agent_tasks = {"Orchestrator": "Task complete"}
     except Exception as e:
-        log_msg = f"Orchestrator: Unexpected error in decision routing: {str(e)}"
+        log_msg = f"Orchestrator: Unexpected error in decision routing: {e!s}"
         state["collaboration_log"].append(log_msg)
         state["orchestrator"].context.collaboration_log = state["collaboration_log"]
         logger.error(log_msg)
@@ -2777,8 +2778,8 @@ async def orchestrator_node(state: AgentState) -> AgentState:
             
     if not is_mock:
         try:
-            from .state import redis_client
             from .shared_memory import sm_replace_all
+            from .state import redis_client
             if session and hasattr(session, "workspace_root"):
                 workspace_id = os.path.basename(session.workspace_root) or "default"
                 run_id = getattr(session, "session_id", None) or workspace_id
@@ -2856,7 +2857,7 @@ def make_agent_node(agent_name: str):
         except Exception as e:
             status = "failed"
             progress = 100
-            await orchestrator.context.log(f"Orchestrator: Error executing agent {agent_name}: {str(e)}")
+            await orchestrator.context.log(f"Orchestrator: Error executing agent {agent_name}: {e!s}")
             if hasattr(orchestrator, "state_manager") and orchestrator.state_manager:
                 orchestrator.state_manager.add_error(str(e))
         finally:
@@ -2894,8 +2895,8 @@ def make_agent_node(agent_name: str):
         # Serialize to Redis after agent execution
         if not is_mock:
             try:
-                from .state import redis_client
                 from .shared_memory import sm_replace_all
+                from .state import redis_client
                 if session and hasattr(session, "workspace_root"):
                     workspace_id = os.path.basename(session.workspace_root) or "default"
                     run_id = getattr(session, "session_id", None) or workspace_id
@@ -2921,6 +2922,7 @@ def route_next(state: AgentState):
     return valid_agents
 
 import typing
+
 try:
     from agent_os.providers.interfaces import IModelRouter
 except ImportError:
@@ -2985,11 +2987,11 @@ class AgentOrchestrator:
 
         # Instantiate auxiliary components safely
         try:
+            from agent_os.context.context_manager import WorkspaceContextManager
             from agent_os.core.cache import CacheService
             from agent_os.execution.lock_manager import FileLockManager
-            from agent_os.kernel.state_manager import StateManager
-            from agent_os.context.context_manager import WorkspaceContextManager
             from agent_os.kernel.scheduler import DependencyScheduler
+            from agent_os.kernel.state_manager import StateManager
 
             self.cache = CacheService()
             self.lock_manager = FileLockManager()
@@ -3057,33 +3059,34 @@ class AgentOrchestrator:
 
     def _init_kernel(self, session):
         # 1. Initialize AgentOS kernel & core modules
-        from agent_os.core.registry import ServiceRegistry
-        from agent_os.core.event_bus import EventBus as AOSEventBus
-        from agent_os.core.config import DictionaryConfig
-        from agent_os.core.logging import StandardLogger
-        from agent_os.kernel.kernel import Kernel
-        from agent_os.kernel.state_machine import TaskStateMachine
-        from agent_os.skills.scheduler import SkillScheduler
-        from agent_os.execution.engine import TransactionalExecutionEngine
-        from agent_os.compiler.prompt_compiler import PromptCompiler
-        from agent_os.context.virtual_memory import VirtualMemoryContextManager
-        from agent_os.learning.memory_kernel import MemoryKernelManager
-        from agent_os.learning.engine import LearningEngine
-        from agent_os.learning.optimizer import PerformanceOptimizer
-        from agent_os.repository.repository import RepositoryKernel
-
-        from agent_os.repository.interfaces import IRepository
-        from agent_os.learning.interfaces import IMemoryManager, ILearningEngine, IPerformanceOptimizer
-        from agent_os.execution.interfaces import ITransactionalExecutionEngine
         from agent_os.compiler.interfaces import IPromptCompiler
-        from agent_os.providers.interfaces import IModelRouter
-        from agent_os.kernel.interfaces import ITaskStateMachine
-        from agent_os.skills.interfaces import ISkillScheduler
-
+        from agent_os.compiler.prompt_compiler import PromptCompiler
+        from agent_os.core.config import DictionaryConfig
+        from agent_os.core.event_bus import EventBus as AOSEventBus
+        from agent_os.core.logging import StandardLogger
+        from agent_os.core.registry import ServiceRegistry
+        from agent_os.execution.engine import TransactionalExecutionEngine
+        from agent_os.execution.interfaces import ITransactionalExecutionEngine
         from agent_os.kernel.budget_manager import BudgetManager
-        from agent_os.kernel.health_monitor import HealthMonitor
         from agent_os.kernel.cancellation_manager import CancellationManager
+        from agent_os.kernel.health_monitor import HealthMonitor
+        from agent_os.kernel.interfaces import ITaskStateMachine
+        from agent_os.kernel.kernel import Kernel
         from agent_os.kernel.policy_engine import PolicyEngine
+        from agent_os.kernel.state_machine import TaskStateMachine
+        from agent_os.learning.engine import LearningEngine
+        from agent_os.learning.interfaces import (
+            ILearningEngine,
+            IMemoryManager,
+            IPerformanceOptimizer,
+        )
+        from agent_os.learning.memory_kernel import MemoryKernelManager
+        from agent_os.learning.optimizer import PerformanceOptimizer
+        from agent_os.providers.interfaces import IModelRouter
+        from agent_os.repository.interfaces import IRepository
+        from agent_os.repository.repository import RepositoryKernel
+        from agent_os.skills.interfaces import ISkillScheduler
+        from agent_os.skills.scheduler import SkillScheduler
 
         self.registry = ServiceRegistry()
         self.aos_event_bus = AOSEventBus()
@@ -3106,8 +3109,8 @@ class AgentOrchestrator:
 
 
         # Compute persistent directory inside ~/.devpilot/<workspace-hash>/
-        import os
         import hashlib
+        import os
         workspace_root = getattr(session, "workspace_root", None) or ""
         workspace_hash = hashlib.sha256(workspace_root.encode("utf-8")).hexdigest()[:16] if workspace_root else "default"
         workspace_dir = os.path.join(os.path.expanduser("~"), ".devpilot", workspace_hash)
@@ -3140,9 +3143,9 @@ class AgentOrchestrator:
         self.optimizer = PerformanceOptimizer()
 
         # Import Interfaces
+        from agent_os.context.interfaces import IContextManager
         from agent_os.core.interfaces import ICache
         from agent_os.execution.interfaces import IFileLockManager
-        from agent_os.context.interfaces import IContextManager
 
         # Wire context_mgr alias to satisfy DI and name conventions
         self.context_mgr = self.context_manager
@@ -3297,31 +3300,27 @@ class AgentOrchestrator:
             state_machine.transition_to("UNDERSTAND")
             await self.context.log(f"AgentOS: Transitioned to UNDERSTAND. Task: {task_description}")
 
-            from .intelligence.intent_compiler import intent_compiler
-            from .intelligence.contract_generator import contract_generator
+            from .analysis.prediction_engine import prediction_engine
+            from .brain.dependency_graph import dependency_graph
             from .brain.symbol_graph import symbol_graph
             from .brain.test_graph import test_graph
-            from .brain.dependency_graph import dependency_graph
-            from .brain.knowledge_graph import knowledge_graph
-            from .analysis.prediction_engine import prediction_engine
-            from .work_graph.dag_generator import dag_generator
-            from .patch.patch_store import patch_store
-            from .patch.patch_metadata import PatchMetadata
-            from .merge.symbol_merge import symbol_merge
-            from .merge.contract_validator import contract_validator
-            from .merge.conflict_detector import conflict_detector
-            from .verification.security_scanner import security_scanner
-            from .verification.lint_runner import lint_runner
-            from .verification.architecture_rules import architecture_rules
-            from .verification.test_runner import test_runner
-            from .debate.debate_engine import debate_engine
             from .debate.consensus import consensus_engine
-            from .repair.root_cause_analyzer import root_cause_analyzer
-            from .repair.continuous_learning import continuous_learning
+            from .debate.debate_engine import debate_engine
+            from .intelligence.contract_generator import contract_generator
+            from .intelligence.intent_compiler import intent_compiler
+            from .merge.conflict_detector import conflict_detector
             from .outcome.outcome_classifier import outcome_classifier
             from .outcome.release_gate import release_gate
+            from .patch.patch_metadata import PatchMetadata
+            from .patch.patch_store import patch_store
             from .release.git_committer import git_committer
             from .release.summary_generator import summary_generator
+            from .repair.continuous_learning import continuous_learning
+            from .repair.root_cause_analyzer import root_cause_analyzer
+            from .verification.architecture_rules import architecture_rules
+            from .verification.security_scanner import security_scanner
+            from .verification.test_runner import test_runner
+            from .work_graph.dag_generator import dag_generator
 
             # Run Ingress / Intelligence Layer (Intent Compiler)
             compiled_intent = intent_compiler.compile(task_description)
@@ -3485,7 +3484,7 @@ class AgentOrchestrator:
                 except Exception as st_err:
                     tx.rollback()
                     await self.update_task_progress(st_id, 0, session, status="failed")
-                    await self.context.log(f"Subtask failed (rolled back changes): {str(st_err)}")
+                    await self.context.log(f"Subtask failed (rolled back changes): {st_err!s}")
                     
                     # Root Cause Analyzer integration
                     rc = root_cause_analyzer.analyze_failure(str(st_err))
@@ -3628,7 +3627,7 @@ class AgentOrchestrator:
                     state_machine.transition_to("FAILED")
                 except Exception:
                     pass
-            await self.context.log(f"AgentOS failed: {str(e)}")
+            await self.context.log(f"AgentOS failed: {e!s}")
             raise e
         finally:
             if hasattr(self, "memory_manager") and self.memory_manager and hasattr(self, "memory_json_path") and self.memory_json_path:
@@ -3670,7 +3669,7 @@ class AgentOrchestrator:
                 "content": response_text
             })
         except Exception as e:
-            logger.error(f"Failed to generate final orchestrator summary: {str(e)}")
+            logger.error(f"Failed to generate final orchestrator summary: {e!s}")
             fallback_text = "Dynamic routing session completed successfully."
             session.conversation_history.append({"role": "assistant", "content": fallback_text})
             await session.send_ws_message({
