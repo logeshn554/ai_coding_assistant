@@ -64,7 +64,9 @@ def detect_contradiction(text: str) -> Optional[str]:
     return None
 
 
-class AgentSession:
+from .base_session import BaseSession
+
+class AgentSession(BaseSession):
     """Manages a single DevPilot agent conversation and tool execution.
 
     Coordinates LLM streaming, tool dispatch with user confirmations,
@@ -86,6 +88,7 @@ class AgentSession:
         self.workspace_root = workspace_root
         self.profile = profile if isinstance(profile, dict) else {}
         self.send_ws_message = send_ws_message
+        self._send_ws_message_callback = send_ws_message
         self.permission_manager = permission_manager
         from ..agent.agent_runtime import AgentRuntime
         self.agent_runtime = AgentRuntime(self.workspace_root)
@@ -1266,21 +1269,6 @@ class AgentSession:
                     file_edits[fpath] = {"added": added, "removed": removed}
                 self.task_memory.file_edits = file_edits
 
-                # If the agent runtime failed, explicitly surface the failure to the user
-                if not run_res.success:
-                    err_lines = [e for e in run_res.errors if e]
-                    err_detail = "\n".join(f"- {e}" for e in err_lines) if err_lines else "An unexpected error interrupted the execution."
-                    state_str = run_res.state.value if hasattr(run_res.state, "value") else str(run_res.state)
-                    fail_card = (
-                        f"\n\n> ⚠️ **Agent Run Stopped ({state_str})**\n\n"
-                        f"{err_detail}\n\n"
-                        f"💡 *You can retry the request or check your model configuration.*"
-                    )
-                    await self.send_ws_message({
-                        "type": "text_delta",
-                        "content": fail_card
-                    })
-
                 # Verification results
                 _verification_evidence = None
                 if run_res.verification_status != "NOT_RUN" and self.task_memory.files_written:
@@ -1308,13 +1296,15 @@ class AgentSession:
                     self._exec_logger.finish("completed" if run_res.success else "failed")
                     self._exec_logger.emit()
 
-                await self.send_ws_message({
-                    "type": "session_done",
-                    "total_cost_usd": getattr(self, "total_cost_usd", 0.0),
-                    "wasted_turns": getattr(self, "wasted_turns", 0),
-                    "task_memory": self.task_memory.to_dict(),
-                    "verification": _verification_evidence,
-                })
+                from .result_adapter import adapt_result
+                await adapt_result(
+                    run_res,
+                    self,
+                    extra_payload={
+                        "task_memory": self.task_memory.to_dict(),
+                        "verification": _verification_evidence,
+                    },
+                )
 
             else:
                 effective_max_turns = self.max_turns

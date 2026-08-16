@@ -1,0 +1,32 @@
+# Retry Policy Configuration
+# Defines rules for differentiating retryable vs non-retryable execution failures in workers and queue processors.
+
+max_attempts: 3
+backoff_base_seconds: 2.0
+backoff_max_seconds: 30.0
+
+retryable_error_types:
+  - ConnectionError
+  - TimeoutError
+  - asyncio.TimeoutError
+  - httpx.ConnectError
+  - httpx.ReadTimeout
+  - httpx.ConnectTimeout
+  - httpx.RemoteProtocolError
+  - httpx.HTTPStatusError
+  - redis.exceptions.ConnectionError
+  - redis.exceptions.TimeoutError
+  - RateLimitError
+
+non_retryable_error_types:
+  - ValueError
+  - KeyError
+  - TypeError
+  - FileNotFoundError
+  - PermissionError
+  - RuntimeError
+  - InvalidStateTransitionError
+  - SyntaxError
+  - AuthenticationError
+  - ModuleNotFoundError
+  - AttributeError

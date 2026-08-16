@@ -18,6 +18,7 @@ from backend.app.agent.agent_runtime.runtime import AgentRuntime, AgentState, Ag
 from backend.app.agent.agent_runtime.llm_adapter import ModelResponse, ModelResponseNormalizer, ToolCall
 from backend.app.agent.agent_runtime.events import AgentEvent
 from backend.app.infrastructure.events import EventPublisher
+from backend.app.session.base_session import BaseSession
 
 logger = logging.getLogger("devpilot.infrastructure.worker")
 
@@ -66,7 +67,7 @@ class RunLock:
             redis_client._fallback_expiry.pop(lock_key, None)
 
 
-class WorkerSessionProxy:
+class WorkerSessionProxy(BaseSession):
     def __init__(self, run_id: str, workspace_root: str, profile: dict):
         self.session_id = run_id
         self.workspace_root = workspace_root
@@ -75,6 +76,8 @@ class WorkerSessionProxy:
         self.pending_confirmations = {}
         self.state = None
         self.audit_log = []
+        self.total_cost_usd = 0.0
+        self.wasted_turns = 0
         
         from backend.app.permissions import PermissionManager
         from backend.app.state import config_manager
@@ -167,6 +170,8 @@ class AgentWorker:
     def __init__(self, worker_id: Optional[str] = None):
         self.worker_id = worker_id or f"worker_{uuid.uuid4().hex[:8]}"
         self.should_stop = asyncio.Event()
+        from backend.app.worker.retry_policy import RetryPolicy
+        self.retry_policy = RetryPolicy()
 
     async def start(self):
         logger.info(f"Starting AgentWorker {self.worker_id}")
@@ -207,19 +212,22 @@ class AgentWorker:
                     await AgentQueue.acknowledge_job(job)
                 except Exception as run_err:
                     logger.error(f"Error processing run {run_id}: {run_err}")
-                    if job["attempt"] < 3:
+                    attempt = job.get("attempt", 1)
+                    if self.retry_policy.is_retryable(run_err, attempt=attempt):
+                        logger.info(f"Retrying job {run_id} (attempt {attempt}) due to retryable error: {run_err}")
                         await AgentQueue.requeue_job(job)
                     else:
-                        logger.error(f"Job for run {run_id} failed after maximum attempts. Moving to dead letter.")
+                        logger.error(f"Job for run {run_id} failed permanently (non-retryable or max retries reached). Marking FAILED.")
                         async with async_session_factory() as db:
                             await db.execute(
                                 update(AgentRun)
                                 .where(AgentRun.id == run_id)
                                 .values(
                                     state="FAILED",
-                                    status="Failed after maximum retries.",
-                                    error_code="MAX_RETRIES_EXCEEDED",
-                                    error_message=str(run_err)
+                                    status="Failed: non-retryable error or max retries exceeded.",
+                                    error_code="EXECUTION_FAILED",
+                                    error_message=str(run_err)[:2000],
+                                    completed_at=datetime.datetime.utcnow(),
                                 )
                             )
                             await db.commit()
@@ -526,6 +534,10 @@ class AgentWorker:
                 agent_session=proxy_session,
             )
 
+            # Adapt the result into UI events using the unified ResultAdapter
+            from backend.app.session.result_adapter import adapt_result
+            await adapt_result(res, proxy_session)
+
             async with async_session_factory() as db:
                 # Persist updated conversation history back to the database
                 from backend.app.infrastructure.database.models import Conversation
@@ -552,13 +564,24 @@ class AgentWorker:
         except Exception as run_err:
             logger.exception(f"process_run failed for {run_id}: {run_err}")
             try:
-                await EventPublisher.publish(
+                crash_proxy = WorkerSessionProxy(
                     run_id,
-                    "agent.error",
-                    {"error": str(run_err), "errors": [str(run_err)]}
+                    workspace_root if 'workspace_root' in locals() else "",
+                    profile if 'profile' in locals() else {},
                 )
+                from backend.app.session.result_adapter import adapt_result
+                from backend.app.agent.agent_runtime.runtime import AgentResult
+                crash_res = AgentResult(
+                    session_id=run_id,
+                    task_id=run_id,
+                    success=False,
+                    state=AgentState.FAILED,
+                    output=f"Worker execution failed: {run_err}",
+                    errors=[str(run_err)],
+                )
+                await adapt_result(crash_res, crash_proxy)
             except Exception as pub_err:
-                logger.error(f"Failed to publish error event for run {run_id}: {pub_err}")
+                logger.error(f"Failed to adapt error event for run {run_id}: {pub_err}")
             try:
                 async with async_session_factory() as db:
                     await db.execute(

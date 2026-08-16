@@ -53,9 +53,13 @@ class AgentState(str, Enum):
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
     BLOCKED = "BLOCKED"
+    EMPTY_RESPONSE = "EMPTY_RESPONSE"
     COMPLETED = "COMPLETED"
     COMPLETED_VERIFIED = "COMPLETED_VERIFIED"
     COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
+
+    # Backward compatibility alias
+    INTERRUPTED = "FAILED"
 
 
 class VerificationStatus(str, Enum):
@@ -83,6 +87,7 @@ VALID_TRANSITIONS: Dict[AgentState, Set[AgentState]] = {
         AgentState.FAILED,
         AgentState.CANCELLED,
         AgentState.BLOCKED,
+        AgentState.EMPTY_RESPONSE,
         AgentState.COMPLETED,
         AgentState.COMPLETED_VERIFIED,
         AgentState.COMPLETED_WITH_WARNINGS,
@@ -123,6 +128,7 @@ VALID_TRANSITIONS: Dict[AgentState, Set[AgentState]] = {
         AgentState.CANCELLED,
         AgentState.FAILED,
     },
+    AgentState.EMPTY_RESPONSE: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
     AgentState.COMPLETED: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
     AgentState.COMPLETED_VERIFIED: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
     AgentState.COMPLETED_WITH_WARNINGS: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
@@ -350,6 +356,57 @@ class AgentRuntime:
             logger.warning(f"Non-fatal: Could not load runtime checkpoint (starting fresh): {e}")
             return False
 
+    async def _finalize_run(
+        self,
+        session: AgentSessionState,
+        state: AgentState,
+        output: str,
+        task_obj: AgentTask,
+        tx_workspace: Optional[TransactionalWorkspace] = None,
+        events_collected: Optional[List[AgentEvent]] = None,
+        errors: Optional[List[str]] = None,
+        emit_fn: Optional[Callable[[AgentEvent], None]] = None,
+    ) -> AgentResult:
+        """Centralized helper that sets state, persists checkpoint, and builds the final AgentResult.
+        Guarantees consistent state transitions, single terminal state, and no duplicate error events.
+        """
+        if errors:
+            for err in errors:
+                if err and err not in session.errors:
+                    session.errors.append(err)
+
+        if session.state != state:
+            try:
+                if emit_fn:
+                    await self.transition_state(session, state, emit_fn)
+                else:
+                    session.state = state
+            except InvalidStateTransitionError:
+                session.state = state
+
+        session.completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        if tx_workspace and hasattr(tx_workspace, "change_set"):
+            session.changed_files = tx_workspace.change_set.to_dict()
+        elif not session.changed_files:
+            session.changed_files = {}
+
+        try:
+            await self.save_checkpoint(session, f"final_{session.state.value if isinstance(session.state, AgentState) else str(session.state)}")
+        except Exception as cp_err:
+            logger.warning(f"Failed to save final checkpoint for session {session.session_id}: {cp_err}")
+
+        return AgentResult(
+            session_id=session.session_id,
+            task_id=task_obj.id if task_obj else session.active_task_id or "",
+            success=session.state in (AgentState.COMPLETED, AgentState.COMPLETED_VERIFIED, AgentState.COMPLETED_WITH_WARNINGS),
+            state=session.state,
+            output=output.strip() if output else "",
+            changed_files=session.changed_files,
+            verification_status=session.verification_status,
+            errors=session.errors,
+            events=events_collected or [],
+        )
+
     async def run(
         self,
         session_id: str,
@@ -515,18 +572,16 @@ class AgentRuntime:
                 if cancel_event.is_set() or await self._is_cancelled(session_id):
                     if not cancel_event.is_set():
                         cancel_event.set()
-                    await self.transition_state(session, AgentState.CANCELLED, _emit)
                     _emit(AgentEvent(session_id, EVENT_AGENT_CANCELLED, {"step": step}))
-                    return AgentResult(
-                        session_id=session_id,
-                        task_id=task_obj.id,
-                        success=False,
+                    return await self._finalize_run(
+                        session=session,
                         state=AgentState.CANCELLED,
                         output="Execution cancelled by user.",
-                        changed_files=tx_workspace.change_set.to_dict(),
-                        verification_status=session.verification_status,
+                        task_obj=task_obj,
+                        tx_workspace=tx_workspace,
+                        events_collected=events_collected,
                         errors=["Task cancelled"],
-                        events=events_collected,
+                        emit_fn=_emit,
                     )
 
                 # LLM Generation Step
@@ -549,8 +604,22 @@ class AgentRuntime:
 
                 # Assert LLM did not return an empty response with no tool calls
                 if not (model_resp.text or "").strip() and not model_resp.tool_calls:
-                    logger.warning("LLM turn produced no text content and no tool calls. Falling back to default acknowledgment.")
-                    model_resp.text = "I have reviewed the request and current status."
+                    logger.warning("LLM turn produced no text content and no tool calls. Marking EMPTY_RESPONSE.")
+                    warning_text = (
+                        "> ⚠️ **Empty Response Detected**\n\n"
+                        "The model provider returned an empty response with no actions or explanation."
+                    )
+                    final_output += warning_text + "\n"
+                    session.errors.append("Model provider returned empty response.")
+                    return await self._finalize_run(
+                        session=session,
+                        state=AgentState.EMPTY_RESPONSE,
+                        output=final_output,
+                        task_obj=task_obj,
+                        tx_workspace=tx_workspace,
+                        events_collected=events_collected,
+                        emit_fn=_emit,
+                    )
 
                 # Append assistant message to conversation history for next turn
                 asst_msg: Dict[str, Any] = {"role": "assistant", "content": model_resp.text or ""}
@@ -686,19 +755,16 @@ class AgentRuntime:
                     await self.save_checkpoint(session, f"after_tool_{tc.name}")
 
             if session.state == AgentState.CANCELLED or cancel_event.is_set():
-                if session.state != AgentState.CANCELLED:
-                    await self.transition_state(session, AgentState.CANCELLED, _emit)
-                _emit(AgentEvent(session_id, EVENT_AGENT_CANCELLED, {"step": step}))
-                return AgentResult(
-                    session_id=session_id,
-                    task_id=task_obj.id,
-                    success=False,
+                _emit(AgentEvent(session_id, EVENT_AGENT_CANCELLED, {"step": step if 'step' in locals() else 0}))
+                return await self._finalize_run(
+                    session=session,
                     state=AgentState.CANCELLED,
                     output="Execution cancelled by user.",
-                    changed_files=tx_workspace.change_set.to_dict(),
-                    verification_status=session.verification_status,
+                    task_obj=task_obj,
+                    tx_workspace=tx_workspace,
+                    events_collected=events_collected,
                     errors=["Task cancelled"],
-                    events=events_collected,
+                    emit_fn=_emit,
                 )
 
             # 3. State transition -> VERIFYING & AUTONOMOUS SELF-REPAIR
@@ -929,75 +995,50 @@ class AgentRuntime:
 
             # 5. Final State Assignment
             if session.state == AgentState.BLOCKED:
-                _emit(AgentEvent(session_id, EVENT_AGENT_ERROR, {"errors": session.errors}))
+                target_state = AgentState.BLOCKED
             elif session.verification_status == VerificationStatus.PASSED and review_res.approved:
-                await self.transition_state(session, AgentState.COMPLETED_VERIFIED, _emit)
+                target_state = AgentState.COMPLETED_VERIFIED
                 _emit(AgentEvent(session_id, EVENT_AGENT_COMPLETED, {"output": final_output.strip(), "verified": True}))
             elif session.verification_status == VerificationStatus.PASSED:
-                await self.transition_state(session, AgentState.COMPLETED_WITH_WARNINGS, _emit)
+                target_state = AgentState.COMPLETED_WITH_WARNINGS
                 _emit(AgentEvent(session_id, EVENT_AGENT_COMPLETED, {"output": final_output.strip(), "verified": False}))
             else:
-                try:
-                    await self.transition_state(session, AgentState.FAILED, _emit)
-                except InvalidStateTransitionError:
-                    # Force FAILED if already in a terminal-adjacent state (e.g. BLOCKED)
-                    session.state = AgentState.FAILED
-                _emit(AgentEvent(session_id, EVENT_AGENT_ERROR, {"errors": session.errors or ["Verification failed"]}))
+                target_state = AgentState.FAILED
 
-            session.completed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            session.changed_files = tx_workspace.change_set.to_dict()
-
-            return AgentResult(
-                session_id=session_id,
-                task_id=task_obj.id,
-                success=session.state in (AgentState.COMPLETED, AgentState.COMPLETED_VERIFIED, AgentState.COMPLETED_WITH_WARNINGS),
-                state=session.state,
-                output=final_output.strip(),
-                changed_files=session.changed_files,
-                verification_status=session.verification_status,
-                errors=session.errors,
-                events=events_collected,
+            return await self._finalize_run(
+                session=session,
+                state=target_state,
+                output=final_output,
+                task_obj=task_obj,
+                tx_workspace=tx_workspace,
+                events_collected=events_collected,
+                emit_fn=_emit,
             )
 
         except Exception as e:
             if session.state == AgentState.CANCELLED or cancel_event.is_set():
-                if session.state != AgentState.CANCELLED:
-                    session.state = AgentState.CANCELLED
-                _emit(AgentEvent(session_id, EVENT_AGENT_CANCELLED, {"step": step}))
-                return AgentResult(
-                    session_id=session_id,
-                    task_id=task_obj.id,
-                    success=False,
+                _emit(AgentEvent(session_id, EVENT_AGENT_CANCELLED, {"step": step if 'step' in locals() else 0}))
+                return await self._finalize_run(
+                    session=session,
                     state=AgentState.CANCELLED,
                     output="Execution cancelled by user.",
-                    changed_files=tx_workspace.change_set.to_dict(),
-                    verification_status=session.verification_status,
+                    task_obj=task_obj,
+                    tx_workspace=tx_workspace,
+                    events_collected=events_collected,
                     errors=["Task cancelled"],
-                    events=events_collected,
+                    emit_fn=_emit,
                 )
 
             logger.exception(f"AgentRuntime session {session_id} failed with exception: {e}")
-            session.errors.append(str(e))
-            try:
-                await self.transition_state(session, AgentState.FAILED, _emit)
-            except InvalidStateTransitionError:
-                # Force-set FAILED even if state machine would normally prevent it
-                # (e.g. BLOCKED → FAILED). This is intentional: exceptions always terminate.
-                logger.warning(
-                    f"Session {session_id}: forcing FAILED from state {session.state.value} after exception"
-                )
-                session.state = AgentState.FAILED
-            _emit(AgentEvent(session_id, EVENT_AGENT_ERROR, {"error": str(e)}))
-            return AgentResult(
-                session_id=session_id,
-                task_id=task_obj.id,
-                success=False,
+            return await self._finalize_run(
+                session=session,
                 state=AgentState.FAILED,
-                output=final_output.strip(),
-                changed_files=tx_workspace.change_set.to_dict(),
-                verification_status=session.verification_status,
-                errors=session.errors,
-                events=events_collected,
+                output=final_output,
+                task_obj=task_obj,
+                tx_workspace=tx_workspace,
+                events_collected=events_collected,
+                errors=[str(e)],
+                emit_fn=_emit,
             )
 
     async def _is_cancelled(self, session_id: str) -> bool:
