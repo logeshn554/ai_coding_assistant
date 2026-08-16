@@ -23,7 +23,8 @@ async def adapt_result(
     # If failure, construct an error message
     if not run_res.success:
         state_str = run_res.state.value if isinstance(run_res.state, AgentState) else str(run_res.state)
-        if state_str == AgentState.EMPTY_RESPONSE.value or run_res.state == AgentState.EMPTY_RESPONSE:
+        error_code = getattr(run_res, "error_code", None)
+        if error_code == "EMPTY_RESPONSE":
             fail_card = (
                 "\n\n> ⚠️ **No Content Generated (EMPTY_RESPONSE)**\n\n"
                 "The model provider returned an empty response or failed to generate text.\n\n"
@@ -36,8 +37,9 @@ async def adapt_result(
         else:
             err_lines = [e for e in run_res.errors if e]
             err_detail = "\n".join(f"- {e}" for e in err_lines) if err_lines else "An unexpected error interrupted the execution."
+            header = f"Agent Run Stopped ({state_str}: {error_code})" if error_code else f"Agent Run Stopped ({state_str})"
             fail_card = (
-                f"\n\n> ⚠️ **Agent Run Stopped ({state_str})**\n\n"
+                f"\n\n> ⚠️ **{header}**\n\n"
                 f"{err_detail}\n\n"
                 f"💡 *You can retry the request or check your model configuration.*"
             )

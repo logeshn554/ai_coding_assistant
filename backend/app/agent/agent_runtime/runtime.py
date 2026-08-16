@@ -53,13 +53,13 @@ class AgentState(str, Enum):
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
     BLOCKED = "BLOCKED"
-    EMPTY_RESPONSE = "EMPTY_RESPONSE"
     COMPLETED = "COMPLETED"
     COMPLETED_VERIFIED = "COMPLETED_VERIFIED"
     COMPLETED_WITH_WARNINGS = "COMPLETED_WITH_WARNINGS"
 
-    # Backward compatibility alias
+    # Backward compatibility aliases
     INTERRUPTED = "FAILED"
+    EMPTY_RESPONSE = "FAILED"
 
 
 class VerificationStatus(str, Enum):
@@ -87,7 +87,6 @@ VALID_TRANSITIONS: Dict[AgentState, Set[AgentState]] = {
         AgentState.FAILED,
         AgentState.CANCELLED,
         AgentState.BLOCKED,
-        AgentState.EMPTY_RESPONSE,
         AgentState.COMPLETED,
         AgentState.COMPLETED_VERIFIED,
         AgentState.COMPLETED_WITH_WARNINGS,
@@ -128,7 +127,6 @@ VALID_TRANSITIONS: Dict[AgentState, Set[AgentState]] = {
         AgentState.CANCELLED,
         AgentState.FAILED,
     },
-    AgentState.EMPTY_RESPONSE: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
     AgentState.COMPLETED: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
     AgentState.COMPLETED_VERIFIED: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
     AgentState.COMPLETED_WITH_WARNINGS: {AgentState.IDLE, AgentState.PLANNING, AgentState.EXECUTING},
@@ -157,6 +155,7 @@ class AgentSessionState:
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
     changed_files: Dict[str, Any] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
+    error_code: Optional[str] = None
     verification_status: VerificationStatus = VerificationStatus.NOT_RUN
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
@@ -171,6 +170,7 @@ class AgentSessionState:
             "tool_calls_count": len(self.tool_calls),
             "changed_files": self.changed_files,
             "errors": self.errors,
+            "error_code": self.error_code,
             "verification_status": self.verification_status.value if isinstance(self.verification_status, VerificationStatus) else str(self.verification_status),
             "started_at": self.started_at,
             "completed_at": self.completed_at,
@@ -188,6 +188,7 @@ class AgentResult:
     changed_files: Dict[str, Any] = field(default_factory=dict)
     verification_status: VerificationStatus = VerificationStatus.NOT_RUN
     errors: List[str] = field(default_factory=list)
+    error_code: Optional[str] = None
     events: List[AgentEvent] = field(default_factory=list)
 
 
@@ -365,11 +366,15 @@ class AgentRuntime:
         tx_workspace: Optional[TransactionalWorkspace] = None,
         events_collected: Optional[List[AgentEvent]] = None,
         errors: Optional[List[str]] = None,
+        error_code: Optional[str] = None,
         emit_fn: Optional[Callable[[AgentEvent], None]] = None,
     ) -> AgentResult:
         """Centralized helper that sets state, persists checkpoint, and builds the final AgentResult.
         Guarantees consistent state transitions, single terminal state, and no duplicate error events.
         """
+        if error_code:
+            session.error_code = error_code
+
         if errors:
             for err in errors:
                 if err and err not in session.errors:
@@ -404,6 +409,7 @@ class AgentRuntime:
             changed_files=session.changed_files,
             verification_status=session.verification_status,
             errors=session.errors,
+            error_code=session.error_code,
             events=events_collected or [],
         )
 
@@ -604,12 +610,13 @@ class AgentRuntime:
 
                 # Assert LLM did not return an empty response with no tool calls
                 if not (model_resp.text or "").strip() and not model_resp.tool_calls:
-                    logger.warning("LLM turn produced no text content and no tool calls. Transitioning to EMPTY_RESPONSE.")
+                    logger.warning("LLM turn produced no text content and no tool calls. Finalizing as FAILED with error_code=EMPTY_RESPONSE.")
                     session.errors.append("Model provider returned empty response.")
                     return await self._finalize_run(
                         session=session,
-                        state=AgentState.EMPTY_RESPONSE,
+                        state=AgentState.FAILED,
                         output=final_output.strip(),
+                        error_code="EMPTY_RESPONSE",
                         task_obj=task_obj,
                         tx_workspace=tx_workspace,
                         events_collected=events_collected,

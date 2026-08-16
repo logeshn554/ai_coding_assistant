@@ -103,7 +103,8 @@ async def test_adapt_result_empty_response():
         session_id="run_empty",
         task_id="task_empty",
         success=False,
-        state=AgentState.EMPTY_RESPONSE,
+        state=AgentState.FAILED,
+        error_code="EMPTY_RESPONSE",
         output="",
         errors=["Model provider returned empty response."],
     )
