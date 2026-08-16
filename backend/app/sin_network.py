@@ -70,7 +70,7 @@ class SoftwareIntelligenceNetwork:
 
             return {
                 "implemented": True,
-                "genome_id": hashlib.md5(workspace_root.encode("utf-8")).hexdigest()[:12],
+                "genome_id": hashlib.sha256(workspace_root.encode("utf-8")).hexdigest()[:12],
                 "architecture_style": style,
                 "primary_stack": list(stack),
                 "workspace_root": workspace_root,

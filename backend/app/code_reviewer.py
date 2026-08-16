@@ -27,7 +27,7 @@ _IGNORED_SECRET_PLACEHOLDERS = {
 
 def _make_id(file: str, category: str, title: str) -> str:
     raw = f"{file}:{category}:{title}"
-    return f"rev_{hashlib.md5(raw.encode('utf-8')).hexdigest()[:10]}"
+    return f"rev_{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:10]}"
 
 
 def review_workspace(workspace_root: str) -> Dict[str, Any]:

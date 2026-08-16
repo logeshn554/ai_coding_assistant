@@ -300,7 +300,7 @@ class ActiveProcess:
         urls = re.findall(r'https?://[^\s/$,;?#()]+(?::\d+)?', clean_line)
         for url in urls:
             url = url.rstrip("/")
-            if "localhost" in url or "127.0.0.1" in url or "0.0.0.0" in url:
+            if "localhost" in url or "127.0.0.1" in url or "0.0.0.0" in url:  # nosec B104
                 self.localhost_url = url
                 port_match = re.search(r':(\d+)', url)
                 if port_match:

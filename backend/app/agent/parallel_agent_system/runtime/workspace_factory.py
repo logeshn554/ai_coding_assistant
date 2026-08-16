@@ -36,8 +36,9 @@ class WorkspaceFactory:
         port = find_free_port()
         
         # Get shared project directory path from environment or fall back to default
-        shared_project_path = os.environ.get("SHARED_PROJECT_PATH", "/tmp/projects")
-        agent_workspace_path = f"/tmp/agent-{subtask.id}"
+        temp_dir = tempfile.gettempdir()
+        shared_project_path = os.environ.get("SHARED_PROJECT_PATH", os.path.join(temp_dir, "projects"))
+        agent_workspace_path = os.path.join(temp_dir, f"agent-{subtask.id}")
 
         # Ensure directory structures exist on the host
         os.makedirs(agent_workspace_path, exist_ok=True)

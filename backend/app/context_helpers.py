@@ -326,7 +326,7 @@ def deduplicate_blocks(blocks: list[dict]) -> list[dict]:
             continue
             
         norm_content = content.replace("\r\n", "\n").strip()
-        h = hashlib.md5(norm_content.encode("utf-8")).hexdigest()
+        h = hashlib.sha256(norm_content.encode("utf-8")).hexdigest()
         
         if h in seen_hashes:
             prev_source = seen_hashes[h]

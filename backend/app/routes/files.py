@@ -194,7 +194,7 @@ async def rollback_file_endpoint(req: RollbackRequest):
 
 
 def _get_file_backups_sync(root: str, path: str):
-    rel_hash = hashlib.md5(path.encode("utf-8")).hexdigest()
+    rel_hash = hashlib.sha256(path.encode("utf-8")).hexdigest()
     backup_dir = os.path.join(root, ".devpilot", "backups", rel_hash)
     if not os.path.exists(backup_dir):
         return []

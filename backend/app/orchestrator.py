@@ -3109,7 +3109,7 @@ class AgentOrchestrator:
         import os
         import hashlib
         workspace_root = getattr(session, "workspace_root", None) or ""
-        workspace_hash = hashlib.md5(workspace_root.encode("utf-8")).hexdigest() if workspace_root else "default"
+        workspace_hash = hashlib.sha256(workspace_root.encode("utf-8")).hexdigest()[:16] if workspace_root else "default"
         workspace_dir = os.path.join(os.path.expanduser("~"), ".devpilot", workspace_hash)
         os.makedirs(workspace_dir, exist_ok=True)
 

@@ -471,7 +471,7 @@ async def get_or_generate_node_summary(workspace_root: str, node_id: str) -> Dic
     except Exception as e:
         return {"error": f"Could not read file {rel_path}: {e}", "summary": ""}
 
-    content_hash = hashlib.md5(content.encode("utf-8")).hexdigest()
+    content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     # Load cache file
     cache_dir = Path(workspace_root) / ".devpilot"

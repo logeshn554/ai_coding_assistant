@@ -420,7 +420,7 @@ class DockerSandboxExecutor(SandboxExecutor):
             "--name", self.sandbox_id,
             "-v", f"{host_root}:/workspace:rw",
             "--read-only",
-            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",  # nosec B108
             "--tmpfs", "/run:rw,noexec,nosuid,size=16m",
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges:true",

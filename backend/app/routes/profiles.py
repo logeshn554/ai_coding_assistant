@@ -299,24 +299,24 @@ async def test_connection(profile: ProfileSaveRequest):
         elif (fmt == "google" or "generativelanguage.googleapis.com" in url_l) and "openai" not in url_l:
             if not model:
                 return {"success": False, "message": "model_name is required — no hardcoded model fallback."}
-            # Use native Google Gemini API via urllib
+            # Use native Google Gemini API via httpx
             m_name = model
             model_path = m_name if m_name.startswith("models/") else f"models/{m_name}"
             test_url = f"{url.rstrip('/')}/{model_path}:generateContent" if url else f"https://generativelanguage.googleapis.com/v1beta/{model_path}:generateContent"
             test_url += f"?key={key}"
-            payload = json.dumps({
+            payload = {
                 "contents": [{"parts": [{"text": "ping"}]}],
                 "generationConfig": {"maxOutputTokens": 1}
-            }).encode("utf-8")
-            import ssl
-            ctx = ssl.create_default_context()
-            req_obj = urllib.request.Request(
-                test_url, data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            with urllib.request.urlopen(req_obj, timeout=10, context=ctx) as resp:
-                resp.read()
+            }
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    test_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                )
+                if resp.status_code >= 400:
+                    return {"success": False, "message": f"Gemini API returned status {resp.status_code}: {resp.text}"}
         else:
             if not model:
                 return {"success": False, "message": "model_name is required — no hardcoded model fallback."}

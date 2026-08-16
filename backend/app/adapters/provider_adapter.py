@@ -8,8 +8,7 @@ metadata endpoints, or user configurations.
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import time
-import urllib.request
-import urllib.parse
+import httpx
 import json
 import logging
 from typing import Dict, Any, List, Optional
@@ -84,12 +83,12 @@ class OpenAICompatibleAdapter(BaseProviderAdapter):
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
-            req = urllib.request.Request(test_url, headers=headers, method="GET")
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                if resp.status == 200:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(test_url, headers=headers)
+                if resp.status_code == 200:
                     self.status = "Connected"
                     return True
-                self.status = "Authentication Failed" if resp.status in (401, 403) else "Server Error"
+                self.status = "Authentication Failed" if resp.status_code in (401, 403) else "Server Error"
                 return False
         except Exception as e:
             err_str = str(e).lower()
@@ -109,9 +108,9 @@ class OpenAICompatibleAdapter(BaseProviderAdapter):
 
         profiles: List[DynamicModelProfile] = []
         try:
-            req = urllib.request.Request(models_url, headers=headers, method="GET")
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(models_url, headers=headers)
+                data = resp.json()
                 items = data.get("data") or data.get("models") or (data if isinstance(data, list) else [])
                 
                 for item in items:

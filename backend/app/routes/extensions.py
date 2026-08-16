@@ -74,13 +74,13 @@ async def search_marketplace_extensions(query: str = Query("", description="Sear
 
     results = []
     try:
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "DevPilot-AI-Editor/1.0", "Accept": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=8.0) as resp:
-            if resp.status == 200:
-                data = json.loads(resp.read().decode("utf-8"))
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                url,
+                headers={"User-Agent": "DevPilot-AI-Editor/1.0", "Accept": "application/json"}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
                 raw_exts = data.get("extensions", [])
                 for ext in raw_exts:
                     namespace = ext.get("namespace", "")
@@ -110,7 +110,7 @@ async def search_marketplace_extensions(query: str = Query("", description="Sear
                         "installed": is_installed,
                         "enabled": is_enabled
                     })
-    except Exception as e:
+    except Exception:
         # Fallback to local filtering if network is offline
         for ext in get_installed_extensions_list():
             if query.lower() in ext.get("name", "").lower() or query.lower() in ext.get("description", "").lower():
@@ -137,13 +137,13 @@ async def install_extension(req: ExtensionActionRequest):
         try:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 vsix_file = os.path.join(tmp_dir, "pkg.vsix")
-                download_req = urllib.request.Request(
-                    download_url,
-                    headers={"User-Agent": "DevPilot-AI-Editor/1.0"}
-                )
-                with urllib.request.urlopen(download_req, timeout=30.0) as resp:
+                async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                    resp = await client.get(
+                        download_url,
+                        headers={"User-Agent": "DevPilot-AI-Editor/1.0"}
+                    )
                     with open(vsix_file, "wb") as out_f:
-                        out_f.write(resp.read())
+                        out_f.write(resp.content)
 
                 # Unpack vsix into custom extensions directory
                 os.makedirs(dest_dir, exist_ok=True)

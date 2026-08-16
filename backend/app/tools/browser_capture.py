@@ -55,7 +55,7 @@ def is_localhost_url(url: str) -> bool:
     parsed = urlparse(url)
     hostname = (parsed.hostname or "").lower()
 
-    allowed_hosts = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+    allowed_hosts = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}  # nosec B104
     if hostname not in allowed_hosts:
         raise ValueError(
             f"Access denied: auto-inspection is restricted to local dev servers "

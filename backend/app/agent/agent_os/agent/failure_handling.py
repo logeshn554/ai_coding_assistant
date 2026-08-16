@@ -56,7 +56,7 @@ class FailureFingerprint:
     def hash(self) -> str:
         """Get consistent hash of fingerprint."""
         content = f"{self.failure_type}:{self.normalized_error}:{self.file_path}:{self.line_number}:{self.command}"
-        return hashlib.md5(content.encode()).hexdigest()
+        return hashlib.sha256(content.encode()).hexdigest()
 
     def __hash__(self):
         return hash(self.hash())

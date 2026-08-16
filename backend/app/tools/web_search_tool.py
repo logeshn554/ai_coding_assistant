@@ -57,23 +57,22 @@ async def search_web(query: str, max_results: int = 5) -> List[SearchResult]:
             raw_results = response.get("results", [])
         except ImportError:
             # Fallback to direct HTTP request if tavily-python is not installed
-            import urllib.request
-            import json
+            import httpx
 
-            req_data = json.dumps({
+            req_payload = {
                 "api_key": api_key,
                 "query": query,
                 "max_results": max_results
-            }).encode("utf-8")
+            }
 
-            req = urllib.request.Request(
+            resp = httpx.post(
                 "https://api.tavily.com/search",
-                data=req_data,
-                headers={"Content-Type": "application/json"}
+                json=req_payload,
+                headers={"Content-Type": "application/json"},
+                timeout=10.0
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                raw_results = data.get("results", [])
+            data = resp.json()
+            raw_results = data.get("results", [])
 
         results: List[SearchResult] = []
         for item in raw_results:

@@ -186,7 +186,7 @@ def _hash_embed(text: str, dim: int = _PGVECTOR_DIM) -> List[float]:
     if not tokens:
         return vec
     for tok in tokens:
-        h = int(hashlib.md5(tok.encode("utf-8")).hexdigest(), 16)
+        h = int(hashlib.sha256(tok.encode("utf-8")).hexdigest(), 16)
         idx = h % dim
         sign = 1.0 if (h >> 8) & 1 else -1.0
         vec[idx] += sign
@@ -252,11 +252,11 @@ async def _pg_embed_and_index(
     if not await _ensure_pgvector_schema():
         return None
 
-    safe_name = "col_" + hashlib.md5(collection_name.encode("utf-8")).hexdigest()[:20]
+    safe_name = "col_" + hashlib.sha256(collection_name.encode("utf-8")).hexdigest()[:20]
     try:
         async with async_session_factory() as db:
             for i, c in enumerate(chunks):
-                cid = f"chk_{i}_{hashlib.md5(c.text.encode('utf-8')).hexdigest()[:8]}"
+                cid = f"chk_{i}_{hashlib.sha256(c.text.encode('utf-8')).hexdigest()[:8]}"
                 emb = _hash_embed(c.text)
                 emb_literal = "[" + ",".join(f"{v:.8f}" for v in emb) + "]"
                 await db.execute(
@@ -300,7 +300,7 @@ async def _pg_query(
     if not await _ensure_pgvector_schema():
         return []
 
-    safe_name = "col_" + hashlib.md5(collection_name.encode("utf-8")).hexdigest()[:20]
+    safe_name = "col_" + hashlib.sha256(collection_name.encode("utf-8")).hexdigest()[:20]
     emb = _hash_embed(question)
     emb_literal = "[" + ",".join(f"{v:.8f}" for v in emb) + "]"
     try:
@@ -399,7 +399,7 @@ async def embed_and_index(
             return result
         logger.warning("pgvector indexing unavailable; falling back to ChromaDB")
 
-    safe_name = "col_" + hashlib.md5(collection_name.encode("utf-8")).hexdigest()[:20]
+    safe_name = "col_" + hashlib.sha256(collection_name.encode("utf-8")).hexdigest()[:20]
     client = _get_chroma_client(workspace_root)
     if client is None:
         logger.info("RAG: ChromaDB unavailable, returning %d unindexed chunks.", len(chunks))
@@ -409,7 +409,7 @@ async def embed_and_index(
         collection = client.get_or_create_collection(name=safe_name)
         documents = [c.text for c in chunks]
         metadatas = [c.metadata for c in chunks]
-        ids = [f"chk_{i}_{hashlib.md5(c.text.encode('utf-8')).hexdigest()[:8]}" for i, c in enumerate(chunks)]
+        ids = [f"chk_{i}_{hashlib.sha256(c.text.encode('utf-8')).hexdigest()[:8]}" for i, c in enumerate(chunks)]
         collection.add(documents=documents, metadatas=metadatas, ids=ids)
         logger.info("RAG: Indexed %d chunks into collection '%s'", len(chunks), safe_name)
         return collection
@@ -433,7 +433,7 @@ async def query(
         if results:
             return results
 
-    safe_name = "col_" + hashlib.md5(collection_name.encode("utf-8")).hexdigest()[:20]
+    safe_name = "col_" + hashlib.sha256(collection_name.encode("utf-8")).hexdigest()[:20]
     client = _get_chroma_client(workspace_root)
     if client is None:
         return []

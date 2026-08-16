@@ -1,4 +1,4 @@
-﻿"""Web Fetch tool â€“ retrieve any URL and return clean readable text.
+"""Web Fetch tool â€“ retrieve any URL and return clean readable text.
 
 Exposes ``web_fetch(session, args)`` as the agent-facing async function.
 
@@ -61,16 +61,16 @@ async def _fetch_via_tavily(url: str, api_key: str) -> str:
                 raise ValueError(f"Tavily could not extract content from '{url}': {failed[0].get('error','unknown error')}")
             return ""
         except ImportError:
-            # SDK not installed â€“ fall back to direct HTTP
-            import json, urllib.request
-            payload = json.dumps({"api_key": api_key, "urls": [url]}).encode()
-            req = urllib.request.Request(
+            # SDK not installed - fall back to direct HTTP
+            import httpx
+            payload = {"api_key": api_key, "urls": [url]}
+            resp = httpx.post(
                 "https://api.tavily.com/extract",
-                data=payload,
+                json=payload,
                 headers={"Content-Type": "application/json"},
+                timeout=REQUEST_TIMEOUT,
             )
-            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
-                data = json.loads(resp.read().decode())
+            data = resp.json()
             results = data.get("results", [])
             if results:
                 return results[0].get("raw_content") or results[0].get("content") or ""

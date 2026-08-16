@@ -11,12 +11,11 @@ Features:
 
 import json
 import os
-import pickle
+import hashlib
 from typing import Any, Dict, Optional, List
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
-import hashlib
 
 from .interfaces import Task, AgentContext, AgentResult
 from .event_system import Event
@@ -115,10 +114,9 @@ class CheckpointManager:
         log_file = checkpoint_path / "execution_log.json"
         log_file.write_text(json.dumps(execution_log, indent=2, default=str))
 
-        # Save conversation history (binary to preserve complex objects)
-        history_file = checkpoint_path / "conversation_history.pkl"
-        with open(history_file, "wb") as f:
-            pickle.dump(conversation_history, f)
+        # Save conversation history as JSON
+        history_file = checkpoint_path / "conversation_history.json"
+        history_file.write_text(json.dumps(conversation_history, indent=2, default=str))
 
         # Save agent context
         if agent_context:
@@ -168,10 +166,9 @@ class CheckpointManager:
         execution_log = json.loads(log_file.read_text()) if log_file.exists() else []
 
         # Load conversation history
-        history_file = checkpoint_path / "conversation_history.pkl"
-        if history_file.exists():
-            with open(history_file, "rb") as f:
-                conversation_history = pickle.load(f)
+        json_history_file = checkpoint_path / "conversation_history.json"
+        if json_history_file.exists():
+            conversation_history = json.loads(json_history_file.read_text())
         else:
             conversation_history = []
 
@@ -322,7 +319,7 @@ class CheckpointManager:
     def _generate_checkpoint_id(self, run_id: str, task_id: Optional[str], agent_id: Optional[str]) -> str:
         """Generate unique checkpoint ID."""
         content = f"{run_id}:{task_id}:{agent_id}:{datetime.utcnow().isoformat()}"
-        hash_val = hashlib.md5(content.encode()).hexdigest()[:8]
+        hash_val = hashlib.sha256(content.encode()).hexdigest()[:8]
         return f"{run_id}/checkpoint-{hash_val}"
 
     def _get_checkpoint_path(self, checkpoint_id: str) -> Path:

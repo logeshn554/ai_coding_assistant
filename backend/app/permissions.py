@@ -134,7 +134,7 @@ class PermissionManager:
     def _get_project_id(self) -> str:
         if not self.workspace_root:
             return "global"
-        return hashlib.md5(self.workspace_root.encode("utf-8")).hexdigest()
+        return hashlib.sha256(self.workspace_root.encode("utf-8")).hexdigest()
 
     def _get_command_pattern(self, command: str) -> str:
         if not command or not isinstance(command, str):
