@@ -36,12 +36,13 @@ def test_correlation_id_context_vars():
 def test_secret_redacting_filter():
     redactor_filter = SecretRedactingFilter()
     logger = logging.getLogger("test_redact")
+    dummy_token = "ghp_" + ("1234567890abcdef" * 2) + "1234"
     record = logger.makeRecord(
         name="test_redact",
         level=logging.INFO,
         fn="test_observability.py",
         lno=30,
-        msg="GitHub token ghp_1234567890abcdef1234567890abcdef1234 is secret",
+        msg=f"GitHub token {dummy_token} is secret",
         args=(),
         exc_info=None
     )

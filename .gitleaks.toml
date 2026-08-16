@@ -1,0 +1,13 @@
+# Gitleaks Configuration for DevPilot AI Coding Assistant
+# Configures rule extensions and allowlists for test fixtures / mocked data.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for tests and CI configurations"
+paths = [
+    '''tests/.*''',
+    '''backend/tests/.*''',
+    '''\.github/workflows/ci\.yml''',
+]

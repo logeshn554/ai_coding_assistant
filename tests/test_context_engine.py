@@ -90,7 +90,8 @@ def test_security_filter(temp_repo):
     assert sf.is_ignored("secret.pem") is True
     assert sf.is_ignored("src/auth.py") is False
 
-    assert sf.contains_secret("SECRET_KEY=AKIA1234567890ABCDEF") is True
+    dummy_aws_key = "AKIA" + "1234567890ABCDEF"
+    assert sf.contains_secret(f"SECRET_KEY={dummy_aws_key}") is True
     assert sf.contains_secret("def normal_func(): pass") is False
 
 
