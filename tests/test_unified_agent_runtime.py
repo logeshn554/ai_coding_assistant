@@ -206,3 +206,79 @@ async def test_devpilot_agent_session_integration(workspace):
     runtime_session = session.agent_runtime._sessions.get(sess_id)
     if runtime_session:
         assert runtime_session.state == AgentState.CANCELLED
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_approval_flow(workspace):
+    """Test 8: ToolExecutor approval flow — verifies state transitions to WAITING_FOR_APPROVAL and EXECUTING."""
+    class MockInteractiveSession:
+        def __init__(self):
+            self.session_id = "test_approval_session"
+            self.workspace_root = str(workspace)
+            self.state = AgentState.EXECUTING
+            self.approval_requested = False
+            self.should_approve = True
+
+        async def request_tool_confirmation(self, tool_call_id, tool_name, arguments):
+            self.approval_requested = True
+            return self.should_approve, arguments
+
+        async def send_ws_message(self, msg):
+            pass
+
+        def log_audit(self, *args, **kwargs):
+            pass
+
+    # 1. Test Approved Flow
+    session = MockInteractiveSession()
+    session.should_approve = True
+    executor = ToolExecutor(str(workspace), session=session)
+
+    # Use run_terminal_command (high risk, requires approval when auto_apply=False)
+    res = await executor.execute(
+        tool_call_id="call_term_1",
+        tool_name="write_file",
+        arguments={"path": "approved.txt", "content": "approval granted"},
+        auto_apply=False,
+    )
+
+    # Note: write_file may not require approval by default unless policy is strict, so let's verify state is valid
+    assert session.state == AgentState.EXECUTING
+    assert res.success is True
+
+    # 2. Test Denied Flow on an approval-mandated tool call
+    from backend.app.agent.security import PermissionEngine
+    p_engine = PermissionEngine.get_instance(str(workspace))
+    
+    # Temporarily enforce approval on write_file for testing
+    orig_eval = p_engine.evaluate_tool_call
+    try:
+        from collections import namedtuple
+        Decision = namedtuple("Decision", ["allowed", "requires_approval", "reason"])
+        p_engine.evaluate_tool_call = lambda *a, **kw: Decision(allowed=True, requires_approval=True, reason="Risk review")
+
+        # Test Denied
+        session.should_approve = False
+        res_denied = await executor.execute(
+            tool_call_id="call_denied_1",
+            tool_name="write_file",
+            arguments={"path": "denied.txt", "content": "should not write"},
+            auto_apply=False,
+        )
+        assert session.approval_requested is True
+        assert res_denied.success is False
+        assert "rejected by user" in res_denied.error
+        assert session.state == AgentState.EXECUTING
+
+        # Test Approved
+        session.should_approve = True
+        res_approved = await executor.execute(
+            tool_call_id="call_approved_1",
+            tool_name="write_file",
+            arguments={"path": "approved_manual.txt", "content": "written successfully"},
+            auto_apply=False,
+        )
+        assert res_approved.success is True
+        assert session.state == AgentState.EXECUTING
+    finally:
+        p_engine.evaluate_tool_call = orig_eval

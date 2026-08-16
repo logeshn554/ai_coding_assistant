@@ -59,15 +59,15 @@ class _SessionBridge:
                 res = self.inner_session.send_ws_message(msg)
                 if asyncio.iscoroutine(res):
                     await res
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Failed to forward message via _SessionBridge: {e}")
 
     def log_audit(self, *args, **kwargs):
         if self.inner_session and hasattr(self.inner_session, "log_audit"):
             try:
                 self.inner_session.log_audit(*args, **kwargs)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Failed to record audit log via _SessionBridge: {e}")
         else:
             self.audit_log.append({"args": args, "kwargs": kwargs})
 
@@ -200,7 +200,7 @@ class ToolExecutor:
                             attributes={"tool_name": tool_def.name}
                         )
                         if hasattr(self.session, "state"):
-                            self.session.state = AgentState.RUNNING
+                            self.session.state = AgentState.EXECUTING
                         return ToolResult(
                             success=False,
                             output=None,
@@ -209,13 +209,13 @@ class ToolExecutor:
                     if modified_args and isinstance(modified_args, dict):
                         validated_args = modified_args
                     if hasattr(self.session, "state"):
-                        self.session.state = AgentState.RUNNING
+                        self.session.state = AgentState.EXECUTING
                     # Explicitly override auto_apply to bypass inner legacy confirmation prompts
                     auto_apply = True
                 else:
                     # In headless, automated, or non-interactive mode without confirmation callback, fail closed
                     if hasattr(self.session, "state"):
-                        self.session.state = AgentState.RUNNING
+                        self.session.state = AgentState.EXECUTING
                     TelemetryManager.increment_counter(
                         "tool_approval_denied_total",
                         attributes={"tool_name": tool_def.name}

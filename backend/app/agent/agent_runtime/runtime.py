@@ -60,6 +60,7 @@ class AgentState(str, Enum):
     # Backward compatibility aliases
     INTERRUPTED = "FAILED"
     EMPTY_RESPONSE = "FAILED"
+    RUNNING = "EXECUTING"
 
 
 class VerificationStatus(str, Enum):

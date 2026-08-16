@@ -144,6 +144,11 @@ class DevPilotFileKeyring(KeyringBackend):
         self.key_filepath = self.filepath.parent / ".keyring.key"
 
     def _get_fernet(self) -> Fernet:
+        env_key = os.environ.get("DEVPILOT_MASTER_KEY") or os.environ.get("DEVPILOT_KEYRING_KEY")
+        if env_key:
+            raw_key = env_key.strip().encode("utf-8") if isinstance(env_key, str) else env_key
+            return Fernet(raw_key)
+
         self.key_filepath.parent.mkdir(parents=True, exist_ok=True)
         if not self.key_filepath.exists():
             key = Fernet.generate_key()
