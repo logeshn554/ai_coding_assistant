@@ -85,8 +85,8 @@ class CostTracker:
         self.costs: dict[str, list] = {}  # run_id -> list of CostEntry
         self.budgets: dict[str, AgentBudget] = {}
         self.run_start_times: dict[str, datetime] = {}
-        env_in = os.environ.get("DEVPILOT_INPUT_COST_PER_M")
-        env_out = os.environ.get("DEVPILOT_OUTPUT_COST_PER_M")
+        env_in = os.environ.get("LOOPIX_INPUT_COST_PER_M")
+        env_out = os.environ.get("LOOPIX_OUTPUT_COST_PER_M")
         # Convert per-million → per-1k when using env defaults
         self._default_input_per_1k = default_input_cost_per_1k
         self._default_output_per_1k = default_output_cost_per_1k

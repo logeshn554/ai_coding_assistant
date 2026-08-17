@@ -7,7 +7,7 @@ import logging
 
 from .debate_engine import Critique
 
-logger = logging.getLogger("devpilot.debate.consensus")
+logger = logging.getLogger("loopix.debate.consensus")
 
 
 class ConsensusEngine:

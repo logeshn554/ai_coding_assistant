@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("devpilot.digital_twin")
+logger = logging.getLogger("loopix.digital_twin")
 
 # Clearly mark this as a real implementation, not a stub
 _IMPLEMENTED = True

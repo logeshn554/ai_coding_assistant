@@ -1,5 +1,5 @@
 """
-Secure Sandbox Execution Framework for DevPilot API.
+Secure Sandbox Execution Framework for Loopix API.
 
 Provides:
 - ExecutionPolicy representing resource, network, filesystem, and environment constraints.
@@ -28,7 +28,7 @@ from backend.app.config import settings
 from .environment_isolation import EnvironmentIsolation
 from .secret_redactor import SecretRedactor
 
-logger = logging.getLogger("devpilot.security.sandbox")
+logger = logging.getLogger("loopix.security.sandbox")
 
 class ExecutionStatus(str, Enum):
     SUCCESS = "SUCCESS"
@@ -90,7 +90,7 @@ class SandboxExecutor:
         # Sanitize workspace_id and run_id to form a safe identifier
         clean_ws = re.sub(r'[^a-zA-Z0-9_-]', '', workspace_id)
         clean_run = re.sub(r'[^a-zA-Z0-9_-]', '', run_id)
-        self.sandbox_id = f"devpilot_sb_{clean_run}_{clean_ws}"
+        self.sandbox_id = f"loopix_sb_{clean_run}_{clean_ws}"
 
     async def initialize(self) -> None:
         """Set up sandbox before running any commands."""
@@ -386,7 +386,7 @@ class LocalSandboxExecutor(SandboxExecutor):
 
 class DockerSandboxExecutor(SandboxExecutor):
     """
-    Executes commands inside a persistent Docker container named devpilot_sb_{run_id}_{workspace_id}.
+    Executes commands inside a persistent Docker container named loopix_sb_{run_id}_{workspace_id}.
     Enforces memory, CPU, process limits, and network modes at container startup.
     """
 

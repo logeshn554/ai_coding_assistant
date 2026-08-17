@@ -4,12 +4,12 @@ import logging
 import os
 from typing import Any
 
-logger = logging.getLogger("devpilot.brain.experience_db")
+logger = logging.getLogger("loopix.brain.experience_db")
 
 class ExperienceDatabase:
     def __init__(self, storage_path: str = ""):
         if not storage_path:
-            self.storage_path = os.path.expanduser("~/.devpilot/experience_db.json")
+            self.storage_path = os.path.expanduser("~/.loopix/experience_db.json")
         else:
             self.storage_path = storage_path
 

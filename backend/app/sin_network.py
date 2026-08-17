@@ -5,7 +5,7 @@ import logging
 import os
 from typing import Any
 
-logger = logging.getLogger("devpilot.sin_network")
+logger = logging.getLogger("loopix.sin_network")
 
 _STUB_WARNING = (
     "SoftwareIntelligenceNetwork is returning SIMULATED stub data. "

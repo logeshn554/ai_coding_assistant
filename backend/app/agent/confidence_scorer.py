@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from .intent_router import IntentType
 
-logger = logging.getLogger("devpilot.agent.confidence_scorer")
+logger = logging.getLogger("loopix.agent.confidence_scorer")
 
 # Confidence thresholds
 THRESHOLD_AUTO_PROCEED = 0.75      # ≥ this → proceed autonomously

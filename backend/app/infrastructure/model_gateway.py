@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-logger = logging.getLogger("devpilot.infrastructure.model_gateway")
+logger = logging.getLogger("loopix.infrastructure.model_gateway")
 
 class TokenUsage(BaseModel):
     input_tokens: int = 0

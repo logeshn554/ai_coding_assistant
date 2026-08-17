@@ -2,7 +2,7 @@
 
 Backends (selected via settings.RAG_BACKEND):
 - ``pgvector`` — Postgres-native vector search (preferred in server mode)
-- ``chroma`` — local ChromaDB under ~/.devpilot/chroma
+- ``chroma`` — local ChromaDB under ~/.loopix/chroma
 - ``auto`` — pgvector when DATABASE_URL is Postgres, else ChromaDB
 
 Provides:
@@ -21,18 +21,18 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-logger = logging.getLogger("devpilot.rag")
+logger = logging.getLogger("loopix.rag")
 
 # Eviction policy configuration (overridable via environment)
-_MAX_CHROMA_DIRS = int(os.environ.get("DEVPILOT_MAX_CHROMA_DIRS", "8"))
-_MAX_CHROMA_AGE_DAYS = int(os.environ.get("DEVPILOT_CHROMA_MAX_AGE_DAYS", "30"))
+_MAX_CHROMA_DIRS = int(os.environ.get("LOOPIX_MAX_CHROMA_DIRS", "8"))
+_MAX_CHROMA_AGE_DAYS = int(os.environ.get("LOOPIX_CHROMA_MAX_AGE_DAYS", "30"))
 
 _PGVECTOR_DIM = 384  # matches simple hash embedding dimensionality
 
 
 def _evict_old_chroma_indexes() -> None:
     """Remove ChromaDB workspace indexes that exceed the age or count limits."""
-    base = os.path.join(os.path.expanduser("~"), ".devpilot", "chroma")
+    base = os.path.join(os.path.expanduser("~"), ".loopix", "chroma")
     if not os.path.isdir(base):
         return
 
@@ -360,7 +360,7 @@ def _get_chroma_client(workspace_root: str | None = None):
     """Retrieve persistent ChromaDB client for the workspace with connection pooling."""
     if workspace_root and os.path.isdir(workspace_root):
         h = hashlib.sha256(os.path.abspath(workspace_root).encode("utf-8")).hexdigest()[:16]
-        chroma_dir = os.path.join(os.path.expanduser("~"), ".devpilot", "chroma", h)
+        chroma_dir = os.path.join(os.path.expanduser("~"), ".loopix", "chroma", h)
 
         old_dir = os.path.join(workspace_root, "artifacts", "chroma")
         if os.path.exists(old_dir) and not os.path.exists(chroma_dir):
@@ -371,7 +371,7 @@ def _get_chroma_client(workspace_root: str | None = None):
             except Exception as me:
                 logger.warning(f"Failed to migrate ChromaDB index: {me}")
     else:
-        chroma_dir = os.path.join(os.path.expanduser("~"), ".devpilot", "chroma", "default")
+        chroma_dir = os.path.join(os.path.expanduser("~"), ".loopix", "chroma", "default")
 
     chroma_dir = os.path.abspath(chroma_dir)
     if chroma_dir in _chroma_clients:

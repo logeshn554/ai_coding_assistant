@@ -30,7 +30,7 @@ from .types import (
     WorkspaceContext,
 )
 
-logger = logging.getLogger("devpilot.context_engine")
+logger = logging.getLogger("loopix.context_engine")
 
 
 class ContextEngine:

@@ -15,7 +15,7 @@ from typing import Any
 
 from ..state import config_manager
 
-logger = logging.getLogger("devpilot.tools.server_watcher")
+logger = logging.getLogger("loopix.tools.server_watcher")
 
 # Common dev server ready regex patterns
 SERVER_READY_PATTERNS: list[re.Pattern] = [

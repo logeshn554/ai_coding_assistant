@@ -7,7 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 
-logger = logging.getLogger("devpilot.repair.root_cause_analyzer")
+logger = logging.getLogger("loopix.repair.root_cause_analyzer")
 
 
 @dataclass

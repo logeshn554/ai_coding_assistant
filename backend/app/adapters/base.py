@@ -5,7 +5,7 @@ import os
 from collections.abc import AsyncGenerator
 from typing import Any
 
-logger = logging.getLogger("devpilot.adapters")
+logger = logging.getLogger("loopix.adapters")
 
 class ModelAdapter:
     """
@@ -104,7 +104,7 @@ class ModelAdapter:
         Resolution order (first hit wins per side):
           1. Explicit input_cost_per_m / output_cost_per_m kwargs
           2. profile["input_cost_per_m"] / profile["output_cost_per_m"]
-          3. DEVPILOT_INPUT_COST_PER_M / DEVPILOT_OUTPUT_COST_PER_M env vars
+          3. LOOPIX_INPUT_COST_PER_M / LOOPIX_OUTPUT_COST_PER_M env vars
           4. Per-model pricing table (matched by model name substring, is_estimated=False)
           5. settings.DEFAULT_*_COST_PER_M global fallback (is_estimated=True)
 
@@ -142,8 +142,8 @@ class ModelAdapter:
                     pass
 
         # Step 3 — environment variable overrides
-        env_input = os.environ.get("DEVPILOT_INPUT_COST_PER_M")
-        env_output = os.environ.get("DEVPILOT_OUTPUT_COST_PER_M")
+        env_input = os.environ.get("LOOPIX_INPUT_COST_PER_M")
+        env_output = os.environ.get("LOOPIX_OUTPUT_COST_PER_M")
         if input_rate is None and env_input:
             try:
                 input_rate = float(env_input)

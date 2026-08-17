@@ -1,8 +1,8 @@
-# Architecture Documentation — DevPilot AI-Native IDE Platform
+# Architecture Documentation — Loopix AI-Native IDE Platform
 
 ## Overview
 
-DevPilot is an AI-native developer environment powered by a unified, secure, fail-closed agent architecture.
+Loopix is an AI-native developer environment powered by a unified, secure, fail-closed agent architecture.
 
 ## System Layers
 

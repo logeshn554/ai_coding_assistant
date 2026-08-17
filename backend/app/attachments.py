@@ -1,4 +1,4 @@
-"""Multi-file attachment processor and prompt formatter for DevPilot AI Assistant.
+"""Multi-file attachment processor and prompt formatter for Loopix AI Assistant.
 
 Routes attached files based on type:
 - Image files (.png, .jpg, .jpeg, .webp, .gif) -> `vision.analyze_image`
@@ -16,7 +16,7 @@ from .rag import Chunk, chunk_file, embed_and_index
 from .rag import query as rag_query
 from .vision import VisionResult, analyze_image
 
-logger = logging.getLogger("devpilot.attachments")
+logger = logging.getLogger("loopix.attachments")
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg"}
 

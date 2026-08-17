@@ -1,8 +1,8 @@
-# Testing & QA Guide — DevPilot IDE
+# Testing & QA Guide — Loopix IDE
 
 ## Test Suite Overview
 
-DevPilot maintains a comprehensive, 100% passing test suite across all 19 architectural phases.
+Loopix maintains a comprehensive, 100% passing test suite across all architectural phases.
 
 ## Test Commands
 

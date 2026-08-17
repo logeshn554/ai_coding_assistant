@@ -7,7 +7,7 @@ import logging
 
 from ..intelligence.intent_compiler import CompiledIntent
 
-logger = logging.getLogger("devpilot.work_graph.capability_planner")
+logger = logging.getLogger("loopix.work_graph.capability_planner")
 
 
 class CapabilityPlanner:

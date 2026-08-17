@@ -24,7 +24,7 @@ DEFAULT_IGNORED_DIRS: set[str] = {
     "__pycache__",
     ".pytest_cache",
     ".mypy_cache",
-    ".devpilot",
+    ".loopix",
     "dist",
     "build",
     ".next",

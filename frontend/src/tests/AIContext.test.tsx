@@ -71,7 +71,7 @@ describe('AIContext Smoke Test', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    localStorage.setItem('devpilot_session_id', 'stale-session');
+    localStorage.setItem('loopix_session_id', 'stale-session');
 
     render(
       <AIProvider>
@@ -82,6 +82,6 @@ describe('AIContext Smoke Test', () => {
     await waitFor(() => {
       expect(screen.getByTestId('session-id').textContent).toBe('server-session-42');
     });
-    expect(localStorage.getItem('devpilot_session_id')).toBe('server-session-42');
+    expect(localStorage.getItem('loopix_session_id')).toBe('server-session-42');
   });
 });

@@ -38,7 +38,7 @@ router = APIRouter()
 # ─────────────────────────────────────────────────────────────────────────────
 # Live Chat Logger
 # Writes every event (user messages, thinking, tool calls, AI responses)
-# to  <workspace>/.devpilot/chat_logs.md  in real time.
+# to  <workspace>/.loopix/chat_logs.md  in real time.
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ChatLogger:
@@ -80,13 +80,13 @@ class ChatLogger:
         if not root or not os.path.isdir(root):
             return
         try:
-            log_dir = os.path.join(root, ".devpilot")
+            log_dir = os.path.join(root, ".loopix")
             os.makedirs(log_dir, exist_ok=True)
             log_path = os.path.join(log_dir, self._log_filename)
             
             if not os.path.exists(log_path):
                 header = (
-                    f"# DevPilot Chat Session Log\n"
+                    f"# Loopix Chat Session Log\n"
                     f"> Session ID: `{self._session_id}`\n"
                     f"> Created: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                     f"---\n\n"

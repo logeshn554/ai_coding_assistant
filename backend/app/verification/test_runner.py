@@ -7,7 +7,7 @@ import logging
 import subprocess
 from dataclasses import dataclass
 
-logger = logging.getLogger("devpilot.verification.test_runner")
+logger = logging.getLogger("loopix.verification.test_runner")
 
 
 @dataclass

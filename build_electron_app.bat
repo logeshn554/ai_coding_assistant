@@ -1,7 +1,7 @@
 @echo off
-title DevPilot - Build Windows Desktop Package (Electron)
+title Loopix - Build Windows Desktop Package (Electron)
 echo =========================================================
-echo       Building DevPilot Standalone Windows Installer
+echo       Building Loopix Standalone Windows Installer
 echo =========================================================
 echo.
 

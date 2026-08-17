@@ -20,7 +20,7 @@ import os
 import re
 from typing import Any
 
-logger = logging.getLogger("devpilot.tools.write_tool")
+logger = logging.getLogger("loopix.tools.write_tool")
 
 from ..async_files import (
     async_read_workspace_file,

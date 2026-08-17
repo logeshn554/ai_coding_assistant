@@ -7,7 +7,7 @@ import logging
 
 from ..brain.symbol_graph import SymbolNode, symbol_graph
 
-logger = logging.getLogger("devpilot.analysis.symbol_resolver")
+logger = logging.getLogger("loopix.analysis.symbol_resolver")
 
 
 class SymbolResolver:

@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-logger = logging.getLogger("devpilot.agent.llm_retry")
+logger = logging.getLogger("loopix.agent.llm_retry")
 
 
 @dataclass

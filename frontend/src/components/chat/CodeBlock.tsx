@@ -84,7 +84,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ inline, className, childre
       onRunCommand(codeString);
     } else {
       copyToClipboard(codeString);
-      window.dispatchEvent(new CustomEvent('devpilot-run-terminal-command', { detail: { command: codeString } }));
+      window.dispatchEvent(new CustomEvent('loopix-run-terminal-command', { detail: { command: codeString } }));
     }
   };
 

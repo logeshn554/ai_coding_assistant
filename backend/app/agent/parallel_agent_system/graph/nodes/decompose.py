@@ -88,8 +88,8 @@ async def decompose_task_node(state: GraphState) -> dict:
         ]
     else:
         if session:
-            from backend.app.orchestrator import DevPilotChatModel
-            llm = DevPilotChatModel(session=session, agent_name="Decomposer Agent")
+            from backend.app.orchestrator import LoopixChatModel
+            llm = LoopixChatModel(session=session, agent_name="Decomposer Agent")
             
             prompt = ChatPromptTemplate.from_messages([
                 ("system", DECOMPOSE_SYSTEM_PROMPT + "\n\nResponse MUST be a valid JSON object matching this schema:\n"

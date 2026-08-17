@@ -13,7 +13,7 @@ from backend.app.infrastructure.database.models import (
     Workspace,
 )
 
-logger = logging.getLogger("devpilot.infrastructure.database.migration_helper")
+logger = logging.getLogger("loopix.infrastructure.database.migration_helper")
 
 async def import_legacy_data(db: AsyncSession) -> None:
     """Migrates old SQLite columns/tables to the new PostgreSQL/SQLite normalized schema."""
@@ -35,7 +35,7 @@ async def import_legacy_data(db: AsyncSession) -> None:
         if not user:
             user = User(
                 id="default-user",
-                email="developer@devpilot.local",
+                email="developer@loopix.local",
                 full_name="Default Developer",
                 hashed_password="nopassword"
             )

@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-logger = logging.getLogger("devpilot.brain.architecture_graph")
+logger = logging.getLogger("loopix.brain.architecture_graph")
 
 
 @dataclass

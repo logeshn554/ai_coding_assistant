@@ -1,7 +1,7 @@
 """Real MCP Client: Model Context Protocol server connection & tool discovery.
 
 Connects to stdio or SSE/HTTP MCP servers, discovers available tools via MCP list_tools,
-and registers them into DevPilot's tool dispatcher.
+and registers them into Loopix's tool dispatcher.
 
 Respects `mcp_tool_rules` permissions before executing any discovered tool.
 """
@@ -17,7 +17,7 @@ from typing import Any
 
 from .state import config_manager
 
-logger = logging.getLogger("devpilot.mcp_client")
+logger = logging.getLogger("loopix.mcp_client")
 
 # Global registry of discovered MCP tools: tool_name -> { server_id, name, description, input_schema, handler }
 MCP_DISCOVERED_TOOLS: dict[str, dict[str, Any]] = {}

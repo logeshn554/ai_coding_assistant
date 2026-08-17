@@ -5,7 +5,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 router = APIRouter()
-SNIPPETS_FILE_PATH = os.path.expanduser("~/.devpilot/snippets.json")
+SNIPPETS_FILE_PATH = os.path.expanduser("~/.loopix/snippets.json")
 
 class SnippetItem(BaseModel):
     id: str

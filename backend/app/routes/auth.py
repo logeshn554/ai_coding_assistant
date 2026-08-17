@@ -21,7 +21,7 @@ def get_auth_token(request: Request):
         return {"token": SESSION_TOKEN}
 
     # Remote / non-loopback connection requires auth key verification
-    auth_key_env = os.environ.get("DEVPILOT_AUTH_KEY") or os.environ.get("AUTH_KEY")
+    auth_key_env = os.environ.get("LOOPIX_AUTH_KEY") or os.environ.get("AUTH_KEY")
     req_key = (
         request.headers.get("X-Auth-Key")
         or request.headers.get("Authorization", "").replace("Bearer ", "").strip()

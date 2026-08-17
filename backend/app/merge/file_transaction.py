@@ -7,7 +7,7 @@ import logging
 import os
 from enum import Enum
 
-logger = logging.getLogger("devpilot.merge.file_transaction")
+logger = logging.getLogger("loopix.merge.file_transaction")
 
 
 class TransactionState(str, Enum):

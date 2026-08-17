@@ -14,7 +14,7 @@ import re
 
 from .permission_model import RiskLevel
 
-logger = logging.getLogger("devpilot.security.terminal_sandbox")
+logger = logging.getLogger("loopix.security.terminal_sandbox")
 
 # High risk shell operators and destructive tokens
 DESTRUCTIVE_COMMAND_PATTERNS: list[re.Pattern] = [

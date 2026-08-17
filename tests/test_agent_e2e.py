@@ -298,7 +298,7 @@ async def test_f_outside_workspace_access_denied():
     """
     with tempfile.TemporaryDirectory() as workspace:
         with tempfile.TemporaryDirectory() as outside_dir:
-            forbidden_path = os.path.join(outside_dir, "evil_devpilot_test.py")
+            forbidden_path = os.path.join(outside_dir, "evil_loopix_test.py")
 
             llm = _MockLLMSequence([
                 _resp(calls=[_tool_call("write_file", {"path": forbidden_path, "content": "evil"})]),
@@ -381,8 +381,8 @@ async def test_worker_resolves_workspace_root_not_db_url():
     reason="Live LLM API key not configured",
 )
 @pytest.mark.skipif(
-    not (os.getenv("DEVPILOT_MODEL") or "").strip(),
-    reason="DEVPILOT_MODEL must be set — no hardcoded model defaults",
+    not (os.getenv("LOOPIX_MODEL") or "").strip(),
+    reason="LOOPIX_MODEL must be set — no hardcoded model defaults",
 )
 async def test_real_agent_creates_file(tmp_path):
     """Full loop against a live provider: agent writes hello.py and it runs."""
@@ -394,7 +394,7 @@ async def test_real_agent_creates_file(tmp_path):
     async def collect_messages(msg: dict):
         collected.append(msg)
 
-    model = os.environ["DEVPILOT_MODEL"].strip()
+    model = os.environ["LOOPIX_MODEL"].strip()
     api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
     api_format = "anthropic" if os.getenv("ANTHROPIC_API_KEY") else "openai"
 

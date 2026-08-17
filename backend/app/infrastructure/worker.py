@@ -23,7 +23,7 @@ from backend.app.infrastructure.queue import AgentQueue
 from backend.app.session.base_session import BaseSession
 from backend.app.state import config_manager, redis_client
 
-logger = logging.getLogger("devpilot.infrastructure.worker")
+logger = logging.getLogger("loopix.infrastructure.worker")
 
 
 class RunLock:

@@ -88,7 +88,7 @@ from backend.app.agent.security.workspace_policy import WorkspacePolicy
 
 
 async def run_full_smoke_test():
-    temp_dir = tempfile.mkdtemp(prefix="devpilot_smoke_test_")
+    temp_dir = tempfile.mkdtemp(prefix="loopix_smoke_test_")
     logger.info(f"Created temporary smoke test workspace at: {temp_dir}")
 
     results = {
@@ -170,7 +170,7 @@ async def run_full_smoke_test():
 
         # run_terminal_command
         try:
-            res = await dispatch_tool(session, "tc_8", "run_terminal_command", {"command": "echo devpilot_test_ok"}, auto_apply=True)
+            res = await dispatch_tool(session, "tc_8", "run_terminal_command", {"command": "echo loopix_test_ok"}, auto_apply=True)
             results["tools"]["run_terminal_command"] = {"status": "PASS", "result": res[:60]}
         except Exception as e:
             results["tools"]["run_terminal_command"] = {"status": "FAIL", "result": str(e)}
@@ -295,15 +295,15 @@ async def run_full_smoke_test():
         # File Editing
         try:
             await dispatch_tool(session, "wf_1", "write_file", {"path": "wf_file.txt", "content": "Hello World\n"}, auto_apply=True)
-            res_e = await dispatch_tool(session, "wf_2", "edit_file", {"path": "wf_file.txt", "target": "World", "replacement": "DevPilot"}, auto_apply=True)
-            results["workflows"]["file_editing"] = {"status": "PASS" if "DevPilot" in res_e or "updated" in res_e.lower() or "success" in res_e.lower() else "FAIL"}
+            res_e = await dispatch_tool(session, "wf_2", "edit_file", {"path": "wf_file.txt", "target": "World", "replacement": "Loopix"}, auto_apply=True)
+            results["workflows"]["file_editing"] = {"status": "PASS" if "Loopix" in res_e or "updated" in res_e.lower() or "success" in res_e.lower() else "FAIL"}
         except Exception as e:
             results["workflows"]["file_editing"] = {"status": "FAIL", "result": str(e)}
 
         # Terminal Execution
         try:
             res_t = await dispatch_tool(session, "wf_3", "run_terminal_command", {"command": "python --version"}, auto_apply=True)
-            results["workflows"]["terminal_execution"] = {"status": "PASS" if "Python" in res_t or "exit 0" in res_t.lower() or "success" in res_t.lower() or "devpilot" in res_t.lower() else "FAIL"}
+            results["workflows"]["terminal_execution"] = {"status": "PASS" if "Python" in res_t or "exit 0" in res_t.lower() or "success" in res_t.lower() or "loopix" in res_t.lower() else "FAIL"}
         except Exception as e:
             results["workflows"]["terminal_execution"] = {"status": "FAIL", "result": str(e)}
 
@@ -327,7 +327,7 @@ async def run_full_smoke_test():
             tx.file_txn.rollback()
             with open(target_path, "r") as f:
                 content = f.read()
-            results["workflows"]["rollback"] = {"status": "PASS" if "DevPilot" in content or "Hello" in content or "Mutated" in content else "FAIL"}
+            results["workflows"]["rollback"] = {"status": "PASS" if "Loopix" in content or "Hello" in content or "Mutated" in content else "FAIL"}
         except Exception as e:
             results["workflows"]["rollback"] = {"status": "FAIL", "result": str(e)}
 
@@ -380,7 +380,7 @@ async def run_full_smoke_test():
 
             # Step 2: Run test -> Pass
             res_t1 = await dispatch_tool(session_p, "ct_3", "run_terminal_command", {"command": f"pytest {os.path.join(proj_dir, 'test_calc.py')}"}, auto_apply=True)
-            t1_pass = "1 passed" in res_t1 or "passed" in res_t1 or "DevPilot Agent" in res_t1
+            t1_pass = "1 passed" in res_t1 or "passed" in res_t1 or "Loopix Agent" in res_t1
 
             # Step 3: Introduce bug
             buggy_code = (
@@ -391,14 +391,14 @@ async def run_full_smoke_test():
 
             # Step 4: Run test -> Fail
             res_t2 = await dispatch_tool(session_p, "ct_5", "run_terminal_command", {"command": f"pytest {os.path.join(proj_dir, 'test_calc.py')}"}, auto_apply=True)
-            t2_fail = "failed" in res_t2 or "AssertionError" in res_t2 or "1 failed" in res_t2 or "exit code" in res_t2.lower() or "DevPilot Agent" in res_t2
+            t2_fail = "failed" in res_t2 or "AssertionError" in res_t2 or "1 failed" in res_t2 or "exit code" in res_t2.lower() or "Loopix Agent" in res_t2
 
             # Step 5: Fix bug using Debugger Agent / write_file
             await dispatch_tool(session_p, "ct_6", "write_file", {"path": "calc.py", "content": calc_code}, auto_apply=True)
 
             # Step 6: Rerun test -> Pass
             res_t3 = await dispatch_tool(session_p, "ct_7", "run_terminal_command", {"command": f"pytest {os.path.join(proj_dir, 'test_calc.py')}"}, auto_apply=True)
-            t3_pass = "1 passed" in res_t3 or "passed" in res_t3 or "DevPilot Agent" in res_t3
+            t3_pass = "1 passed" in res_t3 or "passed" in res_t3 or "Loopix Agent" in res_t3
 
             coding_task_success = t1_pass and t3_pass
             results["coding_task"] = {

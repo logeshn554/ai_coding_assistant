@@ -1,6 +1,6 @@
 @echo off
 echo ==============================================
-echo DevPilot Setup - Windows
+echo Loopix Setup - Windows
 echo ==============================================
 
 :: Check for Python

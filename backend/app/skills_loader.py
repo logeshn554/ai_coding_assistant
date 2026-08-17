@@ -7,7 +7,7 @@ import os
 import re
 from collections.abc import Iterable
 
-logger = logging.getLogger("devpilot.skills_loader")
+logger = logging.getLogger("loopix.skills_loader")
 
 # Sections whose names match these (case-insensitive) are always included.
 _ALWAYS_INCLUDE_NAMES = frozenset({"general", "all"})

@@ -9,7 +9,7 @@ from typing import Any, TypeVar
 
 from .state import redis_client
 
-logger = logging.getLogger("devpilot.cache")
+logger = logging.getLogger("loopix.cache")
 
 F = TypeVar("F", bound=Callable[..., Any])
 

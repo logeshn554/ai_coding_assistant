@@ -11,7 +11,7 @@ import time
 
 from pydantic import BaseModel, Field
 
-logger = logging.getLogger("devpilot.models")
+logger = logging.getLogger("loopix.models")
 
 class ModelMetadata(BaseModel):
     provider: str = ""

@@ -2,7 +2,7 @@
 import logging
 from typing import Any
 
-logger = logging.getLogger("devpilot.org_company")
+logger = logging.getLogger("loopix.org_company")
 
 class AISoftwareCompany:
     def execute_autonomous_company_project(self, project_prompt: str) -> dict[str, Any]:

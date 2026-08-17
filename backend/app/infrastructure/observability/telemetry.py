@@ -28,7 +28,7 @@ class JSONLogFormatter(logging.Formatter):
         log_payload = {
             "timestamp": self.formatTime(record, self.datefmt),
             "level": record.levelname,
-            "service": "devpilot",
+            "service": "loopix",
             "component": record.name,
             "event": msg,
             "correlation_id": correlation_id_var.get(),
@@ -95,7 +95,7 @@ class TelemetryManager:
     def get_tracer(cls):
         if cls._tracer is None:
             if _OTEL_AVAILABLE:
-                cls._tracer = trace.get_tracer("devpilot")
+                cls._tracer = trace.get_tracer("loopix")
             else:
                 cls._tracer = MockTracer()
         return cls._tracer
@@ -104,7 +104,7 @@ class TelemetryManager:
     def get_meter(cls):
         if cls._meter is None:
             if _OTEL_AVAILABLE:
-                cls._meter = metrics.get_meter("devpilot")
+                cls._meter = metrics.get_meter("loopix")
             else:
                 cls._meter = MockMeter()
         return cls._meter

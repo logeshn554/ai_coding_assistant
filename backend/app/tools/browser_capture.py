@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 from urllib.parse import urlparse
 
-logger = logging.getLogger("devpilot.tools.browser_capture")
+logger = logging.getLogger("loopix.tools.browser_capture")
 
 
 @dataclass
@@ -67,7 +67,7 @@ def get_artifacts_dir(workspace_root: str | None = None) -> str:
     if workspace_root and os.path.isdir(workspace_root):
         target = os.path.join(workspace_root, "artifacts")
     else:
-        target = os.path.join(os.path.expanduser("~"), ".devpilot", "artifacts")
+        target = os.path.join(os.path.expanduser("~"), ".loopix", "artifacts")
 
     os.makedirs(target, exist_ok=True)
     return target

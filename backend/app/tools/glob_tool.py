@@ -51,7 +51,7 @@ async def glob_search(session: Any, args: dict[str, Any]) -> str:
         return f"Error executing glob '{pattern}': {exc}"
 
     # Filter: files only, no escape, skip common noise dirs
-    _NOISE = {".git", "node_modules", "__pycache__", "venv", "dist", "build", ".devpilot"}
+    _NOISE = {".git", "node_modules", "__pycache__", "venv", "dist", "build", ".loopix"}
 
     results: list[str] = []
     for p in matches:

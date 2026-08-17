@@ -5,7 +5,7 @@ def test_production_fails_on_sqlite():
     with pytest.raises(RuntimeError) as excinfo:
         Settings(
             ENVIRONMENT="production",
-            DATABASE_URL="sqlite:///devpilot.db",
+            DATABASE_URL="sqlite:///loopix.db",
             JWT_SECRET="super-secret-production-jwt-key-xyz"
         )
     assert "PostgreSQL" in str(excinfo.value)

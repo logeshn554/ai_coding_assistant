@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 from .intent_router import IntentType
 
-logger = logging.getLogger("devpilot.agent.planning_engine")
+logger = logging.getLogger("loopix.agent.planning_engine")
 
 
 @dataclass

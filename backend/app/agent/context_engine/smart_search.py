@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from .security_filter import SecurityFilter
 from .symbol_index import SymbolIndex
 
-logger = logging.getLogger("devpilot.context_engine.smart_search")
+logger = logging.getLogger("loopix.context_engine.smart_search")
 
 STOPWORDS = {
     "the", "and", "for", "with", "from", "that", "this", "file", "code", "fix",

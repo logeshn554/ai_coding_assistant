@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 import subprocess
 
-logger = logging.getLogger("devpilot.merge.rollback_engine")
+logger = logging.getLogger("loopix.merge.rollback_engine")
 
 
 class RollbackEngine:

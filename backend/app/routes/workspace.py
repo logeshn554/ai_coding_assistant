@@ -27,7 +27,7 @@ from ..state import config_manager, get_permission_manager, workspace_state
 
 _SERVER_START_TIME = time.time()
 
-logger = logging.getLogger("devpilot.routes.workspace")
+logger = logging.getLogger("loopix.routes.workspace")
 router = APIRouter()
 
 # In Docker mode, Windows drives are mounted here
@@ -99,7 +99,7 @@ def validate_workspace_path(path_str: str) -> str:
     server_mode = os.getenv("MODE", settings.MODE)
 
     if env_mode == "production" and server_mode == "server":
-        allowed_base = Path(os.getenv("TENANT_WORKSPACES_ROOT", "/srv/devpilot/workspaces")).resolve()
+        allowed_base = Path(os.getenv("TENANT_WORKSPACES_ROOT", "/srv/loopix/workspaces")).resolve()
         try:
             if not candidate.is_relative_to(allowed_base):
                 raise HTTPException(
@@ -209,7 +209,7 @@ async def browse_workspace(path: str = ""):
     is_docker = os.environ.get("DOCKER_MODE", "false").lower() == "true"
 
     if is_prod_server:
-        tenant_base = Path(os.getenv("TENANT_WORKSPACES_ROOT", "/srv/devpilot/workspaces")).resolve()
+        tenant_base = Path(os.getenv("TENANT_WORKSPACES_ROOT", "/srv/loopix/workspaces")).resolve()
         if not path:
             browse_path = str(tenant_base)
             parent = None
@@ -297,7 +297,7 @@ _EXT_LANG_MAP = {
 }
 
 _SKIP_DIRS = {
-    ".git", "node_modules", "venv", "__pycache__", ".devpilot",
+    ".git", "node_modules", "venv", "__pycache__", ".loopix",
     "dist", "build", ".next", ".cache", ".pytest_cache",
 }
 
@@ -430,7 +430,7 @@ async def get_health():
 
     from ..state import redis_client
 
-    db_file = _Path.home() / ".devpilot" / "history.db"
+    db_file = _Path.home() / ".loopix" / "history.db"
     db_connected = await asyncio.to_thread(db_file.exists)
     uptime = round(time.time() - _SERVER_START_TIME, 1)
 
@@ -442,7 +442,7 @@ async def get_health():
         redis_connected = False
 
     # Get version from environment
-    version = os.environ.get("DEVPILOT_VERSION", "0.1.0")
+    version = os.environ.get("LOOPIX_VERSION", "0.1.0")
 
     return {
         "status": "healthy",

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from ..intelligence.intent_compiler import CompiledIntent
 from .impact_analyzer import impact_analyzer
 
-logger = logging.getLogger("devpilot.analysis.prediction_engine")
+logger = logging.getLogger("loopix.analysis.prediction_engine")
 
 
 @dataclass

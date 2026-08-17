@@ -1,4 +1,4 @@
-# Pre-commit hook configuration for DevPilot IDE
+# Pre-commit hook configuration for Loopix IDE
 # To install: pip install pre-commit && pre-commit install
 
 repos:

@@ -12,7 +12,7 @@ from typing import Any
 
 from .state import redis_client
 
-logger = logging.getLogger("devpilot.shared_memory")
+logger = logging.getLogger("loopix.shared_memory")
 
 # Process-local fallback when Redis hash ops are unavailable.
 _MEMORY: dict[str, dict[str, str]] = {}

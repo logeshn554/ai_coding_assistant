@@ -118,7 +118,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
   const [imageAnalysisModel, setImageAnalysisModel] = useState<string>('');
   const [imageAnalysisMode, setImageAnalysisMode] = useState<string>('auto');
   const [secondaryAgentModel, setSecondaryAgentModel] = useState<string>('');
-  const [devpilotRpm, setDevpilotRpm] = useState<number>(15);
+  const [loopixRpm, setLoopixRpm] = useState<number>(15);
   const [concurrencyMode, setConcurrencyMode] = useState<string>('parallel');
   const [temperature, setTemperature] = useState<number>(1.0);
   const [topP, setTopP] = useState<number>(1.0);
@@ -190,20 +190,20 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
 
   // Theme + editor state
   const [activeTheme, setActiveTheme] = useState<string>(() =>
-    localStorage.getItem('devpilot_theme') || 'dark'
+    localStorage.getItem('loopix_theme') || 'dark'
   );
   const [editorFontSize, setEditorFontSize] = useState<number>(() =>
-    parseInt(localStorage.getItem('devpilot_editor_font_size') || '13', 10)
+    parseInt(localStorage.getItem('loopix_editor_font_size') || '13', 10)
   );
   const [aiInlineEnabled, setAiInlineEnabled] = useState<boolean>(() =>
-    localStorage.getItem('devpilot_ai_inline_completions') !== 'false'
+    localStorage.getItem('loopix_ai_inline_completions') !== 'false'
   );
 
   const applyTheme = (theme: string) => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('devpilot_theme', theme);
+    localStorage.setItem('loopix_theme', theme);
     setActiveTheme(theme);
-    window.dispatchEvent(new Event('devpilot-theme-change'));
+    window.dispatchEvent(new Event('loopix-theme-change'));
   };
 
 
@@ -220,7 +220,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
         setAgentProfiles(data?.agent_profiles && typeof data.agent_profiles === 'object' ? data.agent_profiles : {});
         setImageAnalysisModel(data?.image_analysis_model || '');
         setImageAnalysisMode(data?.image_analysis_mode || 'auto');
-        if (data?.devpilot_rpm !== undefined) setDevpilotRpm(data.devpilot_rpm);
+        if (data?.loopix_rpm !== undefined) setLoopixRpm(data.loopix_rpm);
         if (data?.concurrency_mode !== undefined) setConcurrencyMode(data.concurrency_mode);
         if (data?.temperature !== undefined) setTemperature(data.temperature);
         if (data?.top_p !== undefined) setTopP(data.top_p);
@@ -299,7 +299,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           terminal_command_rules: termRulesOverride !== undefined ? termRulesOverride : terminalCommandRules,
           unsandboxed_command_rules: unsandboxedRulesOverride !== undefined ? unsandboxedRulesOverride : unsandboxedCommandRules,
           mcp_tool_rules: mcpRulesOverride !== undefined ? mcpRulesOverride : mcpToolRules,
-          devpilot_rpm: newRpm !== undefined ? newRpm : devpilotRpm,
+          loopix_rpm: newRpm !== undefined ? newRpm : loopixRpm,
           concurrency_mode: newConcurrency !== undefined ? newConcurrency : concurrencyMode,
           temperature: newTemperature !== undefined ? newTemperature : temperature,
           top_p: newTopP !== undefined ? newTopP : topP,
@@ -337,7 +337,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
           terminal_command_rules: terminalCommandRules,
           unsandboxed_command_rules: unsandboxedCommandRules,
           mcp_tool_rules: mcpToolRules,
-          devpilot_rpm: devpilotRpm,
+          loopix_rpm: loopixRpm,
           concurrency_mode: concurrencyMode,
           temperature: temperature,
           top_p: topP,
@@ -1606,7 +1606,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                       onChange={(e) => {
                         const updated = { ...agentProfiles, [agent]: e.target.value };
                         setAgentProfiles(updated);
-                        savePreferences(excludeList, autoBackupEnabled, agentModelName, agentModels, undefined, undefined, undefined, undefined, undefined, undefined, imageAnalysisModel, devpilotRpm, concurrencyMode, updated);
+                        savePreferences(excludeList, autoBackupEnabled, agentModelName, agentModels, undefined, undefined, undefined, undefined, undefined, undefined, imageAnalysisModel, loopixRpm, concurrencyMode, updated);
                       }}
                       className="w-full px-2.5 py-1 bg-[#171922] border border-white/5 rounded-md text-xs text-white focus:outline-none focus:border-[#4C8DFF]"
                     >
@@ -1632,10 +1632,10 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                 <input
                   type="number"
                   min={1}
-                  value={devpilotRpm}
+                  value={loopixRpm}
                   onChange={(e) => {
                     const val = Math.max(1, parseInt(e.target.value, 10) || 15);
-                    setDevpilotRpm(val);
+                    setLoopixRpm(val);
                     savePreferences(excludeList, autoBackupEnabled, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, val);
                   }}
                   className="w-full px-3 py-2 bg-[#171922] border border-white/5 rounded-lg text-sm text-white focus:outline-none focus:border-[#4C8DFF] focus:ring-1 focus:ring-[#4C8DFF] font-mono"
@@ -1856,7 +1856,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   Enable Automatic File Backups
                 </label>
                 <span className="text-[10px] text-gray-500">
-                  When enabled, DevPilot automatically creates a local timestamped backup of modified files inside the <code className="font-mono text-[#4C8DFF]">.devpilot/backups/</code> folder before writing new code blocks. This enables easy revert actions.
+                  When enabled, Loopix automatically creates a local timestamped backup of modified files inside the <code className="font-mono text-[#4C8DFF]">.loopix/backups/</code> folder before writing new code blocks. This enables easy revert actions.
                 </span>
               </div>
             </div>
@@ -1934,7 +1934,7 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                 onChange={(e) => {
                   const val = e.target.checked;
                   setAiInlineEnabled(val);
-                  localStorage.setItem('devpilot_ai_inline_completions', val ? 'true' : 'false');
+                  localStorage.setItem('loopix_ai_inline_completions', val ? 'true' : 'false');
                 }}
                 className="accent-[#4C8DFF] mt-1 cursor-pointer w-4 h-4 rounded"
               />
@@ -1963,8 +1963,8 @@ export default function SettingsModal({ isOpen, onClose, onProfileChanged }: Set
                   onChange={(e) => {
                     const val = parseInt(e.target.value, 10);
                     setEditorFontSize(val);
-                    localStorage.setItem('devpilot_editor_font_size', String(val));
-                    window.dispatchEvent(new CustomEvent('devpilot_editor_settings', { detail: { fontSize: val } }));
+                    localStorage.setItem('loopix_editor_font_size', String(val));
+                    window.dispatchEvent(new CustomEvent('loopix_editor_settings', { detail: { fontSize: val } }));
                   }}
                   className="accent-[#4C8DFF] w-48 cursor-pointer"
                 />

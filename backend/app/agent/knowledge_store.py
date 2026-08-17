@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-logger = logging.getLogger("devpilot.agent.knowledge_store")
+logger = logging.getLogger("loopix.agent.knowledge_store")
 
 _SKIP_DIRS = {"node_modules", "__pycache__", ".git", "venv", ".venv", "dist",
               ".next", ".mypy_cache", "build", "out", ".pytest_cache"}

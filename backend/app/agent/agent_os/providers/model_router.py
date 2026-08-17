@@ -34,7 +34,7 @@ class ModelRouter(IModelRouter):
             try:
                 import os
                 provider = os.getenv("LLM_PROVIDER", "openai")
-                model = (os.getenv(f"{provider.upper()}_MODEL") or os.getenv("DEVPILOT_MODEL") or "").strip()
+                model = (os.getenv(f"{provider.upper()}_MODEL") or os.getenv("LOOPIX_MODEL") or "").strip()
                 api_key = os.getenv(f"{provider.upper()}_API_KEY")
                 
                 # Check secret registry fallback

@@ -7,7 +7,7 @@ import ast
 import logging
 from dataclasses import dataclass, field
 
-logger = logging.getLogger("devpilot.brain.symbol_graph")
+logger = logging.getLogger("loopix.brain.symbol_graph")
 
 
 @dataclass

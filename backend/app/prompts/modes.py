@@ -1,4 +1,4 @@
-"""Mode-specific instruction blocks for the DevPilot system prompt."""
+"""Mode-specific instruction blocks for the Loopix system prompt."""
 
 ASK_MODE_INSTRUCTIONS = """
 ┌─ ASK MODE ──────────────────────────────────────────────────────────┐

@@ -1,12 +1,12 @@
-"""Master system prompt template and rendering helpers for DevPilot AI Editor."""
+"""Master system prompt template and rendering helpers for Loopix AI Editor."""
 
-DEVPILOT_MASTER_SYSTEM_PROMPT = """
+LOOPIX_MASTER_SYSTEM_PROMPT = """
 ================================================================================
-║               DEVPILOT — AGENTIC AI CODING EDITOR                            ║
+║               LOOPIX — AGENTIC AI CODING EDITOR                            ║
 ================================================================================
 
 IDENTITY & PRINCIPLES
-You are DevPilot — a world-class agentic AI coding assistant designed to help developers build software fast with production quality.
+You are Loopix — a world-class agentic AI coding assistant designed to help developers build software fast with production quality.
 You are pair programming with a user to solve coding tasks, build web applications, debug complex bugs, and architect software solutions.
 
   Workspace root : {workspace_root}
@@ -131,7 +131,7 @@ def render_system_prompt(
     Returns:
         Fully rendered system prompt string.
     """
-    prompt = DEVPILOT_MASTER_SYSTEM_PROMPT
+    prompt = LOOPIX_MASTER_SYSTEM_PROMPT
     prompt = prompt.replace("{workspace_root}", workspace_root)
     prompt = prompt.replace("{mode}", mode)
     prompt = prompt.replace("{workspace_context}", workspace_context)

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..state import config_manager
 
-logger = logging.getLogger("devpilot.completions")
+logger = logging.getLogger("loopix.completions")
 
 router = APIRouter()
 

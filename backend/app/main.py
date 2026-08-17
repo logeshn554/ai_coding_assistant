@@ -299,4 +299,4 @@ else:
     from fastapi.responses import HTMLResponse
     @app.get("/", response_class=HTMLResponse)
     def frontend_fallback():
-        return "<html><body style='background:#0b0c14;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;'><h2>DevPilot Frontend Build Missing. Please run 'npm run build' in frontend directory.</h2></body></html>"
+        return "<html><body style='background:#0b0c14;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;'><h2>Loopix Frontend Build Missing. Please run 'npm run build' in frontend directory.</h2></body></html>"

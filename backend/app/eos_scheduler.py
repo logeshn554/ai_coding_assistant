@@ -12,7 +12,7 @@ starts empty and only contains tasks enqueued explicitly by the application.
 import logging
 from typing import Any
 
-logger = logging.getLogger("devpilot.eos_scheduler")
+logger = logging.getLogger("loopix.eos_scheduler")
 
 
 class EOSScheduler:

@@ -14,7 +14,7 @@ from ..skills_loader import (
 )
 from ..state import workspace_state
 
-logger = logging.getLogger("devpilot.routes.skills")
+logger = logging.getLogger("loopix.routes.skills")
 router = APIRouter()
 
 

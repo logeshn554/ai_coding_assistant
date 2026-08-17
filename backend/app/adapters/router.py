@@ -4,7 +4,7 @@ from typing import Any
 from ..tools.scan_for_bugs import generate_bug_report_async
 from .llm import LLMAdapter
 
-logger = logging.getLogger("devpilot.router")
+logger = logging.getLogger("loopix.router")
 
 
 class MockLLMAdapter:

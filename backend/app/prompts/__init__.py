@@ -1,8 +1,8 @@
-"""Prompt templates and helpers for the DevPilot agent."""
+"""Prompt templates and helpers for the Loopix agent."""
 
 from .master import (
     AGENT_ORCHESTRATION_SECTION,
-    DEVPILOT_MASTER_SYSTEM_PROMPT,
+    LOOPIX_MASTER_SYSTEM_PROMPT,
     render_system_prompt,
 )
 from .modes import (
@@ -15,7 +15,7 @@ __all__ = [
     "AGENT_MODE_INSTRUCTIONS",
     "AGENT_ORCHESTRATION_SECTION",
     "ASK_MODE_INSTRUCTIONS",
-    "DEVPILOT_MASTER_SYSTEM_PROMPT",
+    "LOOPIX_MASTER_SYSTEM_PROMPT",
     "PLAN_MODE_INSTRUCTIONS",
     "render_system_prompt",
 ]

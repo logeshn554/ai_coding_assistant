@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any
 
-logger = logging.getLogger("devpilot.proactive_monitor")
+logger = logging.getLogger("loopix.proactive_monitor")
 
 class ProactiveWorkspaceMonitor:
     def __init__(self, workspace_root: str = ""):

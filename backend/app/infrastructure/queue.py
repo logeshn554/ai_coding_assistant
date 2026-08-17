@@ -9,10 +9,10 @@ from sqlalchemy import select
 from backend.app.infrastructure.database.models import AgentRun
 from backend.app.state import redis_client
 
-logger = logging.getLogger("devpilot.infrastructure.queue")
+logger = logging.getLogger("loopix.infrastructure.queue")
 
-QUEUE_NAME = "devpilot:queue:jobs"
-PROCESSING_QUEUE_NAME = "devpilot:queue:processing"
+QUEUE_NAME = "loopix:queue:jobs"
+PROCESSING_QUEUE_NAME = "loopix:queue:processing"
 
 class AgentQueue:
     @staticmethod

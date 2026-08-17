@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from backend.app.config import settings
 
-logger = logging.getLogger("devpilot.infrastructure.database.connection")
+logger = logging.getLogger("loopix.infrastructure.database.connection")
 
 db_url = settings.DATABASE_URL
 if db_url.startswith("postgresql://"):

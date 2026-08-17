@@ -15,7 +15,7 @@ from .intent_router import IntentType
 from .task_memory import TaskMemory
 from .tool_policy import ToolPolicy
 
-logger = logging.getLogger("devpilot.agent.workflow_engine")
+logger = logging.getLogger("loopix.agent.workflow_engine")
 
 
 @dataclass

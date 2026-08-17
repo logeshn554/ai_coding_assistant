@@ -1,24 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 import sys
-import winpty
 
 block_cipher = None
 project_root = os.path.abspath(SPECPATH)
 
-winpty_dir = os.path.dirname(winpty.__file__)
-
 added_files = [
     (os.path.join(project_root, 'frontend', 'dist'), os.path.join('frontend', 'dist')),
-    (os.path.join(project_root, 'assets', 'devpilot.ico'), 'assets'),
-    (os.path.join(project_root, 'assets', 'devpilot.png'), 'assets'),
-    (winpty_dir, 'winpty'),
+    (os.path.join(project_root, 'assets', 'loopix.ico'), 'assets'),
+    (os.path.join(project_root, 'assets', 'loopix.png'), 'assets'),
 ]
 
 hidden_imports = [
-    'winpty',
-    'winpty.ptyprocess',
-    'winpty.enums',
     'uvicorn',
     'uvicorn.loops.auto',
     'uvicorn.loops.asyncio',
@@ -45,36 +38,11 @@ hidden_imports = [
     'webview.platforms.edgechromium',
     'clr_loader',
     'pythonnet',
-    'agent_os',
-    'agent_os.agent_os',
-    'agent_os.infrastructure',
-    'agent_os.infrastructure.observability',
-    'agent_os.infrastructure.metrics',
-    'agent_os.infrastructure.distributed_tracing',
-    'agent_os.kernel',
-    'agent_os.kernel.health_monitor',
-    'agent_os.kernel.kernel',
-    'agent_os.providers',
-    'agent_os.providers.base',
-    'agent_os.providers.common_adapter',
-    'agent_os.providers.interfaces',
-    'agent_os.providers.model_router',
-    'agent_os.agent',
-    'agent_os.agent.workspace',
-    'agent_runtime',
-    'agent_runtime.llm',
-    'agent_runtime.llm.openai_provider',
-    'autonomous',
-    'parallel_agent_system',
 ]
 
 a = Analysis(
     [os.path.join(project_root, 'backend', 'desktop_run.py')],
-    pathex=[
-        project_root, 
-        os.path.join(project_root, 'backend'),
-        os.path.join(project_root, 'backend', 'app', 'agent')
-    ],
+    pathex=[project_root, os.path.join(project_root, 'backend')],
     binaries=[],
     datas=added_files,
     hiddenimports=hidden_imports,
@@ -93,29 +61,22 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
     [],
-    exclude_binaries=True,
-    name='Loopix',
+    name='Loopix-Setup',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,  # Windowed desktop application (no cmd prompt window)
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=os.path.join(project_root, 'assets', 'devpilot.ico'),
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='Loopix',
+    icon=os.path.join(project_root, 'assets', 'loopix.ico'),
 )

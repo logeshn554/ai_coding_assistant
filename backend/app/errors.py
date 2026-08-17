@@ -1,9 +1,9 @@
-"""Custom exception classes for DevPilot IDE Backend."""
+"""Custom exception classes for Loopix IDE Backend."""
 
 
 
-class DevPilotError(Exception):
-    """Base exception for all DevPilot errors."""
+class LoopixError(Exception):
+    """Base exception for all Loopix errors."""
     def __init__(self, code: str, message: str, status_code: int = 500, details: dict | None = None):
         super().__init__(message)
         self.code = code
@@ -12,7 +12,7 @@ class DevPilotError(Exception):
         self.details = details or {}
 
 
-class FileNotFoundError(DevPilotError):
+class FileNotFoundError(LoopixError):
     """Raised when a requested file or directory does not exist."""
     def __init__(self, path: str):
         super().__init__(
@@ -23,7 +23,7 @@ class FileNotFoundError(DevPilotError):
         )
 
 
-class InvalidPathError(DevPilotError):
+class InvalidPathError(LoopixError):
     """Raised when an illegal or path-traversal path is specified."""
     def __init__(self, path: str, reason: str = "Invalid path specification"):
         super().__init__(
@@ -34,7 +34,7 @@ class InvalidPathError(DevPilotError):
         )
 
 
-class AccessDeniedError(DevPilotError):
+class AccessDeniedError(LoopixError):
     """Raised when an operation violates workspace access control."""
     def __init__(self, resource: str = "workspace"):
         super().__init__(
@@ -45,7 +45,7 @@ class AccessDeniedError(DevPilotError):
         )
 
 
-class RateLimitError(DevPilotError):
+class RateLimitError(LoopixError):
     """Raised when request rate limits are exceeded."""
     def __init__(self, limit: str):
         super().__init__(
@@ -61,7 +61,7 @@ class RateLimitError(DevPilotError):
 # converted to a normal assistant text response. The agent loop must catch
 # these and either retry (rate limit / timeout) or stop with LLM_ERROR state.
 
-class LLMProviderError(DevPilotError):
+class LLMProviderError(LoopixError):
     """Base class for all LLM provider failures.
 
     Attributes:
@@ -186,7 +186,7 @@ class LLMConfigurationError(LLMProviderError):
 
 # ── Agent Execution Errors ───────────────────────────────────────────────────
 
-class AgentMaxIterationsError(DevPilotError):
+class AgentMaxIterationsError(LoopixError):
     """Raised when the agent loop hits the max iteration limit."""
     def __init__(self, max_iterations: int):
         super().__init__(
@@ -197,7 +197,7 @@ class AgentMaxIterationsError(DevPilotError):
         )
 
 
-class AgentVerificationError(DevPilotError):
+class AgentVerificationError(LoopixError):
     """Raised when task verification fails after the agent reports completion."""
     def __init__(self, reason: str = ""):
         super().__init__(
@@ -208,7 +208,7 @@ class AgentVerificationError(DevPilotError):
         )
 
 
-class NeedsUserApprovalError(DevPilotError):
+class NeedsUserApprovalError(LoopixError):
     """Raised when a tool requires explicit user approval before executing."""
     def __init__(self, tool_name: str, risk: str = "HIGH"):
         super().__init__(

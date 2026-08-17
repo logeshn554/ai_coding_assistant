@@ -3,7 +3,7 @@ import logging
 import os
 from typing import Any
 
-logger = logging.getLogger("devpilot.normalization_engine")
+logger = logging.getLogger("loopix.normalization_engine")
 
 class NormalizationEngine:
     def normalize_prompt(self, raw_prompt: str) -> dict[str, Any]:

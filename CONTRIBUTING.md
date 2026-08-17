@@ -1,6 +1,6 @@
-# Contributing to DevPilot AI Editor
+# Contributing to Loopix AI Editor
 
-Thank you for your interest in contributing to DevPilot! We welcome contributions from the community.
+Thank you for your interest in contributing to Loopix! We welcome contributions from the community.
 
 ## Development Setup
 
@@ -79,10 +79,10 @@ Before submitting a pull request, please ensure all backend and frontend tests p
 ## Code Style & Conventions
 
 - **Python**: Follow PEP 8 guidelines. Use type annotations where appropriate.
-- **TypeScript / React**: Use functional components, strict TypeScript typing, and Tailwind / CSS classes consistent with DevPilot design tokens.
+- **TypeScript / React**: Use functional components, strict TypeScript typing, and Tailwind / CSS classes consistent with Loopix design tokens.
 
 ---
 
 ## License
 
-By contributing to DevPilot, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
+By contributing to Loopix, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).

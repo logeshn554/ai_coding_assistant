@@ -1,12 +1,12 @@
-"""DevPilot Plugin & Extension SDK Service — Generates SDK manifests and manages 3rd-party extensions."""
+"""Loopix Plugin & Extension SDK Service — Generates SDK manifests and manages 3rd-party extensions."""
 import logging
 from typing import Any
 
-logger = logging.getLogger("devpilot.devpilot_sdk")
+logger = logging.getLogger("loopix.loopix_sdk")
 
-class DevPilotSDK:
+class LoopixSDK:
     def get_sdk_manifest(self) -> dict[str, Any]:
-        """Return the official DevPilot Extension & Plugin SDK specification manifest."""
+        """Return the official Loopix Extension & Plugin SDK specification manifest."""
         return {
             "sdk_version": "1.0.0-eos",
             "supported_extension_types": [
@@ -30,4 +30,4 @@ class DevPilotSDK:
             ]
         }
 
-devpilot_sdk = DevPilotSDK()
+loopix_sdk = LoopixSDK()

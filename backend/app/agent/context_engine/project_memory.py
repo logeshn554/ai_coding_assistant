@@ -45,9 +45,9 @@ class ProjectMemoryStore:
         self._load_memory()
 
     def _get_memory_path(self) -> str:
-        devpilot_dir = os.path.join(self.workspace_root, ".devpilot")
-        os.makedirs(devpilot_dir, exist_ok=True)
-        return os.path.join(devpilot_dir, "project_memory.json")
+        loopix_dir = os.path.join(self.workspace_root, ".loopix")
+        os.makedirs(loopix_dir, exist_ok=True)
+        return os.path.join(loopix_dir, "project_memory.json")
 
     def _load_memory(self) -> None:
         path = self._get_memory_path()

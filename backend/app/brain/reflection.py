@@ -4,12 +4,12 @@ import logging
 import os
 from typing import Any
 
-logger = logging.getLogger("devpilot.brain.reflection")
+logger = logging.getLogger("loopix.brain.reflection")
 
 class ReflectionEngine:
     def __init__(self, storage_path: str = ""):
         if not storage_path:
-            self.storage_path = os.path.expanduser("~/.devpilot/reflections.json")
+            self.storage_path = os.path.expanduser("~/.loopix/reflections.json")
         else:
             self.storage_path = storage_path
 

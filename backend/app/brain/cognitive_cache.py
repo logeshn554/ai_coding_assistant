@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-logger = logging.getLogger("devpilot.brain.cognitive_cache")
+logger = logging.getLogger("loopix.brain.cognitive_cache")
 
 
 @dataclass

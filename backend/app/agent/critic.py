@@ -21,7 +21,7 @@ from .intent_router import IntentType
 from .task_memory import TaskMemory
 from .validator import ValidationResult
 
-logger = logging.getLogger("devpilot.agent.critic")
+logger = logging.getLogger("loopix.agent.critic")
 
 
 @dataclass

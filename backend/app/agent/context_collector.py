@@ -20,7 +20,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-logger = logging.getLogger("devpilot.agent.context_collector")
+logger = logging.getLogger("loopix.agent.context_collector")
 
 # Known spec/doc filenames to always try to read
 _SPEC_FILENAMES = {

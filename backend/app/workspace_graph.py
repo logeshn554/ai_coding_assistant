@@ -21,7 +21,7 @@ from .state import config_manager
 logger = logging.getLogger("antigravity.graph")
 
 _SKIP_DIRS = {
-    ".git", "node_modules", "venv", ".venv", "__pycache__", ".devpilot",
+    ".git", "node_modules", "venv", ".venv", "__pycache__", ".loopix",
     "dist", "build", ".next", "target", "out", ".cache", "coverage"
 }
 
@@ -454,7 +454,7 @@ def build_workspace_graph(workspace_root: str) -> dict[str, Any]:
 async def get_or_generate_node_summary(workspace_root: str, node_id: str) -> dict[str, Any]:
     """
     Lazily generates a 1-2 sentence description for a node in the graph.
-    Caches summary in .devpilot/graph_cache.json keyed by file content hash.
+    Caches summary in .loopix/graph_cache.json keyed by file content hash.
     Invalidates on file change.
     """
     graph = build_workspace_graph(workspace_root)
@@ -475,7 +475,7 @@ async def get_or_generate_node_summary(workspace_root: str, node_id: str) -> dic
     content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     # Load cache file
-    cache_dir = Path(workspace_root) / ".devpilot"
+    cache_dir = Path(workspace_root) / ".loopix"
     cache_file = cache_dir / "graph_cache.json"
     cache_dir.mkdir(parents=True, exist_ok=True)
 

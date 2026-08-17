@@ -8,14 +8,14 @@ interface TermsAndDisclaimerModalProps {
 
 export default function TermsAndDisclaimerModal({ isOpen: externalIsOpen, onClose }: TermsAndDisclaimerModalProps = {}) {
   const [internalIsOpen, setInternalIsOpen] = useState<boolean>(() => {
-    return localStorage.getItem('devpilot_terms_accepted') !== 'true';
+    return localStorage.getItem('loopix_terms_accepted') !== 'true';
   });
   const [hasAgreed, setHasAgreed] = useState<boolean>(false);
 
   useEffect(() => {
     const handleOpenTerms = () => setInternalIsOpen(true);
-    window.addEventListener('devpilot-open-terms', handleOpenTerms);
-    return () => window.removeEventListener('devpilot-open-terms', handleOpenTerms);
+    window.addEventListener('loopix-open-terms', handleOpenTerms);
+    return () => window.removeEventListener('loopix-open-terms', handleOpenTerms);
   }, []);
 
   const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
@@ -23,12 +23,12 @@ export default function TermsAndDisclaimerModal({ isOpen: externalIsOpen, onClos
   if (!isOpen) return null;
 
   const handleAccept = () => {
-    localStorage.setItem('devpilot_terms_accepted', 'true');
+    localStorage.setItem('loopix_terms_accepted', 'true');
     setInternalIsOpen(false);
     if (onClose) onClose();
   };
 
-  const isMandatoryFirstLaunch = localStorage.getItem('devpilot_terms_accepted') !== 'true';
+  const isMandatoryFirstLaunch = localStorage.getItem('loopix_terms_accepted') !== 'true';
 
   return (
     <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 font-sans select-none animate-[fadeIn_200ms_ease-out]">

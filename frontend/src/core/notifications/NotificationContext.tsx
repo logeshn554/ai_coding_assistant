@@ -1,5 +1,5 @@
 /**
- * NotificationContext — unified notification center for DevPilot.
+ * NotificationContext — unified notification center for Loopix.
  *
  * Provides:
  * - notify(message, level) — push a notification

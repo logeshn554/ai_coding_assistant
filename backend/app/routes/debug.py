@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from ..processes import global_process_manager
 from ..state import session_id_var, workspace_state
 
-logger = logging.getLogger("devpilot.routes.debug")
+logger = logging.getLogger("loopix.routes.debug")
 router = APIRouter()
 
 class BreakpointItem(BaseModel):
@@ -109,9 +109,9 @@ class DAPClient:
             self._reader_thread.start()
             # Perform the mandatory DAP initialize handshake
             resp = self.send_request("initialize", {
-                "adapterID": "devpilot",
-                "clientID": "devpilot",
-                "clientName": "DevPilot IDE",
+                "adapterID": "loopix",
+                "clientID": "loopix",
+                "clientName": "Loopix IDE",
                 "linesStartAt1": True,
                 "columnsStartAt1": True,
                 "pathFormat": "path",
@@ -271,14 +271,14 @@ async def start_debug_session():
 
             if connected:
                 debug_session.dap_client.send_request("initialize", {
-                    "clientID": "devpilot",
-                    "clientName": "DevPilot IDE",
+                    "clientID": "loopix",
+                    "clientName": "Loopix IDE",
                     "adapterID": "python",
                     "linesStartAt1": True,
                     "columnsStartAt1": True,
                     "pathFormat": "path"
                 })
-                debug_session.dap_client.send_request("attach", {"name": "DevPilot Debug Attach"})
+                debug_session.dap_client.send_request("attach", {"name": "Loopix Debug Attach"})
                 debug_session.dap_client.sync_breakpoints(root, debug_session.active_breakpoints)
                 debug_session.dap_client.send_request("configurationDone", {})
 
@@ -506,7 +506,7 @@ async def api_scan_bugs():
         try:
             report = await generate_bug_report_async()
             user_home = Path.home()
-            app_data_dir = user_home / ".devpilot"
+            app_data_dir = user_home / ".loopix"
             db_dir = app_data_dir / "db"
             db_dir.mkdir(parents=True, exist_ok=True)
             bug_report_path = db_dir / "bug_report.txt"

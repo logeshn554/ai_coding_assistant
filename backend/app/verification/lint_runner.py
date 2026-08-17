@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 import subprocess
 
-logger = logging.getLogger("devpilot.verification.lint_runner")
+logger = logging.getLogger("loopix.verification.lint_runner")
 
 
 class LintRunner:

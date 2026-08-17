@@ -13,8 +13,8 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Create non-root group and user (Section 2 & 3 requirement)
-RUN groupadd -g 10001 devpilot && \
-    useradd -u 10001 -g devpilot -m -s /bin/bash devpilot
+RUN groupadd -g 10001 loopix && \
+    useradd -u 10001 -g loopix -m -s /bin/bash loopix
 
 # Install system dependencies (including bash/git/curl for terminal operations)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -40,11 +40,11 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 # Copy backend application code
 COPY backend/ ./backend/
 
-# Assign ownership of directory to devpilot user
-RUN chown -R devpilot:devpilot /app
+# Assign ownership of directory to loopix user
+RUN chown -R loopix:loopix /app
 
 # Switch to non-root user
-USER devpilot
+USER loopix
 
 # Expose backend port
 EXPOSE 8000
@@ -62,5 +62,5 @@ ENV PORT=8000 \
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8000/health/live || exit 1
 
-# Start DevPilot backend
+# Start Loopix backend
 CMD ["python", "backend/run.py"]

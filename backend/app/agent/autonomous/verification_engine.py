@@ -14,7 +14,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-logger = logging.getLogger("devpilot.autonomous.verification_engine")
+logger = logging.getLogger("loopix.autonomous.verification_engine")
 
 
 @dataclass
@@ -128,7 +128,7 @@ class VerificationEngine:
         return VerificationProfile(language="unknown", test_command=None)
 
     def load_phase_state(self) -> dict[str, Any]:
-        state_path = os.path.join(self.workspace_root, ".devpilot_phase_state.json")
+        state_path = os.path.join(self.workspace_root, ".loopix_phase_state.json")
         if os.path.exists(state_path):
             try:
                 with open(state_path, "r", encoding="utf-8") as f:
@@ -147,7 +147,7 @@ class VerificationEngine:
         }
 
     def save_phase_state(self, state: dict[str, Any]) -> None:
-        state_path = os.path.join(self.workspace_root, ".devpilot_phase_state.json")
+        state_path = os.path.join(self.workspace_root, ".loopix_phase_state.json")
         try:
             with open(state_path, "w", encoding="utf-8") as f:
                 json.dump(state, f, indent=2)

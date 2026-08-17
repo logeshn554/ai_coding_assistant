@@ -35,7 +35,7 @@ from .llm_adapter import ModelResponse, ModelResponseNormalizer
 from .tool_executor import ToolExecutor, ToolResult
 from .transactional_workspace import TransactionalWorkspace
 
-logger = logging.getLogger("devpilot.agent_runtime")
+logger = logging.getLogger("loopix.agent_runtime")
 
 
 class AgentState(str, Enum):
@@ -605,7 +605,7 @@ class AgentRuntime:
 
                 import os as _os
                 _llm_turn_timeout = float(
-                    _os.environ.get("DEVPILOT_LLM_TURN_TIMEOUT") or "600.0"
+                    _os.environ.get("LOOPIX_LLM_TURN_TIMEOUT") or "600.0"
                 )
                 raw_res = await asyncio.wait_for(
                     llm_provider_func(list(conversation_messages), list(tool_schemas)),
@@ -873,7 +873,7 @@ class AgentRuntime:
 
                     try:
                         import os as _os
-                        _repair_timeout = float(_os.environ.get("DEVPILOT_LLM_TURN_TIMEOUT") or "600.0")
+                        _repair_timeout = float(_os.environ.get("LOOPIX_LLM_TURN_TIMEOUT") or "600.0")
                         assert llm_provider_func is not None, "LLM provider function is required for self-repair."
                         raw_repair_res = await asyncio.wait_for(
                             llm_provider_func(repair_messages, list(tool_schemas)),

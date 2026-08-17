@@ -17,7 +17,7 @@ def _discover_sync(workspace_root: str) -> list[str]:
     for root, dirs, files in os.walk(workspace_root):
         # Normalize slashes for comparison
         norm_root = root.replace("\\", "/")
-        if any(f"/{d}" in norm_root or norm_root.endswith(d) for d in (".git", "node_modules", "venv", "__pycache__", ".devpilot")):
+        if any(f"/{d}" in norm_root or norm_root.endswith(d) for d in (".git", "node_modules", "venv", "__pycache__", ".loopix")):
             continue
         for f in files:
             if "test" in f.lower() and os.path.splitext(f)[1].lower() in {".py", ".ts", ".tsx", ".js", ".jsx"}:

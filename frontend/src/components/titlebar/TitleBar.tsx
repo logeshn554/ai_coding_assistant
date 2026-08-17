@@ -62,10 +62,10 @@ export const TitleBar: React.FC = () => {
   };
 
   const handleStartStopDebug = async () => {
-    const storedCmd = localStorage.getItem('devpilot_detected_run_command');
+    const storedCmd = localStorage.getItem('loopix_detected_run_command');
     if (storedCmd) {
       setBottomTab('terminal');
-      window.dispatchEvent(new CustomEvent('devpilot-run-terminal-command', { detail: { command: storedCmd } }));
+      window.dispatchEvent(new CustomEvent('loopix-run-terminal-command', { detail: { command: storedCmd } }));
       return;
     }
 

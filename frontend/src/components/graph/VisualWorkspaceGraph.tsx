@@ -96,7 +96,7 @@ export const VisualWorkspaceGraph: React.FC = () => {
   const [nodeStats, setNodeStats] = useState<{ size: string; lines: number; loading: boolean }>({ size: '—', lines: 0, loading: false });
   const [favorites, setFavorites] = useState<Set<string>>(() => {
     try {
-      const saved = localStorage.getItem('devpilot_graph_favorites');
+      const saved = localStorage.getItem('loopix_graph_favorites');
       return saved ? new Set(JSON.parse(saved)) : new Set<string>();
     } catch {
       return new Set<string>();
@@ -195,7 +195,7 @@ export const VisualWorkspaceGraph: React.FC = () => {
         next.add(label);
       }
       try {
-        localStorage.setItem('devpilot_graph_favorites', JSON.stringify(Array.from(next)));
+        localStorage.setItem('loopix_graph_favorites', JSON.stringify(Array.from(next)));
       } catch {}
       return next;
     });

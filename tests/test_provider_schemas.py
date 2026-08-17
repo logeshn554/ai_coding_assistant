@@ -477,7 +477,7 @@ class TestWorkspaceSafety:
         run = MagicMock()
         run.id = "test-run-dburl"
         run.workspace = None
-        run.workspace_root = "sqlite:///devpilot.db"
+        run.workspace_root = "sqlite:///loopix.db"
 
         with pytest.raises(RuntimeError, match="looks like a DB URL"):
             await worker._resolve_workspace_root(run)

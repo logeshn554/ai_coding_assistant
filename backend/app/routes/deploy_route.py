@@ -1,7 +1,7 @@
 """Deploy command suggestion route.
 
 GET /api/deploy/command -- returns the recommended deploy CLI command for
-the current workspace project type. This is purely advisory: DevPilot
+the current workspace project type. This is purely advisory: Loopix
 detects the project type from config files and tells the user which command
 to run, rather than attempting to deploy itself.
 """
@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException
 from ..deployment import generate_deploy_command
 from ..state import workspace_state
 
-logger = logging.getLogger("devpilot.routes.deploy")
+logger = logging.getLogger("loopix.routes.deploy")
 router = APIRouter()
 
 

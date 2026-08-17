@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 import subprocess
 
-logger = logging.getLogger("devpilot.verification.security_scanner")
+logger = logging.getLogger("loopix.verification.security_scanner")
 
 
 class SecurityScanner:

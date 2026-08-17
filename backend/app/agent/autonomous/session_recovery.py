@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-logger = logging.getLogger("devpilot.autonomous.session_recovery")
+logger = logging.getLogger("loopix.autonomous.session_recovery")
 
 
 @dataclass

@@ -15,7 +15,7 @@ class SecretStore:
 
     def __init__(self) -> None:
         self._secrets: dict[str, str] = {}
-        self._xor_key = os.getenv("DEVPILOT_SECRET_KEY", "devpilot-default-secret-key-xor")
+        self._xor_key = os.getenv("LOOPIX_SECRET_KEY", "loopix-default-secret-key-xor")
 
     def _obfuscate(self, data: str) -> str:
         """XOR based obfuscation/encryption using the XOR key."""

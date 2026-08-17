@@ -3,7 +3,7 @@ import os
 
 from .async_files import read_workspace_file
 
-logger = logging.getLogger("devpilot.services")
+logger = logging.getLogger("loopix.services")
 
 class WorkspaceManager:
     """

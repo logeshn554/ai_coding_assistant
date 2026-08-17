@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
-logger = logging.getLogger("devpilot.agent.intent_router")
+logger = logging.getLogger("loopix.agent.intent_router")
 
 
 class IntentType(str, Enum):

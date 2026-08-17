@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # Soft advisory — user is prompted to approve continuation above this threshold
     COST_LIMIT_USD: float = 5.0
     # Hard ceiling — session is forcibly terminated above this amount, no user override
-    DEVPILOT_HARD_COST_LIMIT: float = 10.0
+    LOOPIX_HARD_COST_LIMIT: float = 10.0
     LOOPIX_HARD_COST_LIMIT: float = 10.0
  
     # Web Search Fallback Settings
@@ -93,7 +93,7 @@ class Settings(BaseSettings):
             if self.MODE == "server" or self.ENVIRONMENT == "production":
                 raise RuntimeError("DATABASE_URL must be explicitly configured in server or production mode. SQLite is not allowed.")
             else:
-                db_name = "devpilot.db" if os.path.exists("devpilot.db") else "loopix.db"
+                db_name = "loopix.db" if os.path.exists("loopix.db") else "loopix.db"
                 self.DATABASE_URL = f"sqlite+aiosqlite:///{db_name}"
 
         if (self.MODE == "server" or self.ENVIRONMENT == "production") and "sqlite" in self.DATABASE_URL.lower():
@@ -101,7 +101,7 @@ class Settings(BaseSettings):
                 "SQLite is not safe for server mode or production environment. Set DATABASE_URL to a PostgreSQL connection string."
             )
         if self.ENVIRONMENT == "production":
-            jwt_env = os.getenv("DEVPILOT_JWT_SECRET") or os.getenv("JWT_SECRET") or self.JWT_SECRET
+            jwt_env = os.getenv("LOOPIX_JWT_SECRET") or os.getenv("JWT_SECRET") or self.JWT_SECRET
             if not jwt_env:
                 raise RuntimeError("JWT_SECRET must be explicitly set via environment variable in production mode.")
             self.JWT_SECRET = jwt_env
@@ -114,11 +114,11 @@ class Settings(BaseSettings):
         else:
             try:
                 # Load or auto-generate JWT_SECRET on first run and store in encrypted keyring
-                secret = keyring.get_password("devpilot", "jwt_secret")
+                secret = keyring.get_password("loopix", "jwt_secret")
                 if not secret:
                     import secrets
                     secret = secrets.token_hex(32)
-                    keyring.set_password("devpilot", "jwt_secret", secret)
+                    keyring.set_password("loopix", "jwt_secret", secret)
                 self.JWT_SECRET = secret
             except Exception:
                 # Fallback to in-memory generation if keyring is inaccessible
@@ -131,22 +131,22 @@ from cryptography.fernet import Fernet
 from keyring.backend import KeyringBackend
 
 
-class DevPilotFileKeyring(KeyringBackend):
+class LoopixFileKeyring(KeyringBackend):
     """
     An encrypted file-based keyring backend that persists keys/passwords securely using Fernet encryption
-    under the user's config directory (~/.devpilot/.keyring.json). Useful in headless/Docker environments.
+    under the user's config directory (~/.loopix/.keyring.json). Useful in headless/Docker environments.
     """
     priority = 1
 
     def __init__(self, filepath=None):
         if filepath is None:
-            self.filepath = Path.home() / ".devpilot" / ".keyring.json"
+            self.filepath = Path.home() / ".loopix" / ".keyring.json"
         else:
             self.filepath = Path(filepath)
         self.key_filepath = self.filepath.parent / ".keyring.key"
 
     def _get_fernet(self) -> Fernet:
-        env_key = os.environ.get("DEVPILOT_MASTER_KEY") or os.environ.get("DEVPILOT_KEYRING_KEY")
+        env_key = os.environ.get("LOOPIX_MASTER_KEY") or os.environ.get("LOOPIX_KEYRING_KEY")
         if env_key:
             raw_key = env_key.strip().encode("utf-8") if isinstance(env_key, str) else env_key
             return Fernet(raw_key)
@@ -227,13 +227,13 @@ class DevPilotFileKeyring(KeyringBackend):
 # Force plaintext keyring in headless docker environment to prevent keyring errors or prompting for master password
 if os.environ.get("DOCKER_MODE", "false").lower() == "true":
     try:
-        keyring.set_keyring(DevPilotFileKeyring())
+        keyring.set_keyring(LoopixFileKeyring())
     except Exception as e:
-        print(f"Warning: Failed to set DevPilotFileKeyring: {e}")
+        print(f"Warning: Failed to set LoopixFileKeyring: {e}")
 
-logger = logging.getLogger("devpilot.config")
+logger = logging.getLogger("loopix.config")
 
-CONFIG_DIR = Path.home() / ".devpilot"
+CONFIG_DIR = Path.home() / ".loopix"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 class ConfigManager:
@@ -261,7 +261,7 @@ class ConfigManager:
             }
             self._save_raw_config(default_config)
             try:
-                keyring.set_password("devpilot", "default-ollama", "")
+                keyring.set_password("loopix", "default-ollama", "")
             except Exception as e:
                 logger.error(f"Failed to set initial keyring password: {e}")
 
@@ -296,7 +296,7 @@ class ConfigManager:
         for p in config.get("profiles", []):
             decrypted_key = p.get("api_key", "")
             try:
-                k_key = keyring.get_password("devpilot", p["id"])
+                k_key = keyring.get_password("loopix", p["id"])
                 if k_key:
                     decrypted_key = k_key
             except Exception:
@@ -335,7 +335,7 @@ class ConfigManager:
             if p["id"] == profile_id_or_name or p.get("name") == profile_id_or_name:
                 api_key = p.get("api_key", "")
                 try:
-                    k_key = keyring.get_password("devpilot", p["id"])
+                    k_key = keyring.get_password("loopix", p["id"])
                     if k_key:
                         api_key = k_key
                 except Exception:
@@ -416,7 +416,7 @@ class ConfigManager:
         if not is_masked:
             existing_profile["api_key"] = new_key
             try:
-                keyring.set_password("devpilot", p_id, new_key)
+                keyring.set_password("loopix", p_id, new_key)
             except Exception as e:
                 logger.warning(f"Failed to set keyring password for {p_id}: {e}")
 
@@ -439,7 +439,7 @@ class ConfigManager:
             config["active_profile_id"] = new_profiles[0]["id"] if new_profiles else ""
             
         try:
-            keyring.delete_password("devpilot", profile_id)
+            keyring.delete_password("loopix", profile_id)
         except Exception:
             pass
 
@@ -477,7 +477,7 @@ class ConfigManager:
 
     def get_exclude_list(self) -> list:
         config = self._read_raw_config()
-        return config.get("exclude_list", [".git", "node_modules", "venv", "__pycache__", ".devpilot", "dist", "build"])
+        return config.get("exclude_list", [".git", "node_modules", "venv", "__pycache__", ".loopix", "dist", "build"])
 
     def set_exclude_list(self, exclude_list: list):
         config = self._read_raw_config()
@@ -577,13 +577,13 @@ class ConfigManager:
         config["secondary_agent_model"] = str(name or "")
         self._save_raw_config(config)
 
-    def get_devpilot_rpm(self) -> int:
+    def get_loopix_rpm(self) -> int:
         config = self._read_raw_config()
-        return config.get("devpilot_rpm", 15)
+        return config.get("loopix_rpm", 15)
 
-    def set_devpilot_rpm(self, val: int):
+    def set_loopix_rpm(self, val: int):
         config = self._read_raw_config()
-        config["devpilot_rpm"] = max(1, int(val))
+        config["loopix_rpm"] = max(1, int(val))
         self._save_raw_config(config)
 
     def get_concurrency_mode(self) -> str:
@@ -645,7 +645,7 @@ class ConfigManager:
 
     def get_tavily_api_key(self) -> str:
         try:
-            key = keyring.get_password("devpilot", "tavily")
+            key = keyring.get_password("loopix", "tavily")
             if key:
                 return key
         except Exception:
@@ -654,7 +654,7 @@ class ConfigManager:
         key_from_config = config.get("tavily_api_key", "")
         if key_from_config:
             try:
-                keyring.set_password("devpilot", "tavily", key_from_config)
+                keyring.set_password("loopix", "tavily", key_from_config)
                 config.pop("tavily_api_key", None)
                 self._save_raw_config(config)
             except Exception:
@@ -664,7 +664,7 @@ class ConfigManager:
 
     def set_tavily_api_key(self, key: str):
         try:
-            keyring.set_password("devpilot", "tavily", str(key or ""))
+            keyring.set_password("loopix", "tavily", str(key or ""))
         except Exception as e:
             logger.error(f"Failed to store Tavily API key in keyring: {e}")
         config = self._read_raw_config()

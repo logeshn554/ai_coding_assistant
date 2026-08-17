@@ -1,10 +1,10 @@
-# DevPilot — AI-Native Developer IDE & Agentic Operating System
+# Loopix — AI-Native Developer IDE & Agentic Operating System
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![React + TypeScript](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-61dafb.svg)](frontend/)
 
-> **DevPilot is an AI-native developer IDE and agentic operating system that understands your entire software codebase, plans complex tasks, edits files transactionally, runs terminal commands, executes tests, and manages VS Code extensions while keeping the developer in full control.**
+> **Loopix is an AI-native developer IDE and agentic operating system that understands your entire software codebase, plans complex tasks, edits files transactionally, runs terminal commands, executes tests, and manages VS Code extensions while keeping the developer in full control.**
 
 ---
 
@@ -58,14 +58,14 @@ npm install
 npm run dev
 ```
 
-Visit `http://localhost:5173` to launch the DevPilot IDE.
+Visit `http://localhost:5173` or [https://loopix-five.vercel.app/](https://loopix-five.vercel.app/) to launch the Loopix IDE.
 
 ---
 
 ## ⚡ Dynamic Extension System
 
-DevPilot features a VS Code-style extension host system:
-1. Open the **Extensions Sidebar** in DevPilot.
+Loopix features a VS Code-style extension host system:
+1. Open the **Extensions Sidebar** in Loopix.
 2. Search and install extensions from the Open VSX registry or upload a `.vsix` package.
 3. Installed extensions automatically register their contributed commands in the **Command Palette (`Ctrl+Shift+P`)** and expose AI tools directly to the assistant.
 
@@ -73,7 +73,7 @@ DevPilot features a VS Code-style extension host system:
 
 ## 🔒 Security Architecture
 
-DevPilot operates under the core principle: **The LLM model is never trusted to make security decisions. The runtime engine enforces all security boundaries.**
+Loopix operates under the core principle: **The LLM model is never trusted to make security decisions. The runtime engine enforces all security boundaries.**
 
 - **Path Traversal Protection**: Canonical realpath verification prevents escaping workspace bounds.
 - **Secret Redaction**: Automatic scrubbing of API keys, JWTs, and tokens in output logs.

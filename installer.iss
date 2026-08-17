@@ -5,7 +5,7 @@
 #define MyAppName "Loopix AI Editor"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "Loopix Team"
-#define MyAppURL "https://loopix.ai"
+#define MyAppURL "https://loopix-five.vercel.app/"
 #define MyAppExeName "Loopix.exe"
 
 [Setup]
@@ -24,7 +24,7 @@ AllowNoIcons=yes
 PrivilegesRequired=lowest
 OutputDir=dist_installer
 OutputBaseFilename=Loopix-Windows-Setup-{#MyAppVersion}
-SetupIconFile=assets\devpilot.ico
+SetupIconFile=assets\loopix.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern

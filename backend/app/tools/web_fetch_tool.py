@@ -14,7 +14,7 @@ import os
 import re
 from typing import Any
 
-logger = logging.getLogger("devpilot.tools.web_fetch")
+logger = logging.getLogger("loopix.tools.web_fetch")
 
 MAX_CHARS = 40000   # Cap response to avoid flooding context
 REQUEST_TIMEOUT = 20  # seconds for raw httpx fallback
@@ -95,7 +95,7 @@ async def _fetch_via_httpx(url: str) -> str:
         )
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; DevPilot/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; Loopix/1.0)",
         "Accept": "text/html,text/plain;q=0.9,*/*;q=0.8",
     }
     async with httpx.AsyncClient(follow_redirects=True, timeout=REQUEST_TIMEOUT, headers=headers) as client:

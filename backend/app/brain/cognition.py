@@ -5,7 +5,7 @@ from typing import Any
 
 from ..digital_twin import digital_twin_analyzer
 
-logger = logging.getLogger("devpilot.brain.cognition")
+logger = logging.getLogger("loopix.brain.cognition")
 
 class CognitiveBrain:
     def get_cognitive_summary(self, workspace_root: str = "") -> dict[str, Any]:

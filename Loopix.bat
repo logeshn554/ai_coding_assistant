@@ -17,3 +17,4 @@ if not exist "frontend\dist\index.html" (
 cd electron
 call npx electron .
 cd ..
+

@@ -1,4 +1,4 @@
-# Gitleaks Configuration for DevPilot AI Coding Assistant
+# Gitleaks Configuration for Loopix AI Coding Assistant
 # Configures rule extensions and allowlists for test fixtures / mocked data.
 
 [extend]

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 
-logger = logging.getLogger("devpilot.brain.test_graph")
+logger = logging.getLogger("loopix.brain.test_graph")
 
 
 class TestGraph:

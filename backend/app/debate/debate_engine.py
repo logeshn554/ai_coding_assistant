@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-logger = logging.getLogger("devpilot.debate.debate_engine")
+logger = logging.getLogger("loopix.debate.debate_engine")
 
 CRITIC_SYSTEM = """You are a senior code reviewer.
 Analyse the given unified diff and respond ONLY with JSON:

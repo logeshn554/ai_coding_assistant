@@ -20,7 +20,7 @@ class UpdateProjectMetadataRequest(BaseModel):
 @router.get("/api/project/metadata")
 async def get_project_metadata():
     """
-    Returns the last AI-analysed project metadata (from .devpilot/project.json).
+    Returns the last AI-analysed project metadata (from .loopix/project.json).
     If no cached result exists the client should call POST /api/project/analyze.
     """
     root = (workspace_state.root or "").strip()
@@ -43,7 +43,7 @@ async def analyze_project():
 @router.post("/api/project/metadata")
 async def update_project_metadata(req: UpdateProjectMetadataRequest):
     """
-    Manually overrides specific execution commands in .devpilot/project.json.
+    Manually overrides specific execution commands in .loopix/project.json.
     Useful for users who want to pin a custom run command.
     """
     import json
@@ -66,9 +66,9 @@ async def update_project_metadata(req: UpdateProjectMetadataRequest):
         meta["testCommand"] = req.testCommand
 
     try:
-        devpilot_dir = Path(root) / ".devpilot"
-        devpilot_dir.mkdir(exist_ok=True)
-        (devpilot_dir / "project.json").write_text(
+        loopix_dir = Path(root) / ".loopix"
+        loopix_dir.mkdir(exist_ok=True)
+        (loopix_dir / "project.json").write_text(
             json.dumps(meta, indent=2), encoding="utf-8"
         )
     except Exception as e:

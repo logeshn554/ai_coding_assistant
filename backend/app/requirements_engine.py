@@ -2,7 +2,7 @@
 import logging
 from typing import Any
 
-logger = logging.getLogger("devpilot.requirements_engine")
+logger = logging.getLogger("loopix.requirements_engine")
 
 class AIRequirementsEngine:
     def parse_requirements(self, raw_input: str) -> dict[str, Any]:

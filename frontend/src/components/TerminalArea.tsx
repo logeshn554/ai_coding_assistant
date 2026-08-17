@@ -170,7 +170,7 @@ function TerminalPane({
       }
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const sessionId = localStorage.getItem('devpilot_session_id') || '';
+      const sessionId = localStorage.getItem('loopix_session_id') || '';
       const token = localStorage.getItem('session_token') || '';
       const params = new URLSearchParams();
       if (shell) params.set('shell', shell);
@@ -281,7 +281,7 @@ function TerminalPane({
         if (lastDetectedUrlRef.current !== detectedUrl) {
           lastDetectedUrlRef.current = detectedUrl;
           window.dispatchEvent(
-            new CustomEvent('devpilot-localhost-detected', {
+            new CustomEvent('loopix-localhost-detected', {
               detail: { url: detectedUrl, port }
             })
           );
@@ -316,7 +316,7 @@ function TerminalPane({
         checkOutputForLocalhost(String(customEvent.detail || ''));
       }
     };
-    window.addEventListener('devpilot_terminal_stream', handleAgentStream);
+    window.addEventListener('loopix_terminal_stream', handleAgentStream);
 
     return () => {
       guard.cancelled = true;
@@ -324,7 +324,7 @@ function TerminalPane({
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (disposable) disposable.dispose();
       resizeDisposable.dispose();
-      window.removeEventListener('devpilot_terminal_stream', handleAgentStream);
+      window.removeEventListener('loopix_terminal_stream', handleAgentStream);
       term.textarea?.removeEventListener('focus', handleFocus);
       term.textarea?.removeEventListener('blur', handleBlur);
       term.dispose();
@@ -414,7 +414,7 @@ export default function TerminalArea({
 }: TerminalAreaProps) {
   const [history, setHistory] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('devpilot_terminal_history');
+      const saved = localStorage.getItem('loopix_terminal_history');
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -428,7 +428,7 @@ export default function TerminalArea({
       const filtered = prev.filter((item) => item !== trimmed);
       const updated = [trimmed, ...filtered].slice(0, 50);
       try {
-        localStorage.setItem('devpilot_terminal_history', JSON.stringify(updated));
+        localStorage.setItem('loopix_terminal_history', JSON.stringify(updated));
       } catch {}
       return updated;
     });
@@ -560,8 +560,8 @@ export default function TerminalArea({
         }
       }
     };
-    window.addEventListener('devpilot-run-terminal-command', handleRunCommandEvent);
-    return () => window.removeEventListener('devpilot-run-terminal-command', handleRunCommandEvent);
+    window.addEventListener('loopix-run-terminal-command', handleRunCommandEvent);
+    return () => window.removeEventListener('loopix-run-terminal-command', handleRunCommandEvent);
   }, [activePaneId, nextId, selectedShell, splitTerminals.length]);
 
   useEffect(() => {

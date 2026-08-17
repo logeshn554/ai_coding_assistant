@@ -34,7 +34,7 @@ async def get_git_conflicts():
     try:
         root_path = workspace_state.root
         conflicts = []
-        exclude_dirs = {".git", "node_modules", "venv", ".venv", ".devpilot", "__pycache__", "dist", "build"}
+        exclude_dirs = {".git", "node_modules", "venv", ".venv", ".loopix", "__pycache__", "dist", "build"}
 
         for root, dirs, file_list in os.walk(root_path):
             dirs[:] = [d for d in dirs if d not in exclude_dirs]

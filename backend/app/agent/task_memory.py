@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-logger = logging.getLogger("devpilot.agent.task_memory")
+logger = logging.getLogger("loopix.agent.task_memory")
 
 
 class TaskStatus(str, Enum):

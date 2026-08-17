@@ -36,7 +36,7 @@ class SettingsUpdateRequest(BaseModel):
     terminal_command_rules: list | None = None
     unsandboxed_command_rules: list | None = None
     mcp_tool_rules: list | None = None
-    devpilot_rpm: int | None = Field(default=15, ge=1)
+    loopix_rpm: int | None = Field(default=15, ge=1)
     concurrency_mode: str | None = "parallel"
     temperature: float | None = Field(default=1.0, ge=0.0, le=2.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
@@ -76,7 +76,7 @@ def get_settings():
         "terminal_command_rules": config_manager.get_terminal_command_rules(),
         "unsandboxed_command_rules": config_manager.get_unsandboxed_command_rules(),
         "mcp_tool_rules": config_manager.get_mcp_tool_rules(),
-        "devpilot_rpm": config_manager.get_devpilot_rpm(),
+        "loopix_rpm": config_manager.get_loopix_rpm(),
         "concurrency_mode": config_manager.get_concurrency_mode(),
         "temperature": config_manager.get_temperature(),
         "top_p": config_manager.get_top_p(),
@@ -144,8 +144,8 @@ def save_settings(req: SettingsUpdateRequest):
             config_manager.set_unsandboxed_command_rules(req.unsandboxed_command_rules)
         if req.mcp_tool_rules is not None:
             config_manager.set_mcp_tool_rules(req.mcp_tool_rules)
-        if req.devpilot_rpm is not None:
-            config_manager.set_devpilot_rpm(req.devpilot_rpm)
+        if req.loopix_rpm is not None:
+            config_manager.set_loopix_rpm(req.loopix_rpm)
         if req.concurrency_mode is not None:
             config_manager.set_concurrency_mode(req.concurrency_mode)
         if req.temperature is not None:

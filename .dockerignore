@@ -9,4 +9,4 @@ venv
 .coverage
 __pycache__
 *.pyc
-.devpilot
+.loopix

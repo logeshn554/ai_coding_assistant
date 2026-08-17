@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-logger = logging.getLogger("devpilot.agent.validator")
+logger = logging.getLogger("loopix.agent.validator")
 
 
 @dataclass

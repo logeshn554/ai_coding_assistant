@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 
-logger = logging.getLogger("devpilot.outcome.outcome_classifier")
+logger = logging.getLogger("loopix.outcome.outcome_classifier")
 
 
 class OutcomeGrade(str, Enum):

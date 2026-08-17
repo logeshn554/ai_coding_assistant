@@ -7,7 +7,7 @@ import logging
 
 from ..brain.dependency_graph import dependency_graph
 
-logger = logging.getLogger("devpilot.verification.architecture_rules")
+logger = logging.getLogger("loopix.verification.architecture_rules")
 
 
 class ArchitectureRules:

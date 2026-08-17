@@ -11,15 +11,15 @@ def create_desktop_shortcut(target_exe_or_bat=None, icon_path=None):
         target = target_exe_or_bat
     elif os.path.exists(dist_exe):
         target = dist_exe
-    elif os.path.exists(os.path.join(project_root, "dist", "DevPilot", "DevPilot.exe")):
-        target = os.path.join(project_root, "dist", "DevPilot", "DevPilot.exe")
-    elif os.path.exists(os.path.join(project_root, "DevPilot.bat")):
-        target = os.path.join(project_root, "DevPilot.bat")
+    elif os.path.exists(os.path.join(project_root, "dist", "Loopix", "Loopix.exe")):
+        target = os.path.join(project_root, "dist", "Loopix", "Loopix.exe")
+    elif os.path.exists(os.path.join(project_root, "Loopix.bat")):
+        target = os.path.join(project_root, "Loopix.bat")
     else:
         target = bat_file
 
     if not icon_path:
-        icon_path = os.path.join(project_root, "assets", "devpilot.ico")
+        icon_path = os.path.join(project_root, "assets", "loopix.ico")
 
     ps_script = f"""
 $Desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::Desktop)

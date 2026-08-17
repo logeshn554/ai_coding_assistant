@@ -12,7 +12,7 @@ from .live_server_tool import open_with_live_server as _open_with_live_server
 from .read_tool import read_file as _read_file
 from .write_tool import write_or_edit_file as _write_or_edit_file
 
-logger = logging.getLogger("devpilot.dispatcher")
+logger = logging.getLogger("loopix.dispatcher")
 
 # ── Agent Intelligence: RecoveryManager + KnowledgeStore ────────────────────
 # Imported lazily to avoid circular imports; cached at module level after first use.

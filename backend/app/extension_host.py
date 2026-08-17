@@ -1,8 +1,8 @@
 """
-DevPilot Dynamic Extension Host Engine
+Loopix Dynamic Extension Host Engine
 
-Scans, loads, activates, and executes VS Code / DevPilot compatible extensions.
-Extracted extension packages (~/.devpilot/custom_extensions/<ext_id>) are parsed
+Scans, loads, activates, and executes VS Code / Loopix compatible extensions.
+Extracted extension packages (~/.loopix/custom_extensions/<ext_id>) are parsed
 for manifest capabilities: commands, snippets, AI tools, settings, and main script entrypoints.
 """
 
@@ -24,10 +24,10 @@ except ImportError:
     except ImportError:
         from app.agent.agent_runtime.tools import RiskLevel, ToolDefinition, ToolResult
 
-logger = logging.getLogger("devpilot.extension_host")
+logger = logging.getLogger("loopix.extension_host")
 
-EXTENSIONS_FILE_PATH = os.path.expanduser("~/.devpilot/extensions.json")
-CUSTOM_EXTENSIONS_DIR = os.path.expanduser("~/.devpilot/custom_extensions")
+EXTENSIONS_FILE_PATH = os.path.expanduser("~/.loopix/extensions.json")
+CUSTOM_EXTENSIONS_DIR = os.path.expanduser("~/.loopix/custom_extensions")
 
 
 class ExtensionHost:
@@ -94,7 +94,7 @@ class ExtensionHost:
                 "name": ext.get("name") or manifest.get("displayName") or manifest.get("name") or ext_id,
                 "publisher": ext.get("publisher") or manifest.get("publisher") or "Community",
                 "version": ext.get("version") or manifest.get("version") or "1.0.0",
-                "description": ext.get("description") or manifest.get("description") or "DevPilot Dynamic Extension",
+                "description": ext.get("description") or manifest.get("description") or "Loopix Dynamic Extension",
                 "status": "Active",
                 "dir": ext_dir,
                 "main": manifest.get("main"),

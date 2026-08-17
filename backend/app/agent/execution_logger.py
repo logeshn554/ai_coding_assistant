@@ -23,7 +23,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 
-logger = logging.getLogger("devpilot.agent.execution_logger")
+logger = logging.getLogger("loopix.agent.execution_logger")
 
 
 @dataclass
@@ -94,7 +94,7 @@ class ExecutionLogger:
         exec_log.record_context_file("auth.py")
         exec_log.record_tool_call("read_file", {"path": "auth.py"}, result="...", status="success")
         exec_log.finish("completed")
-        exec_log.emit()  # Logs to devpilot.agent.execution_logger as JSON
+        exec_log.emit()  # Logs to loopix.agent.execution_logger as JSON
     """
 
     def __init__(self, session_id: str):

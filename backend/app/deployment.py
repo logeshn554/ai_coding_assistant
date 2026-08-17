@@ -12,7 +12,7 @@ import logging
 import os
 from typing import Any
 
-logger = logging.getLogger("devpilot.deployment")
+logger = logging.getLogger("loopix.deployment")
 
 
 async def generate_deploy_command(workspace_root: str) -> dict[str, Any]:
@@ -20,7 +20,7 @@ async def generate_deploy_command(workspace_root: str) -> dict[str, Any]:
 
     Detects project type by inspecting the workspace root for known config
     files, then returns the appropriate command and install instructions.
-    This is purely advisory — DevPilot does not execute the command.
+    This is purely advisory — Loopix does not execute the command.
     """
     has_vercel = os.path.exists(os.path.join(workspace_root, "vercel.json"))
     has_pkg = os.path.exists(os.path.join(workspace_root, "package.json"))

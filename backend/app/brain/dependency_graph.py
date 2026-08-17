@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 import re
 
-logger = logging.getLogger("devpilot.brain.dependency_graph")
+logger = logging.getLogger("loopix.brain.dependency_graph")
 
 
 class DependencyGraph:

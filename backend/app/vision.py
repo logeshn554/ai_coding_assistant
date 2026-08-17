@@ -1,4 +1,4 @@
-"""Vision & OCR analysis service for DevPilot AI Assistant.
+"""Vision & OCR analysis service for Loopix AI Assistant.
 
 Provides `analyze_image(path)`:
 1. If `image_analysis_model` setting is set, dispatches to vision-capable model.
@@ -16,7 +16,7 @@ from typing import Any
 
 from .state import config_manager
 
-logger = logging.getLogger("devpilot.vision")
+logger = logging.getLogger("loopix.vision")
 
 
 @dataclass

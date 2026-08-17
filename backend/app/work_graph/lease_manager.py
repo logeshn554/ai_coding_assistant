@@ -7,7 +7,7 @@ import logging
 import time
 from dataclasses import dataclass
 
-logger = logging.getLogger("devpilot.work_graph.lease_manager")
+logger = logging.getLogger("loopix.work_graph.lease_manager")
 
 
 @dataclass

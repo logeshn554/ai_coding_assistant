@@ -72,13 +72,13 @@ export const ProjectContextPanel: React.FC<ProjectContextPanelProps> = ({
   }, [fetchMetadata, workspacePath]);
 
   const handleRunProject = () => {
-    const stored = localStorage.getItem('devpilot_detected_run_command');
+    const stored = localStorage.getItem('loopix_detected_run_command');
     const runCmd = stored || metadata?.runCommand || '';
 
     if (runCmd) {
       setBottomTab('terminal');
       window.dispatchEvent(
-        new CustomEvent('devpilot-run-terminal-command', { detail: { command: runCmd } })
+        new CustomEvent('loopix-run-terminal-command', { detail: { command: runCmd } })
       );
     } else {
       // Ask the AI agent to detect and run for us
@@ -89,7 +89,7 @@ export const ProjectContextPanel: React.FC<ProjectContextPanelProps> = ({
 
   // Graceful — only opens AI panel if a callback is wired (avoids import cycle)
   const setIsAiPanelOpenSafe = () => {
-    window.dispatchEvent(new CustomEvent('devpilot-open-ai-panel'));
+    window.dispatchEvent(new CustomEvent('loopix-open-ai-panel'));
   };
 
   const handleAnalyze = async () => {

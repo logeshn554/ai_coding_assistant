@@ -7,7 +7,7 @@ Verifies:
 - ToolExecutor canonical tool routing, structured ToolResult, and audit logging.
 - TransactionalWorkspace file change set tracking and diff generation.
 - Session cancellation propagation and state update to CANCELLED.
-- DevPilot integration path and legacy orchestrator adapter.
+- Loopix integration path and legacy orchestrator adapter.
 """
 
 from __future__ import annotations
@@ -180,10 +180,10 @@ async def test_cancellation(workspace):
 
 
 @pytest.mark.asyncio
-async def test_devpilot_agent_session_integration(workspace):
-    """Test 7: DevPilot Integration — AgentSession instantiates and communicates with AgentRuntime."""
+async def test_loopix_agent_session_integration(workspace):
+    """Test 7: Loopix Integration — AgentSession instantiates and communicates with AgentRuntime."""
     import uuid
-    sess_id = f"devpilot_integration_test_{uuid.uuid4().hex[:8]}"
+    sess_id = f"loopix_integration_test_{uuid.uuid4().hex[:8]}"
     from backend.app.session.agent_session import AgentSession
 
     ws_messages = []

@@ -14,7 +14,7 @@ from typing import Any
 
 from ..security.secret_redactor import SecretRedactor
 
-logger = logging.getLogger("devpilot.debugging.ai_debugger")
+logger = logging.getLogger("loopix.debugging.ai_debugger")
 
 
 @dataclass

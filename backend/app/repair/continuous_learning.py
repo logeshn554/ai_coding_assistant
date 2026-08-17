@@ -7,7 +7,7 @@ import logging
 
 from ..brain.bug_history import bug_history
 
-logger = logging.getLogger("devpilot.repair.continuous_learning")
+logger = logging.getLogger("loopix.repair.continuous_learning")
 
 
 class ContinuousLearning:

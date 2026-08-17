@@ -21,7 +21,7 @@ from .secret_redactor import SecretRedactor
 from .terminal_sandbox import TerminalSandbox
 from .workspace_guard import WorkspaceGuard
 
-logger = logging.getLogger("devpilot.security.permission_engine")
+logger = logging.getLogger("loopix.security.permission_engine")
 
 
 TOOL_ALIASES: dict[str, str] = {

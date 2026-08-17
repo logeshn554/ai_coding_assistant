@@ -16,7 +16,7 @@ from typing import Any
 logger = logging.getLogger("antigravity.reviewer")
 
 _SKIP_DIRS = {
-    ".git", "node_modules", "venv", ".venv", "__pycache__", ".devpilot",
+    ".git", "node_modules", "venv", ".venv", "__pycache__", ".loopix",
     "dist", "build", ".next", "target", "out", ".cache", "coverage"
 }
 

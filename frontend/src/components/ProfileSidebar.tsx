@@ -16,8 +16,8 @@ export default function ProfileSidebar() {
   const [activeId, setActiveId] = useState<string>('');
 
   // Dynamic user profile info with persistence
-  const [userName, setUserName] = useState<string>(() => localStorage.getItem('devpilot_user_name') || 'Developer');
-  const [userRole, setUserRole] = useState<string>(() => localStorage.getItem('devpilot_user_role') || 'Software Engineer');
+  const [userName, setUserName] = useState<string>(() => localStorage.getItem('loopix_user_name') || 'Developer');
+  const [userRole, setUserRole] = useState<string>(() => localStorage.getItem('loopix_user_role') || 'Software Engineer');
   const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
   const [editName, setEditName] = useState<string>(userName);
   const [editRole, setEditRole] = useState<string>(userRole);
@@ -47,8 +47,8 @@ export default function ProfileSidebar() {
     const finalRole = editRole.trim() || 'Software Engineer';
     setUserName(finalName);
     setUserRole(finalRole);
-    localStorage.setItem('devpilot_user_name', finalName);
-    localStorage.setItem('devpilot_user_role', finalRole);
+    localStorage.setItem('loopix_user_name', finalName);
+    localStorage.setItem('loopix_user_role', finalRole);
     setIsEditingProfile(false);
   };
 
@@ -231,7 +231,7 @@ export default function ProfileSidebar() {
         <div className="pt-2 border-t border-[#2A3146]">
           <button
             onClick={() => {
-              window.dispatchEvent(new CustomEvent('devpilot-open-terms'));
+              window.dispatchEvent(new CustomEvent('loopix-open-terms'));
             }}
             className="w-full text-center text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer py-1"
           >

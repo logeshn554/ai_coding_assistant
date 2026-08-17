@@ -9,7 +9,7 @@ import logging
 import os
 from pathlib import Path
 
-logger = logging.getLogger("devpilot.retry_policy")
+logger = logging.getLogger("loopix.retry_policy")
 
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_BACKOFF_BASE = 2.0

@@ -5,7 +5,7 @@ import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 
 // Restore saved theme immediately to prevent flash-of-wrong-theme
-const savedTheme = localStorage.getItem('devpilot_theme') || 'dark';
+const savedTheme = localStorage.getItem('loopix_theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);
 
 
@@ -30,7 +30,7 @@ window.fetch = async function (input: RequestInfo | URL, init?: RequestInit) {
       init.headers['X-Session-Token'] = sessionToken
     }
   }
-  const activeSessionId = localStorage.getItem('devpilot_session_id')
+  const activeSessionId = localStorage.getItem('loopix_session_id')
   if (activeSessionId) {
     if (init.headers instanceof Headers) {
       init.headers.set('X-Session-ID', activeSessionId)

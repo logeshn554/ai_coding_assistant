@@ -4,12 +4,12 @@ import uuid
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from ..errors import DevPilotError
+from ..errors import LoopixError
 
-logger = logging.getLogger("devpilot.error_middleware")
+logger = logging.getLogger("loopix.error_middleware")
 
 async def global_error_middleware(request: Request, call_next):
-    """Middleware catching DevPilotError and uncaught exceptions with structured error responses."""
+    """Middleware catching LoopixError and uncaught exceptions with structured error responses."""
     trace_id = getattr(request.state, "trace_id", None)
     if not trace_id:
         trace_id = str(uuid.uuid4())
@@ -18,8 +18,8 @@ async def global_error_middleware(request: Request, call_next):
     try:
         response = await call_next(request)
         return response
-    except DevPilotError as exc:
-        logger.warning(f"[{trace_id}] DevPilotError ({exc.code}): {exc.message} - Path: {request.url.path}")
+    except LoopixError as exc:
+        logger.warning(f"[{trace_id}] LoopixError ({exc.code}): {exc.message} - Path: {request.url.path}")
         return JSONResponse(
             status_code=exc.status_code,
             content={

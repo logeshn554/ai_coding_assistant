@@ -24,7 +24,9 @@ dist/
 dist_installer/
 out/
 .next/
-*.spec
+!loopix.spec
+!loopix_onefile.spec
+
 
 # Dependency directories
 node_modules/
@@ -41,9 +43,9 @@ web_elements/
 *.swp
 *.code-workspace
 
-# DevPilot runtime state, backups, and logs
-.devpilot/
-.devpilot_phase_state.json
+# Loopix runtime state, backups, and logs
+.loopix/
+.loopix_phase_state.json
 *.log
 artifacts/
 

@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 
-logger = logging.getLogger("devpilot.terminal")
+logger = logging.getLogger("loopix.terminal")
 
 
 class TerminalDefaults:

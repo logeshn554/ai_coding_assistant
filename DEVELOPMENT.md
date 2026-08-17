@@ -1,4 +1,4 @@
-# Developer Setup & Contribution Guide — DevPilot IDE
+# Developer Setup & Contribution Guide — Loopix IDE
 
 ## Prerequisites
 

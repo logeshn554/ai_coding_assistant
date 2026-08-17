@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 import subprocess
 
-logger = logging.getLogger("devpilot.release.git_committer")
+logger = logging.getLogger("loopix.release.git_committer")
 
 
 class GitCommitter:

@@ -12,7 +12,7 @@ from backend.app.infrastructure.observability.telemetry import (
     workspace_id_var,
 )
 
-logger = logging.getLogger("devpilot.observability_middleware")
+logger = logging.getLogger("loopix.observability_middleware")
 
 async def observability_middleware(request: Request, call_next):
     """Middleware that injects correlation context, records request latencies, and tracks status distributions."""

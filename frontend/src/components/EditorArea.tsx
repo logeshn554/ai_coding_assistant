@@ -88,8 +88,8 @@ function getLanguage(path: string): string {
   return EXT_TO_LANG[ext] ?? 'plaintext';
 }
 
-const LS_CURSOR_PREFIX = 'devpilot_cursor_';
-const LS_SCROLL_PREFIX = 'devpilot_scroll_';
+const LS_CURSOR_PREFIX = 'loopix_cursor_';
+const LS_SCROLL_PREFIX = 'loopix_scroll_';
 
 function getPrefixedKey(prefix: string, workspacePath: string | null | undefined, path: string): string {
   const wsName = workspacePath ? workspacePath.replace(/\\/g, '/').split('/').pop() || 'default' : 'default';
@@ -159,10 +159,10 @@ export default function EditorArea({
   const [showBackupsDropdown, setShowBackupsDropdown] = useState(false);
 
 
-  const [activeTheme, setActiveTheme] = useState<string>(() => localStorage.getItem('devpilot_theme') || 'dark');
+  const [activeTheme, setActiveTheme] = useState<string>(() => localStorage.getItem('loopix_theme') || 'dark');
   const [editorFontSize, setEditorFontSize] = useState<number>(() => {
     try {
-      const s = localStorage.getItem('devpilot_editor_fontsize');
+      const s = localStorage.getItem('loopix_editor_fontsize');
       return s ? parseInt(s, 10) || 13 : 13;
     } catch {
       return 13;
@@ -189,13 +189,13 @@ export default function EditorArea({
 
   useEffect(() => {
     const handleThemeChange = () => {
-      const saved = localStorage.getItem('devpilot_theme') || 'dark';
+      const saved = localStorage.getItem('loopix_theme') || 'dark';
       setActiveTheme(saved);
     };
-    window.addEventListener('devpilot-theme-change', handleThemeChange);
+    window.addEventListener('loopix-theme-change', handleThemeChange);
     window.addEventListener('storage', handleThemeChange);
     return () => {
-      window.removeEventListener('devpilot-theme-change', handleThemeChange);
+      window.removeEventListener('loopix-theme-change', handleThemeChange);
       window.removeEventListener('storage', handleThemeChange);
     };
   }, []);

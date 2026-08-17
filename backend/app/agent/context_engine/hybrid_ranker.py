@@ -18,7 +18,7 @@ from .types import (
     GitContext,
 )
 
-logger = logging.getLogger("devpilot.context_engine.hybrid_ranker")
+logger = logging.getLogger("loopix.context_engine.hybrid_ranker")
 
 
 class HybridRanker:

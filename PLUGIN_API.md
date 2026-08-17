@@ -1,8 +1,8 @@
-# Plugin API Specification — DevPilot Extension System
+# Plugin API Specification — Loopix Extension System
 
 ## Overview
 
-DevPilot plugins implement standard extension interfaces (`LanguageProvider`, `ModelProvider`, `ToolProvider`, `ContextProvider`) and pass through `PermissionEngine` security authorization.
+Loopix plugins implement standard extension interfaces (`LanguageProvider`, `ModelProvider`, `ToolProvider`, `ContextProvider`) and pass through `PermissionEngine` security authorization.
 
 ## Plugin Manifest Schema
 

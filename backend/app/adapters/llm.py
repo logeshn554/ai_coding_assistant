@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-logger = logging.getLogger("devpilot.adapters.llm")
+logger = logging.getLogger("loopix.adapters.llm")
 
 # Try to import SDKs
 try:
@@ -56,14 +56,14 @@ class _RpmLimiter:
 
     def get_limit(self) -> int:
         from ..state import config_manager
-        env_limit = os.environ.get("DEVPILOT_RPM")
+        env_limit = os.environ.get("LOOPIX_RPM")
         if env_limit:
             try:
                 return int(env_limit)
             except ValueError:
                 pass
         try:
-            return config_manager.get_devpilot_rpm()
+            return config_manager.get_loopix_rpm()
         except Exception:
             return 500
 
@@ -144,7 +144,7 @@ class LLMAdapter(ModelAdapter):
         validate_tool_history(messages)
 
         # Opt-in sanitized debug logging of LLM payload
-        if os.environ.get("DEVPILOT_DEBUG_LLM_PAYLOADS", "").lower() in ("1", "true", "yes"):
+        if os.environ.get("LOOPIX_DEBUG_LLM_PAYLOADS", "").lower() in ("1", "true", "yes"):
             logger.info(
                 "LLM Payload Debug: provider=%s model=%s base_url=%s msg_count=%d tool_count=%d",
                 self.provider, self.model_name, self.base_url, len(messages), len(tools)
@@ -171,7 +171,7 @@ class LLMAdapter(ModelAdapter):
             base_url = None
             
         api_key = self.api_key if self.api_key else "dummy-key"
-        timeout_val = float(os.environ.get("DEVPILOT_STREAMING_TIMEOUT") or os.environ.get("ANTHROPIC_TIMEOUT") or "180.0")
+        timeout_val = float(os.environ.get("LOOPIX_STREAMING_TIMEOUT") or os.environ.get("ANTHROPIC_TIMEOUT") or "180.0")
         client = _get_anthropic_client(api_key, base_url, timeout_val)
 
         anthropic_tools = []
@@ -369,7 +369,7 @@ class LLMAdapter(ModelAdapter):
     ) -> AsyncGenerator[dict[str, Any], None]:
         base_url = self.base_url if self.base_url else None
         api_key = self.api_key if self.api_key else "dummy-key"
-        timeout_val = float(os.environ.get("DEVPILOT_STREAMING_TIMEOUT") or os.environ.get("OPENAI_TIMEOUT") or "180.0")
+        timeout_val = float(os.environ.get("LOOPIX_STREAMING_TIMEOUT") or os.environ.get("OPENAI_TIMEOUT") or "180.0")
         client = _get_openai_client(api_key, base_url, timeout_val)
 
         openai_tools = []

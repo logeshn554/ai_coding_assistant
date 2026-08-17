@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-logger = logging.getLogger("devpilot.infrastructure.tool_registry")
+logger = logging.getLogger("loopix.infrastructure.tool_registry")
 
 @dataclass
 class ToolDefinition:

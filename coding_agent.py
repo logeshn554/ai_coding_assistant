@@ -106,11 +106,11 @@ class CodingAgent:
         self.api_key = api_key
         self.workspace_dir = os.path.abspath(workspace_dir)
         self.messages = []
-        # Model must come from caller or DEVPILOT_MODEL env — never hardcode a vendor model id.
-        resolved = (model or os.environ.get("DEVPILOT_MODEL") or "").strip()
+        # Model must come from caller or LOOPIX_MODEL env — never hardcode a vendor model id.
+        resolved = (model or os.environ.get("LOOPIX_MODEL") or "").strip()
         if not resolved:
             raise ValueError(
-                "Model name required. Pass model=... or set DEVPILOT_MODEL. "
+                "Model name required. Pass model=... or set LOOPIX_MODEL. "
                 "No hardcoded model defaults are allowed."
             )
         self.model = resolved

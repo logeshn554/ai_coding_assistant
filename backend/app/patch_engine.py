@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from .files import safe_path, write_workspace_file
 
-logger = logging.getLogger("devpilot.patch_engine")
+logger = logging.getLogger("loopix.patch_engine")
 
 
 @dataclass

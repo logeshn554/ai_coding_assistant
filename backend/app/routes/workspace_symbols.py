@@ -14,7 +14,7 @@ from ..state import workspace_state
 from ..workspace_index import WorkspaceIndex
 
 router = APIRouter()
-logger = logging.getLogger("devpilot.routes.workspace_symbols")
+logger = logging.getLogger("loopix.routes.workspace_symbols")
 
 # Module-level index instance (reuses workspace root from state on each request)
 _index: WorkspaceIndex | None = None
@@ -95,7 +95,7 @@ async def get_global_symbols(
         import os
         from pathlib import Path
         root_path = Path(workspace_state.root).resolve()
-        exclude_dirs = {".git", "node_modules", "venv", ".venv", ".devpilot", "__pycache__", "dist", "build"}
+        exclude_dirs = {".git", "node_modules", "venv", ".venv", ".loopix", "__pycache__", "dist", "build"}
         valid_exts = {".py", ".ts", ".tsx", ".js", ".jsx", ".java", ".go", ".c", ".cpp", ".rs"}
         
         query_l = q.strip().lower()
@@ -158,7 +158,7 @@ def fuzzy_files(
             # No query — return all files (same as /api/files/flat)
             import os
             from pathlib import Path
-            exclude_dirs = {".git", "node_modules", "venv", ".devpilot", "__pycache__", "dist", ".pytest_cache"}
+            exclude_dirs = {".git", "node_modules", "venv", ".loopix", "__pycache__", "dist", ".pytest_cache"}
             all_files = []
             root_path = Path(workspace_state.root).resolve()
             for root, dirs, file_list in os.walk(str(root_path)):

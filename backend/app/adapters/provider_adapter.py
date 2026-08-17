@@ -14,7 +14,7 @@ from abc import ABC, abstractmethod
 import httpx
 from pydantic import BaseModel, Field
 
-logger = logging.getLogger("devpilot.provider_adapter")
+logger = logging.getLogger("loopix.provider_adapter")
 
 class DynamicModelProfile(BaseModel):
     provider_id: str
@@ -75,7 +75,7 @@ class OpenAICompatibleAdapter(BaseProviderAdapter):
             return False
         
         test_url = f"{self.base_url}/models" if not self.base_url.endswith("/models") else self.base_url
-        headers = {"Content-Type": "application/json", "User-Agent": "DevPilot/1.0", **self.extra_headers}
+        headers = {"Content-Type": "application/json", "User-Agent": "Loopix/1.0", **self.extra_headers}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
@@ -99,7 +99,7 @@ class OpenAICompatibleAdapter(BaseProviderAdapter):
 
     async def list_models(self) -> list[DynamicModelProfile]:
         models_url = f"{self.base_url}/models" if not self.base_url.endswith("/models") else self.base_url
-        headers = {"Content-Type": "application/json", "User-Agent": "DevPilot/1.0", **self.extra_headers}
+        headers = {"Content-Type": "application/json", "User-Agent": "Loopix/1.0", **self.extra_headers}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 

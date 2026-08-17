@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from .intent_router import IntentType
 
-logger = logging.getLogger("devpilot.agent.tool_policy")
+logger = logging.getLogger("loopix.agent.tool_policy")
 
 
 @dataclass

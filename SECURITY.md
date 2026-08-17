@@ -1,14 +1,14 @@
-# Security Policy & Architecture — DevPilot IDE
+# Security Policy & Architecture — Loopix IDE
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability within DevPilot, please do NOT create a public issue. Send security reports directly via private security advisory on GitHub or email the maintainers. We take security seriously and will investigate and address reported issues promptly.
+If you discover a security vulnerability within Loopix, please do NOT create a public issue. Send security reports directly via private security advisory on GitHub or email the maintainers. We take security seriously and will investigate and address reported issues promptly.
 
 ---
 
 ## Security Model
 
-DevPilot operates under the fundamental rule: **The LLM model is never trusted to make security decisions. The runtime engine enforces all security boundaries.**
+Loopix operates under the fundamental rule: **The LLM model is never trusted to make security decisions. The runtime engine enforces all security boundaries.**
 
 ## Defensive Layers
 

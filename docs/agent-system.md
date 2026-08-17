@@ -1,6 +1,6 @@
-# DevPilot Universal Agent System
+# Loopix Universal Agent System
 
-DevPilot provides a unified multi-agent orchestrator capable of operating across 8 dedicated agent modes with visual timeline execution and self-repair.
+Loopix provides a unified multi-agent orchestrator capable of operating across 8 dedicated agent modes with visual timeline execution and self-repair.
 
 ## Agent Modes
 

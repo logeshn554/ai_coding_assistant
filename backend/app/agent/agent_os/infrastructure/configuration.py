@@ -18,16 +18,16 @@ class Configuration:
             "agent_os_mode": "sandbox",
             "max_agent_concurrency": 4,
             "cost_limit_usd": 5.0,
-            # No hardcoded model name — resolved from DEVPILOT_DEFAULT_MODEL env var
-            # or the caller's active profile.  Set DEVPILOT_DEFAULT_MODEL in your .env
-            # if you need a fallback (e.g. DEVPILOT_DEFAULT_MODEL=gemini-2.0-flash).
+            # No hardcoded model name — resolved from LOOPIX_DEFAULT_MODEL env var
+            # or the caller's active profile.  Set LOOPIX_DEFAULT_MODEL in your .env
+            # if you need a fallback (e.g. LOOPIX_DEFAULT_MODEL=gemini-2.0-flash).
             "default_model": "",
             "debug_mode": True,
         }
 
     def get(self, key: str, default: Any = None) -> Any:
         """Lookup a key in environment variables first, then defaults, then fallback default."""
-        env_key = f"DEVPILOT_{key.upper()}"
+        env_key = f"LOOPIX_{key.upper()}"
         if env_key in os.environ:
             val = os.environ[env_key]
             # Simple conversion helper

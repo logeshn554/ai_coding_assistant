@@ -7,7 +7,7 @@ import logging
 
 from .dag_generator import DagTask
 
-logger = logging.getLogger("devpilot.work_graph.priority_scheduler")
+logger = logging.getLogger("loopix.work_graph.priority_scheduler")
 
 
 class PriorityScheduler:

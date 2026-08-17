@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from ..intelligence.intent_compiler import CompiledIntent
 
-logger = logging.getLogger("devpilot.work_graph.dag_generator")
+logger = logging.getLogger("loopix.work_graph.dag_generator")
 
 
 @dataclass

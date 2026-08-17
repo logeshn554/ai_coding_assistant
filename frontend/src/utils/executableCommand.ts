@@ -1,9 +1,9 @@
 export async function getExecutableCommandForFile(filePath: string): Promise<string> {
   if (!filePath) {
-    return localStorage.getItem('devpilot_project_run_command') || 'npm run dev';
+    return localStorage.getItem('loopix_project_run_command') || 'npm run dev';
   }
 
-  const stored = localStorage.getItem(`devpilot_file_cmd_${filePath}`);
+  const stored = localStorage.getItem(`loopix_file_cmd_${filePath}`);
   if (stored) return stored;
 
   const normalized = filePath.replace(/\\/g, '/');
@@ -18,7 +18,7 @@ export async function getExecutableCommandForFile(filePath: string): Promise<str
     if (res.ok) {
       const data = await res.json();
       if (data.command) {
-        localStorage.setItem(`devpilot_file_cmd_${filePath}`, data.command);
+        localStorage.setItem(`loopix_file_cmd_${filePath}`, data.command);
         return data.command;
       }
     }
@@ -27,12 +27,12 @@ export async function getExecutableCommandForFile(filePath: string): Promise<str
   }
 
   const fallbackCmd = `"${normalized}"`;
-  localStorage.setItem(`devpilot_file_cmd_${filePath}`, fallbackCmd);
+  localStorage.setItem(`loopix_file_cmd_${filePath}`, fallbackCmd);
   return fallbackCmd;
 }
 
 export function saveExecutableCommandForFile(filePath: string, command: string): void {
   if (!filePath || !command) return;
-  localStorage.setItem(`devpilot_file_cmd_${filePath}`, command.trim());
+  localStorage.setItem(`loopix_file_cmd_${filePath}`, command.trim());
 }
 

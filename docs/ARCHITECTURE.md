@@ -1,6 +1,6 @@
-# DevPilot System Architecture
+# Loopix System Architecture
 
-DevPilot is an AI-native developer operating system engineered around autonomous multi-agent software engineering, continuous codebase indexing, transactional state management, and failure-closed security boundaries.
+Loopix is an AI-native developer operating system engineered around autonomous multi-agent software engineering, continuous codebase indexing, transactional state management, and failure-closed security boundaries.
 
 ```mermaid
 graph TD

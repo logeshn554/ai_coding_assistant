@@ -73,14 +73,14 @@ def _estimate_cost(
     in_rate = input_cost_per_m
     out_rate = output_cost_per_m
     if in_rate is None:
-        env_in = os.environ.get("DEVPILOT_INPUT_COST_PER_M")
+        env_in = os.environ.get("LOOPIX_INPUT_COST_PER_M")
         if env_in:
             try:
                 in_rate = float(env_in)
             except ValueError:
                 pass
     if out_rate is None:
-        env_out = os.environ.get("DEVPILOT_OUTPUT_COST_PER_M")
+        env_out = os.environ.get("LOOPIX_OUTPUT_COST_PER_M")
         if env_out:
             try:
                 out_rate = float(env_out)
@@ -151,10 +151,10 @@ class OpenAIProvider(LLMProvider):
         timeout: float = 120.0,
     ) -> None:
         import os
-        resolved = (model or os.environ.get("DEVPILOT_MODEL") or "").strip()
+        resolved = (model or os.environ.get("LOOPIX_MODEL") or "").strip()
         if not resolved:
             raise ValueError(
-                "OpenAIProvider requires a model name via constructor or DEVPILOT_MODEL. "
+                "OpenAIProvider requires a model name via constructor or LOOPIX_MODEL. "
                 "No hardcoded model defaults are allowed."
             )
         self.api_key = api_key

@@ -7,7 +7,7 @@ import logging
 
 from .outcome_classifier import OutcomeClassification, OutcomeGrade
 
-logger = logging.getLogger("devpilot.outcome.release_gate")
+logger = logging.getLogger("loopix.outcome.release_gate")
 
 
 class ReleaseGate:

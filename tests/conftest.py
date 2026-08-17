@@ -12,7 +12,7 @@ import logging
 
 import pytest
 
-logger = logging.getLogger("devpilot.tests.conftest")
+logger = logging.getLogger("loopix.tests.conftest")
 
 
 def _run_schema_migration():
@@ -63,7 +63,7 @@ def pytest_sessionstart(session):
     from backend.app.infrastructure.database.models import Base
     from backend.app.infrastructure.database.connection import engine
     
-    for db_f in ("devpilot.db", "loopix.db"):
+    for db_f in ("loopix.db", "loopix.db"):
         if os.path.exists(db_f):
             try:
                 os.remove(db_f)

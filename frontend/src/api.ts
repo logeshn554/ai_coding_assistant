@@ -1,5 +1,5 @@
 /**
- * Centralised API helper for the DevPilot frontend.
+ * Centralised API helper for the Loopix frontend.
  * All requests go through this module so that we can:
  *   • Attach the session token automatically (if needed)
  *   • Handle HTTP errors in a single place

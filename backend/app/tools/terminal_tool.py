@@ -262,7 +262,7 @@ async def run_shell_command(session: Any, command: str, timeout_seconds: int | N
     })
     await session.send_ws_message({
         "type": "terminal_stream",
-        "content": f"\r\n\x1b[35m[DevPilot Agent]\x1b[0m $ {command}\r\n"
+        "content": f"\r\n\x1b[35m[Loopix Agent]\x1b[0m $ {command}\r\n"
     })
 
     # Output streaming callback

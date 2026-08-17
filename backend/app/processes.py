@@ -8,7 +8,7 @@ import sys
 import uuid
 from typing import Any
 
-logger = logging.getLogger("devpilot.processes")
+logger = logging.getLogger("loopix.processes")
 
 PROCESS_MAX_HISTORY = 100
 PROCESS_MAX_LOG_BYTES = 5 * 1024 * 1024
@@ -136,7 +136,7 @@ class ActiveProcess:
                     policy=policy
                 )
                 
-                log_file_name = f".devpilot_logs_{self.id}.txt"
+                log_file_name = f".loopix_logs_{self.id}.txt"
                 log_file_path = os.path.join(workspace_root, log_file_name)
                 # Create empty file on host
                 with open(log_file_path, "w", encoding="utf-8") as f:

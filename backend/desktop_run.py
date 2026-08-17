@@ -49,7 +49,7 @@ class DesktopAPI:
 import webbrowser
 
 def get_free_port():
-    # Prioritize standard DevPilot port 8000, then fallback alternatives
+    # Prioritize standard Loopix port 8000, then fallback alternatives
     for preferred_port in [8000, 8080, 62746, 8088]:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     webview_launched = False
     try:
         window = webview.create_window(
-            title="DevPilot AI Editor",
+            title="Loopix AI Editor",
             url=app_url,
             js_api=api,
             width=1280,
@@ -151,11 +151,11 @@ if __name__ == "__main__":
 
     # If PyWebView couldn't open, fallback to opening default web browser and keeping the server alive
     if not webview_launched:
-        print(f"Opening DevPilot in your default browser at {app_url}...")
+        print(f"Opening Loopix in your default browser at {app_url}...")
         webbrowser.open(app_url)
-        print("DevPilot server is running. Press Ctrl+C in this terminal to stop.")
+        print("Loopix server is running. Press Ctrl+C in this terminal to stop.")
         try:
             while True:
                 time.sleep(1)
         except KeyboardInterrupt:
-            print("Shutting down DevPilot...")
+            print("Shutting down Loopix...")

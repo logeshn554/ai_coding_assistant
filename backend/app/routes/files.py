@@ -195,7 +195,7 @@ async def rollback_file_endpoint(req: RollbackRequest):
 
 def _get_file_backups_sync(root: str, path: str):
     rel_hash = hashlib.sha256(path.encode("utf-8")).hexdigest()
-    backup_dir = os.path.join(root, ".devpilot", "backups", rel_hash)
+    backup_dir = os.path.join(root, ".loopix", "backups", rel_hash)
     if not os.path.exists(backup_dir):
         return []
     baks = sorted(glob.glob(os.path.join(backup_dir, "*.bak")))
@@ -223,7 +223,7 @@ async def get_file_backups(path: str):
 
 def _get_flat_files_sync(root: str) -> list[str]:
     flat_list = []
-    exclude_dirs = {'.git', 'node_modules', '__pycache__', 'venv', '.venv', 'dist', '.pytest_cache', '.devpilot'}
+    exclude_dirs = {'.git', 'node_modules', '__pycache__', 'venv', '.venv', 'dist', '.pytest_cache', '.loopix'}
     exclude_files = {'.DS_Store'}
     for root_dir, dirs, files in os.walk(root):
         dirs[:] = [d for d in dirs if d not in exclude_dirs]
@@ -258,7 +258,7 @@ def _save_uploaded_file(file_src, target_path: str):
 async def upload_attachment(file: UploadFile = File(...)):
     """Upload a file or pasted image attachment for AI Chat processing."""
     try:
-        root = workspace_state.root or os.path.join(os.path.expanduser("~"), ".devpilot")
+        root = workspace_state.root or os.path.join(os.path.expanduser("~"), ".loopix")
         att_dir = os.path.join(root, "artifacts", "attachments")
         await asyncio.to_thread(os.makedirs, att_dir, exist_ok=True)
 

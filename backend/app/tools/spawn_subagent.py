@@ -13,7 +13,7 @@ from typing import Any
 from ..adapters.base import AVAILABLE_TOOLS
 from ..adapters.router import ModelRouter
 
-logger = logging.getLogger("devpilot.tools.spawn_subagent")
+logger = logging.getLogger("loopix.tools.spawn_subagent")
 
 # Tools the sub-agent is allowed to call.  Excludes run_terminal_command,
 # write_file, edit_file, and open_with_live_server (all mutative / side-effecting).

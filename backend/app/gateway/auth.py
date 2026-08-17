@@ -235,7 +235,7 @@ class APIKeyAuthProvider(AuthProvider):
 
     def _load_keys(self) -> None:
         """Load API keys from environment or config."""
-        master_key = os.getenv("DEVPILOT_API_KEY", "")
+        master_key = os.getenv("LOOPIX_API_KEY", "")
         if master_key:
             self._keys[master_key] = AuthIdentity(
                 user_id="api-user",

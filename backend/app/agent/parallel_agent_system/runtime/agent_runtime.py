@@ -200,10 +200,10 @@ class Conversation:
         model_name = (self.agent.llm.model or "").strip()
         if not model_name:
             import os
-            model_name = (os.environ.get("DEVPILOT_MODEL") or "").strip()
+            model_name = (os.environ.get("LOOPIX_MODEL") or "").strip()
         if not model_name:
             raise ValueError(
-                "Parallel agent requires a model name on agent.llm.model or DEVPILOT_MODEL. "
+                "Parallel agent requires a model name on agent.llm.model or LOOPIX_MODEL. "
                 "No hardcoded model defaults are allowed."
             )
         llm = OpenAIProvider(

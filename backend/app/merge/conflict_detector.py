@@ -7,7 +7,7 @@ import logging
 
 from ..patch.patch_store import ProposedPatch
 
-logger = logging.getLogger("devpilot.merge.conflict_detector")
+logger = logging.getLogger("loopix.merge.conflict_detector")
 
 
 class ConflictDetector:

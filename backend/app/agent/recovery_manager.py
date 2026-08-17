@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 
-logger = logging.getLogger("devpilot.agent.recovery_manager")
+logger = logging.getLogger("loopix.agent.recovery_manager")
 
 
 # ── Failure signatures and their recovery strategies ────────────────────────

@@ -1,6 +1,6 @@
-# Production Deployment Guide — DevPilot Platform
+# Production Deployment Guide — Loopix Platform
 
-This guide covers deploying the DevPilot AI coding platform to production, including setup, architecture, distributed workers, security hardening, monitoring, and incident response.
+This guide covers deploying the Loopix AI coding platform to production, including setup, architecture, distributed workers, security hardening, monitoring, and incident response.
 
 ---
 
@@ -40,12 +40,12 @@ This guide covers deploying the DevPilot AI coding platform to production, inclu
 
 ```bash
 # === Database & Queue ===
-export DATABASE_URL="postgresql+asyncpg://devpilot:password@postgres:5432/devpilot_prod"
+export DATABASE_URL="postgresql+asyncpg://loopix:password@postgres:5432/loopix_prod"
 export REDIS_URL="redis://redis:6379/0"
 
 # === Security & Master Key ===
 export SECRET_KEY="generate-a-secure-random-32-byte-hex-key"
-export DEVPILOT_MASTER_KEY="fernet-32-byte-base64-key-from-kms-or-vault"
+export LOOPIX_MASTER_KEY="fernet-32-byte-base64-key-from-kms-or-vault"
 export USE_SANDBOX="True"
 export SANDBOX_IMAGE="python:3.12-slim"
 
@@ -56,8 +56,8 @@ export GROQ_API_KEY="gsk_..."
 export OLLAMA_BASE_URL="http://localhost:11434/v1"
 
 # === Execution Limits ===
-export DEVPILOT_MAX_TURNS="25"
-export DEVPILOT_LLM_TURN_TIMEOUT="600.0"
+export LOOPIX_MAX_TURNS="25"
+export LOOPIX_LLM_TURN_TIMEOUT="600.0"
 ```
 
 ---
@@ -73,7 +73,7 @@ alembic upgrade head
 ```
 
 ### Step 2: Secret Management & KMS Integration
-For production, set `DEVPILOT_MASTER_KEY` via your secret manager (AWS Secrets Manager, HashiCorp Vault, Google Secret Manager, or Kubernetes Secret):
+For production, set `LOOPIX_MASTER_KEY` via your secret manager (AWS Secrets Manager, HashiCorp Vault, Google Secret Manager, or Kubernetes Secret):
 
 ```bash
 # Generate a Fernet key if initializing fresh:
@@ -118,7 +118,7 @@ Scale horizontally by launching additional worker instances or containers pointi
 3. **Tool Approval Enforcement**:
    - High-risk operations (e.g. executing destructive commands) require explicit interactive confirmation or fail-closed.
 4. **Keyring Permissions**:
-   - Local fallback keyrings enforce `0600` file permissions under `~/.devpilot/`.
+   - Local fallback keyrings enforce `0600` file permissions under `~/.loopix/`.
 
 ---
 

@@ -12,11 +12,11 @@ import os
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("devpilot.project_detector")
+logger = logging.getLogger("loopix.project_detector")
 
 # Files and directories to skip when listing the workspace
 _SKIP_DIRS = {
-    ".git", "node_modules", "venv", ".venv", "__pycache__", ".devpilot",
+    ".git", "node_modules", "venv", ".venv", "__pycache__", ".loopix",
     "dist", "build", ".next", "target", "out", ".cache", "coverage",
     ".mypy_cache", ".pytest_cache", "htmlcov", ".tox",
 }
@@ -221,11 +221,11 @@ async def detect_project_metadata_async(workspace_root: str) -> dict[str, Any]:
             "runnables": parsed.get("runnables") or [],
         }
 
-        # Persist to .devpilot/project.json
+        # Persist to .loopix/project.json
         try:
-            devpilot_dir = Path(workspace_root) / ".devpilot"
-            devpilot_dir.mkdir(exist_ok=True)
-            (devpilot_dir / "project.json").write_text(
+            loopix_dir = Path(workspace_root) / ".loopix"
+            loopix_dir.mkdir(exist_ok=True)
+            (loopix_dir / "project.json").write_text(
                 json.dumps(metadata, indent=2), encoding="utf-8"
             )
         except Exception as e:
@@ -240,7 +240,7 @@ async def detect_project_metadata_async(workspace_root: str) -> dict[str, Any]:
 
 # ─── Thin sync shim kept for backwards-compat ─────────────────────────────────
 # Callers that cannot await should switch to detect_project_metadata_async.
-# This version returns the cached .devpilot/project.json if present, otherwise
+# This version returns the cached .loopix/project.json if present, otherwise
 # a stub that tells the user to click ↻ to trigger the async detection.
 
 def detect_project_metadata(workspace_root: str) -> dict[str, Any]:
@@ -252,7 +252,7 @@ def detect_project_metadata(workspace_root: str) -> dict[str, Any]:
     proj_name = Path(workspace_root).name if workspace_root else "Project"
 
     if workspace_root and os.path.isdir(workspace_root):
-        cached = Path(workspace_root) / ".devpilot" / "project.json"
+        cached = Path(workspace_root) / ".loopix" / "project.json"
         if cached.is_file():
             try:
                 data = json.loads(cached.read_text(encoding="utf-8", errors="ignore"))

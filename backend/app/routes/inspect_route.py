@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from ..state import workspace_state
 from ..tools.browser_capture import CaptureResult, capture_page, is_localhost_url
 
-logger = logging.getLogger("devpilot.routes.inspect")
+logger = logging.getLogger("loopix.routes.inspect")
 router = APIRouter()
 
 

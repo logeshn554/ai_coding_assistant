@@ -1,9 +1,9 @@
 services:
-  devpilot:
+  loopix:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: devpilot
+    container_name: loopix
     ports:
       - "8000:8000"
     environment:
@@ -17,7 +17,7 @@ services:
       # - CORS_ORIGINS=http://localhost:8000
     volumes:
       # Persists configurations and API keys (e.g. Anthropic, OpenAI, etc.)
-      - devpilot-config:/home/devpilot/.devpilot
+      - loopix-config:/home/loopix/.loopix
       # Cross-platform workspace root mount
       - ${WORKSPACE_ROOT:-./workspace}:/workspace
       # Windows users: uncomment the lines below to mount host drives for local filesystem access
@@ -31,18 +31,18 @@ services:
   # ── Dedicated agent worker service ──────────────────────────────────────
   # Runs continuously in production to consume the agent job queue.
   # Decoupled from the API server so the API stays responsive under load.
-  devpilot-worker:
+  loopix-worker:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: devpilot-worker
+    container_name: loopix-worker
     command: python -m backend.app.infrastructure.worker
     environment:
       - DOCKER_MODE=true
       - ENVIRONMENT=production
       - INITIAL_WORKSPACE_ROOT=${WORKSPACE_ROOT:-/workspace}
     volumes:
-      - devpilot-config:/home/devpilot/.devpilot
+      - loopix-config:/home/loopix/.loopix
       - ${WORKSPACE_ROOT:-./workspace}:/workspace
       # Windows users: uncomment to mount host drives
       # - C:/:/host/c
@@ -50,15 +50,15 @@ services:
       # - E:/:/host/e
     depends_on:
       - redis
-      - devpilot
+      - loopix
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
-    container_name: devpilot-redis
+    container_name: loopix-redis
     ports:
       - "6379:6379"
     restart: unless-stopped
 
 volumes:
-  devpilot-config:
+  loopix-config:

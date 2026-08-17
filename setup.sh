@@ -2,7 +2,7 @@
 set -e
 
 echo "=============================================="
-echo "DevPilot Setup - Unix"
+echo "Loopix Setup - Unix"
 echo "=============================================="
 
 # Check for Python

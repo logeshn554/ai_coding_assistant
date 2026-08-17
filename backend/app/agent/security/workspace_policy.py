@@ -25,7 +25,7 @@ DEFAULT_EXCLUDE_DIRS: set[str] = {
     "venv",
     ".venv",
     "__pycache__",
-    ".devpilot",
+    ".loopix",
     "dist",
     "build",
     ".pytest_cache",

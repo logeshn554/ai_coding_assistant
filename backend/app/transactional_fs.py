@@ -57,7 +57,7 @@ class TransactionalFileSystem:
 
         # Perform atomic write to disk
         os.makedirs(os.path.dirname(abs_path), exist_ok=True)
-        temp_path = f"{abs_path}.devpilot_tmp_{int(time.time()*1000)}"
+        temp_path = f"{abs_path}.loopix_tmp_{int(time.time()*1000)}"
         with open(temp_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
         

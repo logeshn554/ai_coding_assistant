@@ -7,7 +7,7 @@ from __future__ import annotations
 import ast
 import logging
 
-logger = logging.getLogger("devpilot.merge.symbol_merge")
+logger = logging.getLogger("loopix.merge.symbol_merge")
 
 
 class SymbolMerger:

@@ -30,7 +30,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from ..state import SESSION_TOKEN, workspace_state
 
 router = APIRouter()
-logger = logging.getLogger("devpilot.routes.lsp")
+logger = logging.getLogger("loopix.routes.lsp")
 
 # Max times we'll restart a crashed language server per connection
 MAX_RESTARTS = 3
@@ -197,7 +197,7 @@ def _update_diagnostics_cache(body_str: str) -> None:
         if workspace_state.root:
             try:
                 from agent_os.repository.repository import RepositoryKernel
-                db_path = os.path.join(workspace_state.root, ".devpilot", "repo.db")
+                db_path = os.path.join(workspace_state.root, ".loopix", "repo.db")
                 repo = RepositoryKernel(db_path=db_path)
                 repo.store_lsp_diagnostics(rel_path, saved)
                 logger.info(f"[LSP] Stored {len(saved)} diagnostics in Repository Kernel database for {rel_path}")

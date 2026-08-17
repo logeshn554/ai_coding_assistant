@@ -10,7 +10,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import Any
 
-logger = logging.getLogger("devpilot.brain.versioned_memory")
+logger = logging.getLogger("loopix.brain.versioned_memory")
 
 
 @dataclass

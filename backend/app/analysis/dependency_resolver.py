@@ -7,7 +7,7 @@ import logging
 
 from ..brain.dependency_graph import dependency_graph
 
-logger = logging.getLogger("devpilot.analysis.dependency_resolver")
+logger = logging.getLogger("loopix.analysis.dependency_resolver")
 
 
 class DependencyResolver:

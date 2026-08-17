@@ -1,4 +1,4 @@
-"""Health and metrics endpoints for DevPilot."""
+"""Health and metrics endpoints for Loopix."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from ..state import redis_client, verify_token, workspace_state
 
-logger = logging.getLogger("devpilot.health")
+logger = logging.getLogger("loopix.health")
 
 router = APIRouter()
 
@@ -85,7 +85,7 @@ async def health_check() -> HealthResponse:
 
     return HealthResponse(
         status="ok",
-        version=os.environ.get("DEVPILOT_VERSION", "0.1.0"),
+        version=os.environ.get("LOOPIX_VERSION", "0.1.0"),
         uptime_seconds=uptime,
         workspace_root=workspace_state.root or "",
         redis_connected=redis_ok,
@@ -219,8 +219,8 @@ async def get_diagnostics(verify: Any = Depends(verify_token)) -> dict[str, Any]
     """Diagnostic operational metrics for operators."""
     from backend.app.infrastructure.observability.telemetry import TelemetryManager
     return {
-        "version": os.environ.get("DEVPILOT_VERSION", "0.1.0"),
-        "environment": os.environ.get("DEVPILOT_ENVIRONMENT", "production"),
+        "version": os.environ.get("LOOPIX_VERSION", "0.1.0"),
+        "environment": os.environ.get("LOOPIX_ENVIRONMENT", "production"),
         "active_metrics_counters": len(TelemetryManager._counters),
         "active_metrics_histograms": len(TelemetryManager._histograms),
     }

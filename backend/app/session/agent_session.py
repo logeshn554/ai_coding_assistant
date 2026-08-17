@@ -42,7 +42,7 @@ from ..prompts.modes import (
 from ..tools.dispatcher import dispatch_tool
 from ..tools.terminal_tool import run_shell_command
 
-logger = logging.getLogger("devpilot.agent")
+logger = logging.getLogger("loopix.agent")
 
 
 def detect_contradiction(text: str) -> str | None:
@@ -69,7 +69,7 @@ from .base_session import BaseSession
 
 
 class AgentSession(BaseSession):
-    """Manages a single DevPilot agent conversation and tool execution.
+    """Manages a single Loopix agent conversation and tool execution.
 
     Coordinates LLM streaming, tool dispatch with user confirmations,
     message queuing, multi-agent orchestration, and the Run Agent flow.
@@ -2044,13 +2044,13 @@ class AgentSession(BaseSession):
         Wraps adapter.stream_chat to capture usage chunks, calculate costs,
         and enforce cost circuit-breakers:
         - Soft limit (COST_LIMIT_USD, default $5): sends advisory once per session.
-        - Hard limit (DEVPILOT_HARD_COST_LIMIT, default $10): immediately terminates.
+        - Hard limit (LOOPIX_HARD_COST_LIMIT, default $10): immediately terminates.
         """
         from ..adapters.tool_history import clean_tool_history
         from ..config import settings
         cleaned_messages = clean_tool_history(messages)
         soft_limit = float(getattr(settings, "COST_LIMIT_USD", 5.0))
-        hard_limit = float(getattr(settings, "DEVPILOT_HARD_COST_LIMIT", 10.0))
+        hard_limit = float(getattr(settings, "LOOPIX_HARD_COST_LIMIT", 10.0))
 
         from backend.app.infrastructure.model_gateway import ModelGateway
 
@@ -2079,7 +2079,7 @@ class AgentSession(BaseSession):
                         "content": (
                             f"\n\n[COST LIMIT] **Session terminated** — total cost "
                             f"${self.total_cost_usd:.4f} exceeded hard limit ${hard_limit:.2f}. "
-                            "Increase `DEVPILOT_HARD_COST_LIMIT` in settings to allow higher spend."
+                            "Increase `LOOPIX_HARD_COST_LIMIT` in settings to allow higher spend."
                         ),
                     })
                     from backend.app.agent.agent_runtime.runtime import AgentState

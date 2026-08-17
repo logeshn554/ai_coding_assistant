@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-logger = logging.getLogger("devpilot.work_graph.semantic_lock")
+logger = logging.getLogger("loopix.work_graph.semantic_lock")
 
 
 @dataclass

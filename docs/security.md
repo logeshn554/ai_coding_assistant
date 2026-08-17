@@ -1,10 +1,10 @@
-# DevPilot Security & Permissions Architecture
+# Loopix Security & Permissions Architecture
 
-DevPilot enforces a failure-closed security model designed for autonomous agent execution on local and remote developer workstations.
+Loopix enforces a failure-closed security model designed for autonomous agent execution on local and remote developer workstations.
 
 ## Permission Capabilities & Policies
 
-DevPilot categorizes all agent tool invocations into 14 explicit capabilities:
+Loopix categorizes all agent tool invocations into 14 explicit capabilities:
 
 1. `READ_FILES`
 2. `WRITE_FILES`

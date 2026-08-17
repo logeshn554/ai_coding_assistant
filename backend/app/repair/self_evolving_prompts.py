@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 
-logger = logging.getLogger("devpilot.repair.self_evolving_prompts")
+logger = logging.getLogger("loopix.repair.self_evolving_prompts")
 
 
 class SelfEvolvingPrompts:

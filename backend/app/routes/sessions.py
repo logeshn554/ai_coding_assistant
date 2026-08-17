@@ -21,7 +21,7 @@ from ..db import (
 )
 from ..state import workspace_state
 
-logger = logging.getLogger("devpilot.sessions")
+logger = logging.getLogger("loopix.sessions")
 
 router = APIRouter()
 

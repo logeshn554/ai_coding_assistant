@@ -53,7 +53,7 @@ export default function RunDebugSidebar() {
   // Dynamic Watch expressions (loaded from local storage, default empty)
   const [watchExprs, setWatchExprs] = useState<WatchItem[]>(() => {
     try {
-      const saved = localStorage.getItem('devpilot_debug_watches');
+      const saved = localStorage.getItem('loopix_debug_watches');
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -135,7 +135,7 @@ export default function RunDebugSidebar() {
   const saveWatches = (list: WatchItem[]) => {
     setWatchExprs(list);
     try {
-      localStorage.setItem('devpilot_debug_watches', JSON.stringify(list));
+      localStorage.setItem('loopix_debug_watches', JSON.stringify(list));
     } catch {}
   };
 

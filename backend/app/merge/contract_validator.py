@@ -8,7 +8,7 @@ import re
 
 from ..intelligence.contract_generator import CodeContract
 
-logger = logging.getLogger("devpilot.merge.contract_validator")
+logger = logging.getLogger("loopix.merge.contract_validator")
 
 
 class ContractValidator:

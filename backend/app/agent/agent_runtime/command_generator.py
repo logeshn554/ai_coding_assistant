@@ -16,7 +16,7 @@ class TerminalCommandGenerator:
         """
         if sys.platform == "win32":
             # If we are in Windows, default to PowerShell, but check if we're forced to CMD
-            if os.environ.get("DEVPILOT_SHELL", "").lower() == "cmd":
+            if os.environ.get("LOOPIX_SHELL", "").lower() == "cmd":
                 return "cmd"
             return "powershell"
         return "bash"

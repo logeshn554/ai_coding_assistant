@@ -53,7 +53,7 @@ class OrchestratorDecision(BaseModel):
         description="Task description per agent, index-aligned with agents list"
     )
 
-class DevPilotChatModel(BaseChatModel):
+class LoopixChatModel(BaseChatModel):
     session: Any
     agent_name: str | None = None
     
@@ -102,12 +102,12 @@ class DevPilotChatModel(BaseChatModel):
 
     @property
     def _llm_type(self) -> str:
-        return "devpilot-chat"
+        return "loopix-chat"
 
 # ── LangChain Prompt Templates ──
 
 planner_prompt_template = PromptTemplate.from_template(
-    "You are the Planner Agent for DevPilot IDE. Decompose this coding request into an "
+    "You are the Planner Agent for Loopix IDE. Decompose this coding request into an "
     "ordered, dependency-aware subtask plan for specialist agents.\n\n"
     "Request: {task_description}\n\n"
     "RULES:\n"
@@ -481,11 +481,11 @@ memory_prompt_template = PromptTemplate.from_template(
     "Summarize and package the context for the Coding agent. Do not modify any files."
 )
 
-logger = logging.getLogger("devpilot.orchestrator")
+logger = logging.getLogger("loopix.orchestrator")
 
 
 ASK_MODE_SYSTEM_PROMPT = (
-    "You are DevPilot, an expert AI coding assistant. "
+    "You are Loopix, an expert AI coding assistant. "
     "Answer the user's question directly and concisely. "
     "If it's a greeting, respond warmly in one sentence. "
     "If it's a technical question, give a precise, expert answer. "
@@ -623,7 +623,7 @@ class PlannerAgent(BaseAgent):
         if custom_agent_names:
             prompt_content += f"\n\nAvailable custom available agents: {', '.join(custom_agent_names)}."
         
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
         response = ""
@@ -707,7 +707,7 @@ class RequirementAnalysisAgent(BaseAgent):
                 if is_llm_engine:
                     # LLM-based decision engine selects the target files
                     await self.orchestrator.context.log("Requirement Analysis Agent: Using LLM decision engine for file selection...")
-                    llm = DevPilotChatModel(session=session, agent_name=self.name)
+                    llm = LoopixChatModel(session=session, agent_name=self.name)
                     # Pass a reasonable list of files to select from (up to 400)
                     all_files_list = workspace_files[:400]
                     select_prompt = (
@@ -773,7 +773,7 @@ class RequirementAnalysisAgent(BaseAgent):
         ])
         prompt_content = safe_format_prompt(requirement_prompt_template, task_description=task_description, codebase_details=codebase_details)
         
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
         response = ""
@@ -941,7 +941,7 @@ class CodingAgent(BaseAgent):
                 "Output ONLY a JSON array of strings, e.g. [\"main.py\", \"models.py\", \"requirements.txt\"]."
             )
             try:
-                llm = DevPilotChatModel(session=session, agent_name=self.name)
+                llm = LoopixChatModel(session=session, agent_name=self.name)
                 res = await llm.ainvoke([("system", "Output ONLY a valid JSON array of string file paths."), ("human", infer_prompt)])
                 clean_res = res.content.strip()
                 if clean_res.startswith("```"):
@@ -984,7 +984,7 @@ class CodingAgent(BaseAgent):
                 file_context=file_context if file_context else "(new file — no existing content)"
             )
             
-            llm = DevPilotChatModel(session=session, agent_name=self.name)
+            llm = LoopixChatModel(session=session, agent_name=self.name)
             chain = chat_prompt | llm
             
             new_code_msg = await chain.ainvoke({"prompt_content": prompt_content})
@@ -1078,7 +1078,7 @@ class TerminalAgent(BaseAgent):
         ])
         
         prompt_content = safe_format_prompt(terminal_prompt_template, task_description=task_description)
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
         response = ""
@@ -1211,7 +1211,7 @@ class DebuggingAgent(BaseAgent):
             shared_memory=shared_memory
         )
         
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
         debug_output = ""
@@ -1286,7 +1286,7 @@ class DocumentationAgent(BaseAgent):
         ])
         prompt_content = safe_format_prompt(documentation_prompt_template, task_description=task_description)
         
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
         doc_content_msg = await chain.ainvoke({"prompt_content": prompt_content})
@@ -1329,7 +1329,7 @@ class CodeReviewAgent(BaseAgent):
         _, max_chars = get_dynamic_limits_from_session(session)
         chunks = chunked_codebase(file_contents, max_chars=max_chars, query=task_description)
         
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         findings = []
         try:
             for i, chunk in enumerate(chunks):
@@ -1432,7 +1432,7 @@ class FrontendPlannerAgent(BaseAgent):
             ("human", "{prompt_content}")
         ])
         prompt_content = safe_format_prompt(frontend_planner_prompt_template, task_description=task_description)
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         response_msg = await chain.ainvoke({"prompt_content": prompt_content})
         plan = response_msg.content
@@ -1457,7 +1457,7 @@ class BackendPlannerAgent(BaseAgent):
             ("human", "{prompt_content}")
         ])
         prompt_content = safe_format_prompt(backend_planner_prompt_template, task_description=task_description)
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         response_msg = await chain.ainvoke({"prompt_content": prompt_content})
         plan = response_msg.content
@@ -1482,7 +1482,7 @@ class SoftwareArchitectAgent(BaseAgent):
             ("human", "{prompt_content}")
         ])
         prompt_content = safe_format_prompt(architect_prompt_template, task_description=task_description)
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         try:
             response_msg = await chain.ainvoke({"prompt_content": prompt_content})
@@ -1519,7 +1519,7 @@ class FrontendDeveloperAgent(BaseAgent):
                 "Output ONLY a JSON array of string file paths, e.g. [\"index.html\", \"style.css\", \"script.js\", \"README.md\"]."
             )
             try:
-                llm = DevPilotChatModel(session=session, agent_name=self.name)
+                llm = LoopixChatModel(session=session, agent_name=self.name)
                 res = await llm.ainvoke([("system", "Output ONLY a valid JSON array of string file paths."), ("human", infer_prompt)])
                 clean_res = res.content.strip()
                 if clean_res.startswith("```"):
@@ -1545,7 +1545,7 @@ class FrontendDeveloperAgent(BaseAgent):
             prompt_content = frontend_dev_prompt_template.format(
                 task_description=task_description, path=path, original=original
             )
-            llm = DevPilotChatModel(session=session, agent_name=self.name)
+            llm = LoopixChatModel(session=session, agent_name=self.name)
             chain = chat_prompt | llm
             response_msg = await chain.ainvoke({"prompt_content": prompt_content})
             new_code = response_msg.content.strip()
@@ -1630,7 +1630,7 @@ class BackendDeveloperAgent(BaseAgent):
             prompt_content = backend_dev_prompt_template.format(
                 task_description=task_description, path=path, original=original
             )
-            llm = DevPilotChatModel(session=session, agent_name=self.name)
+            llm = LoopixChatModel(session=session, agent_name=self.name)
             chain = chat_prompt | llm
             response_msg = await chain.ainvoke({"prompt_content": prompt_content})
             new_code = response_msg.content.strip()
@@ -1694,7 +1694,7 @@ class DatabaseAgent(BaseAgent):
             ("human", "{prompt_content}")
         ])
         prompt_content = database_prompt_template.format(task_description=task_description)
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         try:
             response_msg = await chain.ainvoke({"prompt_content": prompt_content})
@@ -1739,7 +1739,7 @@ class APIAgent(BaseAgent):
             ("human", "{prompt_content}")
         ])
         prompt_content = safe_format_prompt(api_agent_prompt_template, task_description=task_description)
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         response_msg = await chain.ainvoke({"prompt_content": prompt_content})
         api_spec = response_msg.content
@@ -1785,7 +1785,7 @@ class IntegrationAgent(BaseAgent):
             integration_prompt_template,
             task_description=task_description, codebase_text=codebase_text[:8000]
         )
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         response_msg = await chain.ainvoke({"prompt_content": prompt_content})
         integration_report = response_msg.content
@@ -1810,7 +1810,7 @@ class SecurityAgent(BaseAgent):
         _, max_chars = get_dynamic_limits_from_session(session)
         chunks = chunked_codebase(file_contents, max_chars=max_chars, query=task_description)
 
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         findings = []
         try:
             for i, chunk in enumerate(chunks):
@@ -1872,7 +1872,7 @@ class PerformanceAgent(BaseAgent):
         _, max_chars = get_dynamic_limits_from_session(session)
         chunks = chunked_codebase(file_contents, max_chars=max_chars, query=task_description)
 
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         findings = []
         for i, chunk in enumerate(chunks):
             await self.orchestrator.context.log(f"Performance Agent: Auditing chunk {i+1}/{len(chunks)}...")
@@ -1925,7 +1925,7 @@ class AIReviewerAgent(BaseAgent):
         _, max_chars = get_dynamic_limits_from_session(session)
         chunks = chunked_codebase(file_contents, max_chars=max_chars, query=task_description)
 
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         findings = []
         for i, chunk in enumerate(chunks):
             await self.orchestrator.context.log(f"AI Reviewer Agent: Auditing chunk {i+1}/{len(chunks)}...")
@@ -1963,7 +1963,7 @@ class DevOpsAgent(BaseAgent):
             ("human", "{prompt_content}")
         ])
         prompt_content = safe_format_prompt(devops_prompt_template, task_description=task_description)
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         try:
             response_msg = await chain.ainvoke({"prompt_content": prompt_content})
@@ -2013,7 +2013,7 @@ class ReleaseAgent(BaseAgent):
             release_prompt_template,
             task_description=task_description, history_summary=history_summary
         )
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         try:
             response_msg = await chain.ainvoke({"prompt_content": prompt_content})
@@ -2058,7 +2058,7 @@ class RefactoringAgent(BaseAgent):
         _, max_chars = get_dynamic_limits_from_session(session)
         chunks = chunked_codebase(file_contents, max_chars=max_chars, query=task_description)
 
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         findings = []
         for i, chunk in enumerate(chunks):
             await self.orchestrator.context.log(f"Refactoring Agent: Reviewing chunk {i+1}/{len(chunks)}...")
@@ -2125,7 +2125,7 @@ class ContextCompactionAgent(BaseAgent):
         collab_text = "\n".join([str(e)[:300] for e in collab_log[-20:]])
         memory_text = "\n".join([f"{k}: {str(v)[:200]}" for k, v in self.orchestrator.context.memory.items() if not k.startswith("__")])
 
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chat_prompt = ChatPromptTemplate.from_messages([
             ("system", (
                 "You are an expert at summarizing technical conversations and code context. "
@@ -2169,7 +2169,7 @@ class TitleAgent(BaseAgent):
             for msg in history[:4]
         ]) or task_description
 
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chat_prompt = ChatPromptTemplate.from_messages([
             ("system", (
                 "Generate a short, descriptive title (3-7 words) for this conversation. "
@@ -2208,7 +2208,7 @@ class SummaryAgent(BaseAgent):
         ])
         collab_text = "\n".join([str(e)[:400] for e in collab_log])
 
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chat_prompt = ChatPromptTemplate.from_messages([
             ("system", (
                 "You are a technical writer. Produce a clear, structured session summary "
@@ -2272,7 +2272,7 @@ class CustomAgent(BaseAgent):
         except Exception:
             prompt_content = self.prompt_template.template.replace("{task_description}", task_description)
             
-        llm = DevPilotChatModel(session=session, agent_name=self.name)
+        llm = LoopixChatModel(session=session, agent_name=self.name)
         chain = chat_prompt | llm
         
         response = await chain.ainvoke({"prompt_content": prompt_content})
@@ -2290,7 +2290,7 @@ def apply_custom_agents_and_overrides(orchestrator_instance=None):
 
     from langchain_core.prompts import PromptTemplate
     
-    custom_agents_path = Path.home() / ".devpilot" / "custom_agents.json"
+    custom_agents_path = Path.home() / ".loopix" / "custom_agents.json"
     if not custom_agents_path.exists():
         return
         
@@ -2455,7 +2455,7 @@ def get_dynamic_limits_from_session(session: Any) -> tuple[int, int]:
     return file_limit, max_chars
 
 async def async_get_codebase_dict(workspace_root: str, target_files: list = None, task_description: str = "", session: Any = None) -> dict:
-    exclude_dirs = {".git", "node_modules", "venv", "__pycache__", ".devpilot", "dist", "build"}
+    exclude_dirs = {".git", "node_modules", "venv", "__pycache__", ".loopix", "dist", "build"}
     exclude_extensions = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}
 
     # 1. RAG-based context handoff: If target_files is provided, fetch those files first
@@ -2696,7 +2696,7 @@ async def orchestrator_node(state: AgentState) -> AgentState:
         "collaboration_log": state["collaboration_log"]
     })
     
-    llm = DevPilotChatModel(session=state["session"], agent_name="Orchestrator Agent")
+    llm = LoopixChatModel(session=state["session"], agent_name="Orchestrator Agent")
     chain = chat_prompt | llm
     
     response_msg = await chain.ainvoke({"prompt_content": prompt_content})
@@ -3108,12 +3108,12 @@ class AgentOrchestrator:
         self.kernel = Kernel(self.registry, self.aos_event_bus, self.config, self.logger_os)
 
 
-        # Compute persistent directory inside ~/.devpilot/<workspace-hash>/
+        # Compute persistent directory inside ~/.loopix/<workspace-hash>/
         import hashlib
         import os
         workspace_root = getattr(session, "workspace_root", None) or ""
         workspace_hash = hashlib.sha256(workspace_root.encode("utf-8")).hexdigest()[:16] if workspace_root else "default"
-        workspace_dir = os.path.join(os.path.expanduser("~"), ".devpilot", workspace_hash)
+        workspace_dir = os.path.join(os.path.expanduser("~"), ".loopix", workspace_hash)
         os.makedirs(workspace_dir, exist_ok=True)
 
         repo_db_path = os.path.join(workspace_dir, "repo.db")
@@ -3658,7 +3658,7 @@ class AgentOrchestrator:
             final_history_summary=final_history_summary
         )
 
-        llm = DevPilotChatModel(session=session, agent_name="Orchestrator Agent")
+        llm = LoopixChatModel(session=session, agent_name="Orchestrator Agent")
         chain = chat_prompt | llm
         try:
             response_msg = await chain.ainvoke({"prompt_content": prompt_content})

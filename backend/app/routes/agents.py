@@ -46,11 +46,11 @@ DEFAULT_AGENTS_METADATA = [
 ]
 
 def get_custom_agents_file_path() -> Path:
-    return Path.home() / ".devpilot" / "custom_agents.json"
+    return Path.home() / ".loopix" / "custom_agents.json"
 
 @router.get("/api/agents/modes")
 async def get_agent_modes():
-    """Returns definitions and capabilities for all 8 universal DevPilot agent modes."""
+    """Returns definitions and capabilities for all 8 universal Loopix agent modes."""
     return {
         "modes": [
             { "mode": "Ask", "description": "Read-only project context and technical Q&A", "read_only": True },

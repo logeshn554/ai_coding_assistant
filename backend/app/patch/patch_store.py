@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from .patch_metadata import PatchMetadata
 
-logger = logging.getLogger("devpilot.patch.patch_store")
+logger = logging.getLogger("loopix.patch.patch_store")
 
 
 @dataclass

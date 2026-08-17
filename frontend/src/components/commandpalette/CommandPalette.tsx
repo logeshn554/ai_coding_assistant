@@ -56,7 +56,7 @@ function HighlightedLabel({ label, indices }: { label: string; indices: number[]
 }
 
 // ── Recently-used persistence ────────────────────────────────────────────────
-const RECENT_KEY = 'devpilot_recent_commands';
+const RECENT_KEY = 'loopix_recent_commands';
 const MAX_RECENT = 5;
 
 function loadRecent(): string[] {

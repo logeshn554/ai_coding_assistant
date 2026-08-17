@@ -1,7 +1,7 @@
 """
 memory_manager.py — Persistent AI Project Memory Engine for Antigravity.
 
-Manages permanent project memory stored inside `.devpilot/memory.json`
+Manages permanent project memory stored inside `.loopix/memory.json`
 in the workspace root directory. Retains project architecture, folder structure,
 coding conventions, theme system, state management rules, long-term goals,
 previous AI edits, user preferences, and known issues.
@@ -14,7 +14,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("devpilot.memory")
+logger = logging.getLogger("loopix.memory")
 
 _memory_lock = threading.Lock()
 
@@ -22,12 +22,12 @@ _memory_lock = threading.Lock()
 class MemoryManager:
     """
     Manages loading, updating, searching, and persisting project memory
-    to `.devpilot/memory.json`.
+    to `.loopix/memory.json`.
     """
 
     DEFAULT_MEMORY: dict[str, Any] = {
         "version": "1.0.0",
-        "project_name": "DevPilot Workspace",
+        "project_name": "Loopix Workspace",
         "architecture": {
             "pattern": "Component-Based Modular Architecture",
             "state_management": "React Context / Zustand",
@@ -70,12 +70,12 @@ class MemoryManager:
     def _get_memory_path(self) -> Path | None:
         if not self.workspace_root or not os.path.isdir(self.workspace_root):
             return None
-        devpilot_dir = Path(self.workspace_root) / ".devpilot"
-        devpilot_dir.mkdir(exist_ok=True)
-        return devpilot_dir / "memory.json"
+        loopix_dir = Path(self.workspace_root) / ".loopix"
+        loopix_dir.mkdir(exist_ok=True)
+        return loopix_dir / "memory.json"
 
     def load_memory(self) -> dict[str, Any]:
-        """Loads memory from .devpilot/memory.json if present."""
+        """Loads memory from .loopix/memory.json if present."""
         path = self._get_memory_path()
         if not path or not path.exists():
             return self._memory_data
@@ -87,7 +87,7 @@ class MemoryManager:
                 if isinstance(data, dict):
                     self._memory_data = {**self.DEFAULT_MEMORY, **data}
             except Exception as e:
-                logger.error(f"Failed to read .devpilot/memory.json: {e}")
+                logger.error(f"Failed to read .loopix/memory.json: {e}")
 
         return self._memory_data
 
@@ -104,7 +104,7 @@ class MemoryManager:
                 )
                 return True
             except Exception as e:
-                logger.error(f"Failed to write .devpilot/memory.json: {e}")
+                logger.error(f"Failed to write .loopix/memory.json: {e}")
                 return False
 
     def get_memory(self) -> dict[str, Any]:

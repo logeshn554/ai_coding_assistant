@@ -14,7 +14,7 @@ from ..async_files import async_list_workspace_dir
 
 _EXCLUDE = {
     ".git", "node_modules", "__pycache__", "venv", ".venv",
-    "dist", "build", ".devpilot", ".cache", ".mypy_cache",
+    "dist", "build", ".loopix", ".cache", ".mypy_cache",
 }
 
 MAX_ENTRIES = 2000

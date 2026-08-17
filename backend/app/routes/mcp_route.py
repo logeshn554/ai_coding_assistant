@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from ..mcp_client import global_mcp_manager
 from ..state import config_manager
 
-logger = logging.getLogger("devpilot.routes.mcp")
+logger = logging.getLogger("loopix.routes.mcp")
 router = APIRouter(prefix="/api/mcp", tags=["mcp"])
 
 

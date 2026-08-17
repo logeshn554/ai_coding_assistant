@@ -34,7 +34,7 @@ __all__ = [
     "get_db_session",
 ]
 
-logger = logging.getLogger("devpilot.db")
+logger = logging.getLogger("loopix.db")
 
 async def init_db() -> None:
     """Create tables, migrate columns, and seed a default session if empty."""
@@ -115,7 +115,7 @@ async def init_db() -> None:
 
         user = await user_repo.get_by_id("default-user")
         if not user:
-            user = await user_repo.create("developer@devpilot.local", "Default Developer", "nopassword")
+            user = await user_repo.create("developer@loopix.local", "Default Developer", "nopassword")
             user.id = "default-user"
 
         ws = await ws_repo.get_by_root("default-org", "")

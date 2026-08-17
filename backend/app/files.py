@@ -9,7 +9,7 @@ import time
 
 from .config import config_manager
 
-logger = logging.getLogger("devpilot.files")
+logger = logging.getLogger("loopix.files")
 
 def safe_path(workspace_root: str, relative_path: str) -> str:
     """
@@ -95,9 +95,9 @@ def create_backup(workspace_root: str, relative_path: str) -> bool:
         if not os.path.exists(abs_path):
             return False
             
-        # Define backup folder locally in .devpilot
+        # Define backup folder locally in .loopix
         rel_hash = hashlib.sha256(relative_path.encode("utf-8")).hexdigest()
-        backup_dir = os.path.join(workspace_root, ".devpilot", "backups", rel_hash)
+        backup_dir = os.path.join(workspace_root, ".loopix", "backups", rel_hash)
         os.makedirs(backup_dir, exist_ok=True)
         
         # Copy file with timestamp
@@ -139,7 +139,7 @@ def create_backup(workspace_root: str, relative_path: str) -> bool:
 def rollback_file(workspace_root: str, relative_path: str, timestamp: int = None) -> bool:
     try:
         rel_hash = hashlib.sha256(relative_path.encode("utf-8")).hexdigest()
-        backup_dir = os.path.join(workspace_root, ".devpilot", "backups", rel_hash)
+        backup_dir = os.path.join(workspace_root, ".loopix", "backups", rel_hash)
         if not os.path.exists(backup_dir):
             return False
             
@@ -539,7 +539,7 @@ def get_codebase_contents(workspace_root: str, max_chars: int | None = None) -> 
     from .context_config import CODEBASE_SCAN_MAX_CHARS
     limit = max_chars or CODEBASE_SCAN_MAX_CHARS
     
-    exclude_dirs = {".git", "node_modules", "venv", "__pycache__", ".devpilot", "dist", "build"}
+    exclude_dirs = {".git", "node_modules", "venv", "__pycache__", ".loopix", "dist", "build"}
     exclude_extensions = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".zip", ".tar", ".gz", ".exe", ".dll"}
     
     is_editor_root = False

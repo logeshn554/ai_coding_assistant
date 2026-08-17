@@ -17,7 +17,7 @@ import re
 from .security_filter import SecurityFilter
 from .types import SymbolInfo, SymbolKind
 
-logger = logging.getLogger("devpilot.context_engine.symbol_index")
+logger = logging.getLogger("loopix.context_engine.symbol_index")
 
 
 class SymbolIndex:

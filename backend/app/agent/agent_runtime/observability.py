@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-logger = logging.getLogger("devpilot.observability")
+logger = logging.getLogger("loopix.observability")
 
 
 class CircuitState(str, Enum):

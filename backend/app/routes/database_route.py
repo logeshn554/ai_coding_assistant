@@ -9,11 +9,11 @@ from ..state import workspace_state
 router = APIRouter()
 
 class QueryExecuteRequest(BaseModel):
-    db_path: str | None = "devpilot.db"
+    db_path: str | None = "loopix.db"
     sql: str
 
 @router.get("/api/database/tables")
-def get_database_tables(db_path: str | None = "devpilot.db"):
+def get_database_tables(db_path: str | None = "loopix.db"):
     """Lists tables and schema information for a SQLite database."""
     target_db = db_path
     if not os.path.isabs(target_db) and workspace_state.root:
@@ -47,7 +47,7 @@ def get_database_tables(db_path: str | None = "devpilot.db"):
 @router.post("/api/database/execute")
 def execute_query(req: QueryExecuteRequest):
     """Executes a SQL query safely and returns tabular results or EXPLAIN QUERY PLAN."""
-    target_db = req.db_path or "devpilot.db"
+    target_db = req.db_path or "loopix.db"
     if not os.path.isabs(target_db) and workspace_state.root:
         target_db = os.path.join(workspace_state.root, target_db)
 

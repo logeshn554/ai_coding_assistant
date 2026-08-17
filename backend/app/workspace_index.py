@@ -103,7 +103,7 @@ class WorkspaceIndex:
             ".sh", ".bat", ".dockerfile", "dockerfile"
         }
         
-        exclude_dirs = {".git", "node_modules", "venv", ".devpilot", "__pycache__"}
+        exclude_dirs = {".git", "node_modules", "venv", ".loopix", "__pycache__"}
         
         current_paths = set()
         
@@ -252,7 +252,7 @@ class WorkspaceIndex:
             return []
 
         # Also scan flat list including uncached files
-        exclude_dirs = {".git", "node_modules", "venv", ".devpilot", "__pycache__", "dist", ".pytest_cache"}
+        exclude_dirs = {".git", "node_modules", "venv", ".loopix", "__pycache__", "dist", ".pytest_cache"}
         all_files: list[str] = []
         root_path = Path(self.workspace_root).resolve()
         try:

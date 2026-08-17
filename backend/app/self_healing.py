@@ -2,7 +2,7 @@
 import logging
 from typing import Any
 
-logger = logging.getLogger("devpilot.self_healing")
+logger = logging.getLogger("loopix.self_healing")
 
 class SelfHealingEngine:
     def diagnose_and_heal(self, error_message: str, workspace_root: str = "") -> dict[str, Any]:

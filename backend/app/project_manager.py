@@ -2,7 +2,7 @@
 import logging
 from typing import Any
 
-logger = logging.getLogger("devpilot.project_manager")
+logger = logging.getLogger("loopix.project_manager")
 
 class AIProjectManager:
     def generate_project_plan(self, goal_description: str) -> dict[str, Any]:

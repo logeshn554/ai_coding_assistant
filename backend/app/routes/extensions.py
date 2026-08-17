@@ -13,8 +13,8 @@ from ..extension_host import extension_host
 
 router = APIRouter()
 
-EXTENSIONS_FILE_PATH = os.path.expanduser("~/.devpilot/extensions.json")
-CUSTOM_EXTENSIONS_DIR = os.path.expanduser("~/.devpilot/custom_extensions")
+EXTENSIONS_FILE_PATH = os.path.expanduser("~/.loopix/extensions.json")
+CUSTOM_EXTENSIONS_DIR = os.path.expanduser("~/.loopix/custom_extensions")
 
 
 class ExtensionActionRequest(BaseModel):
@@ -51,8 +51,8 @@ def get_installed_extensions_list() -> list[dict[str, Any]]:
     initial = [
         {"id": "ms-python.python", "name": "Python", "description": "IntelliSense, linting, debugging, code formatting, and refactoring", "version": "2024.2.0", "category": "Programming Languages", "installed": True, "enabled": True, "publisher": "ms-python"},
         {"id": "esbenp.prettier-vscode", "name": "Prettier - Code formatter", "description": "Code formatter using prettier for JS, TS, HTML, CSS", "version": "10.4.0", "category": "Formatters", "installed": True, "enabled": True, "publisher": "esbenp"},
-        {"id": "dbaeumer.vscode-eslint", "name": "ESLint", "description": "Integrates ESLint into DevPilot editor", "version": "2.4.4", "category": "Linters", "installed": True, "enabled": True, "publisher": "dbaeumer"},
-        {"id": "devpilot.core-ai", "name": "DevPilot AI Agent Assistant", "description": "Autonomous AI reasoning, inline multi-file editing & LSP integration", "version": "1.0.0", "category": "AI", "installed": True, "enabled": True, "publisher": "devpilot"},
+        {"id": "dbaeumer.vscode-eslint", "name": "ESLint", "description": "Integrates ESLint into Loopix editor", "version": "2.4.4", "category": "Linters", "installed": True, "enabled": True, "publisher": "dbaeumer"},
+        {"id": "loopix.core-ai", "name": "Loopix AI Agent Assistant", "description": "Autonomous AI reasoning, inline multi-file editing & LSP integration", "version": "1.0.0", "category": "AI", "installed": True, "enabled": True, "publisher": "loopix"},
     ]
     with open(EXTENSIONS_FILE_PATH, "w", encoding="utf-8") as f:
         json.dump(initial, f, indent=2)
@@ -119,7 +119,7 @@ async def search_marketplace_extensions(query: str = Query("", description="Sear
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(
                 url,
-                headers={"User-Agent": "DevPilot-AI-Editor/1.0", "Accept": "application/json"}
+                headers={"User-Agent": "Loopix-AI-Editor/1.0", "Accept": "application/json"}
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -182,7 +182,7 @@ async def install_extension(req: ExtensionActionRequest):
                 async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
                     resp = await client.get(
                         download_url,
-                        headers={"User-Agent": "DevPilot-AI-Editor/1.0"}
+                        headers={"User-Agent": "Loopix-AI-Editor/1.0"}
                     )
                     with open(vsix_file, "wb") as out_f:
                         out_f.write(resp.content)

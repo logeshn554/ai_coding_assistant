@@ -8,7 +8,7 @@ import logging
 from ..brain.dependency_graph import dependency_graph
 from ..brain.test_graph import test_graph
 
-logger = logging.getLogger("devpilot.analysis.impact_analyzer")
+logger = logging.getLogger("loopix.analysis.impact_analyzer")
 
 
 class ImpactAnalyzer:

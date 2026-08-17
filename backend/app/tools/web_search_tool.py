@@ -14,7 +14,7 @@ from typing import Any
 
 from ..state import config_manager
 
-logger = logging.getLogger("devpilot.tools.web_search")
+logger = logging.getLogger("loopix.tools.web_search")
 
 
 @dataclass

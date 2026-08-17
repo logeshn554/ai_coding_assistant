@@ -66,7 +66,7 @@ def get_python_executable():
 def main():
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     os.chdir(project_root)
-    print("Starting DevPilot Launcher...")
+    print("Starting Loopix Launcher...")
     
     # Pre-clean ports to avoid address-in-use crashes
     print("Checking ports 8000 and 5173 for lingering instances...")
@@ -80,8 +80,8 @@ def main():
     
     # Try to load session token so it matches between backends
     from pathlib import Path
-    token_file = Path.home() / ".devpilot" / "session_token.txt"
-    session_token = "devpilot-session-token-change-me"
+    token_file = Path.home() / ".loopix" / "session_token.txt"
+    session_token = "loopix-session-token-change-me"
     if token_file.is_file():
         try:
             session_token = token_file.read_text(encoding="utf-8").strip()

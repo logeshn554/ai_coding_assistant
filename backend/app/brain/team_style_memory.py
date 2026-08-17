@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-logger = logging.getLogger("devpilot.brain.team_style_memory")
+logger = logging.getLogger("loopix.brain.team_style_memory")
 
 
 class TeamStyleMemory:

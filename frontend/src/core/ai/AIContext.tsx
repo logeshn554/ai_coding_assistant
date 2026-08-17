@@ -71,7 +71,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [subtasks, setSubtasks] = useState<SubTask[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    const persisted = localStorage.getItem('devpilot_session_id');
+    const persisted = localStorage.getItem('loopix_session_id');
     return persisted && persisted.trim() && persisted !== 'default-session' ? persisted.trim() : '';
   });
   const [liveToolCalls, setLiveToolCalls] = useState<ToolExecutionItem[]>([]);
@@ -111,7 +111,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const historyRequestRef = useRef(0);
 
   const getEffectiveSessionId = (override?: string | null): string => {
-    const candidate = override || activeSessionId || localStorage.getItem('devpilot_session_id') || '';
+    const candidate = override || activeSessionId || localStorage.getItem('loopix_session_id') || '';
     return candidate && candidate.trim() ? candidate.trim() : '';
   };
 
@@ -119,9 +119,9 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     const safeSessionId = nextSessionId && nextSessionId.trim() ? nextSessionId.trim() : '';
     if (persist) {
       if (safeSessionId && safeSessionId !== 'default-session') {
-        localStorage.setItem('devpilot_session_id', safeSessionId);
+        localStorage.setItem('loopix_session_id', safeSessionId);
       } else if (!safeSessionId) {
-        localStorage.removeItem('devpilot_session_id');
+        localStorage.removeItem('loopix_session_id');
       }
     }
     setActiveSessionId(safeSessionId);
@@ -129,7 +129,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
   useEffect(() => {
     if (activeSessionId && activeSessionId !== 'default-session') {
-      localStorage.setItem('devpilot_session_id', activeSessionId);
+      localStorage.setItem('loopix_session_id', activeSessionId);
     }
   }, [activeSessionId]);
 
@@ -164,8 +164,8 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         });
       }
     };
-    window.addEventListener('devpilot-localhost-detected', handleLocalhostDetected);
-    return () => window.removeEventListener('devpilot-localhost-detected', handleLocalhostDetected);
+    window.addEventListener('loopix-localhost-detected', handleLocalhostDetected);
+    return () => window.removeEventListener('loopix-localhost-detected', handleLocalhostDetected);
   }, [showToast, setActiveProcesses]);
 
   // Debounced tokenization from the backend
@@ -203,8 +203,8 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         handleSendMessage(detail.prompt, 'Agent', true);
       }
     };
-    window.addEventListener('devpilot_explain_error', handleExplainError);
-    return () => window.removeEventListener('devpilot_explain_error', handleExplainError);
+    window.addEventListener('loopix_explain_error', handleExplainError);
+    return () => window.removeEventListener('loopix_explain_error', handleExplainError);
   }, [isGenerating]);
 
   const fetchSessions = async (syncActive: boolean = false): Promise<string | null> => {
@@ -217,7 +217,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
       const serverActiveId = data.active_session_id || sessionList[0]?.id || null;
       if (syncActive) {
-        const storedSessionId = localStorage.getItem('devpilot_session_id');
+        const storedSessionId = localStorage.getItem('loopix_session_id');
         const hasStoredInList = storedSessionId && sessionList.some(s => s.id === storedSessionId);
         const preferredSessionId = hasStoredInList ? storedSessionId : (serverActiveId || '');
 
@@ -478,7 +478,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
               // Parse run command blocks and store in localStorage
               const runMatch = newContent.match(/```run\s*\n([\s\S]*?)\n```/);
               if (runMatch) {
-                localStorage.setItem('devpilot_detected_run_command', runMatch[1].trim());
+                localStorage.setItem('loopix_detected_run_command', runMatch[1].trim());
               }
               
               // Filter out raw JSON or reasoning objects
@@ -743,7 +743,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
         case 'terminal_stream':
           if (data.content) {
             setConsoleLogs((prev) => [...prev, data.content]);
-            window.dispatchEvent(new CustomEvent('devpilot_terminal_stream', { detail: data.content }));
+            window.dispatchEvent(new CustomEvent('loopix_terminal_stream', { detail: data.content }));
           }
           break;
         case 'processes_update':
@@ -763,7 +763,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
               }
             ]);
             showToast(`🚀 Server running at ${data.url}`, 'success');
-            window.dispatchEvent(new CustomEvent('devpilot_server_started', { detail: { url: data.url, port: data.port, pid: data.pid } }));
+            window.dispatchEvent(new CustomEvent('loopix_server_started', { detail: { url: data.url, port: data.port, pid: data.pid } }));
           }
           break;
         case 'port_conflict_request':
@@ -851,7 +851,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
       // On 4403 Forbidden / invalid session: reset session identity and adopt a valid session
       if (evt.code === 4403) {
         logger.info('Chat socket rejected (Forbidden / invalid session). Refreshing session identity...');
-        localStorage.removeItem('devpilot_session_id');
+        localStorage.removeItem('loopix_session_id');
         setActiveSessionId('');
         fetchSessions(true).then((newId) => {
           if (newId) {
@@ -893,7 +893,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
     setLiveToolCalls([]);
     setLiveFileChanges([]);
     setCurrentGoal(text.slice(0, 100));
-    localStorage.removeItem('devpilot_detected_run_command');
+    localStorage.removeItem('loopix_detected_run_command');
 
     // Map 'Auto' to ask-mode behavior (direct LLM call, no orchestrator)
     const effectiveMode = mode === 'Auto' ? 'Ask' : mode;
@@ -990,7 +990,7 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
     const refreshActiveSession = async () => {
       const serverSessionId = await fetchSessions(true);
-      const chosenSessionId = serverSessionId || (localStorage.getItem('devpilot_session_id') || activeSessionId || '');
+      const chosenSessionId = serverSessionId || (localStorage.getItem('loopix_session_id') || activeSessionId || '');
 
       if (cancelled) return;
       if (chosenSessionId && chosenSessionId !== activeSessionId) {

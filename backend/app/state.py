@@ -11,12 +11,12 @@ slowapi.extension.Request = (Request, WebSocket)
 from .permissions import PermissionManager
 
 # Setup Logging
-logger = logging.getLogger("devpilot.state")
+logger = logging.getLogger("loopix.state")
 
 from pathlib import Path
 
 # Generate session token and setup auth
-token_file = Path.home() / ".devpilot" / "session_token.txt"
+token_file = Path.home() / ".loopix" / "session_token.txt"
 token_file.parent.mkdir(parents=True, exist_ok=True)
 try:
     import sys
@@ -609,13 +609,13 @@ async def verify_token(request: Request = None):
     Query-parameter tokens (?token=) are no longer accepted. Tokens in URLs
     leak through access logs, browser history, and reverse proxies.
 
-    Set DEVPILOT_NO_AUTH=true to bypass for local development ONLY.
+    Set LOOPIX_NO_AUTH=true to bypass for local development ONLY.
     This flag is blocked in production.
     """
-    if os.environ.get("DEVPILOT_NO_AUTH", "").lower() in ("1", "true", "yes"):
+    if os.environ.get("LOOPIX_NO_AUTH", "").lower() in ("1", "true", "yes"):
         env_mode = os.environ.get("ENVIRONMENT", os.environ.get("NODE_ENV", "development")).lower()
         if env_mode == "production":
-            raise RuntimeError("DEVPILOT_NO_AUTH cannot be enabled in production environment")
+            raise RuntimeError("LOOPIX_NO_AUTH cannot be enabled in production environment")
         return
     if request is None:
         return

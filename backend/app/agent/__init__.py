@@ -1,4 +1,4 @@
-"""DevPilot Agent Intelligence Package.
+"""Loopix Agent Intelligence Package.
 
 Provides 14-phase agent control-flow infrastructure:
   - IntentRouter        : classify user intent before execution

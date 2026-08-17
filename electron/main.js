@@ -1,11 +1,11 @@
 /**
- * main.js — Electron main process for DevPilot (VS Code Architecture).
+ * main.js — Electron main process for Loopix (VS Code Architecture).
  *
  * Responsibilities:
  *  1. Open a native desktop window immediately (NO external web browser).
  *  2. Display a built-in startup splash screen while initializing.
  *  3. Automatically spawn and manage the background Python AI backend.
- *  4. Load the full DevPilot workbench directly in the desktop window.
+ *  4. Load the full Loopix workbench directly in the desktop window.
  *  5. Handle native OS dialogs and clean process termination.
  */
 
@@ -16,8 +16,8 @@ const { spawn, exec } = require('child_process');
 const fs = require('fs');
 
 // Configuration
-const DEVPILOT_PORT = process.env.PORT || 8000;
-const DEVPILOT_URL = `http://127.0.0.1:${DEVPILOT_PORT}`;
+const LOOPIX_PORT = process.env.PORT || 8000;
+const LOOPIX_URL = `http://127.0.0.1:${LOOPIX_PORT}`;
 const BACKEND_POLL_INTERVAL = 300;
 const BACKEND_TIMEOUT = 35_000;
 
@@ -28,7 +28,7 @@ const projectRoot = path.resolve(__dirname, '..');
 // ─── Native Application Menu ─────────────────────────────────────────────────
 
 function setApplicationMenu() {
-  const isDev = process.env.NODE_ENV === 'development' || process.env.DEVPILOT_DEV === '1';
+  const isDev = process.env.NODE_ENV === 'development' || process.env.LOOPIX_DEV === '1';
 
   const template = [
     {
@@ -99,7 +99,7 @@ function findPythonExecutable() {
 
 function startBackendServer() {
   const pythonPath = findPythonExecutable();
-  console.log(`[DevPilot Electron] Starting background AI service: ${pythonPath}`);
+  console.log(`[Loopix Electron] Starting background AI service: ${pythonPath}`);
 
   const args = [
     '-m',
@@ -108,7 +108,7 @@ function startBackendServer() {
     '--host',
     '127.0.0.1',
     '--port',
-    String(DEVPILOT_PORT),
+    String(LOOPIX_PORT),
     '--log-level',
     'warning'
   ];
@@ -132,7 +132,7 @@ function startBackendServer() {
   });
 
   backendProcess.on('exit', (code, signal) => {
-    console.log(`[DevPilot Electron] Backend exited (code: ${code}, signal: ${signal})`);
+    console.log(`[Loopix Electron] Backend exited (code: ${code}, signal: ${signal})`);
     backendProcess = null;
   });
 }
@@ -141,7 +141,7 @@ function killBackendServer() {
   if (!backendProcess || !backendProcess.pid) return;
 
   const pid = backendProcess.pid;
-  console.log(`[DevPilot Electron] Stopping background backend (PID: ${pid})...`);
+  console.log(`[Loopix Electron] Stopping background backend (PID: ${pid})...`);
 
   if (process.platform === 'win32') {
     exec(`taskkill /pid ${pid} /T /F`, () => {});
@@ -161,7 +161,7 @@ async function waitForBackend(timeout = BACKEND_TIMEOUT) {
   while (Date.now() - start < timeout) {
     try {
       await new Promise((resolve, reject) => {
-        const req = http.get(`${DEVPILOT_URL}/api/health`, (res) => {
+        const req = http.get(`${LOOPIX_URL}/api/health`, (res) => {
           res.destroy();
           if (res.statusCode === 200) {
             resolve();
@@ -208,7 +208,7 @@ ipcMain.on('terminal:focus-change', (_event, isFocused) => {
 ipcMain.handle('agentos:rollbackTask', async (_event, taskId) => {
   try {
     return new Promise((resolve) => {
-      const req = http.request(`${DEVPILOT_URL}/api/files/rollback-task?task_id=${encodeURIComponent(taskId)}`, { method: 'POST' }, (res) => {
+      const req = http.request(`${LOOPIX_URL}/api/files/rollback-task?task_id=${encodeURIComponent(taskId)}`, { method: 'POST' }, (res) => {
         let body = '';
         res.on('data', chunk => body += chunk);
         res.on('end', () => resolve(JSON.parse(body || '{}')));
@@ -224,7 +224,7 @@ ipcMain.handle('agentos:rollbackTask', async (_event, taskId) => {
 ipcMain.handle('agentos:getTaskDiff', async (_event, taskId) => {
   try {
     return new Promise((resolve) => {
-      http.get(`${DEVPILOT_URL}/api/files/task-diff?task_id=${encodeURIComponent(taskId)}`, (res) => {
+      http.get(`${LOOPIX_URL}/api/files/task-diff?task_id=${encodeURIComponent(taskId)}`, (res) => {
         let body = '';
         res.on('data', chunk => body += chunk);
         res.on('end', () => resolve(JSON.parse(body || '{}')));
@@ -283,7 +283,7 @@ function getSplashHtml() {
 }
 
 function createWindow() {
-  const iconPath = path.join(projectRoot, 'assets', 'devpilot.ico');
+  const iconPath = path.join(projectRoot, 'assets', 'loopix.ico');
 
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -321,7 +321,7 @@ app.whenReady().then(async () => {
       "style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: blob:; " +
       "font-src 'self' data:; " +
-      `connect-src 'self' http://127.0.0.1:${DEVPILOT_PORT} http://localhost:${DEVPILOT_PORT} ws://127.0.0.1:${DEVPILOT_PORT} ws://localhost:${DEVPILOT_PORT}; ` +
+      `connect-src 'self' http://127.0.0.1:${LOOPIX_PORT} http://localhost:${LOOPIX_PORT} ws://127.0.0.1:${LOOPIX_PORT} ws://localhost:${LOOPIX_PORT}; ` +
       "object-src 'none'; frame-ancestors 'none'; base-uri 'self';"
     ];
     callback({ responseHeaders });
@@ -340,15 +340,15 @@ app.whenReady().then(async () => {
   if (!ready) {
     dialog.showErrorBox(
       'Initialization Error',
-      `DevPilot could not initialize its AI backend service at ${DEVPILOT_URL}.\nPlease make sure Python is installed in the virtual environment.`
+      `Loopix could not initialize its AI backend service at ${LOOPIX_URL}.\nPlease make sure Python is installed in the virtual environment.`
     );
     app.quit();
     return;
   }
 
-  // Load the full DevPilot workspace into the native window
+  // Load the full Loopix workspace into the native window
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.loadURL(DEVPILOT_URL);
+    mainWindow.loadURL(LOOPIX_URL);
   }
 
   app.on('activate', () => {

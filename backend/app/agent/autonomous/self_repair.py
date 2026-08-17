@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from .failure_analyzer import VerificationFailure
 from .task_contract import AgentTaskContract
 
-logger = logging.getLogger("devpilot.autonomous.self_repair")
+logger = logging.getLogger("loopix.autonomous.self_repair")
 
 
 @dataclass
